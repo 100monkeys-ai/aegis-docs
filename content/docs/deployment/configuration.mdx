@@ -11,7 +11,31 @@ The AEGIS daemon is configured via a single YAML file, by default `aegis-config.
 aegis daemon start --config /etc/aegis/config.yaml
 ```
 
-Environment variable overrides are supported for secret values using the `env:VAR_NAME` syntax anywhere a string value is expected.
+---
+
+## Config Discovery Order
+
+The daemon searches for a config file in the following order. The first match wins:
+
+1. `--config <path>` CLI flag
+2. `AEGIS_CONFIG_PATH` environment variable
+3. `./aegis-config.yaml` (working directory)
+4. `~/.aegis/config.yaml`
+5. `/etc/aegis/config.yaml` (Linux/macOS) or `C:\ProgramData\Aegis\config.yaml` (Windows)
+
+---
+
+## Credential Resolution
+
+Any string value in the config file can use a credential prefix instead of a literal:
+
+| Prefix | Resolution |
+|--------|------------|
+| `env:VAR_NAME` | Read from the daemon process environment at startup. |
+| `vault:path/to/secret` | Resolved from OpenBao at runtime (requires `spec.secrets.openbao` configured). |
+| *(literal)* | Plaintext. Avoid for secrets. |
+
+The recommended production pattern is `vault:` references for all API keys and credentials. Use `env:` as a fallback when OpenBao is not available.
 
 ---
 
@@ -23,13 +47,15 @@ All `aegis-config.yaml` files use the Kubernetes-style manifest envelope:
 apiVersion: 100monkeys.ai/v1
 kind: NodeConfig
 metadata:
-  name: "my-aegis-node"
+  name: "my-aegis-node"          # required
+  version: "1.0.0"               # optional
+  labels:                        # optional
+    environment: "production"
 spec:
-  # All configuration keys documented below sit under spec:
-  # llm_providers, llm_selection, runtime, storage, network, ...
+  # All configuration sections documented below sit under spec:
 ```
 
-The sections in the full annotated configuration below all belong under the top-level `spec:` key.
+The sections documented below all belong under the top-level `spec:` key.
 
 ---
 
@@ -42,225 +68,683 @@ metadata:
   name: "aegis-node"
 spec:
 
-# ─── Database ─────────────────────────────────────────────────────────────────
-database:
-  # PostgreSQL connection URL. Required.
-  url: "env:DATABASE_URL"
-  # Maximum number of database connections in the pool.
-  # Default: 20
-  max_connections: 20
-  # Minimum idle connections kept open.
-  # Default: 2
-  min_connections: 2
-  # How long to wait for a connection before timing out.
-  # Default: 30s
-  connect_timeout: 30s
-
-# ─── Server ───────────────────────────────────────────────────────────────────
-server:
-  # Address for the HTTP REST API.
-  # Default port is 8000.
-  http_addr: "0.0.0.0:8000"
-  # Address for the internal gRPC API (Temporal worker / inner-loop transport).
-  # Default port is 50051.
-  grpc_addr: "0.0.0.0:50051"
-  # Optional TLS configuration. Omit for plaintext (dev only).
-  tls:
-    cert_file: /etc/aegis/tls/server.crt
-    key_file: /etc/aegis/tls/server.key
-
-# ─── Runtime ──────────────────────────────────────────────────────────────────
-runtime:
-  # Container runtime adapter. Currently only "docker" is stable.
-  # "firecracker" is in development.
-  type: docker
-  # Docker socket path.
-  # Default: /var/run/docker.sock
-  docker_socket: /var/run/docker.sock
-  # Default image pull policy for agent containers. Options: always | if-not-present | never
-  # Default: if-not-present
-  image_pull_policy: if-not-present
-  # Maximum concurrent agent executions on this node.
-  # Default: 10
-  max_concurrent_executions: 10
+# ─── Node Identity ────────────────────────────────────────────────────────────
+node:
+  # Unique stable node identifier. UUID recommended. Required.
+  id: "env:AEGIS_NODE_ID"
+  # Node type. Options: edge | orchestrator | hybrid. Required.
+  type: orchestrator
+  # Geographic region, e.g. "us-east-1". Optional.
+  region: "us-east-1"
+  # Capability tags used to match agent manifest execution_targets. Optional.
+  tags:
+    - gpu
+    - high-memory
+  # Physical resources available on this node. Optional.
+  resources:
+    cpu_cores: 8
+    memory_gb: 32
+    disk_gb: 500
+    gpu: false
 
 # ─── LLM Providers ────────────────────────────────────────────────────────────
-llm:
-  providers:
-    - name: gpt-4o
-      type: openai
-      api_key: "env:OPENAI_API_KEY"
-      model: gpt-4o
-      max_tokens: 4096
-      context_window: 128000
-      temperature: 0.2
+# Array of LLM provider configurations. At least one entry is required.
+llm_providers:
+  - name: openai-primary           # Unique provider name on this node. Required.
+    type: openai                   # openai | anthropic | ollama | openai-compatible. Required.
+    endpoint: "https://api.openai.com/v1"  # API endpoint URL. Required.
+    api_key: "env:OPENAI_API_KEY"  # Supports env: and vault: prefixes.
+    enabled: true                  # Default: true
+    models:                        # Must have at least one entry. Required.
+      - alias: default             # Alias referenced in agent manifests. Required.
+        model: gpt-4o              # Provider-side model name. Required.
+        capabilities:              # chat | embedding | reasoning | vision | code. Required.
+          - chat
+          - code
+          - reasoning
+        context_window: 128000     # Max context window in tokens. Required.
+        cost_per_1k_tokens: 0.005  # Default: 0.0 (free/local)
+      - alias: fast
+        model: gpt-4o-mini
+        capabilities: [chat, code]
+        context_window: 128000
+        cost_per_1k_tokens: 0.00015
 
-    - name: claude-3-5-sonnet
-      type: anthropic
-      api_key: "env:ANTHROPIC_API_KEY"
-      model: claude-3-5-sonnet-20241022
-      max_tokens: 8192
-      context_window: 200000
+  - name: anthropic-primary
+    type: anthropic
+    endpoint: "https://api.anthropic.com"
+    api_key: "vault:aegis-system/llm/anthropic-api-key"
+    enabled: true
+    models:
+      - alias: smart
+        model: claude-3-5-sonnet-20241022
+        capabilities: [chat, code, reasoning]
+        context_window: 200000
+        cost_per_1k_tokens: 0.003
 
-    - name: ollama-local
-      type: ollama
-      base_url: "http://localhost:11434"
-      model: qwen2.5-coder:32b
-      max_tokens: 4096
-      context_window: 32000
+  - name: ollama-local
+    type: ollama
+    endpoint: "http://localhost:11434"
+    enabled: true
+    models:
+      - alias: local
+        model: qwen2.5-coder:32b
+        capabilities: [chat, code]
+        context_window: 32000
+        cost_per_1k_tokens: 0.0
 
-  # Model alias → provider name mapping.
-  # "default" is used when no model alias is specified in bootstrap.py.
-  aliases:
-    default: gpt-4o
-    fast: claude-3-5-sonnet
-    local: ollama-local
+# ─── LLM Selection Strategy ───────────────────────────────────────────────────
+# Optional. Controls how the orchestrator picks providers at runtime.
+llm_selection:
+  # prefer-local | prefer-cloud | cost-optimized | latency-optimized
+  # Default: prefer-local
+  strategy: prefer-local
+  # Provider name to use when no preference is specified. Default: null (auto-select).
+  default_provider: openai-primary
+  # Provider to use if the primary fails. Default: null.
+  fallback_provider: ollama-local
+  # Maximum retry attempts on LLM failure. Default: 3
+  max_retries: 3
+  # Delay between retries in milliseconds. Default: 1000
+  retry_delay_ms: 1000
+
+# ─── Runtime ──────────────────────────────────────────────────────────────────
+# Optional. Has safe defaults for Docker.
+runtime:
+  # Path to the agent bootstrap script, relative to the orchestrator binary.
+  # Default: assets/bootstrap.py
+  bootstrap_script: "assets/bootstrap.py"
+  # Default isolation level for executions that do not specify one.
+  # Options: docker | firecracker | inherit | process
+  # Default: inherit (uses the node's compiled-in default)
+  default_isolation: docker
+  # Custom Docker socket path. Omit to use the platform default:
+  #   Linux/macOS: /var/run/docker.sock
+  #   Windows:     //./pipe/docker_engine
+  docker_socket_path: "/var/run/docker.sock"
+  # Docker network name for agent containers.
+  # Supports env: prefix. Example: "env:AEGIS_DOCKER_NETWORK"
+  docker_network_mode: "aegis-network"
+  # URL that agent containers use to call back to the orchestrator.
+  # Must be reachable from inside Docker containers, not from the host.
+  # Default: http://localhost:8000
+  orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
+
+  # ── NFS Storage Gateway (required when spec.storage.backend: seaweedfs) ───
+  # Hostname/IP of the NFS server. Must resolve from the HOST OS where the
+  # Docker daemon runs — NOT from inside agent containers.
+  # Supports env: prefix.
+  #
+  # Platform-specific values:
+  #   WSL2 / Linux native:          "127.0.0.1"
+  #   Docker Desktop (Win/Mac):     "host.docker.internal"
+  #   Linux bridge network:         "172.17.0.1"  (Docker bridge gateway)
+  #   Remote / VM host:             "<physical host IP>"
+  nfs_server_host: "env:AEGIS_NFS_HOST"
+  # NFS server listen port. Default: 2049
+  nfs_port: 2049
+  # NFS mountd port. Default: 2049
+  nfs_mountport: 2049
+
+# ─── Network ──────────────────────────────────────────────────────────────────
+# Optional. Has safe defaults.
+network:
+  # Bind address for all listeners. Default: 0.0.0.0
+  bind_address: "0.0.0.0"
+  # HTTP REST API port. Default: 8000
+  port: 8000
+  # gRPC API port (inner-loop transport, Temporal workers). Default: 50051
+  grpc_port: 50051
+  # WebSocket URL for edge-node → orchestrator connection. Omit on orchestrator nodes.
+  orchestrator_endpoint: null
+  # Health check ping interval in seconds. Default: 30
+  heartbeat_interval_seconds: 30
+  # Optional TLS. Omit for plaintext (dev only; never in production).
+  tls:
+    cert_path: "/etc/aegis/tls/server.crt"
+    key_path: "/etc/aegis/tls/server.key"
+    ca_path: null    # Optional CA certificate path
 
 # ─── Storage ──────────────────────────────────────────────────────────────────
+# Optional. Defaults to local backend.
 storage:
-  # SeaweedFS Filer URL. Required if volumes are used.
-  seaweedfs_filer: "http://localhost:8888"
-  # NFS server listen address (agent containers mount from this).
-  nfs_listen_addr: "0.0.0.0:2049"
-  # Default TTL for ephemeral volumes when manifest does not specify one.
-  # Default: 1h
-  default_ephemeral_ttl: 1h
-  # Maximum volume size if manifest does not specify size_limit_bytes.
-  # Default: no limit
-  # default_size_limit_bytes: 10737418240   # 10 GiB
+  # Storage backend. Options: seaweedfs | local. Default: local
+  backend: seaweedfs
+  # Gracefully fall back to local storage when SeaweedFS is unreachable.
+  # Default: true
+  fallback_to_local: true
+  # NFS Server Gateway listen port. Default: 2049
+  nfs_port: 2049
 
-# ─── Tools ────────────────────────────────────────────────────────────────────
-tools:
-  builtin_dispatcher:
-    # Enable the cmd.run Dispatch Protocol.
-    # Default: true
-    enabled: true
-    # Maximum stdout/stderr bytes to capture per subprocess.
-    # Default: 1048576 (1 MiB)
-    output_limit_bytes: 1048576
-    # Timeout for each individual dispatched subprocess.
-    # Default: 60s
-    timeout_secs: 60
+  # SeaweedFS backend config. Required when backend: seaweedfs.
+  seaweedfs:
+    # SeaweedFS Filer endpoint.
+    # Default: http://localhost:8888
+    filer_url: "http://localhost:8888"
+    # Host filesystem mount point.
+    # Default: /var/lib/aegis/storage
+    mount_point: "/var/lib/aegis/storage"
+    # Default TTL for ephemeral volumes in hours. Default: 24
+    default_ttl_hours: 24
+    # Default per-volume size quota in MB. Default: 1000
+    default_size_limit_mb: 1000
+    # Hard ceiling on any single volume size in MB. Default: 10000
+    max_size_limit_mb: 10000
+    # GC interval for expired volumes in minutes. Default: 60
+    gc_interval_minutes: 60
+    # Optional S3 gateway endpoint (e.g., for direct object uploads).
+    s3_endpoint: null
+    # S3 gateway region. Default: us-east-1
+    s3_region: "us-east-1"
 
-  # SubcommandAllowlist: command → list of allowed first positional arguments.
-  # An empty list means no subcommand restriction for that command.
-  subcommand_allowlist:
-    python:
-      - /workspace
-    pytest:
-      - /workspace/tests
-    npm:
-      - install
-      - run
-      - test
-    git:
-      - status
-      - diff
-      - add
-      - commit
+  # Local storage config. Used when backend: local, or as the fallback target.
+  local:
+    # Base directory for local volume storage.
+    # Default: /var/lib/aegis/local-volumes
+    base_path: "/var/lib/aegis/local-volumes"
+    # Default TTL for ephemeral volumes in hours. Default: 24
+    default_ttl_hours: 24
+    # Default per-volume size quota in MB. Default: 1000
+    default_size_limit_mb: 1000
+    # Hard ceiling on any single volume size in MB. Default: 10000
+    max_size_limit_mb: 10000
 
-  # External MCP tool servers.
-  mcp_servers:
-    - name: web-search
-      command: ["node", "/opt/aegis-tools/web-search/index.js"]
-      env:
-        SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
-      capabilities:
-        - web.search
-        - web.fetch
-      # How long to keep the process alive when idle before stopping it.
-      # Default: 300s
-      idle_timeout_secs: 300
+# ─── MCP Tool Servers ─────────────────────────────────────────────────────────
+# External MCP server processes. Optional array.
+mcp_servers:
+  - name: web-search              # Unique server name on this node. Required.
+    enabled: true                 # Default: true
+    # Executable path (absolute or relative to /usr/local/bin). Required.
+    executable: "node"
+    # Command-line arguments. Default: []
+    args:
+      - "/opt/aegis-tools/web-search/index.js"
+    # Tool capabilities this server provides (used for routing). Default: []
+    capabilities:
+      - web.search
+      - web.fetch
+    # API keys and tokens — resolved via env: or vault: prefixes.
+    # Values are injected as environment variables into the server process.
+    credentials:
+      SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+    # Non-secret environment variables for the server process. Default: {}
+    environment:
+      LOG_LEVEL: "info"
+    # Health check configuration.
+    health_check:
+      interval_seconds: 60        # Default: 60
+      timeout_seconds: 5          # Default: 5
+      method: "tools/list"        # MCP method used for health check. Default: tools/list
+    # Resource limits for the server process.
+    resource_limits:
+      cpu_millicores: 1000        # 1000 = 1 CPU core
+      memory_mb: 512
+
+# ─── SMCP (Secure Model Context Protocol) ────────────────────────────────────
+# Optional. Required in production to enable cryptographic agent authorization.
+smcp:
+  # RSA private key PEM used to sign SecurityToken JWTs issued at attestation.
+  private_key_path: "/etc/aegis/smcp/private.pem"
+  # RSA public key PEM used to verify SecurityToken JWTs on tool calls.
+  public_key_path: "/etc/aegis/smcp/public.pem"
+  # JWT iss claim. Default: aegis-orchestrator
+  issuer: "aegis-orchestrator"
+  # JWT aud claim values. Default: [aegis-agents]
+  audiences:
+    - "aegis-agents"
+  # SecurityToken lifetime in seconds. Default: 3600 (1 hour)
+  token_ttl_seconds: 3600
 
 # ─── Security Contexts ────────────────────────────────────────────────────────
+# Named permission boundaries controlling what tools agents may invoke.
+# Referenced by name in agent manifests and in spec.keycloak ZaruTier mappings.
 security_contexts:
-  - name: default
+  - name: coder-default
+    description: "Standard coder context — filesystem + commands + safe package registries"
     capabilities:
-      - tool: "fs.*"
+      - tool_pattern: "fs.*"        # ← tool_pattern, not tool
         path_allowlist:
           - /workspace
           - /agent
-      - tool: "cmd.run"
-      - tool: "web.fetch"
-        domain_allowlist: []     # empty = no network access
-        rate_limit: 0/minute
-
-  - name: network-enabled
-    capabilities:
-      - tool: "fs.*"
-        path_allowlist:
-          - /workspace
-          - /agent
-      - tool: "cmd.run"
-      - tool: "web.fetch"
+      - tool_pattern: "cmd.run"
+        command_allowlist:
+          - git
+          - cargo
+          - npm
+          - python
+          - pytest
+      - tool_pattern: "web.fetch"
         domain_allowlist:
           - pypi.org
+          - crates.io
+          - npmjs.com
+        rate_limit:
+          calls: 30                 # ← object with calls + per_seconds, not "30/minute"
+          per_seconds: 60
+    # Explicit deny list — overrides any matching capability above.
+    deny_list: []
+
+  - name: zaru-free
+    description: "Zaru Free tier: ephemeral volumes only, no outbound network"
+    capabilities:
+      - tool_pattern: "fs.*"
+        path_allowlist:
+          - /workspace
+      - tool_pattern: "cmd.run"
+        command_allowlist:
+          - python
+          - npm
+          - node
+    deny_list:
+      - "web.*"
+
+  - name: zaru-pro
+    description: "Zaru Pro tier: full coder-default capabilities"
+    capabilities:
+      - tool_pattern: "fs.*"
+        path_allowlist:
+          - /workspace
+          - /agent
+      - tool_pattern: "cmd.run"
+        command_allowlist:
+          - git
+          - cargo
+          - npm
+          - python
+          - pytest
+      - tool_pattern: "web.*"
+        domain_allowlist:
+          - pypi.org
+          - crates.io
           - npmjs.com
           - api.github.com
-        rate_limit: 30/minute
+        rate_limit:
+          calls: 60
+          per_seconds: 60
 
-# ─── Workflow ─────────────────────────────────────────────────────────────────
-workflow:
-  # Temporal frontend address. Required if workflows are used.
-  temporal_addr: "localhost:7233"
-  # Temporal namespace for AEGIS workflows.
-  # Default: default
-  namespace: default
-  # Temporal task queue name.
-  # Default: aegis-workflows
-  task_queue: aegis-workflows
-
-# ─── Secrets (OpenBao) ────────────────────────────────────────────────────────
-# Optional. Omit to use env: references only.
-secrets:
-  openbao:
-    # Address of the OpenBao server.
-    addr: "https://openbao.internal:8200"
-    # AppRole authentication.
-    auth:
-      role_id: "env:OPENBAO_ROLE_ID"
-      secret_id: "env:OPENBAO_SECRET_ID"
-    # Token renewal interval.
-    # Default: 1800s (30 minutes)
-    renewal_interval: 1800s
-    # KV mount path.
-    kv_mount: "aegis-system"
+# ─── Builtin Dispatchers ──────────────────────────────────────────────────────
+# Configuration for the in-process Dispatch Protocol handler.
+# The cmd dispatcher is NOT an MCP server — it runs subprocesses inside agent
+# containers via the bidirectional bootstrap channel.
+builtin_dispatchers:
+  cmd:
+    # Enable cmd.run dispatch. Default: true
+    enabled: true
+    # Default per-subprocess timeout in seconds. Default: 60
+    default_timeout_secs: 60
+    # Ceiling timeout an agent manifest may request. Default: 300
+    max_timeout_ceiling_secs: 300
+    # Maximum stdout + stderr captured per subprocess in bytes. Default: 524288 (512 KB)
+    max_output_bytes: 524288
+    # Maximum concurrent subprocesses per execution. Default: 1
+    max_concurrent_per_execution: 1
+    # Environment variables that must never be forwarded to agent subprocesses.
+    global_env_denylist:
+      - AEGIS_TOKEN
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
+      - SMCP_PRIVATE_KEY
+      - AWS_SECRET_ACCESS_KEY
+      - GOOGLE_API_KEY
 
 # ─── IAM (Keycloak) ───────────────────────────────────────────────────────────
 # Optional. Omit to disable JWT validation (dev only; never in production).
-iam:
-  keycloak:
-    # Keycloak server URL.
-    url: "https://keycloak.internal:8443"
-    # Realm for operator/admin identities.
-    realm: aegis-system
-    # JWKS cache TTL. Refreshed automatically to support key rotation.
-    # Default: 300s
-    jwks_cache_ttl: 300s
+# Configures Keycloak as the trusted OIDC issuer for all
+# human and service-account identities.
+keycloak:
+  # Array of Keycloak realms trusted by this node.
+  realms:
+    - slug: "aegis-system"         # Realm name matching Keycloak config. Required.
+      issuer_url: "https://auth.myzaru.com/realms/aegis-system"  # OIDC issuer URL. Required.
+      jwks_uri: "https://auth.myzaru.com/realms/aegis-system/protocol/openid-connect/certs"  # Required.
+      audience: "aegis-orchestrator"  # Expected aud claim. Required.
+      kind: system                 # system | consumer | tenant. Required.
+    - slug: "zaru-consumer"
+      issuer_url: "https://auth.myzaru.com/realms/zaru-consumer"
+      jwks_uri: "https://auth.myzaru.com/realms/zaru-consumer/protocol/openid-connect/certs"
+      audience: "aegis-orchestrator"
+      kind: consumer
+  # JWKS key refresh interval in seconds. Supports live key rotation.
+  # Default: 300
+  jwks_cache_ttl_seconds: 300
+  # Custom claim names injected by Keycloak attribute mappers.
+  claims:
+    zaru_tier: "zaru_tier"         # Claim carrying ZaruTier (Free | Pro | Enterprise)
+    aegis_role: "aegis_role"       # Claim carrying AegisRole in aegis-system realm
 
-# ─── Event Bus ────────────────────────────────────────────────────────────────
-event_bus:
-  # Ring buffer capacity. Increase if subscribers are slow.
-  # Default: 1000
-  capacity: 1000
+# ─── gRPC Auth ────────────────────────────────────────────────────────────────
+# Optional. Controls Keycloak JWT enforcement on the gRPC endpoint.
+# Requires spec.keycloak to be configured.
+grpc_auth:
+  # Enable JWT validation on all gRPC methods. Default: true
+  enabled: true
+  # gRPC method full paths exempt from auth.
+  # The inner-loop bootstrap channel must always be exempt.
+  exempt_methods:
+    - "/aegis.v1.InnerLoop/Generate"
+
+# ─── Secrets (OpenBao) ────────────────────────────────────────────────────────
+# Optional. Omit to rely solely on env: references.
+# Follows the Keymaster Pattern: only the orchestrator accesses
+# OpenBao — agents never receive vault credentials directly.
+secrets:
+  # Secrets backend. Options: openbao | environment. Default: environment
+  backend: "openbao"
+  openbao:
+    # OpenBao server address.
+    address: "https://openbao.internal:8200"
+    # Authentication method. Currently only approle is supported.
+    auth_method: "approle"
+    approle:
+      # AppRole Role ID — public, can be committed to config.
+      role_id: "env:OPENBAO_ROLE_ID"
+      # Name of the environment variable containing the AppRole Secret ID.
+      # The Secret ID itself must never be committed to config files.
+      secret_id_env_var: "OPENBAO_SECRET_ID"
+    # OpenBao namespace for multi-tenancy. Maps 1:1 to a Keycloak realm.
+    namespace: "aegis-system"
+    # Optional mTLS to OpenBao.
+    tls:
+      ca_cert: "/etc/aegis/openbao-ca.pem"
+      client_cert: null            # Optional mTLS client cert
+      client_key: null             # Optional mTLS client key
+    # Background token renewal settings.
+    token_renewal:
+      # Renewal check interval in seconds. Default: 1800 (30 min)
+      interval_seconds: 1800
+      # Renew when this many seconds remain before expiry. Default: 300
+      renew_before_expiry_seconds: 300
+    # In-memory secret cache.
+    cache:
+      enabled: true
+      ttl_seconds: 30
+      max_entries: 1000
 
 # ─── Observability ────────────────────────────────────────────────────────────
+# Optional.
 observability:
-  # Log level: error | warn | info | debug | trace
-  # Default: info
-  log_level: info
-  # Prometheus metrics endpoint.
-  metrics_addr: "0.0.0.0:9091"
+  logging:
+    # Log level: error | warn | info | debug | trace. Default: info
+    level: info
+    # Output format: json | text. Default: json
+    format: json
+    # Log file path. Omit to write to stdout.
+    file: null
+  metrics:
+    # Enable Prometheus metrics exposition. Default: true
+    enabled: true
+    # Metrics port. Default: 9090
+    port: 9090
+    # HTTP path for scraping. Default: /metrics
+    path: "/metrics"
+  tracing:
+    # Enable distributed tracing via OpenTelemetry. Default: false
+    enabled: false
+    # OTLP collector endpoint.
+    otlp_endpoint: "http://otel-collector:4318"
 ```
 
 ---
 
-## Credential Resolution Order
+## Section Reference
 
-For any field that accepts `env:VAR_NAME` or `vault:path/to/secret`:
+### `spec.node`
 
-1. **`env:VAR_NAME`** — Read from the daemon process environment at startup.
-2. **`vault:path/to/secret`** — Resolved from OpenBao at runtime (requires `secrets.openbao` configured).
-3. **Literal value** — Plaintext in the config file. Avoid for secrets.
+Required. Identifies this node within the AEGIS cluster.
 
-The recommended pattern for production is `vault:` references for all API keys and credentials. Use `env:` references as a fallback for environments where OpenBao is not available.
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `id` | string | ✅ | — | Unique stable node identifier. UUID recommended. Fails validation if empty. |
+| `type` | enum | ✅ | — | `edge` \| `orchestrator` \| `hybrid` |
+| `region` | string | ❌ | null | Geographic region (e.g., `"us-east-1"`) |
+| `tags` | string[] | ❌ | `[]` | Capability tags matched against `execution_targets` in agent manifests |
+| `resources.cpu_cores` | u32 | ❌ | — | Available CPU cores |
+| `resources.memory_gb` | u32 | ❌ | — | Available RAM in GB |
+| `resources.disk_gb` | u32 | ❌ | — | Available disk in GB |
+| `resources.gpu` | bool | ❌ | `false` | GPU available |
+
+---
+
+### `spec.llm_providers`
+
+Required array. At least one entry with at least one model is required.
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `name` | string | ✅ | — | Unique provider name |
+| `type` | enum | ✅ | — | `openai` \| `anthropic` \| `ollama` \| `openai-compatible` |
+| `endpoint` | string | ✅ | — | API endpoint URL |
+| `api_key` | string | ❌ | null | API key. Supports `env:` and `vault:`. |
+| `enabled` | bool | ❌ | `true` | Whether this provider is active |
+| `models[].alias` | string | ✅ | — | Alias referenced in agent manifests |
+| `models[].model` | string | ✅ | — | Provider-side model identifier |
+| `models[].capabilities` | string[] | ✅ | — | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` |
+| `models[].context_window` | u32 | ✅ | — | Max context window in tokens |
+| `models[].cost_per_1k_tokens` | f64 | ❌ | `0.0` | Cost per 1K tokens (0.0 for free/local) |
+
+---
+
+### `spec.llm_selection`
+
+Optional. Controls runtime provider selection strategy.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `strategy` | enum | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
+| `default_provider` | string | null | Provider to use when no preference is specified |
+| `fallback_provider` | string | null | Provider to use if the primary fails |
+| `max_retries` | u32 | `3` | Maximum retry attempts on LLM failure |
+| `retry_delay_ms` | u64 | `1000` | Delay between retries in milliseconds |
+
+---
+
+### `spec.runtime`
+
+Optional. Controls how agent containers are launched.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `bootstrap_script` | string | `assets/bootstrap.py` | Path to bootstrap script relative to orchestrator binary |
+| `default_isolation` | enum | `inherit` | `docker` \| `firecracker` \| `inherit` \| `process` |
+| `docker_socket_path` | string | *(platform default)* | Custom Docker socket path |
+| `docker_network_mode` | string | null | Docker network name for agent containers |
+| `orchestrator_url` | string | `http://localhost:8000` | Callback URL reachable from inside agent containers |
+| `nfs_server_host` | string | null | **Critical for volume mounts.** NFS server host as seen by the Docker daemon host OS. See platform table below. |
+| `nfs_port` | u16 | `2049` | NFS server port |
+| `nfs_mountport` | u16 | `2049` | NFS mountd port |
+
+**`nfs_server_host` by environment:**
+
+| Environment | Value |
+|-------------|-------|
+| WSL2 / Linux native | `"127.0.0.1"` |
+| Docker Desktop (Windows / macOS) | `"host.docker.internal"` |
+| Linux bridge network | `"172.17.0.1"` (Docker bridge gateway) |
+| Remote / VM host | `<physical host IP>` |
+| Via env var | `"env:AEGIS_NFS_HOST"` |
+
+---
+
+### `spec.network`
+
+Optional. Configures ports and TLS.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `bind_address` | string | `0.0.0.0` | Network interface to bind all listeners |
+| `port` | u16 | `8000` | HTTP REST API port |
+| `grpc_port` | u16 | `50051` | gRPC API port |
+| `orchestrator_endpoint` | string | null | WebSocket URL for edge → orchestrator connection (edge nodes only) |
+| `heartbeat_interval_seconds` | u64 | `30` | Health check ping interval |
+| `tls.cert_path` | string | — | TLS certificate path |
+| `tls.key_path` | string | — | TLS private key path |
+| `tls.ca_path` | string | null | CA certificate path (optional) |
+
+---
+
+### `spec.storage`
+
+Optional. Defaults to the `local` backend.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `backend` | enum | `local` | `seaweedfs` \| `local` |
+| `fallback_to_local` | bool | `true` | Gracefully fall back to local storage when SeaweedFS is unreachable |
+| `nfs_port` | u16 | `2049` | NFS Server Gateway listen port |
+| `seaweedfs.filer_url` | string | `http://localhost:8888` | SeaweedFS Filer endpoint |
+| `seaweedfs.mount_point` | string | `/var/lib/aegis/storage` | Host filesystem mount point |
+| `seaweedfs.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
+| `seaweedfs.default_size_limit_mb` | u64 | `1000` | Default per-volume size quota (MB) |
+| `seaweedfs.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
+| `seaweedfs.gc_interval_minutes` | u32 | `60` | Expired volume GC interval (minutes) |
+| `seaweedfs.s3_endpoint` | string | null | Optional SeaweedFS S3 gateway endpoint |
+| `seaweedfs.s3_region` | string | `us-east-1` | S3 gateway region |
+| `local.base_path` | string | `/var/lib/aegis/local-volumes` | Base directory for local volume storage |
+| `local.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
+| `local.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
+| `local.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
+
+---
+
+### `spec.mcp_servers`
+
+Optional array. Each entry defines an external MCP Tool Server process.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `name` | string | — | Unique server name on this node |
+| `enabled` | bool | `true` | Whether to start this server |
+| `executable` | string | — | Executable path |
+| `args` | string[] | `[]` | Command-line arguments |
+| `capabilities` | string[] | `[]` | Tool names this server provides (used for routing) |
+| `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `vault:`. |
+| `environment` | map | `{}` | Non-secret env vars for the server process |
+| `health_check.interval_seconds` | u64 | `60` | Health check interval |
+| `health_check.timeout_seconds` | u64 | `5` | Health check timeout |
+| `health_check.method` | string | `tools/list` | MCP method used to health-check the server |
+| `resource_limits.cpu_millicores` | u32 | `1000` | CPU limit (1000 = 1 core) |
+| `resource_limits.memory_mb` | u32 | `512` | Memory limit (MB) |
+
+---
+
+### `spec.smcp`
+
+Optional. Enables cryptographic agent authorization via SMCP. Required in production.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `private_key_path` | string | — | Path to RSA private key PEM for signing `SecurityToken` JWTs |
+| `public_key_path` | string | — | Path to RSA public key PEM for verifying `SecurityToken` JWTs |
+| `issuer` | string | `aegis-orchestrator` | JWT `iss` claim |
+| `audiences` | string[] | `[aegis-agents]` | JWT `aud` claims |
+| `token_ttl_seconds` | u64 | `3600` | `SecurityToken` lifetime in seconds |
+
+---
+
+### `spec.security_contexts`
+
+Optional array. Named permission boundaries assigned to agents at execution time.
+
+Each entry (`SecurityContextDefinition`):
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `name` | string | — | Unique context name, referenced in agent manifests |
+| `description` | string | `""` | Human-readable description |
+| `capabilities` | array | `[]` | Tool permissions granted by this context |
+| `deny_list` | string[] | `[]` | Explicit tool deny list; overrides any matching capability |
+
+Each `capabilities` entry (`CapabilityDefinition`):
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `tool_pattern` | string | Tool name pattern (e.g., `"fs.*"`, `"cmd.run"`, `"web.fetch"`, `"*"`) |
+| `path_allowlist` | string[] | Allowed filesystem path prefixes (for `fs.*` tools) |
+| `command_allowlist` | string[] | Allowed shell base commands (for `cmd.run`) |
+| `domain_allowlist` | string[] | Allowed network domain suffixes (for `web.*` tools) |
+| `rate_limit.calls` | u32 | Number of calls allowed per window |
+| `rate_limit.per_seconds` | u32 | Window size in seconds |
+| `max_response_size` | u64 | Max response size in bytes |
+
+---
+
+### `spec.builtin_dispatchers`
+
+Optional. Configures the `cmd` Dispatch Protocol handler. This is an in-process handler — it is not an MCP server process.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `cmd.enabled` | bool | `true` | Enable `cmd.run` dispatch |
+| `cmd.default_timeout_secs` | u64 | `60` | Default subprocess timeout |
+| `cmd.max_timeout_ceiling_secs` | u64 | `300` | Maximum timeout an agent manifest may request |
+| `cmd.max_output_bytes` | u64 | `524288` | Max stdout + stderr per subprocess (512 KB) |
+| `cmd.max_concurrent_per_execution` | u32 | `1` | Max concurrent subprocesses per execution |
+| `cmd.global_env_denylist` | string[] | *(see sample)* | Env vars that must never be forwarded to agent subprocesses |
+
+---
+
+### `spec.keycloak`
+
+Optional. Configures Keycloak as the trusted OIDC issuer. Omit to disable JWT validation (dev only; never in production).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `realms[].slug` | string | — | Realm name matching the Keycloak configuration |
+| `realms[].issuer_url` | string | — | OIDC issuer URL |
+| `realms[].jwks_uri` | string | — | JWKS endpoint for JWT signature verification |
+| `realms[].audience` | string | — | Expected `aud` claim in tokens from this realm |
+| `realms[].kind` | enum | — | `system` \| `consumer` \| `tenant` |
+| `jwks_cache_ttl_seconds` | u32 | `300` | JWKS key cache TTL; refreshed automatically to support key rotation |
+| `claims.zaru_tier` | string | `zaru_tier` | Keycloak claim name carrying `ZaruTier` |
+| `claims.aegis_role` | string | `aegis_role` | Keycloak claim name carrying `AegisRole` |
+
+---
+
+### `spec.grpc_auth`
+
+Optional. Controls Keycloak JWT enforcement on the gRPC endpoint. Requires `spec.keycloak` to be configured.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enforce JWT validation on gRPC methods |
+| `exempt_methods` | string[] | `[/aegis.v1.InnerLoop/Generate]` | gRPC method full paths exempt from auth. The inner-loop bootstrap channel must always be exempt. |
+
+---
+
+### `spec.secrets`
+
+Optional. Configures OpenBao as the secrets backend. Follows the Keymaster Pattern — agents never access OpenBao directly.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `backend` | enum | `environment` | `openbao` \| `environment` |
+| `openbao.address` | string | — | OpenBao server URL |
+| `openbao.auth_method` | string | `approle` | Authentication method. Only `approle` is currently supported. |
+| `openbao.approle.role_id` | string | — | AppRole Role ID (public; safe to commit) |
+| `openbao.approle.secret_id_env_var` | string | — | Name of the environment variable containing the AppRole Secret ID. Never commit the actual Secret ID. |
+| `openbao.namespace` | string | — | OpenBao namespace (maps 1:1 to a Keycloak realm) |
+| `openbao.tls.ca_cert` | string | null | CA certificate path |
+| `openbao.tls.client_cert` | string | null | mTLS client certificate path |
+| `openbao.tls.client_key` | string | null | mTLS client key path |
+| `openbao.token_renewal.interval_seconds` | u64 | `1800` | Token renewal check interval |
+| `openbao.token_renewal.renew_before_expiry_seconds` | u64 | `300` | Renew when this many seconds remain before expiry |
+| `openbao.cache.enabled` | bool | `true` | Enable in-memory secret cache |
+| `openbao.cache.ttl_seconds` | u64 | `30` | Cache entry TTL |
+| `openbao.cache.max_entries` | u64 | `1000` | Maximum cache entries |
+
+---
+
+### `spec.observability`
+
+Optional.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `logging.level` | enum | `info` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
+| `logging.format` | enum | `json` | `json` \| `text` |
+| `logging.file` | string | null | Log file path. Omit to write to stdout. |
+| `metrics.enabled` | bool | `true` | Enable Prometheus metrics |
+| `metrics.port` | u16 | `9090` | Metrics exposition port |
+| `metrics.path` | string | `/metrics` | HTTP path for scraping |
+| `tracing.enabled` | bool | `false` | Enable distributed tracing via OpenTelemetry |
+| `tracing.otlp_endpoint` | string | null | OTLP collector endpoint (e.g., `http://otel-collector:4318`) |
