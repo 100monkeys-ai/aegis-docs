@@ -90,7 +90,7 @@ export OPENAI_API_KEY="sk-..."
 aegis daemon --config deploy/aegis-config.yaml
 
 # 5. Deploy the hello-world agent and run it
-aegis agent deploy ./hello-world/agent.yaml
+aegis agent deploy ./agents/hello-world/agent.yaml
 aegis execute --agent hello-world \\
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \\
   --watch

@@ -92,9 +92,9 @@ spec:
   volumes:
     - name: workspace
       storage_class: ephemeral
-      mount_path: /workspace
+      mount_point: /workspace
       access_mode: read-write
-      size_limit: "2Gi"
+      size_limit_mb: 2048
       ttl_hours: 1
 ```
 

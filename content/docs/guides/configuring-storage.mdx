@@ -29,36 +29,37 @@ spec:
   volumes:
     # Ephemeral workspace scratch volume — deleted after 1 hour
     - name: workspace
-      mount_path: /workspace
-      access_mode: ReadWrite
+      mount_point: /workspace
+      access_mode: read-write
       storage_class: ephemeral
-      ttl: 1h
+      ttl_hours: 1
 
     # Persistent output volume — survives across executions
     - name: output-store
-      mount_path: /output
-      access_mode: ReadWrite
+      mount_point: /output
+      access_mode: read-write
       storage_class: persistent
 
     # Read-only access to a shared reference dataset
     - name: reference-data
-      mount_path: /reference
-      access_mode: ReadOnly
+      mount_point: /reference
+      access_mode: read-only
       storage_class: persistent
-      volume_id: "vol-a1b2c3d4-..."   # reference an existing volume by ID
+      source:
+        volume_id: "vol-a1b2c3d4-..."   # reference an existing volume by ID
 ```
 
 ### Volume Fields
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+|---|---|---|
 | `name` | string | ✓ | Local identifier used to reference this mount within the manifest. |
-| `mount_path` | string | ✓ | Absolute path inside the container where the volume appears. |
-| `access_mode` | `ReadOnly` \| `ReadWrite` | ✓ | Access mode enforced by the storage gateway. |
+| `mount_point` | string | ✓ | Absolute path inside the container where the volume appears. |
+| `access_mode` | `read-write` \| `read-only` | ✓ | Access mode enforced by the storage gateway (AegisFSAL). |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | Lifetime of the volume. |
-| `ttl` | duration string | Required for ephemeral | Auto-deletion TTL. Supports `m` (minutes), `h` (hours), `d` (days). |
-| `volume_id` | string | | Pin to a specific existing volume. If omitted, a new volume is created. |
-| `size_limit_bytes` | integer | | Maximum allowed size. Writes that exceed this emit a `VolumeQuotaExceeded` event and return an error. |
+| `ttl_hours` | integer | Required for ephemeral | Hours until auto-deletion (e.g., `1`, `24`, `48`). |
+| `size_limit_mb` | integer | | Maximum allowed size in MiB. Writes that exceed this emit a `VolumeQuotaExceeded` event and return `ENOSPC`. |
+| `source.volume_id` | string | Required for persistent | Pin to a specific existing volume by UUID. Supports Handlebars: `{{input.volume_id}}`. |
 
 ---
 
@@ -90,8 +91,8 @@ The AEGIS storage gateway (`AegisFSAL`) intercepts every POSIX operation on the 
 
 - **Authorization**: Verifies the requesting execution holds the volume's `FileHandle` (encoding `execution_id + volume_id`).
 - **Path canonicalization**: All paths are normalized server-side. Any `..` component is rejected before reaching SeaweedFS.
-- **Filesystem policy enforcement**: Read/write path allowlists from `spec.security.filesystem_policy` are enforced per-operation.
-- **Quota enforcement**: Writes that would exceed `size_limit_bytes` are blocked and emit `VolumeQuotaExceeded`.
+- **Filesystem policy enforcement**: Read/write path allowlists from `spec.security.filesystem` are enforced per-operation.
+- **Quota enforcement**: Writes that would exceed `size_limit_mb` are blocked and emit `VolumeQuotaExceeded`.
 - **Audit logging**: Every operation (open, read, write, create, delete, readdir) is published as a `StorageEvent` domain event to the event bus.
 
 ---
@@ -103,11 +104,11 @@ Set a maximum volume size in bytes:
 ```yaml
 volumes:
   - name: workspace
-    mount_path: /workspace
-    access_mode: ReadWrite
+    mount_point: /workspace
+    access_mode: read-write
     storage_class: ephemeral
-    ttl: 2h
-    size_limit_bytes: 5368709120   # 5 GiB
+    ttl_hours: 2
+    size_limit_mb: 5120   # 5 GiB
 ```
 
 If the agent writes data that would exceed the quota, the write fails with `ENOSPC` inside the container and a `VolumeQuotaExceeded` event is emitted.
@@ -116,7 +117,7 @@ If the agent writes data that would exceed the quota, the write fails with `ENOS
 
 ## Phase 1 Constraints
 
-**Single-writer constraint**: In Phase 1, a persistent volume with `ReadWrite` access can only be mounted by one execution at a time. Attempting to mount an already-in-use `ReadWrite` persistent volume will cause the second execution to fail at startup with a `VolumeAlreadyMounted` error.
+**Single-writer constraint**: In Phase 1, a persistent volume with `read-write` access can only be mounted by one execution at a time. Attempting to mount an already-in-use `read-write` persistent volume will cause the second execution to fail at startup with a `VolumeAlreadyMounted` error.
 
 **File locking**: NFS mounts use the `nolock` option. POSIX advisory locks (`flock`, `fcntl`) are not coordinated between agents. For multi-agent coordination on shared files, use the [ResourceLock](/docs/concepts/swarms#resource-locking) mechanism instead.
 
@@ -161,10 +162,11 @@ In the next agent manifest:
 ```yaml
 volumes:
   - name: previous-output
-    mount_path: /previous
-    access_mode: ReadOnly
+    mount_point: /previous
+    access_mode: read-only
     storage_class: persistent
-    volume_id: "vol-a1b2c3d4-..."
+    source:
+      volume_id: "vol-a1b2c3d4-..."
 ```
 
 The previous execution's output is now readable at `/previous` in the new agent container.

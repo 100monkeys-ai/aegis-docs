@@ -111,24 +111,24 @@ Each `WRITE`, `CREATE`, and `REMOVE` operation is validated against the manifest
 ```yaml
 spec:
   security:
-    filesystem_policy:
-      read_paths:
+    filesystem:
+      read:
         - /workspace
         - /agent
-      write_paths:
+      write:
         - /workspace
 ```
 
-If an agent attempts to write to `/agent/config.py` but only `/workspace` is in `write_paths`, the operation is blocked with `NFS3ERR_PERM` and a `FilesystemPolicyViolation` event is published.
+If an agent attempts to write to `/agent/config.py` but only `/workspace` is in `write`, the operation is blocked with `NFS3ERR_PERM` and a `FilesystemPolicyViolation` event is published.
 
 ---
 
 ## Quota Enforcement
 
-When `size_limit_bytes` is set in the volume declaration, `AegisFSAL` tracks cumulative bytes written to the volume. Before each `WRITE`:
+When `size_limit_mb` is set in the volume declaration, `AegisFSAL` tracks cumulative bytes written to the volume. Before each `WRITE`:
 
 ```
-current_volume_size + write_size > size_limit_bytes?
+current_volume_size + write_size > size_limit_mb * 1024 * 1024?
   → YES: fail with NFS3ERR_NOSPC, emit VolumeQuotaExceeded event
   → NO:  proceed with write
 ```

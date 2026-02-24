@@ -1,11 +1,15 @@
 ---
 title: Agent Manifest Reference
-description: Complete field-by-field specification for the AgentManifest YAML format.
+description: Complete specification for the AgentManifest YAML format (v1.0) — schema, field definitions, examples, and validation configuration.
 ---
 
 # Agent Manifest Reference
 
-This page is the authoritative reference for all fields in an AEGIS agent manifest YAML file.
+**API Version:** `100monkeys.ai/v1` | **Kind:** `AgentManifest` | **Status:** Canonical
+
+The **Agent Manifest** is the source of truth for an Agent's identity, capabilities, security constraints, and execution requirements. It allows the Aegis Host to run agents safely and deterministically within the Membrane.
+
+The manifest uses Kubernetes-style declarative format (`apiVersion`/`kind`/`metadata`/`spec`) for consistency across all AEGIS resources.
 
 ---
 
@@ -13,76 +17,125 @@ This page is the authoritative reference for all fields in an AEGIS agent manife
 
 ```yaml
 apiVersion: 100monkeys.ai/v1      # required; must be exactly this value
-kind: Agent                        # required; must be exactly "Agent"
+kind: AgentManifest               # required; must be exactly "AgentManifest"
 
 metadata:
-  name: python-coder               # required; unique name within the deployment
-  labels:                          # optional; arbitrary key-value pairs for filtering
-    type: developer
+  name: python-coder              # required; unique DNS-label name (lowercase, alphanumeric, hyphens)
+  version: "1.0.0"               # required; semantic version of this manifest
+  description: "Writes Python solutions to programming tasks."  # optional
+  labels:                         # optional; key-value pairs for filtering and discovery
+    role: worker
     team: platform
+  annotations:                    # optional; non-identifying metadata
+    maintainer: "platform@example.com"
 
 spec:
-  description: "Writes Python solutions to programming tasks."   # optional
-  image: myregistry/my-agent:latest                              # required
-  capabilities:                    # required; list of MCP tool capabilities
-    - fs.read
-    - fs.write
-    - cmd.run
-    - web.fetch
+  # Runtime configuration
+  runtime:
+    language: python              # required; python | javascript | typescript | rust | go
+    version: "3.11"              # required; language version string
+    isolation: docker             # optional; inherit | firecracker | docker | process
 
-  security:                        # required
-    network_policy:
-      mode: allow                  # required; "allow" = use allowlist (least privileged)
-      allowlist:                   # required when mode=allow
+  # Task definition (instructions for the agent)
+  task:
+    agentskills:                  # optional; pre-built skill packages
+      - "code-review:python"
+    instruction: |               # optional; high-level task guidance
+      Write a Python solution to the given problem.
+      Save the solution to /workspace/solution.py.
+      Run it to verify correctness and write a JSON summary to /workspace/result.json.
+    prompt_template: |           # optional; Handlebars template for LLM prompts
+      {{instruction}}
+
+      User: {{input}}
+      {{#if previous_error}}
+      Previous attempt failed: {{previous_error}}
+      {{/if}}
+      Assistant:
+
+  # Security policy (deny-by-default; declare only what is needed)
+  security:
+    network:
+      mode: allow                 # allow | deny | none
+      allowlist:
         - pypi.org
         - api.github.com
-
-    filesystem_policy:
-      read_paths:                  # required; paths inside container
+    filesystem:
+      read:
         - /workspace
         - /agent
-      write_paths:                 # required
+      write:
         - /workspace
+    resources:
+      cpu: 1000                  # millicores (1000 = 1 CPU core)
+      memory: "1Gi"             # human-readable: "512Mi", "1Gi", "2Gi"
+      disk: "5Gi"               # human-readable disk quota
+      timeout: "300s"           # human-readable: "300s", "5m", "1h"
 
-    security_context: default      # required; name of a SecurityContext in config
-
-  resources:
-    cpu_quota: 1.0                 # optional; fractional CPUs. Default: 1.0
-    memory_bytes: 1073741824       # optional; bytes. Default: 1 GiB
-    timeout_secs: 300              # optional; per-iteration timeout. Default: 300
-
-  max_iterations: 10               # optional; max 100monkeys attempts. Default: 10
-
-  validation:                      # optional; list of validators. Default: exit_code only
-    - type: exit_code
-      expected: 0
-    - type: json_schema
-      schema_path: /agent/schema.json
-      target_path: /workspace/result.json
-      min_score: 1.0
-    - type: semantic
-      judge_agent: code-quality-judge
-      criteria: "Evaluate overall code quality and correctness."
-      min_score: 0.80
-      min_confidence: 0.70
-
-  environment:                     # optional; env vars injected into container
-    PYTHONUNBUFFERED: "1"
-    LOG_LEVEL: "debug"
-
-  volumes:                         # optional; list of volume mounts
+  # Volume mounts (ephemeral and persistent storage)
+  volumes:
     - name: workspace
-      mount_path: /workspace
-      access_mode: ReadWrite
-      storage_class: ephemeral
-      ttl: 1h
-      size_limit_bytes: 5368709120
+      storage_class: ephemeral   # ephemeral | persistent
+      mount_point: /workspace    # absolute path inside container
+      access_mode: read-write    # read-write | read-only
+      ttl_hours: 1              # required for ephemeral; hours until auto-deletion
+      size_limit_mb: 5000       # maximum volume size in MiB
 
     - name: shared-data
-      mount_path: /data
-      access_mode: ReadOnly
       storage_class: persistent
-      volume_id: "vol-a1b2c3d4-..."
+      mount_point: /data
+      access_mode: read-only
+      source:
+        volume_id: "vol-a1b2c3d4-..."  # pin to existing volume
+
+  # Execution strategy and validation
+  execution:
+    mode: iterative              # one-shot | iterative
+    max_iterations: 10           # range: 1–20; default: 10
+    memory: false                # enable Cortex memory system
+    validation:
+      system:
+        must_succeed: true       # require exit code 0
+        allow_stderr: false      # fail on stderr output
+        timeout_seconds: 90      # per-iteration execution timeout
+      output:
+        format: json             # json | yaml | text | csv | pdf
+        schema:                  # optional JSON Schema for structural validation
+          type: object
+          required: ["solution_path", "output"]
+          properties:
+            solution_path:
+              type: string
+            output:
+              type: string
+      semantic:
+        enabled: true            # auto-enabled when task.instruction is set
+        model: default           # model alias from aegis-config.yaml
+        threshold: 0.80          # confidence threshold (0.0–1.0)
+        timeout_seconds: 30
+        fallback_on_unavailable: skip  # skip | fail
+
+  # MCP tools the agent may invoke
+  tools:
+    - name: filesystem
+      server: "mcp:filesystem"
+      config:
+        allowed_paths:
+          - /workspace
+        access_mode: read-write
+    - name: web-search
+      server: "mcp:web-search"
+      config:
+        allowed_domains:
+          - pypi.org
+          - docs.python.org
+        max_results_per_query: 10
+
+  # Environment variables (static, secret references, config references)
+  env:
+    PYTHONUNBUFFERED: "1"
+    LOG_LEVEL: "debug"
+    OPENAI_API_KEY: "secret:openai-key"   # injected from secure vault
 ```
 
 ---
@@ -94,7 +147,7 @@ spec:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `apiVersion` | string | ✓ | Must be `100monkeys.ai/v1`. |
-| `kind` | string | ✓ | Must be `Agent`. |
+| `kind` | string | ✓ | Must be `AgentManifest`. |
 | `metadata` | object | ✓ | Manifest metadata. |
 | `spec` | object | ✓ | Agent specification. |
 
@@ -102,80 +155,551 @@ spec:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | ✓ | Unique agent name. Must be lowercase alphanumeric with hyphens. Max 63 characters. |
-| `labels` | `map[string]string` | | Arbitrary key-value labels for organization and filtering. |
+| `name` | string | ✓ | Unique agent name. Pattern: `^[a-z0-9][a-z0-9-]{0,62}$`. |
+| `version` | string | ✓ | Manifest schema version. Semantic versioning (e.g., `"1.0.0"`). |
+| `description` | string | | Human-readable description of the agent's purpose. |
+| `labels` | `map[string]string` | | Key-value labels for categorization and discovery. Common keys: `role`, `category`, `team`, `environment`. |
+| `annotations` | `map[string]string` | | Arbitrary non-identifying metadata (e.g., `maintainer`, `docs`). |
 
 ### `spec`
 
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `runtime` | object | ✓ | Runtime configuration. |
+| `task` | object | | Task definition (instructions for the agent). |
+| `security` | object | | Security policy (deny-by-default). |
+| `volumes` | `object[]` | | Volume mount declarations. |
+| `execution` | object | | Execution strategy and acceptance criteria. |
+| `context` | `object[]` | | Additional resources attached to the execution. |
+| `schedule` | object | | Automatic execution scheduling. |
+| `delivery` | object | | Output delivery destinations. |
+| `tools` | `object[]` or `string[]` | | MCP tools the agent may invoke. |
+| `env` | `map[string]string` | | Environment variables injected into the container. |
+
+### `spec.runtime`
+
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `description` | string | | | Human-readable description of the agent's purpose. |
-| `image` | string | ✓ | | OCI container image reference. |
-| `capabilities` | `string[]` | ✓ | | List of MCP tool capabilities the agent may use. See below. |
-| `security` | object | ✓ | | Security policy. |
-| `resources` | object | | See below | CPU, memory, and timeout limits. |
-| `max_iterations` | integer | | `10` | Maximum iterations in the 100monkeys loop. Range: 1–100. |
-| `validation` | `object[]` | | `[{type: exit_code}]` | Validators run after each iteration. |
-| `environment` | `map[string]string` | | | Environment variables injected into the container. Values may use `env:VAR` to forward from daemon environment. |
-| `volumes` | `object[]` | | `[]` | Volume mount declarations. |
+| `language` | string | ✓ | | `python` \| `javascript` \| `typescript` \| `rust` \| `go` |
+| `version` | string | ✓ | | Language version (e.g., `"3.11"`, `"20"`). |
+| `isolation` | string | | `inherit` | `inherit` \| `firecracker` \| `docker` \| `process` |
+| `model` | string | | `default` | LLM model alias from `aegis-config.yaml`. |
 
-### `spec.capabilities`
+### `spec.task`
 
-| Capability | Description | Tool Path |
-|---|---|---|
-| `fs.read` | Read files from mounted volumes. | FSAL |
-| `fs.write` | Write files to mounted volumes. | FSAL |
-| `fs.create` | Create files and directories. | FSAL |
-| `fs.delete` | Delete files and directories. | FSAL |
-| `fs.list` | List directory contents. | FSAL |
-| `fs.*` | All filesystem operations. | FSAL |
-| `cmd.run` | Run subprocesses inside the container. | Dispatch Protocol |
-| `web.fetch` | Fetch a URL. | SMCP External |
-| `web.search` | Perform a web search. | SMCP External |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `agentskills` | `string[]` | | Pre-built skill packages. Format: `"namespace:skill-name"`. |
+| `instruction` | string | | High-level guidance for the agent (multi-line YAML `\|`). Auto-enables semantic validation. |
+| `prompt_template` | string | | Handlebars template for constructing LLM prompts. Default: `"{{instruction}}\n\nUser: {{input}}\nAssistant:"`. |
+| `input_data` | object | | Structured input parameters available at execution time. |
+
+**Prompt template variables:** `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{agentskills}}`, `{{context}}`.
 
 ### `spec.security`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `network_policy.mode` | `allow` \| `deny` | ✓ | `allow` = use allowlist (default). `deny` = no network. |
-| `network_policy.allowlist` | `string[]` | Required if mode=allow | Domain names permitted for outbound requests. |
-| `filesystem_policy.read_paths` | `string[]` | ✓ | Paths inside container where reads are permitted. |
-| `filesystem_policy.write_paths` | `string[]` | ✓ | Paths inside container where writes are permitted. |
-| `security_context` | string | ✓ | Name of a `SecurityContext` defined in `aegis-config.yaml`. |
-
-### `spec.resources`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `cpu_quota` | float | `1.0` | Number of fractional CPUs. Docker `--cpus` value. |
-| `memory_bytes` | integer | `1073741824` | Memory limit in bytes. Docker `--memory` value. |
-| `timeout_secs` | integer | `300` | Per-iteration timeout in seconds. Range: 1–3600. |
-
-### `spec.validation[]`
-
-| Field | Applicable Types | Required | Default | Description |
-|---|---|---|---|---|
-| `type` | all | ✓ | | `exit_code` \| `json_schema` \| `regex` \| `semantic` \| `multi_judge` |
-| `min_score` | all | | `1.0` | Minimum score (0.0–1.0) to pass this validator. |
-| `min_confidence` | `semantic`, `multi_judge` | | `0.0` | Minimum confidence to accept the score. |
-| `expected` | `exit_code` | | `0` | Expected process exit code. |
-| `schema_path` | `json_schema` | ✓ | | Path to JSON Schema file inside container. |
-| `target_path` | `json_schema` | ✓ | | Path to file to validate inside container. |
-| `pattern` | `regex` | ✓ | | Regular expression pattern. |
-| `target` | `regex` | | `stdout` | `stdout` or absolute path inside container. |
-| `judge_agent` | `semantic` | ✓ | | Name of the deployed judge agent. |
-| `judges` | `multi_judge` | ✓ | | List of deployed judge agent names. |
-| `consensus` | `multi_judge` | | `mean` | `mean` \| `min` \| `max` \| `majority` |
-| `criteria` | `semantic`, `multi_judge` | ✓ | | Scoring instructions given to the judge(s). |
+| `network.mode` | `allow` \| `deny` \| `none` | | Policy mode. `allow` = use allowlist; `none` = no network interface. |
+| `network.allowlist` | `string[]` | | Domain names and CIDR blocks permitted for outbound connections. |
+| `network.denylist` | `string[]` | | Domain names explicitly blocked (applied after allowlist). |
+| `filesystem.read` | `string[]` | | Paths inside container where reads are permitted. Glob patterns supported. |
+| `filesystem.write` | `string[]` | | Paths inside container where writes are permitted. Glob patterns supported. |
+| `filesystem.read_only` | boolean | | Set `true` to make all mounts read-only. |
+| `resources.cpu` | integer | | CPU limit in millicores (`1000` = 1 core). Default: `1000`. |
+| `resources.memory` | string | | Memory limit. Human-readable: `"512Mi"`, `"1Gi"`. Default: `"512Mi"`. |
+| `resources.disk` | string | | Disk quota. Human-readable: `"1Gi"`, `"10Gi"`. Default: `"1Gi"`. |
+| `resources.timeout` | string | | Total execution timeout. Human-readable: `"300s"`, `"5m"`, `"1h"`. Max `"1h"`. |
 
 ### `spec.volumes[]`
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | ✓ | | Local identifier. Must be unique within this manifest. |
-| `mount_path` | string | ✓ | | Absolute path inside container. |
-| `access_mode` | `ReadOnly` \| `ReadWrite` | ✓ | | Access mode enforced by AegisFSAL. |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | | Lifetime of the volume. |
-| `ttl` | duration | Required for ephemeral | | Auto-deletion TTL. Format: `30m`, `1h`, `2d`. |
-| `volume_id` | string | | | Pin to an existing volume by ID. If omitted, a new volume is created. |
-| `size_limit_bytes` | integer | | no limit | Maximum volume size. Writes beyond this return `ENOSPC`. |
+| `mount_point` | string | ✓ | | Absolute path inside the container (e.g., `/workspace`). |
+| `access_mode` | `read-write` \| `read-only` | ✓ | | Access mode enforced by AegisFSAL. |
+| `ttl_hours` | integer | Required for ephemeral | | Hours until auto-deletion (e.g., `1`, `24`). |
+| `size_limit_mb` | integer | | no limit | Maximum volume size in mebibytes. Writes beyond this return `ENOSPC`. |
+| `source.volume_id` | string | Required for persistent | | UUID of an existing persistent volume. Supports Handlebars: `{{input.dataset_volume_id}}`. |
+
+### `spec.execution`
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `mode` | `iterative` \| `one-shot` | | `one-shot` | Execution strategy. |
+| `max_iterations` | integer | | `10` | Maximum refinement loops. Range: 1–20. |
+| `memory` | boolean | | `false` | Enable Cortex learning memory. |
+| `validation` | object | | | Acceptance criteria (see below). |
+
+### `spec.execution.validation`
+
+#### `validation.system`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `must_succeed` | boolean | `true` | Require exit code 0. |
+| `allow_stderr` | boolean | `false` | Fail if agent writes to stderr. |
+| `timeout_seconds` | integer | `90` | Per-iteration execution timeout in seconds. Must be `≤ resources.timeout`. |
+
+#### `validation.output`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `format` | `json` \| `yaml` \| `text` \| `csv` \| `pdf` | | Expected output format. |
+| `schema` | JSON Schema object | | JSON Schema for structural validation (if `format: json`). |
+| `regex` | string | | Regex pattern the output must match (if `format: text`). |
+
+#### `validation.script`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | ✓ | Path to validation script inside container. |
+| `description` | string | | What the script validates. |
+| `timeout_seconds` | integer | | Script timeout. Default: `30`. Must be `≤ resources.timeout`. |
+
+#### `validation.semantic`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` when `task.instruction` set | Enable LLM-as-judge validation. |
+| `model` | string | `default` | Model alias from `aegis-config.yaml`. |
+| `prompt` | string | built-in template | Prompt template. Placeholders: `{criteria}`, `{output}`, `{exit_code}`, `{stderr}`. |
+| `threshold` | float | `0.8` | Minimum confidence score (0.0–1.0) to accept output. |
+| `timeout_seconds` | integer | `30` | LLM call timeout. Must be `≤ resources.timeout`. |
+| `fallback_on_unavailable` | `skip` \| `fail` | `fail` | Behavior when LLM is unavailable. |
+
+### `spec.tools[]`
+
+Tools can be declared in **simple** (string) or **detailed** (object) format.
+
+**Simple format:**
+```yaml
+tools:
+  - "mcp:filesystem"
+  - "mcp:web-search"
+  - "mcp:gmail"
+```
+
+**Detailed format:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Local name for this tool binding. |
+| `server` | string | ✓ | MCP server identifier (e.g., `"mcp:filesystem"`). |
+| `config` | object | | Tool-specific configuration. |
+
+**Filesystem tool config (`mcp:filesystem`):**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `allowed_paths` | `string[]` | `["/workspace"]` | Permitted directory prefixes. |
+| `access_mode` | `read-only` \| `read-write` | `read-only` | Write access mode. |
+| `max_file_size_bytes` | integer | `10485760` | Maximum file size per operation. |
+
+**Web search tool config (`mcp:web-search`):**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `allowed_domains` | `string[]` | `[]` (all) | Restrict search results to these domains. |
+| `max_results_per_query` | integer | `10` | Maximum results returned per search. |
+| `max_calls_per_execution` | integer | `50` | Rate limit for search invocations. |
+
+**Gmail tool config (`mcp:gmail`):**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `allowed_operations` | `string[]` | `["read","search"]` | Permitted operations: `read`, `search`, `send`. |
+| `max_messages_per_query` | integer | `50` | Maximum messages returned per query. |
+| `max_calls_per_execution` | integer | `30` | Rate limit for Gmail API calls. |
+| `allowed_labels` | `string[]` | `[]` (all) | Restrict access to these Gmail labels. |
+
+### `spec.env`
+
+Environment variable values support three formats:
+
+| Format | Example | Description |
+|---|---|---|
+| Static string | `"production"` | Literal value. |
+| Secret reference | `"secret:openai-key"` | Injected from secure vault (OpenBao). Never logged. |
+| Config reference | `"config:log_level"` | From configuration store. |
+
+---
+
+## Field Definitions
+
+### `spec.runtime`
+
+Defines the execution environment for the agent. `isolation` inherits from node configuration when set to `inherit`, allowing ops teams to override isolation mode at the host level without changing individual manifests.
+
+### `spec.task`
+
+#### `task.agentskills`
+
+Pre-built instruction packages from agentskills.io. Each skill is a `SKILL.md` file containing step-by-step guidance the agent reads as context. Format: `"namespace:skill-name"` (e.g., `"email:imap-reader"`).
+
+Skills provide the **HOW** (instructions); MCP tools provide the **WHAT** (execution capability).
+
+| Aspect | AgentSkills | MCP Tools |
+|---|---|---|
+| **Purpose** | Provide instructions (HOW) | Provide capabilities (WHAT) |
+| **Format** | `SKILL.md` package | MCP server function |
+| **Loaded as** | Context (read by agent) | Callable function |
+| **Example** | `"email:imap-reader"` | `"mcp:gmail"` |
+
+#### `task.instruction`
+
+High-level steering instructions for the agent. When present, **automatically enables semantic validation** using the instruction as the judge's criteria — no explicit `execution.validation.semantic` block is needed unless customizing the threshold or model.
+
+#### `task.prompt_template`
+
+Handlebars template that controls how the LLM prompt is assembled.
+
+**Available variables:**
+
+| Variable | Description |
+|---|---|
+| `{{instruction}}` | The `task.instruction` text. |
+| `{{input}}` | JSON input supplied at execution time. |
+| `{{iteration_number}}` | Current iteration (1-based). |
+| `{{previous_error}}` | Validator failure output from the previous iteration; empty on iteration 1. |
+| `{{agentskills}}` | Concatenated content from loaded skill packages. |
+| `{{context}}` | Concatenated context attachments. |
+
+### `spec.security`
+
+All permissions are **deny-by-default**. When `spec.security` is omitted entirely, the agent runs with no network or filesystem access and default resource limits.
+
+#### Network Policy
+
+`mode: none` attaches no network interface to the container — the strongest isolation. `mode: allow` with an `allowlist` permits only the listed domains. `mode: deny` with a `denylist` blocks specific domains and allows all others.
+
+#### Filesystem Policy
+
+Paths support glob patterns (e.g., `"/config/*.yaml"`). `filesystem.read_only: true` overrides all other settings and makes every mount read-only regardless of `access_mode`.
+
+#### Resource Limits — Timeout Hierarchy
+
+The `timeout` field is the outer bound for the entire execution. All validation sub-timeouts must fit within this budget:
+
+```
+security.resources.timeout                                    (e.g., 600s)
+  └─ execution.validation.system.timeout_seconds    (e.g., 90s)  — agent code per iteration
+  └─ execution.validation.script.timeout_seconds    (e.g., 30s)  — validation script
+  └─ execution.validation.semantic.timeout_seconds  (e.g., 30s)  — LLM judge call
+```
+
+### `spec.volumes[]`
+
+Storage volumes are mounted into the agent container via the **NFS Server Gateway** — the orchestrator intercepts all file operations, enforcing policy and maintaining a full audit trail.
+
+| Class | TTL | Use Case |
+|---|---|---|
+| `ephemeral` | Required; auto-cleanup | Scratch space, build artifacts |
+| `persistent` | None; explicit delete | Shared datasets, long-lived output |
+
+`access_mode: read-write` is exclusive — only one execution may hold write access to a persistent volume at a time. `read-only` volumes may be read by multiple agents simultaneously.
+
+### `spec.execution`
+
+Controls the **100monkeys iterative execution strategy**. When `mode: iterative`, if any validation check fails the orchestrator sends the failure output back to the agent as `{{previous_error}}` and starts a new iteration (up to `max_iterations`). When `mode: one-shot`, the first run is final.
+
+Setting `memory: true` enables the Cortex learning system to index refinements from this execution, improving suggestions for future runs.
+
+#### `validation.semantic`
+
+LLM-as-judge evaluation. When `task.instruction` is defined, this is **automatically enabled** — no explicit configuration is needed unless customizing behavior.
+
+**How the judge decides iteration outcome:**
+
+- Judge returns `"success": false` → `IterationStatus::Refining`
+- Judge returns `"success": true` but `confidence < threshold` → `IterationStatus::Refining`
+- Judge returns `"success": true` and `confidence >= threshold` → `IterationStatus::Success`
+
+**Available prompt template placeholders:** `{criteria}` (from `task.instruction`), `{output}`, `{exit_code}`, `{stderr}`.
+
+### `spec.tools[]`
+
+The orchestrator mediates all tool calls — agents never access MCP servers or credentials directly.
+
+**Security model:**
+
+| Layer | What is enforced |
+|---|---|
+| Authentication | Orchestrator validates `execution_id` before forwarding any call. |
+| Authorization | Tool name must appear in `spec.tools`. Absent = rejected. |
+| Policy validation | Arguments validated against tool-specific config (paths, domains, operations). |
+| Rate limiting | Call count tracked per execution; calls beyond limit return `429`. |
+| Credential isolation | OAuth tokens and API keys held by orchestrator; never exposed to agent. |
+| Audit trail | Every invocation published as `MCPToolEvent` domain event. |
+
+### `spec.context[]`
+
+Additional resources attached to the agent at execution time.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | `text` \| `file` \| `directory` \| `url` | ✓ | Resource type. |
+| `content` | string | Required for `text` | Inline text content. |
+| `path` | string | Required for `file`, `directory` | File or directory path. |
+| `url` | string | Required for `url` | URL to fetch. |
+| `description` | string | | Human-readable description. |
+
+### `spec.schedule`
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `cron` \| `interval` \| `manual` | Schedule type. |
+| `cron` | string | Standard cron expression (e.g., `"0 * * * *"` = hourly). |
+| `timezone` | string | IANA timezone (e.g., `"America/New_York"`). |
+| `enabled` | boolean | Whether the schedule is active. |
+
+### `spec.delivery`
+
+Output delivery destinations evaluated after execution completes. Each destination:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Unique identifier for this destination. |
+| `condition` | `on_success` \| `on_failure` \| `always` | ✓ | When to deliver. |
+| `transform` | object | | ETL script applied to output before delivery. |
+| `type` | `email` \| `webhook` \| `rest` \| `sms` | ✓ | Delivery mechanism. |
+
+**Transform fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `script` | string | Path to transformation script. Receives agent output on stdin. |
+| `args` | `string[]` | Additional CLI arguments for the script. |
+| `timeout_seconds` | integer | Script timeout. Default: `30`. |
+
+**Email delivery fields:** `email.to`, `email.subject` (supports `{{date}}`, `{{agent.name}}`), `email.body_template`, `email.attachments`.
+
+**Webhook delivery fields:** `webhook.url`, `webhook.method` (default `POST`), `webhook.headers` (supports `{{secret:token-name}}`).
+
+---
+
+## Examples
+
+### Minimal Agent
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: AgentManifest
+
+metadata:
+  name: pr-reviewer
+  version: "1.0.0"
+  description: "Reviews pull request diffs and returns structured feedback."
+
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+
+  task:
+    instruction: |
+      Review the provided code diff and return structured feedback covering:
+      - Security vulnerabilities or concerns
+      - Performance issues or opportunities
+      - Code quality and maintainability
+      Provide specific line references where relevant.
+
+  security:
+    network:
+      mode: allow
+      allowlist:
+        - api.github.com
+    resources:
+      cpu: 1000
+      memory: "1Gi"
+      timeout: "300s"
+
+  execution:
+    mode: iterative
+    max_iterations: 5
+```
+
+### Agent with JSON Output Validation
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: AgentManifest
+
+metadata:
+  name: data-extractor
+  version: "1.0.0"
+
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+
+  task:
+    instruction: |
+      Extract structured data from the provided document and output valid JSON
+      matching the required schema.
+
+  security:
+    filesystem:
+      read:
+        - /workspace
+      write:
+        - /workspace/output
+    resources:
+      cpu: 500
+      memory: "512Mi"
+      timeout: "120s"
+
+  volumes:
+    - name: workspace
+      storage_class: ephemeral
+      mount_point: /workspace
+      access_mode: read-write
+      ttl_hours: 1
+      size_limit_mb: 500
+
+  execution:
+    mode: iterative
+    max_iterations: 8
+    validation:
+      system:
+        must_succeed: true
+        allow_stderr: false
+        timeout_seconds: 60
+      output:
+        format: json
+        schema:
+          type: object
+          required: ["entities", "relationships", "confidence"]
+          properties:
+            entities:
+              type: array
+            relationships:
+              type: array
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+      semantic:
+        threshold: 0.85
+        fallback_on_unavailable: skip
+
+  tools:
+    - name: filesystem
+      server: "mcp:filesystem"
+      config:
+        allowed_paths: ["/workspace"]
+        access_mode: read-write
+```
+
+### Code Reviewer (Judge Agent)
+
+Judge agents evaluate the output of other agents and **must** return structured JSON with gradient scoring:
+
+```json
+{
+  "score": 0.85,
+  "confidence": 0.92,
+  "reasoning": "The code correctly implements the requirements with minor style issues.",
+  "suggestions": ["Add type hints", "Improve error handling"],
+  "verdict": "pass"
+}
+```
+
+**Required judge output fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `score` | float (0.0–1.0) | Quality/correctness score on a continuous gradient. |
+| `confidence` | float (0.0–1.0) | Judge's certainty in its assessment. |
+| `reasoning` | string | Explanation for the score. |
+
+Optional fields: `signals`, `suggestions`, `verdict`, and any custom metadata.
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: AgentManifest
+
+metadata:
+  name: code-quality-judge
+  version: "1.0.0"
+  labels:
+    role: judge
+    domain: code-review
+
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+
+  task:
+    instruction: |
+      You are a code quality judge. Evaluate the provided code output on:
+      1. Correctness: Does it solve the stated problem?
+      2. Code quality: Is it idiomatic and well-structured?
+      3. Error handling: Does it handle edge cases?
+
+      Always respond with valid JSON:
+      {
+        "score": <0.0-1.0>,
+        "confidence": <0.0-1.0>,
+        "reasoning": "<explanation>",
+        "suggestions": ["<improvement>"],
+        "verdict": "pass|fail|warning"
+      }
+
+  security:
+    network:
+      mode: none
+    resources:
+      cpu: 500
+      memory: "512Mi"
+      timeout: "60s"
+
+  execution:
+    mode: one-shot
+    validation:
+      system:
+        must_succeed: true
+      output:
+        format: json
+        schema:
+          type: object
+          required: ["score", "confidence", "reasoning"]
+          properties:
+            score:
+              type: number
+              minimum: 0
+              maximum: 1
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            reasoning:
+              type: string
+```
+
+---
+
+## Multi-Judge Consensus
+
+For validation requiring multiple independent judges with consensus aggregation, use **workflow `ParallelAgents` states** rather than agent-level validation. See:
+
+- [Building Workflows](/docs/guides/building-workflows) — `ParallelAgents` state type
+- [Validation Guide](/docs/guides/validation) — gradient scoring and confidence gating
+
+| Feature | `execution.validation.semantic` | Workflow `ParallelAgents` |
+|---|---|---|
+| Number of judges | Single | Multiple in parallel |
+| Consensus algorithm | N/A | `mean`, `min`, `max`, `majority` |
+| Configuration location | Agent manifest | Workflow manifest |
+| Use case | Per-iteration quality gate | Final output multi-panel review |
+
+---
+
+## Version History
+
+| Version | Date | Notes |
+|---|---|---|
+| **v1.0** | 2026-02-16 | Kubernetes-style format with `apiVersion`/`kind`/`metadata`/`spec`. Canonical format for all new agents. |

@@ -131,49 +131,77 @@ Define what a valid output looks like. The `json_schema` validator checks `/work
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
-kind: Agent
+kind: AgentManifest
 metadata:
   name: python-coder
-  labels:
-    type: developer
-spec:
+  version: "1.0.0"
   description: "Writes Python solutions to programming tasks."
-  image: myregistry/my-agent:latest
-  capabilities:
-    - fs.read
-    - fs.write
-    - cmd.run
+  labels:
+    role: worker
+    team: platform
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+    isolation: docker
+
+  task:
+    instruction: |
+      You are a Python developer. Write code to solve the given task.
+      Save your solution to /workspace/solution.py.
+      Run the solution to verify it works.
+      Write a JSON summary to /workspace/result.json with fields: solution_path and output.
+
   security:
-    network_policy:
+    network:
       mode: allow
       allowlist:
         - pypi.org
-    filesystem_policy:
-      read_paths:
+    filesystem:
+      read:
         - /workspace
         - /agent
-      write_paths:
+      write:
         - /workspace
-    security_context: default
-  resources:
-    cpu_quota: 1.0
-    memory_bytes: 1073741824
-    timeout_secs: 300
-  validation:
-    - type: exit_code
-      expected: 0
-    - type: json_schema
-      schema_path: /agent/output_schema.json
-      target_path: /workspace/result.json
-      min_score: 1.0
-  environment:
-    PYTHONUNBUFFERED: "1"
+    resources:
+      cpu: 1000
+      memory: "1Gi"
+      timeout: "300s"
+
   volumes:
     - name: workspace
-      mount_path: /workspace
-      access_mode: ReadWrite
       storage_class: ephemeral
-      ttl: 30m
+      mount_point: /workspace
+      access_mode: read-write
+      ttl_hours: 1
+      size_limit_mb: 5000
+
+  execution:
+    mode: iterative
+    max_iterations: 10
+    validation:
+      system:
+        must_succeed: true
+      output:
+        format: json
+        schema:
+          type: object
+          required: ["solution_path", "output"]
+          properties:
+            solution_path:
+              type: string
+            output:
+              type: string
+
+  tools:
+    - name: filesystem
+      server: "mcp:filesystem"
+      config:
+        allowed_paths: ["/workspace", "/agent"]
+        access_mode: read-write
+
+  env:
+    PYTHONUNBUFFERED: "1"
 ```
 
 ---
@@ -209,11 +237,11 @@ If the first iteration fails validation, the orchestrator injects the error into
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Container fails to start | Image not found or not pullable | Verify `image_pull_policy: always` and registry credentials in node config |
-| `cmd.run` rejected | Command or subcommand not in `SubcommandAllowlist` | Add the command to `tools.subcommand_allowlist` in `aegis-config.yaml` |
-| Validation always fails | Schema path wrong | Double-check `schema_path` and `target_path` in the manifest |
-| Timeout on first iteration | Task too complex for `timeout_secs` | Increase `resources.timeout_secs` |
-| Network call rejected | Domain not in `allowlist` | Add the domain to `spec.security.network_policy.allowlist` |
+| Container fails to start | Image not found or not pullable | Verify `spec.runtime.isolation` and registry credentials in node config |
+| Tool call rejected | Tool not declared in `spec.tools` | Add the tool to `spec.tools` in the manifest |
+| Validation always fails | Schema path wrong | Double-check `execution.validation.output.schema` definition |
+| Timeout on first iteration | Task too complex | Increase `security.resources.timeout` or `execution.validation.system.timeout_seconds` |
+| Network call rejected | Domain not in allowlist | Add the domain to `spec.security.network.allowlist` |
 
 ---
 
@@ -222,3 +250,4 @@ If the first iteration fails validation, the orchestrator injects the error into
 - [Deploying Agents](/docs/guides/deploying-agents) — full CLI lifecycle management.
 - [Configuring Agent Validation](/docs/guides/validation) — all validator types and threshold tuning.
 - [Agent Manifest Reference](/docs/reference/agent-manifest) — complete field specification.
+- [Manifest Specification v1.0](/docs/reference/manifest-spec) — full specification with extended examples.

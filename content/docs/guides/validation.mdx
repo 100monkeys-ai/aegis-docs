@@ -163,27 +163,50 @@ Example judge agent manifest:
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
-kind: Agent
+kind: AgentManifest
 metadata:
   name: code-quality-judge
+  version: "1.0.0"
+  labels:
+    role: judge
 spec:
-  description: "Evaluates Python code quality and returns a gradient score."
-  image: myregistry/judge-agent:latest
-  capabilities:
-    - fs.read
+  runtime:
+    language: python
+    version: "3.11"
+
+  task:
+    instruction: |
+      You are a code quality judge. Evaluate the provided Python code and return a JSON verdict:
+      {"score": 0.0-1.0, "confidence": 0.0-1.0, "reasoning": "...", "verdict": "pass|fail|warning"}
+
   security:
-    network_policy:
-      mode: allow
-      allowlist: []          # no network access needed for code review
-    security_context: restricted
-  resources:
-    timeout_secs: 60
-    memory_bytes: 536870912
-  validation:
-    - type: json_schema
-      schema_path: /agent/judge_output_schema.json
-      target_path: /workspace/verdict.json
-      min_score: 1.0
+    network:
+      mode: none
+    resources:
+      timeout: "60s"
+      memory: "512Mi"
+
+  execution:
+    mode: one-shot
+    validation:
+      system:
+        must_succeed: true
+      output:
+        format: json
+        schema:
+          type: object
+          required: ["score", "confidence", "reasoning"]
+          properties:
+            score:
+              type: number
+              minimum: 0
+              maximum: 1
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            reasoning:
+              type: string
 ```
 
 The judge's `bootstrap.py` reads the code under review from the shared workspace, evaluates it, and writes the JSON verdict to `/workspace/verdict.json`.

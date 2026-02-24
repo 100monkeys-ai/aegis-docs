@@ -19,7 +19,7 @@ Controls which external domains the agent container is permitted to reach.
 
 ```yaml
 security:
-  network_policy:
+  network:
     mode: allow          # "allow" = allowlist; "deny" = blocklist
     allowlist:
       - api.github.com
@@ -35,11 +35,11 @@ Controls which paths inside the container the agent may read from or write to.
 
 ```yaml
 security:
-  filesystem_policy:
-    read_paths:
+  filesystem:
+    read:
       - /workspace
       - /agent
-    write_paths:
+    write:
       - /workspace
 ```
 
@@ -50,10 +50,11 @@ Path restrictions are enforced by the AEGIS storage gateway at the `AegisFSAL` l
 CPU and memory ceilings prevent resource exhaustion.
 
 ```yaml
-resources:
-  cpu_quota: 1.0           # fractional CPU cores
-  memory_bytes: 1073741824 # 1 GiB; container is OOM-killed if exceeded
-  timeout_secs: 300        # hard wall-clock timeout for the entire execution
+security:
+  resources:
+    cpu: 1000              # millicores (1000 = 1 CPU core)
+    memory: "1Gi"         # human-readable memory limit
+    timeout: "300s"       # hard wall-clock timeout for the entire execution
 ```
 
 ---
