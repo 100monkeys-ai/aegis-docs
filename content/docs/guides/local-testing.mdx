@@ -1,0 +1,711 @@
+---
+title: Local & Integration Testing
+description: Build, run, and verify AEGIS locally — from a quick CLI smoke test to a full Docker-based Temporal workflow integration.
+---
+
+# Local & Integration Testing
+
+This guide covers two complementary testing approaches:
+
+- **Local CLI testing** — build the orchestrator, deploy demo agents, and run tasks directly against the daemon.
+- **Integration testing** — spin up the full Docker stack (Temporal, PostgreSQL, TypeScript worker, Rust gRPC server) and exercise the complete workflow engine end-to-end.
+
+## Example Manifests
+
+Agent manifests, workflow definitions, and judge configurations referenced throughout this guide are all available in the **[aegis-examples](https://github.com/100monkeys-ai/aegis-examples)** repository. Clone it alongside `aegis-orchestrator` before following any of the steps below.
+
+```bash
+git clone https://github.com/100monkeys-ai/aegis-examples.git
+```
+
+---
+
+## Part 1: Local CLI Testing
+
+**Prerequisites:** Rust toolchain (stable), an AEGIS API key configured in the environment.
+
+### Quick Smoke Test
+
+The shortest path to a working end-to-end run:
+
+```bash
+pkill aegis || true && \
+cargo build -p aegis-cli && \
+target/debug/aegis daemon start && \
+target/debug/aegis daemon status && \
+target/debug/aegis agent deploy ./agents/echo/agent.yaml && \
+target/debug/aegis task execute echo --input "Hello Daemon" && \
+target/debug/aegis agent logs echo
+```
+
+This single chain:
+
+1. Kills any existing `aegis` processes
+2. Builds the CLI in debug mode
+3. Starts the daemon
+4. Confirms the daemon is healthy
+5. Deploys the `echo` demo agent (manifest from `aegis-examples`)
+6. Runs a task against it
+7. Tails the agent logs
+
+### Build Reference
+
+| Goal | Command |
+|---|---|
+| Debug build (fast) | `cargo build -p aegis-cli` |
+| Release build (optimised) | `cargo build --release -p aegis-cli` |
+| Full workspace | `cargo build` |
+| Lint check only | `cargo check` |
+| Specific crate | `cargo check -p aegis-cli` |
+
+Clean between major changes:
+
+```bash
+cargo clean
+cargo build -p aegis-cli
+```
+
+### Deploying Demo Agents
+
+All demo manifests live under `agents/` in `aegis-examples`. Start the daemon first, then deploy any or all:
+
+```bash
+target/debug/aegis daemon start
+target/debug/aegis daemon status
+
+target/debug/aegis agent deploy ./agents/echo/agent.yaml
+target/debug/aegis agent deploy ./agents/greeter/agent.yaml
+target/debug/aegis agent deploy ./agents/coder/agent.yaml
+target/debug/aegis agent deploy ./agents/debater/agent.yaml
+target/debug/aegis agent deploy ./agents/poet/agent.yaml
+target/debug/aegis agent deploy ./agents/piglatin/agent.yaml
+
+target/debug/aegis agent list
+```
+
+### Running Tests Against Each Agent
+
+| Agent | Command | Expected behaviour |
+|---|---|---|
+| `echo` | `target/debug/aegis task execute echo --input "Hello Daemon"` | Echoes the input verbatim |
+| `greeter` | `target/debug/aegis task execute greeter --input "Jeshua"` | Returns a personalised greeting |
+| `coder` | `target/debug/aegis task execute coder --input "What are the advantages of using this language?"` | Provides Rust code examples & explanations |
+| `debater` | `target/debug/aegis task execute debater --input "Sushi is delicious."` | Returns a counter-argument |
+| `poet` | `target/debug/aegis task execute poet --input "Tell me about the stars"` | Generates creative, poetic text |
+| `piglatin` | `target/debug/aegis task execute piglatin --input "How are you doing today my friend?"` | Translates the input to Pig Latin |
+
+View logs per agent and list all executions:
+
+```bash
+target/debug/aegis agent logs <agent-name>
+target/debug/aegis task list
+target/debug/aegis task logs <execution-id>
+```
+
+### Automated Test Scripts
+
+#### Linux / macOS — `test-aegis.sh`
+
+```bash
+#!/bin/bash
+set -e
+
+echo "=== AEGIS Build and Test ==="
+
+pkill aegis || true
+sleep 2
+
+cargo build -p aegis-cli
+
+target/debug/aegis daemon start
+sleep 3
+target/debug/aegis daemon status
+
+for agent in echo greeter coder debater poet piglatin; do
+    echo "  Deploying $agent..."
+    target/debug/aegis agent deploy ./agents/$agent/agent.yaml
+done
+
+target/debug/aegis agent list
+
+target/debug/aegis task execute echo    --input "Hello Daemon"
+target/debug/aegis task execute greeter --input "Jeshua"
+target/debug/aegis task execute coder   --input "What are the advantages of using this language?"
+target/debug/aegis task execute debater --input "Sushi is delicious."
+target/debug/aegis task execute poet    --input "Tell me about the stars"
+target/debug/aegis task execute piglatin --input "How are you doing today my friend?"
+
+for agent in echo greeter coder debater poet piglatin; do
+    echo "--- Logs for $agent ---"
+    target/debug/aegis agent logs $agent | head -20
+done
+
+target/debug/aegis task list
+
+echo "=== Test Complete ==="
+```
+
+```bash
+chmod +x test-aegis.sh && ./test-aegis.sh
+```
+
+#### Windows — `test-aegis.ps1`
+
+```powershell
+Write-Host "=== AEGIS Build and Test ===" -ForegroundColor Green
+
+Get-Process aegis -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 2
+
+cargo build -p aegis-cli
+
+.\target\debug\aegis.exe daemon start
+Start-Sleep -Seconds 3
+.\target\debug\aegis.exe daemon status
+
+$agents = @("echo", "greeter", "coder", "debater", "poet", "piglatin")
+foreach ($agent in $agents) {
+    Write-Host "  Deploying $agent..." -ForegroundColor Cyan
+    .\target\debug\aegis.exe agent deploy ".\agents\$agent\agent.yaml"
+}
+
+.\target\debug\aegis.exe agent list
+
+.\target\debug\aegis.exe task execute echo     --input "Hello Daemon"
+.\target\debug\aegis.exe task execute greeter  --input "Jeshua"
+.\target\debug\aegis.exe task execute coder    --input "What are the advantages of using this language?"
+.\target\debug\aegis.exe task execute debater  --input "Sushi is delicious."
+.\target\debug\aegis.exe task execute poet     --input "Tell me about the stars"
+.\target\debug\aegis.exe task execute piglatin --input "How are you doing today my friend?"
+
+.\target\debug\aegis.exe task list
+
+Write-Host "=== Test Complete ===" -ForegroundColor Green
+```
+
+```powershell
+.\test-aegis.ps1
+```
+
+### Debugging the Daemon
+
+**View daemon logs:**
+
+```bash
+# Linux / macOS
+tail -f /tmp/aegis.out
+tail -f /tmp/aegis.err
+
+# Windows
+Get-Content $env:TEMP\aegis.out -Wait
+Get-Content $env:TEMP\aegis.err -Wait
+```
+
+**Enable debug logging:**
+
+```bash
+export AEGIS_LOG_LEVEL=debug
+target/debug/aegis daemon start
+# or pass inline
+target/debug/aegis --log-level debug daemon start
+```
+
+**Verify config:**
+
+```bash
+target/debug/aegis config show
+target/debug/aegis config validate
+```
+
+### Performance Profiling
+
+```bash
+# Cold-start time
+target/debug/aegis agent deploy ./agents/echo/agent.yaml
+time target/debug/aegis task execute echo --input "test"
+
+# 10 concurrent tasks
+for i in {1..10}; do
+    target/debug/aegis task execute echo --input "Test $i" &
+done
+wait
+target/debug/aegis task list --limit 20
+
+# Daemon memory
+ps aux | grep aegis
+```
+
+### Cleanup
+
+```bash
+target/debug/aegis daemon stop
+
+for agent_id in $(target/debug/aegis agent list | grep -oP '^[a-f0-9-]{36}'); do
+    target/debug/aegis agent remove $agent_id
+done
+
+cargo clean
+```
+
+---
+
+## Part 2: Docker Integration Testing
+
+**Prerequisites:** Docker, Docker Compose, Rust toolchain.
+
+This section tests the complete Temporal workflow integration: YAML workflow → Rust registration → TypeScript worker → Temporal → gRPC → Rust execution service.
+
+### Architecture Overview
+
+```
+YAML Workflow → RegisterWorkflowUseCase (Rust)
+                        ↓
+              TemporalWorkflowMapper
+                        ↓
+              PostgreSQL (workflows table)
+                        ↓
+              TypeScript Worker HTTP API (:3000/register-workflow)
+                        ↓
+              createWorkflowFromDefinition() (TypeScript)
+                        ↓
+              Temporal Worker (.workflows object)
+                        ↓
+              Temporal Client starts workflow
+                        ↓
+              Activities → gRPC calls to Rust (:50051)
+                        ↓
+              Results streamed back via Temporal
+```
+
+### Pre-flight: Start the Stack
+
+```bash
+cd aegis-orchestrator/docker
+docker compose build
+docker compose down -v   # remove stale state
+docker compose up -d
+docker compose ps
+```
+
+Expected services:
+
+| Service | Port(s) |
+|---|---|
+| `postgres` | 5432 |
+| `temporal` | 7233 |
+| `temporal-ui` | 8233 |
+| `temporal-worker` | 3000 |
+| `aegis-runtime` | 50051, 8088 |
+
+**Health checks:**
+
+```bash
+docker exec -it aegis-postgres pg_isready
+curl http://localhost:8233          # Temporal UI
+curl http://localhost:3000/health   # TypeScript worker
+grpcurl -plaintext localhost:50051 list
+```
+
+### Hybrid Local/Docker Setup (For Debugging)
+
+Keep Temporal, PostgreSQL, and the TypeScript worker in Docker while running the Orchestrator locally under `cargo run`:
+
+```bash
+cd docker
+docker compose build
+docker compose up -d   # everything inc. orchestrator
+# Then stop just the Rust runtime if you want a local binary instead:
+# docker compose stop aegis-runtime
+```
+
+### Database Verification
+
+```bash
+psql -h localhost -U aegis -d aegis -c "\dt"
+# Expected tables: workflows, workflow_executions, agents, executions, workflow_definitions
+
+psql -h localhost -U aegis -d aegis -c "\dv"
+# Expected views: active_workflow_executions, agent_success_rates
+```
+
+---
+
+## Workflow Test Scenarios
+
+All workflow YAML files referenced below are available in the **[aegis-examples](https://github.com/100monkeys-ai/aegis-examples)** repository under `agents/workflows/`.
+
+### Scenario 1: Echo Workflow (Basic Connectivity)
+
+Tests basic workflow registration and execution.
+
+**Register:**
+
+```bash
+cargo run --bin aegis -- --port 8088 workflow deploy agents/workflows/echo-workflow.yaml
+# or via HTTP
+curl -X POST http://localhost:8088/v1/workflows/register \
+  -H "Content-Type: application/yaml" \
+  --data-binary @agents/workflows/echo-workflow.yaml
+```
+
+**Run:**
+
+```bash
+cargo run --bin aegis -- --port 8088 workflow run echo-test --param message="Hello World!"
+# or via Temporal CLI
+temporal workflow start \
+  --task-queue aegis-task-queue \
+  --type aegis_workflow_echo_test \
+  --workflow-id test-echo-001 \
+  --input '{}'
+
+temporal workflow show --workflow-id test-echo-001
+```
+
+**Verification:**
+
+- Temporal UI at `http://localhost:8233` shows a COMPLETED workflow.
+- DB: `SELECT id, name, version FROM workflows WHERE name = 'echo-test';`
+
+---
+
+### Scenario 2: Agent Execution (gRPC Bridge)
+
+Tests the `Orchestrator → Activity → gRPC → Orchestrator` round-trip.
+
+**Deploy agent + workflow** (manifests in `aegis-examples`):
+
+```bash
+cargo run --bin aegis -- --port 8088 agent deploy agents/greeter/agent.yaml
+cargo run --bin aegis -- --port 8088 workflow deploy agents/workflows/agent-workflow.yaml
+```
+
+**Run:**
+
+```bash
+temporal workflow start \
+  --task-queue aegis-task-queue \
+  --type aegis_workflow_agent_test \
+  --workflow-id test-agent-001 \
+  --input '{}'
+
+temporal workflow show --workflow-id test-agent-001 --follow
+```
+
+**Expected event sequence:**
+
+```
+WorkflowExecutionStarted
+ActivityTaskScheduled: executeAgentActivity
+ActivityTaskStarted
+ExecutionStarted (gRPC stream)
+IterationStarted (iteration 1)
+IterationCompleted (iteration 1)
+ExecutionCompleted
+ActivityTaskCompleted
+ActivityTaskScheduled: executeSystemCommandActivity
+ActivityTaskCompleted
+WorkflowExecutionCompleted
+```
+
+---
+
+### Scenario 3: 100monkeys Classic (Full Refinement Loop)
+
+Tests the complete iterative refinement loop: generate → execute → validate → refine.
+
+**Deploy agents and workflow** (manifests in `aegis-examples`):
+
+```bash
+cargo run --bin aegis -- --port 8088 agent deploy agents/coder/agent.yaml
+cargo run --bin aegis -- --port 8088 agent deploy agents/judges/basic-judge.yaml
+cargo run --bin aegis -- --port 8088 workflow deploy agents/workflows/100monkeys-classic.yaml
+```
+
+**Run:**
+
+```bash
+cargo run --bin aegis -- --port 8088 workflow run 100monkeys-classic \
+  --input '{"agent_id":"coder","task":"Create a fibonacci function in Python","command":"python fib.py"}'
+
+temporal workflow show --workflow-id <WORKFLOW_ID> --follow
+```
+
+**Expected iteration flow:**
+
+| Iteration | Phase | Notes |
+|---|---|---|
+| 1 | GENERATE | Agent writes initial code (may have bugs) |
+| 1 | EXECUTE | Runs code; captures exit code + output |
+| 1 | VALIDATE | Judge scores 0.0–1.0 |
+| 1 | REFINE | If score < 0.70 → loop back to GENERATE |
+| 2 | GENERATE | Agent incorporates previous error context |
+| 2 | VALIDATE | Score ≥ 0.70 → transition to COMPLETE |
+
+---
+
+### Scenario 4: Multi-Judge Consensus
+
+Tests parallel agent execution and weighted consensus validation. Manifest: `agents/workflows/multi-judge.yaml` in `aegis-examples`.
+
+**Run:**
+
+```bash
+curl -X POST http://localhost:8088/v1/workflows/register \
+  -H "Content-Type: application/yaml" \
+  --data-binary @agents/workflows/multi-judge.yaml
+
+temporal workflow start \
+  --task-queue aegis-task-queue \
+  --type aegis_workflow_multi_judge_test \
+  --workflow-id test-multi-judge-001 \
+  --input '{}'
+
+temporal workflow show --workflow-id test-multi-judge-001 --follow
+```
+
+**What to verify:**
+
+- Three judge activities run in parallel.
+- Weighted consensus is calculated: `(w1·s1 + w2·s2 + w3·s3) / Σw`.
+- Workflow branches to `APPROVED` or `REJECTED` based on threshold.
+
+---
+
+### Scenario 5: Human-in-the-Loop
+
+Tests signal-based human input. Manifest: `agents/workflows/human-approval.yaml` in `aegis-examples`.
+
+```bash
+temporal workflow start \
+  --task-queue aegis-task-queue \
+  --type aegis_workflow_human_approval_test \
+  --workflow-id test-human-001 \
+  --input '{}'
+
+# Workflow pauses at REQUEST_APPROVAL state; send a signal to unblock it
+temporal workflow signal \
+  --workflow-id test-human-001 \
+  --name humanInput \
+  --input '"yes"'
+
+temporal workflow show --workflow-id test-human-001
+```
+
+---
+
+### Scenario 6: Volume Management & File System Handoff
+
+Tests shared-volume multi-agent workflows via the SeaweedFS-backed NFS gateway. Manifest: `agents/workflows/volume-handoff-test.yaml` in `aegis-examples`.
+
+**Verify SeaweedFS is healthy:**
+
+```bash
+docker compose ps | grep seaweedfs
+curl -f http://localhost:8888/ && echo "✓ Filer healthy"
+curl http://localhost:9333/cluster/status | jq
+```
+
+**Run the workflow:**
+
+```bash
+cargo run --bin aegis -- --port 8088 workflow deploy agents/workflows/volume-handoff-test.yaml
+
+temporal workflow start \
+  --task-queue aegis-task-queue \
+  --type aegis_workflow_volume_handoff_test \
+  --workflow-id test-volume-handoff-001 \
+  --input '{}'
+
+temporal workflow show --workflow-id test-volume-handoff-001 --follow
+```
+
+**What to verify (in order):**
+
+1. VolumeManager creates workspace volume; metadata appears in PostgreSQL.
+2. SeaweedFS directory created under `/aegis/volumes/{tenant_id}/{volume_id}`.
+3. CODER agent mounts the volume via NFS and writes `calculator.py`.
+4. TESTER agent re-attaches the same volume and reads CODER's output.
+5. After completion, volume marked for cleanup; `VolumeExpired` / `VolumeDeleted` events appear in `domain_events`.
+
+**Volume lifecycle DB queries:**
+
+```bash
+psql -h localhost -U aegis -d aegis -c \
+  "SELECT id, name, remote_path, status, expires_at FROM volumes ORDER BY created_at DESC LIMIT 5;"
+
+psql -h localhost -U aegis -d aegis -c \
+  "SELECT event_type, event_data->>'volume_id', created_at FROM domain_events WHERE event_type LIKE 'Volume%' ORDER BY created_at DESC LIMIT 10;"
+```
+
+---
+
+### Scenario 7: Cortex Pattern Learning
+
+Verifies that the Holographic Cortex captures pattern-discovery events during a validation-heavy workflow.
+
+**Run `100monkeys-classic` with a task that forces at least one refinement:**
+
+```bash
+cargo run --bin aegis -- --port 8088 workflow run 100monkeys-classic \
+  --input '{"agent_id":"coder","task":"Write a Python function to calculate factorial","command":"python factorial.py"}'
+```
+
+**Watch for Cortex events in the output:**
+
+```
+[2026-02-14 12:00:02] Cortex Event: PatternDiscovered { pattern_id: "...", execution_id: "...", ... }
+```
+
+**Or subscribe to the raw event stream:**
+
+```bash
+curl -N http://localhost:8088/v1/executions/<AGENT_EXECUTION_ID>/events
+```
+
+---
+
+## Expected Outcomes
+
+### Infrastructure ✅
+
+- All Docker containers healthy.
+- Temporal UI accessible at `http://localhost:8233`.
+- TypeScript worker logs: `"Worker is running"`.
+- Rust gRPC logs: `"gRPC server listening on :50051"`.
+
+### Database ✅
+
+- 5 tables: `workflows`, `workflow_executions`, `agents`, `executions`, `workflow_definitions`.
+- 2 views: `active_workflow_executions`, `agent_success_rates`.
+
+### Execution ✅
+
+- Temporal shows workflows as COMPLETED.
+- `workflow_executions` DB rows have non-null `completed_at`.
+- Blackboard contains state-level outputs.
+- Cortex events logged for any iteration that required refinement.
+
+### Performance Targets
+
+| Metric | Target | Acceptable |
+|---|---|---|
+| Workflow registration | < 500 ms | < 1 s |
+| Simple workflow execution | < 5 s | < 10 s |
+| Agent execution (1 iteration) | < 30 s | < 60 s |
+| Multi-judge consensus | < 90 s | < 180 s |
+| 100monkeys loop (2 iterations) | < 120 s | < 300 s |
+| Volume creation | < 2 s | < 5 s |
+| Multi-agent file handoff | < 10 s | < 30 s |
+
+---
+
+## Troubleshooting
+
+### Temporal worker not connecting
+
+```bash
+docker ps | grep temporal
+telnet localhost 7233
+cd docker && docker compose restart temporal
+docker exec aegis-temporal-worker env | grep TEMPORAL
+```
+
+### gRPC connection refused (port 50051)
+
+```bash
+grpcurl -plaintext localhost:50051 list
+docker logs aegis-runtime | grep gRPC
+grpcurl -plaintext -d '{"command":"echo test"}' \
+  localhost:50051 aegis.runtime.v1.AegisRuntime/ExecuteSystemCommand
+```
+
+### Workflow registration returns 500
+
+```bash
+psql -h localhost -U aegis -d aegis -c "SELECT 1;"
+docker logs aegis-temporal-worker
+psql -h localhost -U aegis -d aegis -c "\dt workflow_definitions"
+```
+
+### Agent execution times out
+
+```bash
+psql -h localhost -U aegis -d aegis -c \
+  "SELECT name, status FROM agents WHERE name = 'coder';"
+curl http://localhost:8088/health
+# Increase timeout in workflow YAML: timeout: 120s
+```
+
+### Blackboard state not persisting
+
+- Verify Handlebars template syntax: `{{STATE_NAME.output}}`
+- Confirm the state completed before the value is referenced.
+- Check workflow logs for template rendering errors.
+
+### Cortex methods show "not yet implemented"
+
+This is expected — Cortex stubs return empty results gracefully. No action needed.
+
+### SeaweedFS / volume issues
+
+```bash
+docker logs aegis-seaweedfs-master
+docker logs aegis-seaweedfs-filer
+docker exec -it <agent-container> df -h
+curl http://localhost:8080/status | jq
+```
+
+### Protobuf compilation fails
+
+```bash
+ls proto/aegis_runtime.proto
+cargo clean && cargo build --verbose
+cat orchestrator/core/build.rs
+```
+
+---
+
+## Quick Reference
+
+```bash
+# Start / stop full stack (from docker/)
+cd docker && docker compose up -d
+cd docker && docker compose down
+
+# Live logs
+docker compose logs -f temporal-worker
+docker compose logs -f aegis-runtime
+
+# PostgreSQL
+psql -h localhost -U aegis -d aegis
+
+# Temporal CLI
+temporal workflow list
+temporal workflow show --workflow-id <ID>
+temporal workflow signal --workflow-id <ID> --name <SIGNAL> --input <JSON>
+
+# gRPC
+grpcurl -plaintext localhost:50051 list
+grpcurl -plaintext -d '...' localhost:50051 <SERVICE>/<METHOD>
+
+# TypeScript worker HTTP API
+curl http://localhost:3000/health
+curl http://localhost:3000/workflows
+
+# Rust CLI
+cargo run --bin aegis -- --port 8088 workflow deploy <YAML>
+cargo run --bin aegis -- --port 8088 agent deploy <YAML>
+cargo run --bin aegis -- --port 8088 workflow run <NAME> --input '<JSON>'
+cargo run --bin aegis -- --port 8088 workflow logs <EXEC_ID> --follow
+```
+
+---
+
+## See Also
+
+- [aegis-examples](https://github.com/100monkeys-ai/aegis-examples) — all agent and workflow manifests
+- [Writing Your First Agent](/docs/guides/writing-agents)
+- [Deploying & Running Agents](/docs/guides/deploying-agents)
+- [Building Workflows](/docs/guides/building-workflows)
+- [Configuring Storage](/docs/guides/configuring-storage)
