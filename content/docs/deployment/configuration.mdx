@@ -8,16 +8,40 @@ description: Full annotated aegis-config.yaml with all supported keys, types, de
 The AEGIS daemon is configured via a single YAML file, by default `aegis-config.yaml` in the working directory. Pass a custom path with `--config`:
 
 ```bash
-aegis daemon --config /etc/aegis/config.yaml
+aegis daemon start --config /etc/aegis/config.yaml
 ```
 
 Environment variable overrides are supported for secret values using the `env:VAR_NAME` syntax anywhere a string value is expected.
 
 ---
 
+## Manifest Envelope
+
+All `aegis-config.yaml` files use the Kubernetes-style manifest envelope:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: NodeConfig
+metadata:
+  name: "my-aegis-node"
+spec:
+  # All configuration keys documented below sit under spec:
+  # llm_providers, llm_selection, runtime, storage, network, ...
+```
+
+The sections in the full annotated configuration below all belong under the top-level `spec:` key.
+
+---
+
 ## Full Annotated Configuration
 
 ```yaml
+apiVersion: 100monkeys.ai/v1
+kind: NodeConfig
+metadata:
+  name: "aegis-node"
+spec:
+
 # ─── Database ─────────────────────────────────────────────────────────────────
 database:
   # PostgreSQL connection URL. Required.
@@ -35,9 +59,11 @@ database:
 # ─── Server ───────────────────────────────────────────────────────────────────
 server:
   # Address for the HTTP REST API.
-  http_addr: "0.0.0.0:8080"
-  # Address for the gRPC API.
-  grpc_addr: "0.0.0.0:9090"
+  # Default port is 8000.
+  http_addr: "0.0.0.0:8000"
+  # Address for the internal gRPC API (Temporal worker / inner-loop transport).
+  # Default port is 50051.
+  grpc_addr: "0.0.0.0:50051"
   # Optional TLS configuration. Omit for plaintext (dev only).
   tls:
     cert_file: /etc/aegis/tls/server.crt

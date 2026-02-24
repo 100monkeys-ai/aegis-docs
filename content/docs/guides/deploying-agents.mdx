@@ -7,7 +7,7 @@ description: Full agent lifecycle management via the AEGIS CLI — deploy, pause
 
 This guide covers the complete agent lifecycle using the `aegis` CLI: deploying manifests, managing agent state, triggering executions, streaming iteration output, and inspecting execution history.
 
-All operations assume the AEGIS daemon is running and accessible. Use `--daemon-addr <host:port>` to target a remote daemon, or the default `localhost:9090` if running locally.
+All operations assume the AEGIS daemon is running and accessible. Use `--host <host>` and `--port <port>` to target a remote daemon, or the defaults (`127.0.0.1:8000`) if running locally.
 
 ---
 
@@ -107,10 +107,9 @@ aegis agent deploy ./pr-reviewer.yaml
 Run an execution, passing the diff as the `{{input}}` context:
 
 ```bash
-aegis execute \
-  --agent pr-reviewer \
+aegis task execute <AGENT_ID> \
   --input '{"diff": "<git diff output>", "repo": "my-org/my-repo", "pr": 42}' \
-  --watch
+  --follow
 ```
 
 The full contents of the `--input` JSON string become the `{{input}}` value the LLM sees. Structure it however is useful for your agent's `instruction`.
@@ -203,14 +202,11 @@ aegis agent list --status paused
 ### Inspect an Agent
 
 ```bash
-# By ID
-aegis agent get a1b2c3d4-0000-0000-0000-000000000001
-
-# By name
-aegis agent get python-coder
+# By UUID
+aegis agent show a1b2c3d4-0000-0000-0000-000000000001
 ```
 
-Outputs the full agent record including the stored manifest.
+Outputs the full agent manifest as YAML.
 
 ### Update an Agent
 
@@ -220,34 +216,12 @@ aegis agent deploy ./my-agent/agent.yaml
 
 Re-deploying an agent with the same `metadata.name` updates the manifest in-place. Running executions are not affected — they continue using the manifest version that was active when they started.
 
-### Pause an Agent
+### Remove an Agent
 
-Pausing prevents new executions but does not affect currently running ones.
-
-```bash
-aegis agent pause python-coder
-# or by ID:
-aegis agent pause a1b2c3d4-0000-0000-0000-000000000001
-```
-
-### Resume a Paused Agent
+Remove deletes the agent registration. Historical execution records are retained.
 
 ```bash
-aegis agent resume python-coder
-```
-
-### Delete an Agent
-
-Delete archives the agent (soft-delete). Historical execution records are retained. The agent cannot be restored after deletion.
-
-```bash
-aegis agent delete python-coder
-```
-
-To force-delete without confirmation prompt:
-
-```bash
-aegis agent delete python-coder --yes
+aegis agent remove a1b2c3d4-0000-0000-0000-000000000001
 ```
 
 ---
@@ -257,8 +231,7 @@ aegis agent delete python-coder --yes
 ### Start an Execution
 
 ```bash
-aegis execute \
-  --agent python-coder \
+aegis task execute <AGENT_ID> \
   --input '{"task": "Write a function that reverses a linked list."}'
 ```
 
@@ -270,13 +243,12 @@ Execution started: a1b2c3d4-1111-0000-0000-000000000001
 
 ### Stream Execution Output
 
-Use `--watch` to stream iteration events to the terminal:
+Use `--follow` to stream iteration events to the terminal:
 
 ```bash
-aegis execute \
-  --agent python-coder \
+aegis task execute <AGENT_ID> \
   --input '{"task": "Write a function that reverses a linked list."}' \
-  --watch
+  --follow
 ```
 
 Example output:
@@ -292,17 +264,6 @@ Example output:
 [2026-02-23T10:00:06Z] Execution a1b2c3d4-1111-... Completed (1 iteration, 5.2s)
 ```
 
-### Control Max Iterations
-
-Override the default 10-iteration limit for a specific execution:
-
-```bash
-aegis execute \
-  --agent python-coder \
-  --input '{"task": "..."}' \
-  --max-iterations 3
-```
-
 ---
 
 ## Inspecting Executions
@@ -311,48 +272,40 @@ aegis execute \
 
 ```bash
 # All recent executions
-aegis execution list
+aegis task list
 
 # Filter by agent
-aegis execution list --agent python-coder
-
-# Filter by status
-aegis execution list --status completed
-aegis execution list --status failed
-aegis execution list --status running
+aegis task list --agent-id <AGENT_ID>
 
 # Limit results
-aegis execution list --limit 20
+aegis task list --limit 20
 ```
 
 ### Get Execution Details
 
 ```bash
-aegis execution get a1b2c3d4-1111-0000-0000-000000000001
+aegis task status a1b2c3d4-1111-0000-0000-000000000001
 ```
 
-Returns a full execution record, including:
-- Status
-- Start and end timestamps
-- Total iterations
-- Each iteration's status, duration, and validation scores
+Returns the execution record, including status, start/end timestamps, total iterations, and each iteration's status and validation scores.
 
 ### Get Iteration Logs
 
 ```bash
 # All iterations
-aegis execution logs a1b2c3d4-1111-0000-0000-000000000001
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001
 
-# Specific iteration
-aegis execution logs a1b2c3d4-1111-0000-0000-000000000001 --iteration 2
+# Follow live output
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --follow
+
+# Errors only
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --errors-only
 ```
-
-Iteration logs include the LLM's final output text and any tool call summaries for that iteration.
 
 ### Cancel a Running Execution
 
 ```bash
-aegis execution cancel a1b2c3d4-1111-0000-0000-000000000001
+aegis task cancel a1b2c3d4-1111-0000-0000-000000000001
 ```
 
 Cancellation stops the current iteration's container, releases any held locks, and marks the execution as `cancelled`.
@@ -368,13 +321,12 @@ All CLI commands support `--output json` for machine-readable output. This is us
 AGENT_ID=$(aegis agent deploy ./agent.yaml --output json | jq -r '.id')
 
 # Start an execution and capture the execution ID
-EXEC_ID=$(aegis execute --agent python-coder \
-  --input '{"task": "..."}' \
-  --output json | jq -r '.id')
+EXEC_ID=$(aegis task execute "$AGENT_ID" \
+  --input '{"task": "..."}' 2>&1 | grep -oP '[0-9a-f-]{36}')
 
 # Poll until complete
 while true; do
-  STATUS=$(aegis execution get $EXEC_ID --output json | jq -r '.status')
+  STATUS=$(aegis task status "$EXEC_ID" --output json | jq -r '.status')
   echo "Status: $STATUS"
   if [[ "$STATUS" == "completed" || "$STATUS" == "failed" || "$STATUS" == "cancelled" ]]; then
     break
@@ -392,6 +344,6 @@ echo "Final status: $STATUS"
 | Flag | Description |
 |---|---|
 | `--config <path>` | Path to `aegis-config.yaml`. Defaults to `./aegis-config.yaml`. |
-| `--daemon-addr <host:port>` | Target a specific daemon. Defaults to `localhost:9090`. |
-| `--output json\|table\|yaml` | Output format. Defaults to `table`. |
-| `--yes` | Skip confirmation prompts. |
+| `--host <host>` | Target daemon hostname. Defaults to `127.0.0.1`. |
+| `--port <port>` | Target daemon port. Defaults to `8000`. |
+| `--log-level <level>` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`. |

@@ -78,36 +78,52 @@ cp deploy/aegis-config.yaml my-aegis-config.yaml
 At minimum, set your LLM provider credentials. The example below uses OpenAI:
 
 ```yaml
-node:
-  id: local-dev-node
-  listen_addr: "0.0.0.0:8080"
-  grpc_addr: "0.0.0.0:9090"
-  log_level: info
+apiVersion: 100monkeys.ai/v1
+kind: NodeConfig
 
-runtime:
-  type: docker
-  image_pull_policy: always
+metadata:
+  name: "local-dev-node"
 
-llm:
-  providers:
-    - name: openai
-      type: openai
-      api_key: "env:OPENAI_API_KEY"
-      model: gpt-4o
-      max_tokens: 4096
-  aliases:
-    default: openai
+spec:
+  node:
+    id: "local-dev-node"
+    type: "edge"
 
-storage:
-  backend: seaweedfs
-  master_addr: "localhost:9333"
+  llm_providers:
+    - name: "openai"
+      type: "openai"
+      endpoint: "https://api.openai.com/v1"
+      models:
+        - alias: "default"
+          model: "gpt-4o"
+          capabilities: ["code", "reasoning"]
+          context_window: 128000
+        - alias: "fast"
+          model: "gpt-4o-mini"
+          capabilities: ["code"]
+          context_window: 128000
 
-database:
-  url: "postgres://aegis:aegis@localhost:5432/aegis"
+  llm_selection:
+    strategy: "prefer-local"
+    default_provider: "openai"
+    max_retries: 3
+    retry_delay_ms: 1000
 
-temporal:
-  namespace: aegis-default
-  host_port: "localhost:7233"
+  runtime:
+    docker_network_mode: "env:AEGIS_DOCKER_NETWORK"
+    orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
+
+  storage:
+    backend: "seaweedfs"
+    seaweedfs:
+      filer_url: "http://localhost:8888"
+
+  network:
+    port: 8000
+
+  observability:
+    logging:
+      level: info
 ```
 
 Export your API key:
@@ -123,15 +139,14 @@ See [Node Configuration Reference](/docs/deployment/configuration) for a full an
 ## Start the Daemon
 
 ```bash
-aegis daemon --config my-aegis-config.yaml
+aegis daemon start --config my-aegis-config.yaml
 ```
 
-The daemon starts the gRPC server, HTTP server, NFS storage gateway, and event bus. You should see output similar to:
+The daemon starts the HTTP server, NFS storage gateway, and event bus. You should see output similar to:
 
 ```
 2026-02-23T10:00:00Z  INFO aegis_core: AEGIS orchestrator starting
-2026-02-23T10:00:00Z  INFO aegis_core: gRPC server listening on 0.0.0.0:9090
-2026-02-23T10:00:00Z  INFO aegis_core: HTTP server listening on 0.0.0.0:8080
+2026-02-23T10:00:00Z  INFO aegis_core: HTTP server listening on 0.0.0.0:8000
 2026-02-23T10:00:00Z  INFO aegis_core::nfs: NFS server ready
 2026-02-23T10:00:00Z  INFO aegis_core: Ready
 ```
@@ -148,7 +163,7 @@ The `aegis-examples` repo you cloned earlier includes agent manifests ready to d
 # Deploy the hello-world agent
 aegis agent deploy ./agents/hello-world/agent.yaml
 
-# Confirm it is deployed
+# Confirm it is deployed and note the agent UUID
 aegis agent list
 ```
 
@@ -164,13 +179,13 @@ a1b2c3d4-0000-0000-0000-000000000001  hello-world  deployed   docker
 ## Run Your First Execution
 
 ```bash
-aegis execute \
-  --agent hello-world \
+# Replace <AGENT_ID> with the UUID printed by 'aegis agent list'
+aegis task execute <AGENT_ID> \
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \
-  --watch
+  --follow
 ```
 
-The `--watch` flag streams iteration events to the terminal as they happen:
+The `--follow` flag streams iteration events to the terminal as they happen:
 
 ```
 [Execution a1b2c3d4-1111-...] Started
@@ -184,7 +199,7 @@ The `--watch` flag streams iteration events to the terminal as they happen:
 Retrieve the execution record:
 
 ```bash
-aegis execution get a1b2c3d4-1111-...
+aegis task status a1b2c3d4-1111-...
 ```
 
 ---

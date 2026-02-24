@@ -11,14 +11,15 @@ The `aegis` binary is the primary interface for managing the AEGIS daemon and al
 
 These flags are available on all commands:
 
-| Flag | Default | Description |
-|---|---|---|
-| `--config <path>` | `./aegis-config.yaml` | Path to the daemon configuration file. |
-| `--daemon-addr <host:port>` | `localhost:9090` | gRPC address of the target AEGIS daemon. |
-| `--output <format>` | `table` | Output format: `table`, `json`, `yaml`. |
-| `--token <jwt>` | `$AEGIS_TOKEN` | Bearer JWT for authentication. Can also be set via `AEGIS_TOKEN` environment variable. |
-| `--yes` | `false` | Skip confirmation prompts. |
-| `--debug` | `false` | Enable verbose debug logging. |
+| Flag | Environment Variable | Default | Description |
+|---|---|---|---|
+| `--config <path>` | `AEGIS_CONFIG_PATH` | (auto-discovered) | Path to the daemon configuration file. |
+| `--host <host>` | `AEGIS_HOST` | `127.0.0.1` | Hostname of the AEGIS daemon HTTP API. |
+| `--port <port>` | `AEGIS_PORT` | `8000` | Port of the AEGIS daemon HTTP API. |
+| `--log-level <level>` | `AEGIS_LOG_LEVEL` | `info` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`. |
+| `--daemon` | — | `false` | Start the process as a background daemon service rather than running a CLI command. |
+
+The daemon HTTP API runs on port `8000` by default (see [ADR-026](/docs/architecture/adr-026)).
 
 ---
 
@@ -28,26 +29,43 @@ Manage the AEGIS daemon process.
 
 ### `aegis daemon start`
 
-Start the daemon foreground process.
+Start the daemon in the foreground.
 
 ```bash
+aegis daemon start
 aegis daemon start --config /etc/aegis/config.yaml
 ```
 
-### `aegis daemon reload`
+### `aegis daemon stop`
 
-Gracefully reload configuration without stopping the daemon. Running executions continue. New executions use updated configuration.
+Stop the running daemon.
 
 ```bash
-aegis daemon reload --config /etc/aegis/config.yaml
+aegis daemon stop
 ```
 
 ### `aegis daemon status`
 
-Show daemon status, version, uptime, and connected dependencies.
+Show daemon status, version, uptime, and connected dependency health.
 
 ```bash
 aegis daemon status
+```
+
+### `aegis daemon install`
+
+Install the daemon as a system service (systemd).
+
+```bash
+aegis daemon install
+```
+
+### `aegis daemon uninstall`
+
+Remove the system service installation.
+
+```bash
+aegis daemon uninstall
 ```
 
 ---
@@ -58,267 +76,293 @@ Manage agent definitions.
 
 ### `aegis agent deploy <manifest>`
 
-Deploy or update an agent from a manifest file.
+Deploy or update an agent from a manifest file. Re-deploying an agent with the same `metadata.name` updates the manifest in-place.
 
 ```bash
 aegis agent deploy ./agent.yaml
-aegis agent deploy ./agent.yaml --output json
-```
-
-### `aegis agent list`
-
-List all agents.
-
-```bash
-aegis agent list
-aegis agent list --status deployed
-aegis agent list --status paused
-aegis agent list --label type=developer
-```
-
-### `aegis agent get <name-or-id>`
-
-Show full details of an agent, including the stored manifest.
-
-```bash
-aegis agent get python-coder
-aegis agent get a1b2c3d4-0000-...
-```
-
-### `aegis agent pause <name-or-id>`
-
-Pause an agent. New executions are blocked.
-
-```bash
-aegis agent pause python-coder
-```
-
-### `aegis agent resume <name-or-id>`
-
-Resume a paused agent.
-
-```bash
-aegis agent resume python-coder
-```
-
-### `aegis agent delete <name-or-id>`
-
-Archive an agent. Historical execution data is retained.
-
-```bash
-aegis agent delete python-coder
-aegis agent delete python-coder --yes
-```
-
----
-
-## `aegis execute`
-
-Start a single agent execution.
-
-```bash
-aegis execute --agent <name-or-id> --input '<json>'
-aegis execute --agent python-coder --input '{"task": "Write a primality check."}'
-aegis execute --agent python-coder --input '{"task": "..."}' --watch
-aegis execute --agent python-coder --input '{"task": "..."}' --max-iterations 3
+aegis agent deploy ./agent.yaml --validate-only
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--agent <name-or-id>` | required | Agent to execute. |
-| `--input <json>` | `"{}"` | JSON input passed to bootstrap.py via `task.input`. |
-| `--watch` | `false` | Stream iteration events to stdout. |
-| `--max-iterations <n>` | manifest default | Override max iterations for this execution. |
-| `--output json\|table` | `table` | Output format for the return value (execution ID). |
+| `--validate-only` | `false` | Parse and validate the manifest without persisting it. |
+
+### `aegis agent list`
+
+List all deployed agents.
+
+```bash
+aegis agent list
+```
+
+### `aegis agent show <AGENT_ID>`
+
+Show the full stored manifest for an agent. `<AGENT_ID>` must be a UUID.
+
+```bash
+aegis agent show a1b2c3d4-0000-0000-0000-000000000001
+```
+
+### `aegis agent remove <AGENT_ID>`
+
+Remove a deployed agent. Running executions are not affected.
+
+```bash
+aegis agent remove a1b2c3d4-0000-0000-0000-000000000001
+```
+
+### `aegis agent logs <AGENT_ID>`
+
+Stream event log output for a specific agent.
+
+```bash
+aegis agent logs a1b2c3d4-0000-0000-0000-000000000001
+aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --follow
+aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --errors
+aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --verbose
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--follow` | `false` | Tail log output. |
+| `--errors` | `false` | Show error-level events only. |
+| `--verbose` | `false` | Include LLM prompt and response content. |
 
 ---
 
-## `aegis execution`
+## `aegis task`
 
-Manage and inspect executions.
+Manage agent task executions.
 
-### `aegis execution list`
+### `aegis task execute <AGENT>`
 
-```bash
-aegis execution list
-aegis execution list --agent python-coder
-aegis execution list --status running
-aegis execution list --status failed
-aegis execution list --limit 50
-```
-
-### `aegis execution get <id>`
+Start a single agent execution. `<AGENT>` may be an agent UUID or a path to a manifest file.
 
 ```bash
-aegis execution get a1b2c3d4-1111-...
+aegis task execute a1b2c3d4-0000-0000-0000-000000000001
+aegis task execute ./agent.yaml
+aegis task execute a1b2c3d4-0000-0000-0000-000000000001 --input '{"task": "Write a primality check."}'
+aegis task execute a1b2c3d4-0000-0000-0000-000000000001 --input '{"task": "..."}' --follow
 ```
 
-### `aegis execution logs <id>`
+| Flag | Default | Description |
+|---|---|---|
+| `--input <json>` | `null` | JSON input string passed to `bootstrap.py` via `task.input`. Accepts an inline JSON string or `@file.json` to read from a file. |
+| `--wait` | `false` | Block until the execution completes. |
+| `--follow` | `false` | Stream iteration events to stdout (implies `--wait`). |
+
+### `aegis task status <EXECUTION_ID>`
+
+Show the current status of an execution.
+
+```bash
+aegis task status a1b2c3d4-1111-0000-0000-000000000001
+```
+
+### `aegis task logs <EXECUTION_ID>`
 
 Stream or print iteration logs.
 
 ```bash
-aegis execution logs a1b2c3d4-1111-...
-aegis execution logs a1b2c3d4-1111-... --iteration 2
-aegis execution logs a1b2c3d4-1111-... --follow
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --follow
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --errors-only
+aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --verbose
 ```
 
-### `aegis execution cancel <id>`
+| Flag | Default | Description |
+|---|---|---|
+| `--follow` | `false` | Tail log output until the execution ends. |
+| `--errors-only` | `false` | Suppress non-error output lines. |
+| `--verbose` | `false` | Include LLM prompt and response text in output. |
+
+### `aegis task cancel <EXECUTION_ID>`
 
 Cancel a running execution.
 
 ```bash
-aegis execution cancel a1b2c3d4-1111-...
+aegis task cancel a1b2c3d4-1111-0000-0000-000000000001
+aegis task cancel a1b2c3d4-1111-0000-0000-000000000001 --force
 ```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` | `false` | Kill without waiting for graceful shutdown. |
+
+### `aegis task remove <EXECUTION_ID>`
+
+Delete an execution record from the database.
+
+```bash
+aegis task remove a1b2c3d4-1111-0000-0000-000000000001
+```
+
+### `aegis task list`
+
+List recent executions.
+
+```bash
+aegis task list
+aegis task list --agent-id a1b2c3d4-0000-0000-0000-000000000001
+aegis task list --limit 50
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--agent-id <uuid>` | (all agents) | Filter executions by agent UUID. |
+| `--limit <n>` | `20` | Maximum number of results to return. |
+
+---
 
 ---
 
 ## `aegis workflow`
 
-Manage workflows.
+Manage workflow definitions.
 
-### `aegis workflow deploy <manifest>`
+### `aegis workflow validate <file>`
 
-```bash
-aegis workflow deploy ./my-pipeline.yaml
-```
-
-### `aegis workflow list`
+Parse and validate a workflow manifest without deploying it.
 
 ```bash
-aegis workflow list
+aegis workflow validate ./pipeline.yaml
 ```
 
-### `aegis workflow get <name-or-id>`
+### `aegis workflow deploy <file>`
+
+Deploy a workflow to the registry.
 
 ```bash
-aegis workflow get dev-pipeline
+aegis workflow deploy ./pipeline.yaml
 ```
 
-### `aegis workflow delete <name-or-id>`
-
-```bash
-aegis workflow delete dev-pipeline --yes
-```
-
-### `aegis workflow start <name-or-id>`
+### `aegis workflow run <name>`
 
 Start a workflow execution.
 
 ```bash
-aegis workflow start dev-pipeline --input '{"task": "..."}'
-aegis workflow start dev-pipeline --input '{"task": "..."}' --watch
+aegis workflow run dev-pipeline
+aegis workflow run dev-pipeline --input '{"task": "..."}'
+aegis workflow run dev-pipeline --input '{"task": "..."}' --follow
+aegis workflow run dev-pipeline --param branch=main --param env=staging
 ```
 
-### `aegis workflow status <execution-id>`
+| Flag | Default | Description |
+|---|---|---|
+| `--input <json>` | `null` | JSON input available as Blackboard context. |
+| `--param <key=value>` | — | Individual named parameters. May be repeated. |
+| `--follow` | `false` | Stream state-transition events to stdout. |
 
-Show the current status of a workflow execution.
+### `aegis workflow list`
+
+List all registered workflows.
 
 ```bash
-aegis workflow status wfx-a1b2c3d4-1111-...
+aegis workflow list
+aegis workflow list --long
+aegis workflow list --label team=platform
 ```
 
-### `aegis workflow signal <execution-id>`
+| Flag | Default | Description |
+|---|---|---|
+| `--long` | `false` | Show detailed information (states, labels). |
+| `--label <key=value>` | — | Filter by label. May be repeated. |
 
-Send a signal to a Human state.
+### `aegis workflow describe <name>`
+
+Show the full YAML definition of a deployed workflow.
 
 ```bash
-aegis workflow signal wfx-a1b2c3d4-1111-... \
-  --state approve_requirements \
-  --decision approved
+aegis workflow describe dev-pipeline
+aegis workflow describe dev-pipeline --output json
 ```
 
-### `aegis workflow cancel <execution-id>`
+| Flag | Default | Description |
+|---|---|---|
+| `--output <format>` | `yaml` | Output format: `yaml` or `json`. |
 
-Cancel a running workflow execution.
+### `aegis workflow logs <EXECUTION_ID>`
+
+Stream or print workflow execution logs.
 
 ```bash
-aegis workflow cancel wfx-a1b2c3d4-1111-...
+aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001
+aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001 --follow
+aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001 --transitions
 ```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--follow` | `false` | Tail log output until execution ends. |
+| `--transitions` | `false` | Show only state-transition events. |
+
+### `aegis workflow delete <name>`
+
+Delete a workflow from the registry.
+
+```bash
+aegis workflow delete dev-pipeline
+aegis workflow delete dev-pipeline --yes
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--yes` | `false` | Skip the confirmation prompt. |
 
 ---
-
-## `aegis swarm`
-
-Manage swarms (multi-agent groups).
-
-### `aegis swarm list`
-
-```bash
-aegis swarm list
-```
-
-### `aegis swarm get <id>`
-
-```bash
-aegis swarm get swarm-a1b2c3d4-...
-```
-
-### `aegis swarm children <id>`
-
-List all child execution IDs in a swarm.
-
-```bash
-aegis swarm children swarm-a1b2c3d4-...
-```
-
-### `aegis swarm cancel <id>`
-
-Cancel all agents in a swarm (cascade cancellation).
-
-```bash
-aegis swarm cancel swarm-a1b2c3d4-...
-```
-
----
-
-## `aegis volume`
-
-Manage volumes.
-
-### `aegis volume list`
-
-```bash
-aegis volume list
-aegis volume list --storage-class persistent
-aegis volume list --output json
-```
-
-### `aegis volume get <id>`
-
-```bash
-aegis volume get vol-a1b2c3d4-...
-```
-
-### `aegis volume delete <id>`
-
-Delete a persistent volume. Volumes in use cannot be deleted.
-
-```bash
-aegis volume delete vol-a1b2c3d4-...
-aegis volume delete vol-a1b2c3d4-... --yes
-```
 
 ---
 
 ## `aegis config`
 
-Utility commands for configuration.
+Utility commands for the daemon configuration file.
+
+### `aegis config show`
+
+Print the resolved daemon configuration, with `env:` variables expanded and secrets redacted.
+
+```bash
+aegis config show
+aegis config show --paths
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--paths` | `false` | Also show the config file search paths that were checked. |
 
 ### `aegis config validate`
 
 Validate an `aegis-config.yaml` file without starting the daemon.
 
 ```bash
-aegis config validate --config ./aegis-config.yaml
+aegis config validate
+aegis config validate ./my-config.yaml
 ```
 
-### `aegis config dump`
+### `aegis config generate`
 
-Print the fully resolved configuration (with `env:` references expanded, redacted).
+Generate a commented sample `aegis-config.yaml`.
 
 ```bash
-aegis config dump --config ./aegis-config.yaml
+aegis config generate
+aegis config generate --output /etc/aegis/config.yaml
+aegis config generate --examples
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--output <path>` | `./aegis-config.yaml` | Output file path. |
+| `--examples` | `false` | Include inline comments and example values. |
+
+---
+
+## `aegis update`
+
+Apply pending database schema migrations. Run this after upgrading the `aegis` binary.
+
+```bash
+aegis update
+aegis update --config /etc/aegis/config.yaml
 ```
 
 ---

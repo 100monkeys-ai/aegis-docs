@@ -1,241 +1,309 @@
 ---
 title: gRPC API Reference
-description: aegis.runtime.v1 service methods, key message types, authentication, and versioning.
+description: aegis.runtime.v1 AegisRuntime service — the Temporal-worker-facing gRPC transport.
 ---
 
 # gRPC API Reference
 
-AEGIS exposes a gRPC API at the address configured by `server.grpc_addr` (default `0.0.0.0:9090`). The API is defined in Protocol Buffers and versioned under the `aegis.runtime.v1` package.
+AEGIS exposes a gRPC service on port `50051` (default). The service is defined in Protocol Buffers under the `aegis.runtime.v1` package.
 
-Proto source files are available in the `aegis-orchestrator` repository under `proto/`.
+> **Note:** The gRPC API is the **Temporal-worker-facing transport**. It is used by `aegis-temporal-worker` to drive agent executions, run validation, and access Cortex patterns. Agent management (deploy, list, delete agents and workflows) uses the **HTTP REST API** on port `8000` — see the [HTTP API Contracts](/docs/integration/api-contracts).
+
+Proto source files are in the [`aegis-proto`](https://github.com/100monkeys-ai/aegis-proto) repository under `proto/aegis_runtime.proto`.
 
 ---
 
 ## Authentication
 
-All gRPC methods require a Bearer JWT in the `authorization` metadata key:
+gRPC auth is configured via `spec.grpc_auth` in `aegis-config.yaml`. When enabled, all methods except the configured `exempt_methods` require a Bearer JWT (Keycloak-issued) in the `authorization` metadata key:
 
 ```
 authorization: Bearer <keycloak-issued-jwt>
 ```
 
-The `KeycloakAuthInterceptor` validates the token on every call. Unauthenticated calls receive `UNAUTHENTICATED`. Calls with insufficient role receive `PERMISSION_DENIED`.
-
-For `AegisRole` requirements per method, see the [IAM documentation](/docs/deployment/iam).
+The `/aegis.v1.InnerLoop/Generate` method is exempt by default (used by agent bootstrap containers on the internal network). Unauthenticated calls receive `UNAUTHENTICATED`.
 
 ---
 
-## Versioning
+## Service: `AegisRuntime`
 
-The current stable API package is `aegis.runtime.v1`. Breaking changes are introduced in a new version (`v2`) and the old version is maintained for a minimum of 6 months. Non-breaking additions (new fields, new methods) are made within the existing version.
+The single service exported by the orchestrator gRPC server:
+
+```protobuf
+package aegis.runtime.v1;
+
+service AegisRuntime {
+  rpc ExecuteAgent(ExecuteAgentRequest) returns (stream ExecutionEvent);
+  rpc ExecuteSystemCommand(ExecuteSystemCommandRequest) returns (ExecuteSystemCommandResponse);
+  rpc ValidateWithJudges(ValidateRequest) returns (ValidateResponse);
+  rpc QueryCortexPatterns(QueryCortexRequest) returns (QueryCortexResponse);
+  rpc StoreCortexPattern(StoreCortexPatternRequest) returns (StoreCortexPatternResponse);
+  rpc AttestAgent(AttestAgentRequest) returns (AttestAgentResponse);
+  rpc InvokeTool(InvokeToolRequest) returns (InvokeToolResponse);
+}
+```
 
 ---
 
-## `AgentService`
+## `ExecuteAgent` (server-streaming)
 
-Manages agent definitions.
-
-### `DeployAgent`
+Execute an agent with 100monkeys iterative refinement. Streams typed events as execution progresses.
 
 ```protobuf
-rpc DeployAgent(DeployAgentRequest) returns (DeployAgentResponse);
+rpc ExecuteAgent(ExecuteAgentRequest) returns (stream ExecutionEvent);
 ```
 
-Creates a new agent or updates an existing one with the same name.
+**Request:**
 
 ```protobuf
-message DeployAgentRequest {
-  string manifest_yaml = 1;  // Complete Agent manifest YAML
-}
-
-message DeployAgentResponse {
-  string agent_id = 1;       // UUID of the created/updated agent
-  string name = 2;
-  string status = 3;         // "deployed"
+message ExecuteAgentRequest {
+  string agent_id                         = 1;
+  string input                            = 2;
+  string context_json                     = 3;
+  optional SecurityPolicy security_policy = 4;
+  optional string workflow_execution_id   = 5; // Link to a workflow execution
 }
 ```
 
-### `GetAgent`
+**Response stream — `ExecutionEvent`:**
+
+Events are strongly typed via a `oneof` discriminant:
 
 ```protobuf
-rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
-```
-
-```protobuf
-message GetAgentRequest {
-  string agent_id = 1;      // UUID or name
-}
-
-message GetAgentResponse {
-  string agent_id = 1;
-  string name = 2;
-  string status = 3;        // deployed | paused | archived
-  string manifest_yaml = 4;
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp updated_at = 6;
-  map<string, string> labels = 7;
-}
-```
-
-### `ListAgents`
-
-```protobuf
-rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
-```
-
-```protobuf
-message ListAgentsRequest {
-  string status_filter = 1;           // optional; "deployed" | "paused" | "archived"
-  map<string, string> label_filter = 2;  // optional; filter by labels
-}
-
-message ListAgentsResponse {
-  repeated AgentSummary agents = 1;
-}
-```
-
-### `PauseAgent`, `ResumeAgent`, `DeleteAgent`
-
-Follow the same request/response pattern as `GetAgent`, taking `agent_id` and returning the updated agent record.
-
----
-
-## `ExecutionService`
-
-Manages executions.
-
-### `StartExecution`
-
-```protobuf
-rpc StartExecution(StartExecutionRequest) returns (StartExecutionResponse);
-```
-
-```protobuf
-message StartExecutionRequest {
-  string agent_id = 1;              // UUID or agent name
-  string input_json = 2;            // JSON input for bootstrap.py
-  optional uint32 max_iterations = 3; // override manifest default
-}
-
-message StartExecutionResponse {
-  string execution_id = 1;
-  string status = 2;                // "pending"
-}
-```
-
-### `GetExecution`
-
-```protobuf
-rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse);
-```
-
-```protobuf
-message GetExecutionResponse {
-  string execution_id = 1;
-  string agent_id = 2;
-  string status = 3;                // pending | running | completed | failed | cancelled
-  uint32 total_iterations = 4;
-  optional string final_output = 5;
-  google.protobuf.Timestamp started_at = 6;
-  optional google.protobuf.Timestamp ended_at = 7;
-  repeated IterationSummary iterations = 8;
-}
-
-message IterationSummary {
-  uint32 number = 1;
-  string status = 2;               // running | failed | refining | success
-  optional float validation_score = 3;
-  google.protobuf.Timestamp started_at = 4;
-  optional google.protobuf.Timestamp ended_at = 5;
-}
-```
-
-### `StreamExecution` (server-streaming)
-
-```protobuf
-rpc StreamExecution(StreamExecutionRequest) returns (stream ExecutionEvent);
-```
-
-Streams all events for an execution as they occur. If called after the execution has already completed, streams the historical events and then closes.
-
-```protobuf
-message StreamExecutionRequest {
-  string execution_id = 1;
-}
-
 message ExecutionEvent {
-  string event_type = 1;  // ExecutionStarted | IterationStarted | IterationCompleted | ...
-  string payload_json = 2; // JSON-encoded event payload
-  google.protobuf.Timestamp timestamp = 3;
+  oneof event {
+    ExecutionStarted   execution_started   = 1;
+    IterationStarted   iteration_started   = 2;
+    IterationOutput    iteration_output    = 3;
+    IterationCompleted iteration_completed = 4;
+    IterationFailed    iteration_failed    = 5;
+    RefinementApplied  refinement_applied  = 6;
+    ExecutionCompleted execution_completed = 7;
+    ExecutionFailed    execution_failed    = 8;
+  }
 }
 ```
 
-### `CancelExecution`
+**Key event messages:**
 
 ```protobuf
-rpc CancelExecution(CancelExecutionRequest) returns (CancelExecutionResponse);
+message ExecutionStarted {
+  string execution_id = 1;
+  string agent_id     = 2;
+  string started_at   = 3; // ISO 8601
+}
+
+message IterationStarted {
+  string execution_id     = 1;
+  uint32 iteration_number = 2;
+  string action           = 3;
+  string started_at       = 4;
+}
+
+message IterationFailed {
+  string execution_id     = 1;
+  uint32 iteration_number = 2;
+  IterationError error    = 3;
+  string failed_at        = 4;
+}
+
+message IterationError {
+  string error_type          = 1;
+  string message             = 2;
+  optional string stacktrace = 3;
+}
+
+message RefinementApplied {
+  string execution_id     = 1;
+  uint32 iteration_number = 2;
+  string code_diff        = 3;
+  string applied_at       = 4;
+}
+
+message ExecutionCompleted {
+  string execution_id     = 1;
+  string final_output     = 2;
+  uint32 total_iterations = 3;
+  string completed_at     = 4;
+}
+
+message ExecutionFailed {
+  string execution_id     = 1;
+  string reason           = 2;
+  uint32 total_iterations = 3;
+  string failed_at        = 4;
+}
+```
+
+**Example (TypeScript):**
+
+```typescript
+import * as grpc from '@grpc/grpc-js';
+import * as protoLoader from '@grpc/proto-loader';
+
+const pkgDef = protoLoader.loadSync('aegis_runtime.proto');
+const proto = grpc.loadPackageDefinition(pkgDef).aegis.runtime.v1 as any;
+
+const client = new proto.AegisRuntime('localhost:50051', grpc.credentials.createInsecure());
+
+const stream = client.ExecuteAgent({
+  agent_id: 'agt-uuid-here',
+  input: 'Write a primality check function',
+  context_json: '{}',
+});
+
+stream.on('data', (event: any) => {
+  if (event.execution_started) {
+    console.log('Started:', event.execution_started.execution_id);
+  } else if (event.iteration_started) {
+    console.log(`Iteration ${event.iteration_started.iteration_number}: ${event.iteration_started.action}`);
+  } else if (event.execution_completed) {
+    console.log('Output:', event.execution_completed.final_output);
+  }
+});
+
+stream.on('end', () => console.log('Done'));
+stream.on('error', (err: Error) => console.error(err));
 ```
 
 ---
 
-## `WorkflowService`
+## `ExecuteSystemCommand`
 
-### `DeployWorkflow`
-
-```protobuf
-rpc DeployWorkflow(DeployWorkflowRequest) returns (DeployWorkflowResponse);
-```
-
-### `StartWorkflow`
+Execute a shell command on the orchestrator host. Used by workflow `System` states.
 
 ```protobuf
-rpc StartWorkflow(StartWorkflowRequest) returns (StartWorkflowResponse);
-```
+rpc ExecuteSystemCommand(ExecuteSystemCommandRequest) returns (ExecuteSystemCommandResponse);
 
-```protobuf
-message StartWorkflowRequest {
-  string workflow_id = 1;    // UUID or workflow name
-  string input_json = 2;     // JSON input available as {{input.*}} templates
+message ExecuteSystemCommandRequest {
+  string command                  = 1;
+  map<string, string> env         = 2;
+  optional string workdir         = 3;
+  optional uint32 timeout_seconds = 4;
 }
 
-message StartWorkflowResponse {
-  string workflow_execution_id = 1;
+message ExecuteSystemCommandResponse {
+  int32  exit_code   = 1;
+  string stdout      = 2;
+  string stderr      = 3;
+  uint64 duration_ms = 4;
 }
 ```
-
-### `GetWorkflowExecution`
-
-Returns current state, history of state transitions, and Blackboard contents.
-
-### `SignalWorkflowExecution`
-
-```protobuf
-rpc SignalWorkflowExecution(SignalWorkflowRequest) returns (SignalWorkflowResponse);
-```
-
-```protobuf
-message SignalWorkflowRequest {
-  string workflow_execution_id = 1;
-  string state_name = 2;
-  string payload_json = 3;   // Written directly to Blackboard[state_name]
-}
-```
-
-### `StreamWorkflow` (server-streaming)
-
-```protobuf
-rpc StreamWorkflow(StreamWorkflowRequest) returns (stream WorkflowEvent);
-```
-
-Streams workflow state transitions and agent execution events in real-time.
 
 ---
 
-## `VolumeService`
+## `ValidateWithJudges`
 
-### `ListVolumes`, `GetVolume`, `DeleteVolume`
+Gradient validation using one or more judge agents with configurable consensus.
 
-Standard CRUD operations for volumes. `DeleteVolume` fails with `FAILED_PRECONDITION` if the volume is currently mounted.
+```protobuf
+rpc ValidateWithJudges(ValidateRequest) returns (ValidateResponse);
+
+message ValidateRequest {
+  string output              = 1;
+  string task                = 2;
+  repeated JudgeConfig judges = 3;
+  ConsensusConfig consensus  = 4;
+  string context_json        = 5;
+}
+
+message JudgeConfig {
+  string agent_id       = 1;
+  string input_template = 2;
+  float  weight         = 3;
+}
+
+message ConsensusConfig {
+  enum Strategy {
+    WEIGHTED_AVERAGE = 0;
+    MAJORITY_VOTE    = 1;
+    UNANIMOUS        = 2;
+    ANY_APPROVED     = 3;
+  }
+  Strategy       strategy  = 1;
+  optional float threshold = 2;
+  optional float agreement = 3;
+  optional uint32 n        = 4;
+}
+
+message ValidateResponse {
+  float  score                          = 1; // 0.0–1.0
+  float  confidence                     = 2; // 0.0–1.0
+  string reasoning                      = 3;
+  bool   binary_valid                   = 4;
+  repeated JudgeResult individual_results = 5;
+}
+```
+
+---
+
+## `QueryCortexPatterns`
+
+Query Cortex memory for patterns matching a given error signature, to inform the 100monkeys refinement loop.
+
+```protobuf
+rpc QueryCortexPatterns(QueryCortexRequest) returns (QueryCortexResponse);
+
+message QueryCortexRequest {
+  string error_signature           = 1;
+  optional string error_type       = 2;
+  optional uint32 limit            = 3;
+  optional float min_success_score = 4;
+}
+
+message QueryCortexResponse {
+  repeated CortexPattern patterns = 1;
+}
+```
+
+---
+
+## `StoreCortexPattern`
+
+Store a new learned error-solution pattern, or increment the weight of an existing semantically matching pattern (deduplication).
+
+```protobuf
+rpc StoreCortexPattern(StoreCortexPatternRequest) returns (StoreCortexPatternResponse);
+
+message StoreCortexPatternRequest {
+  string error_signature        = 1;
+  string error_type             = 2;
+  string error_message          = 3;
+  string solution_approach      = 4;
+  optional string solution_code = 5;
+  repeated string tags          = 7;
+}
+
+message StoreCortexPatternResponse {
+  string pattern_id    = 1;
+  bool   deduplicated  = 2; // true if an existing pattern's weight was incremented
+  uint32 new_frequency = 3;
+}
+```
+
+---
+
+## `AttestAgent`
+
+Issue an SMCP SecurityToken to an agent container after verifying its identity. See the [SMCP reference](/docs/architecture/smcp) for the full attestation flow.
+
+```protobuf
+rpc AttestAgent(AttestAgentRequest) returns (AttestAgentResponse);
+```
+
+---
+
+## `InvokeTool`
+
+Invoke a tool on behalf of an agent via orchestrator mediation (SMCP path). Agents do not call MCP servers directly. See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths.
+
+```protobuf
+rpc InvokeTool(InvokeToolRequest) returns (InvokeToolResponse);
+```
+
+
+---
+
 
 ---
 
@@ -244,13 +312,10 @@ Standard CRUD operations for volumes. `DeleteVolume` fails with `FAILED_PRECONDI
 | gRPC Status | Meaning |
 |---|---|
 | `OK` | Success. |
-| `NOT_FOUND` | Resource not found. |
-| `INVALID_ARGUMENT` | Manifest or input validation error. |
-| `ALREADY_EXISTS` | Agent/workflow name conflict. |
-| `PERMISSION_DENIED` | AegisRole insufficient for this operation. |
+| `NOT_FOUND` | Agent or pattern not found. |
+| `INVALID_ARGUMENT` | Malformed request or input validation error. |
+| `PERMISSION_DENIED` | SecurityContext or policy violation. |
+| `RESOURCE_EXHAUSTED` | Rate limit or iteration limit reached. |
 | `UNAUTHENTICATED` | Missing or invalid Bearer token. |
-| `FAILED_PRECONDITION` | Operation not valid in current state (e.g., delete on active volume). |
-| `RESOURCE_EXHAUSTED` | Rate limit or concurrency limit reached. |
-| `INTERNAL` | Unhandled internal error. Check daemon logs. |
-
-Error details are included in the gRPC status `details` field as `google.rpc.BadRequest` (for validation errors) or `google.rpc.ErrorInfo` (for others).
+| `INTERNAL` | Unhandled error — check daemon logs. |
+| `UNAVAILABLE` | Orchestrator temporarily down. |
