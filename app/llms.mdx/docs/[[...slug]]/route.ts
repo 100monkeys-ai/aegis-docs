@@ -17,5 +17,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug?: 
 }
 
 export function generateStaticParams() {
-  return source.generateParams();
+  return source.generateParams().filter((p) => p.slug && p.slug.length > 0);
 }
