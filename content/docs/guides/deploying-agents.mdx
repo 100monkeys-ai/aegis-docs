@@ -11,6 +11,149 @@ All operations assume the AEGIS daemon is running and accessible. Use `--daemon-
 
 ---
 
+## Authoring Approaches
+
+There are two ways to supply an agent's runtime:
+
+| Approach | When to Use |
+|---|---|
+| **Generic AEGIS runtime** | Most agents. Define all behavior in the manifest via `spec.task.instruction`. No Dockerfile or custom image needed. |
+| **Custom container** | Agents with complex dependencies, non-standard libraries, or a fully custom `bootstrap.py`. See [Writing Your First Agent](/docs/guides/writing-agents). |
+
+Both approaches use identical lifecycle and execution commands. The difference is entirely in the manifest format.
+
+---
+
+## Generic AEGIS Runtime (No Custom Container)
+
+For most use cases you do not need to build or maintain a Docker image. Define the agent's behavior in the manifest and let the orchestrator supply the runtime.
+
+**How it works:**
+
+1. The orchestrator starts a container from the AEGIS-managed Python base image.
+2. It injects `bootstrap.py` into the container automatically.
+3. It renders the final LLM prompt by substituting Handlebars variables in `spec.task.prompt_template` — replacing `{{instruction}}` with the manifest's `spec.task.instruction` text and `{{input}}` with the JSON passed at execution time.
+4. The rendered prompt is passed to `bootstrap.py` as `argv[1]`.
+5. `bootstrap.py` calls the LLM proxy at `/v1/llm/generate` and streams back the response.
+6. If validation fails, `{{previous_error}}` is populated with the failure output and the next iteration begins automatically.
+
+No Python file to write. No Docker build. No image registry.
+
+### Example Manifest
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: AgentManifest
+
+metadata:
+  name: pr-reviewer
+  version: "1.0.0"
+  description: "Reviews pull request diffs and returns structured feedback."
+
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+    isolation: docker
+
+  task:
+    instruction: |
+      Review the provided code diff and return structured feedback covering:
+      - Security vulnerabilities or concerns
+      - Performance issues or opportunities
+      - Code quality and maintainability
+      - Idiomatic patterns and best practices
+      Provide specific line references where relevant. Be concise and actionable.
+    prompt_template: |
+      {{instruction}}
+
+      User: {{input}}
+      Reviewer:
+
+  execution:
+    mode: iterative
+    max_iterations: 5
+
+  security:
+    network:
+      mode: allow
+      allowlist:
+        - api.github.com
+    filesystem:
+      read:
+        - /workspace
+      write:
+        - /workspace/output
+    resources:
+      cpu: 1000
+      memory: "1Gi"
+      timeout: "300s"
+
+  volumes:
+    - name: workspace
+      storage_class: ephemeral
+      mount_path: /workspace
+      access_mode: read-write
+      size_limit: "2Gi"
+      ttl_hours: 1
+```
+
+Deploy it:
+
+```bash
+aegis agent deploy ./pr-reviewer.yaml
+```
+
+Run an execution, passing the diff as the `{{input}}` context:
+
+```bash
+aegis execute \
+  --agent pr-reviewer \
+  --input '{"diff": "<git diff output>", "repo": "my-org/my-repo", "pr": 42}' \
+  --watch
+```
+
+The full contents of the `--input` JSON string become the `{{input}}` value the LLM sees. Structure it however is useful for your agent's `instruction`.
+
+### Prompt Template Variables
+
+| Variable | Populated With |
+|---|---|
+| `{{instruction}}` | `spec.task.instruction` text from the manifest. |
+| `{{input}}` | JSON string passed via `--input` at execution time. |
+| `{{iteration_number}}` | Current iteration number (1-based). |
+| `{{previous_error}}` | Validator failure output or error from the previous iteration. Empty on iteration 1; injected automatically on retries. |
+
+Use `{{previous_error}}` in the prompt template to give the LLM explicit feedback about what went wrong in earlier attempts:
+
+```yaml
+task:
+  prompt_template: |
+    {{instruction}}
+
+    User: {{input}}
+    {% if previous_error %}
+    Your previous attempt failed with the following error. Fix it:
+    {{previous_error}}
+    {% endif %}
+    Reviewer:
+```
+
+### Setting a Specific Model
+
+By default the agent uses the `default` alias defined in `aegis-config.yaml`. Override per-agent with `spec.runtime.model`:
+
+```yaml
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+    model: reasoning          # maps to an alias in aegis-config.yaml llm.aliases
+    isolation: docker
+```
+
+---
+
 ## Agent Lifecycle Commands
 
 ### Deploy an Agent
