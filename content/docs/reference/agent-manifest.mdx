@@ -5,7 +5,7 @@ description: Complete specification for the AgentManifest YAML format (v1.0) —
 
 # Agent Manifest Reference
 
-**API Version:** `100monkeys.ai/v1` | **Kind:** `AgentManifest` | **Status:** Canonical
+**API Version:** `100monkeys.ai/v1` | **Kind:** `Agent` | **Status:** Canonical
 
 The **Agent Manifest** is the source of truth for an Agent's identity, capabilities, security constraints, and execution requirements. It allows the Aegis Host to run agents safely and deterministically within the Membrane.
 
@@ -17,7 +17,7 @@ The manifest uses Kubernetes-style declarative format (`apiVersion`/`kind`/`meta
 
 ```yaml
 apiVersion: 100monkeys.ai/v1      # required; must be exactly this value
-kind: AgentManifest               # required; must be exactly "AgentManifest"
+kind: Agent               # required; must be exactly "Agent"
 
 metadata:
   name: python-coder              # required; unique DNS-label name (lowercase, alphanumeric, hyphens)
@@ -147,7 +147,7 @@ spec:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `apiVersion` | string | ✓ | Must be `100monkeys.ai/v1`. |
-| `kind` | string | ✓ | Must be `AgentManifest`. |
+| `kind` | string | ✓ | Must be `Agent`. |
 | `metadata` | object | ✓ | Manifest metadata. |
 | `spec` | object | ✓ | Agent specification. |
 
@@ -485,7 +485,7 @@ Output delivery destinations evaluated after execution completes. Each destinati
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
-kind: AgentManifest
+kind: Agent
 
 metadata:
   name: pr-reviewer
@@ -524,7 +524,7 @@ spec:
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
-kind: AgentManifest
+kind: Agent
 
 metadata:
   name: data-extractor
@@ -619,7 +619,7 @@ Optional fields: `signals`, `suggestions`, `verdict`, and any custom metadata.
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
-kind: AgentManifest
+kind: Agent
 
 metadata:
   name: code-quality-judge

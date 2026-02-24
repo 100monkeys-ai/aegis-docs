@@ -5,7 +5,7 @@ description: The agent manifest format, lifecycle states, runtime selection, and
 
 # Agents
 
-An **Agent** in AEGIS is a stateless compute process defined entirely by a declarative YAML manifest (`kind: AgentManifest`). The orchestrator reads the manifest to determine the runtime environment, what tools the agent is allowed to use, what security constraints to enforce, what resources to allocate, and how to validate the output.
+An **Agent** in AEGIS is a stateless compute process defined entirely by a declarative YAML manifest (`kind: Agent`). The orchestrator reads the manifest to determine the runtime environment, what tools the agent is allowed to use, what security constraints to enforce, what resources to allocate, and how to validate the output.
 
 Agents do not maintain state between executions. Context is injected by the orchestrator at the start of each execution and tool results are returned to the agent via the orchestrator proxy.
 
@@ -17,7 +17,7 @@ All agent manifests follow a Kubernetes-style format:
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
-kind: AgentManifest
+kind: Agent
 metadata:
   name: code-reviewer
   version: "1.0.0"
