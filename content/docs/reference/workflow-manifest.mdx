@@ -1,103 +1,170 @@
 ---
 title: Workflow Manifest Reference
-description: Complete field-by-field specification for the Workflow YAML format.
+description: Complete specification for the WorkflowManifest YAML format (v1.0) — schema, field definitions, all four state kinds, consensus strategies, and complete examples.
 ---
 
 # Workflow Manifest Reference
 
-This page is the authoritative reference for all fields in an AEGIS workflow manifest YAML file.
+**API Version:** `100monkeys.ai/v1` | **Kind:** `Workflow` | **Status:** Canonical
+
+A **Workflow Manifest** is a declarative YAML document defining a finite state machine (FSM) that coordinates agent executions, system commands, and human approval gates into a durable, restartable sequence. It uses the same Kubernetes-style `apiVersion`/`kind`/`metadata`/`spec` format as the [Agent Manifest](/docs/reference/agent-manifest).
 
 ---
 
 ## Annotated Full Example
 
 ```yaml
-apiVersion: 100monkeys.ai/v1
-kind: Workflow
+apiVersion: 100monkeys.ai/v1      # required; must be exactly this value
+kind: Workflow                     # required; must be exactly "Workflow"
 
 metadata:
-  name: dev-pipeline
-  labels:
-    stage: production
+  name: dev-pipeline               # required; unique DNS-label name (lowercase, alphanumeric, hyphens)
+  version: "1.0.0"                 # optional; semantic version of this manifest
+  description: "Iterative code generation with multi-judge validation."  # optional
+  labels:                          # optional; key-value pairs for filtering and discovery
+    category: development
+    pattern: iterative-refinement
+  annotations:                     # optional; non-identifying metadata
+    docs: "https://docs.example.com/workflows/dev-pipeline"
 
 spec:
-  initial_state: requirements       # required; name of the first state to enter
+  initial_state: GENERATE          # required; name of the first state to enter
 
-  # Optional default values for Blackboard keys at execution start
-  blackboard_defaults:
-    language: python
-    test_framework: pytest
+  # Optional: global constants available to all states via {{workflow.context.KEY}}
+  context:
+    max_iterations: 10
+    validation_threshold: 0.95
 
+  # Optional: workflow-level shared storage (volumes accessible by any state)
+  storage:
+    workspace:                     # default shared workspace; auto-created at workflow start
+      storage_class: ephemeral     # ephemeral | persistent
+      ttl_hours: 1
+      size_limit_mb: 1000
+    shared_volumes:
+      - name: code-artifacts
+        storage_class: ephemeral
+        ttl_hours: 24
+        size_limit_mb: 500
+
+  # Required: state machine definition (map of state name → state definition)
   states:
 
-    requirements:
-      kind: Agent                   # StateKind: Agent | System | Human | ParallelAgents
-      agent_id: requirements-agent  # required for Agent kind; deployed agent name or ID
-      timeout_secs: 180
+    GENERATE:
+      kind: Agent                  # StateKind: Agent | System | Human | ParallelAgents
+      agent: coder-v1              # required for Agent kind; deployed agent name or UUID
+      input: |                     # Handlebars template rendered as the agent's task input
+        {{#if blackboard.iteration_number}}
+        Iteration {{blackboard.iteration_number}} failed.
+        Error: {{state.feedback}}
+        Fix the code.
+        {{else}}
+        {{workflow.task}}
+        {{/if}}
+      volumes:                     # optional volume mounts for this state
+        - volume: "{{workflow.storage.workspace}}"
+          mount_point: /workspace
+          access_mode: read-write
       transitions:
-        - condition:
-            field: requirements.status   # Blackboard key path (dot-separated)
-            operator: eq                  # eq | ne | gt | gte | lt | lte | contains
-            value: success
-          target: approve_requirements
-        - target: failed                  # unconditional (no condition) = default fallback
+        - condition: always        # unconditional; first matching transition wins
+          target: EXECUTE
 
-    approve_requirements:
-      kind: Human
-      timeout_secs: 86400
+    EXECUTE:
+      kind: System
+      command: python main.py      # required for System kind; shell command (Handlebars supported)
+      env:
+        CODE: "{{GENERATE.output}}"
+        PYTHONPATH: /workspace
       transitions:
-        - condition:
-            field: approve_requirements.decision
-            operator: eq
-            value: approved
-          target: implement
-        - condition:
-            field: approve_requirements.decision
-            operator: eq
-            value: rejected
-          target: failed
-        - target: failed              # timeout fallback
+        - condition: exit_code_zero
+          target: VALIDATE
+        - condition: exit_code_non_zero
+          target: REFINE
+          feedback: "Execution failed: {{EXECUTE.output.stderr}}"
 
-    implement:
+    VALIDATE:
       kind: Agent
-      agent_id: coder-agent
-      timeout_secs: 600
-      # Inject Blackboard values into the agent's task context via Handlebars templates
-      input_template: |
-        Implement in {{blackboard.language}} using {{blackboard.test_framework}}.
-        Requirements: {{blackboard.requirements.output}}
+      agent: judge-v1
+      input: |
+        Task: {{workflow.task}}
+        Output: {{EXECUTE.output.stdout}}
+        Evaluate correctness and return JSON with score, confidence and reasoning.
       transitions:
-        - condition:
-            field: implement.status
-            operator: eq
-            value: success
-          target: parallel_review
-        - target: failed
+        - condition: score_above
+          threshold: 0.95
+          target: COMPLETE
+        - condition: score_below
+          threshold: 0.95
+          target: REFINE
+          feedback: "{{VALIDATE.output.reasoning}}"
 
-    parallel_review:
+    AWAIT_APPROVAL:
+      kind: Human
+      prompt: |                    # required for Human kind; message shown to operator
+        Review the generated output and approve or reject.
+        Output: {{EXECUTE.output.stdout}}
+      timeout: 3600s               # optional; omit to wait indefinitely
+      default_response: reject     # optional; value taken if timeout elapses without signal
+      transitions:
+        - condition: input_equals_yes
+          target: COMPLETE
+        - condition: input_equals_no
+          target: REFINE
+          feedback: "{{human.feedback}}"
+
+    AUDIT:
       kind: ParallelAgents
       agents:
-        - security-reviewer
-        - performance-reviewer
-        - style-reviewer
-      timeout_secs: 600
+        - agent: reviewer-v1
+          input: "Review code quality: {{GENERATE.output}}"
+          weight: 1.0              # optional; weight for consensus calculation (default 1.0)
+          timeout_seconds: 120     # optional; per-agent timeout (default 60)
+          poll_interval_ms: 500    # optional; polling interval (default 500)
+        - agent: security-v1
+          input: "Security audit: {{GENERATE.output}}"
+          weight: 2.0              # security weighted higher
+          timeout_seconds: 180
+      consensus:
+        strategy: weighted_average # weighted_average | majority | unanimous | best_of_n
+        threshold: 0.85
+        min_agreement_confidence: 0.75
+        min_judges_required: 2     # optional; minimum judges that must complete (default 1)
+        confidence_weighting:
+          agreement_factor: 0.7    # weight for inter-judge agreement; sums to 1.0 with self_confidence_factor
+          self_confidence_factor: 0.3
       transitions:
-        - condition:
-            field: parallel_review.all_succeeded
-            operator: eq
-            value: "true"
-          target: done
-        - target: failed
+        - condition: consensus
+          threshold: 0.85
+          agreement: 0.75
+          target: COMPLETE
+        - condition: score_below
+          threshold: 0.85
+          target: REFINE
+          feedback: "Audit failed (score: {{AUDIT.consensus.score}}): {{AUDIT.agents.0.output}}"
 
-    done:
+    REFINE:
       kind: System
-      command: "echo 'Pipeline complete. Results in /workspace/output.'"
-      transitions: []               # empty = terminal state; workflow completes
+      command: update_context
+      env:
+        ITERATION: "{{blackboard.iteration_number + 1}}"
+        ERRORS: "{{state.feedback}}"
+      transitions:
+        - condition: custom
+          expression: "{{blackboard.iteration_number < workflow.context.max_iterations}}"
+          target: GENERATE
+        - condition: custom
+          expression: "{{blackboard.iteration_number >= workflow.context.max_iterations}}"
+          target: FAILED
 
-    failed:
+    COMPLETE:
       kind: System
-      command: "echo 'Pipeline failed'"
-      transitions: []               # terminal state
+      command: finalize
+      transitions: []              # empty transitions list = terminal state
+
+    FAILED:
+      kind: System
+      command: "echo 'Max iterations reached'"
+      transitions: []              # terminal state
 ```
 
 ---
@@ -117,104 +184,598 @@ spec:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | ✓ | Unique workflow name. Must be lowercase alphanumeric with hyphens. |
-| `labels` | `map[string]string` | | Arbitrary key-value labels. |
+| `name` | string | ✓ | Unique workflow name. Pattern: `^[a-z0-9][a-z0-9-]{0,62}$`. |
+| `version` | string | | Manifest semantic version (e.g., `"1.0.0"`). |
+| `description` | string | | Human-readable purpose description. |
+| `labels` | `map[string]string` | | Key-value labels for categorization and discovery. |
+| `annotations` | `map[string]string` | | Arbitrary non-identifying metadata (URLs, changelogs, JSON blobs). |
 
 ### `spec`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `initial_state` | string | ✓ | Name of the first state to enter when the workflow starts. |
-| `blackboard_defaults` | `map[string, any]` | | Default Blackboard values at execution start. |
-| `states` | `map[string, WorkflowState]` | ✓ | Map of state name → state definition. Must contain `initial_state`. |
+| `initial_state` | string | ✓ | Name of the first state to enter. Must exist in `spec.states`. |
+| `context` | `map[string, any]` | | Global constants accessible via `{{workflow.context.KEY}}`. |
+| `storage` | object | | Workflow-level shared volume configuration. |
+| `states` | `map[string, WorkflowState]` | ✓ | State machine definition. Must contain `initial_state`. |
+
+### `spec.storage`
+
+| Field | Type | Description |
+|---|---|---|
+| `workspace` | object | Default shared workspace. Auto-created at workflow start. Reference as `{{workflow.storage.workspace}}`. |
+| `workspace.storage_class` | `ephemeral` \| `persistent` | Volume lifetime. |
+| `workspace.ttl_hours` | integer | Hours until auto-deletion (ephemeral only). Counted from workflow start. |
+| `workspace.size_limit_mb` | integer | Maximum volume size in MiB. Writes beyond this return `ENOSPC`. |
+| `shared_volumes` | `object[]` | Additional named shared volumes. |
+| `shared_volumes[].name` | string | Unique name. Reference as `{{workflow.storage.shared_volumes.NAME}}`. |
+| `shared_volumes[].storage_class` | `ephemeral` \| `persistent` | Volume lifetime. |
+| `shared_volumes[].ttl_hours` | integer | Hours until auto-deletion (ephemeral only). |
+| `shared_volumes[].size_limit_mb` | integer | Maximum volume size in MiB (ephemeral only). |
+| `shared_volumes[].volume_id` | string | Pre-created volume UUID (persistent only). |
 
 ### `spec.states[*]` — Common Fields
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` |
-| `timeout_secs` | integer | | `300` | Maximum time to wait in this state before evaluating transitions. |
-| `transitions` | `object[]` | ✓ | | List of transition rules. Evaluated in order. |
+| `timeout` | string | | `300s` | Maximum time in this state. Human-readable: `"300s"`, `"5m"`, `"1h"`. |
+| `volumes` | `object[]` | | | Volume mounts for this state (`Agent` kind). |
+| `volumes[].volume` | string | ✓ | | Volume reference. Supports Handlebars: `{{workflow.storage.workspace}}`. |
+| `volumes[].mount_point` | string | ✓ | | Absolute path inside the container. |
+| `volumes[].access_mode` | `read-write` \| `read-only` | ✓ | | Access mode enforced by AegisFSAL. |
+| `transitions` | `object[]` | ✓ | | Ordered transition rules. Evaluated top-to-bottom; first match wins. |
 
-### `spec.states[*]` — Kind-Specific Fields
-
-#### `kind: Agent`
+### `kind: Agent`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `agent_id` | string | ✓ | Deployed agent name or UUID. |
-| `input_template` | string | | Handlebars template for the agent's task input. Variables: `{{blackboard.<key>}}`, `{{input.<key>}}`, `{{execution.id}}`. |
+| `agent` | string | ✓ | Deployed agent name or UUID. |
+| `input` | string | | Handlebars template rendered as the agent's task input. Supports `{{workflow.task}}`, `{{STATE.output}}`, `{{blackboard.KEY}}`, `{{state.feedback}}`. |
+| `isolation` | `inherit` \| `firecracker` \| `docker` \| `process` | | Override isolation mode. Default: `inherit` (from node config). |
 
-The agent executes the full 100monkeys loop (up to its `max_iterations`). When it completes, the following is written to the Blackboard under the state name:
+When the agent completes, the Blackboard is updated under the state name:
 
 ```json
 {
-  "status": "success" | "failed",
-  "output": "<agent's final text output>",
+  "status": "success|failed",
+  "output": "<agent final text output>",
   "score": 0.91,
   "iterations": 2
 }
 ```
 
-#### `kind: System`
+Use `{{STATE.output}}`, `{{STATE.status}}`, or `{{STATE.score}}` in downstream states.
+
+### `kind: System`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `command` | string | ✓ | Shell command to run on the orchestrator host. Handlebars templates supported. |
+| `command` | string | ✓ | Shell command to run. Handlebars templates supported. |
+| `env` | `map[string]string` | | Environment variables. Values support Handlebars. |
+| `workdir` | string | | Working directory. Default: `/workspace`. |
 
-System states run the command on the orchestrator host (not inside a container). Output is written to the Blackboard as `{state_name}.stdout` and `{state_name}.exit_code`.
+Output is written to the Blackboard as `{state_name}.output.stdout`, `{state_name}.output.stderr`, and `{state_name}.output.exit_code`.
 
-#### `kind: Human`
+Use `condition: exit_code_zero`, `condition: exit_code_non_zero`, or `condition: exit_code` with a `value` to branch on exit status.
 
-No additional fields. The workflow suspends and waits for a signal via:
+### `kind: Human`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `prompt` | string | ✓ | Message displayed to the operator. Handlebars templates supported. |
+| `timeout` | string | | Duration to wait before following timeout transitions. Omit to wait indefinitely. |
+| `default_response` | string | | Signal value automatically applied when `timeout` elapses. |
+
+The workflow suspends until signalled via CLI:
 
 ```bash
-aegis workflow signal <workflow-execution-id> \
-  --state <state-name> \
-  --decision <value>
+# Approve
+aegis workflow signal <execution-id> --state <state-name> --decision approved
+
+# Reject with feedback
+aegis workflow signal <execution-id> --state <state-name> --decision rejected --feedback "Needs tests"
 ```
 
-The signal payload is written to `Blackboard[state_name]` as-is and transition conditions are evaluated. The `decision` key is a convention; any JSON-serializable payload is accepted.
+The signal payload is available as `{{human.feedback}}` in transition `feedback` strings and downstream `input` templates.
 
-#### `kind: ParallelAgents`
+### `kind: ParallelAgents`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `agents` | `string[]` | ✓ | List of deployed agent names or UUIDs to run concurrently. |
+| `agents` | `object[]` | ✓ | List of parallel agent configurations. |
+| `consensus` | object | ✓ | Consensus aggregation configuration. |
 
-All agents start simultaneously. The state waits for all to complete or for `timeout_secs` to elapse. Results are written to the Blackboard as:
+#### `agents[]`
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `agent` | string | ✓ | | Deployed agent name or UUID. |
+| `input` | string | | | Handlebars template for this agent's task input. |
+| `weight` | number | | `1.0` | Weight for consensus calculation. |
+| `timeout_seconds` | integer | | `60` | Per-agent execution timeout in seconds. |
+| `poll_interval_ms` | integer | | `500` | Polling interval in milliseconds. |
+
+#### `consensus`
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `strategy` | string | ✓ | | `weighted_average` \| `majority` \| `unanimous` \| `best_of_n` |
+| `threshold` | number | | `0.7` | Minimum score threshold (0.0–1.0). |
+| `min_agreement_confidence` | number | | | Minimum consensus confidence required (0.0–1.0). Also accepted as `agreement`. |
+| `n` | integer | For `best_of_n` | | Number of top judges to average. |
+| `min_judges_required` | integer | | `1` | Minimum judges that must succeed. State fails if fewer complete. |
+| `confidence_weighting.agreement_factor` | number | | `0.7` | Weight for inter-judge agreement. Must sum to 1.0 with `self_confidence_factor`. |
+| `confidence_weighting.self_confidence_factor` | number | | `0.3` | Weight for judges' self-reported confidence scores. |
+
+#### Consensus Strategies
+
+| Strategy | Algorithm | Best For |
+|---|---|---|
+| `weighted_average` | Weighted mean of scores; confidence penalised by inter-judge variance. | General-purpose gradient validation. |
+| `majority` | Binary vote (score ≥ threshold = pass). Simple majority wins, confidence = vote margin. | Approve/reject decisions. |
+| `unanimous` | All judges must score ≥ threshold. Confidence = minimum confidence across all judges. | Critical gates (security audits, production deploys). |
+| `best_of_n` | Rank by `score × confidence`; take top N; compute weighted average of those N. | Reduce impact of outlier judges. |
+
+State output structure:
 
 ```json
 {
-  "all_succeeded": true | false,
-  "results": {
-    "<agent-name>": {"status": "success", "output": "...", "score": 0.91}
-  }
+  "consensus": {
+    "score": 0.92,
+    "confidence": 0.85,
+    "strategy": "weighted_average",
+    "metadata": {}
+  },
+  "individual_results": [
+    { "agent_id": "reviewer-v1", "score": 0.9, "confidence": 0.88, "reasoning": "..." }
+  ],
+  "agents": [
+    { "agent_id": "reviewer-v1", "output": "{\"score\": 0.9, ...}", "weight": 1.0 }
+  ]
 }
 ```
+
+Use `{{STATE.consensus.score}}`, `{{STATE.consensus.confidence}}`, and `{{STATE.agents.N.output}}` in downstream transitions and templates.
 
 ### `spec.states[*].transitions[]`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `condition` | object | | If absent, this is an unconditional (default) transition. |
-| `condition.field` | string | ✓ | Dot-separated path into the Blackboard. E.g., `requirements.status`, `blackboard.language`. |
-| `condition.operator` | string | ✓ | `eq` \| `ne` \| `gt` \| `gte` \| `lt` \| `lte` \| `contains` |
-| `condition.value` | string | ✓ | Value to compare against. Numeric comparisons are coerced from string. |
-| `target` | string | ✓ | Name of the state to transition to. Must exist in `spec.states`. |
+| `condition` | string | | Named condition type (see below). If absent, transition is unconditional. |
+| `target` | string | ✓ | State to transition to. Must exist in `spec.states`. |
+| `feedback` | string | | Handlebars string written to `{{state.feedback}}` for the next state. |
+| `threshold` | number | For score/consensus conditions | Score or consensus threshold (0.0–1.0). |
+| `agreement` | number | For `consensus` | Minimum `consensus.confidence` required. |
+| `value` | string | For `exit_code`, `input_equals` | Exact value to match. |
+| `expression` | string | For `custom` | Handlebars boolean expression. |
+| `min` / `max` | number | For `score_between` | Score range bounds (inclusive). |
 
-**Evaluation order**: transitions are evaluated top-to-bottom. The first matching transition is taken. An unconditional transition (no `condition`) always matches and should be placed last as a default/fallback.
+#### Condition Types
 
-**Terminal states**: A state with an empty `transitions` list (`transitions: []`) is a terminal state. When reached, the workflow execution completes with status `completed`.
+| Condition | Applicable Kinds | Description |
+|---|---|---|
+| *(absent)* | All | Unconditional fallback. Always matches. Place last. |
+| `always` | All | Explicit unconditional. Equivalent to absent condition. |
+| `on_success` | Agent, System | State succeeded (exit code 0 or agent returned success). |
+| `on_failure` | Agent, System | State failed. |
+| `exit_code_zero` | System | Exit code was 0. |
+| `exit_code_non_zero` | System | Exit code was non-zero. |
+| `exit_code` | System | Exit code equals `value`. |
+| `score_above` | Agent | Agent validation score > `threshold`. |
+| `score_below` | Agent | Agent validation score < `threshold`. |
+| `score_between` | Agent | Score between `min` and `max` (inclusive). |
+| `confidence_above` | Agent | Validation confidence > `threshold`. |
+| `consensus` | ParallelAgents | Consensus score ≥ `threshold` AND confidence ≥ `agreement`. |
+| `all_approved` | ParallelAgents | All agents scored ≥ consensus `threshold`. |
+| `any_rejected` | ParallelAgents | At least one agent scored < consensus `threshold`. |
+| `input_equals` | Human | Signal payload matches `value`. |
+| `input_equals_yes` | Human | Payload is `"yes"`, `"approve"`, `"approved"`, or `"true"`. |
+| `input_equals_no` | Human | Payload is `"no"`, `"reject"`, `"rejected"`, or `"false"`. |
+| `custom` | All | Handlebars `expression` evaluates to a truthy result. |
+
+**Evaluation order:** transitions are evaluated top-to-bottom. The first matching transition is taken. Always include an unconditional fallback as the last transition.
+
+**Terminal states:** a state with `transitions: []` is terminal. When reached, the workflow execution completes with status `completed`.
 
 ---
 
-## Blackboard Template Variables
+## Field Definitions
 
-| Template Variable | Value |
+### `spec.context`
+
+Global constants accessible in any state's `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields via `{{workflow.context.KEY}}`. Use this for values shared across states (iteration limits, thresholds, URLs). Prefer `context` for scalars and `storage` for shared file systems.
+
+### `spec.storage`
+
+Volumes are created by the orchestrator at workflow start, before any state executes. States reference them by Handlebars template variable — no UUID threading between states is needed.
+
+| Class | Lifecycle | Use Case |
+|---|---|---|
+| `ephemeral` | Auto-deleted after `ttl_hours` | Build artifacts, scratch code, intermediate files |
+| `persistent` | Kept until explicitly deleted via API | Shared datasets, long-lived outputs, auditable artifacts |
+
+All file operations on workflow volumes are intercepted by **AegisFSAL** — every read and write is authorized against the agent's `spec.security.filesystem` policy and published as a `StorageEvent` domain event for the full audit trail.
+
+### Handlebars Template Variables
+
+All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields support Handlebars templates.
+
+| Variable | Available In | Description |
+|---|---|---|
+| `{{workflow.task}}` | All states | `task` key from the workflow start `--input` payload. |
+| `{{workflow.context.KEY}}` | All states | Value from `spec.context`. |
+| `{{workflow.storage.workspace}}` | `volumes[].volume` | Reference to the shared workspace volume. |
+| `{{workflow.storage.shared_volumes.NAME}}` | `volumes[].volume` | Reference to a named shared volume. |
+| `{{STATE.output}}` | States after STATE | Final output text of an Agent state. |
+| `{{STATE.output.stdout}}` | States after STATE | stdout of a System state. |
+| `{{STATE.output.stderr}}` | States after STATE | stderr of a System state. |
+| `{{STATE.output.exit_code}}` | States after STATE | Exit code of a System state. |
+| `{{STATE.status}}` | States after STATE | `"success"` or `"failed"`. |
+| `{{STATE.score}}` | States after STATE | Validation score (Agent states, 0.0–1.0). |
+| `{{STATE.consensus.score}}` | States after STATE | Consensus score (ParallelAgents states). |
+| `{{STATE.consensus.confidence}}` | States after STATE | Consensus confidence (ParallelAgents states). |
+| `{{STATE.agents.N.output}}` | States after STATE | Individual judge output (ParallelAgents, 0-indexed). |
+| `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state. |
+| `{{state.feedback}}` | All states | `feedback` string from the incoming transition. |
+| `{{human.feedback}}` | After Human states | Additional feedback text from the `signal --feedback` argument. |
+| `{{input.KEY}}` | All states | Key from the workflow start `--input` payload. |
+| `{{execution.id}}` | All states | Workflow execution UUID. |
+
+Handlebars conditionals, loops, and built-in helpers are fully supported:
+
+```yaml
+input: |
+  {{#if blackboard.iteration_number}}
+  Attempt {{blackboard.iteration_number}} failed: {{state.feedback}}
+  {{else}}
+  {{workflow.task}}
+  {{/if}}
+```
+
+**Comparison operators in `custom` expressions:** `<`, `>`, `<=`, `>=`, `==`, `!=`, `&&`, `||`, `!`
+
+**Built-in helpers:** `{{length array}}`, `{{upper string}}`, `{{lower string}}`, `{{trim string}}`, `{{json object}}`
+
+---
+
+## Judge Agent Output Format
+
+Agents used as judges in `ParallelAgents` states must output JSON:
+
+```json
+{
+  "score": 0.85,
+  "confidence": 0.92,
+  "reasoning": "The code meets requirements with minor style issues.",
+  "suggestions": ["Add type hints", "Improve error handling"],
+  "verdict": "pass"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `score` | float (0.0–1.0) | ✓ | Quality/correctness score on a continuous gradient. |
+| `confidence` | float (0.0–1.0) | ✓ | Judge's certainty in its assessment. |
+| `reasoning` | string | ✓ | Explanation for the score (minimum 10 characters). |
+| `suggestions` | `string[]` | | Improvement recommendations. |
+| `verdict` | string | | Human-readable decision: `"pass"`, `"fail"`, or `"warning"`. |
+
+For a complete judge agent manifest, see [Agent Manifest Reference — Code Reviewer (Judge Agent)](/docs/reference/agent-manifest).
+
+---
+
+## Examples
+
+### 100monkeys Classic
+
+The classic iterative refinement loop: generate code, execute it, validate output with a judge agent, refine on failure.
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+
+metadata:
+  name: 100monkeys-classic
+  version: "1.0.0"
+  description: "Classic iterative refinement loop"
+  labels:
+    category: iterative
+    pattern: generate-execute-validate-refine
+
+spec:
+  context:
+    max_iterations: 10
+    validation_threshold: 0.95
+
+  initial_state: GENERATE
+
+  states:
+    GENERATE:
+      kind: Agent
+      agent: "{{workflow.agent_id}}"
+      input: |
+        {{#if blackboard.iteration_number}}
+        Iteration {{blackboard.iteration_number}} — previous attempt failed.
+
+        --- PREVIOUS CODE ---
+        {{blackboard.previous_code}}
+
+        --- ERRORS ---
+        {{blackboard.validation_errors}}
+
+        Fix the code.
+        {{else}}
+        {{workflow.task}}
+        {{/if}}
+      transitions:
+        - condition: always
+          target: EXECUTE
+
+    EXECUTE:
+      kind: System
+      command: "{{workflow.command}}"
+      env:
+        CODE: "{{GENERATE.output}}"
+      transitions:
+        - condition: exit_code_zero
+          target: VALIDATE
+        - condition: exit_code_non_zero
+          target: REFINE
+          feedback: "Execution failed: {{EXECUTE.output.stderr}}"
+
+    VALIDATE:
+      kind: Agent
+      agent: "{{workflow.judge_id}}"
+      input: |
+        Task: {{workflow.task}}
+        Output: {{EXECUTE.output.stdout}}
+
+        Validate and respond with JSON:
+        {"valid": bool, "score": 0.0-1.0, "reasoning": "..."}
+      transitions:
+        - condition: score_above
+          threshold: 0.95
+          target: COMPLETE
+        - condition: score_below
+          threshold: 0.95
+          target: REFINE
+          feedback: "{{VALIDATE.output.reasoning}}"
+
+    REFINE:
+      kind: System
+      command: update_blackboard
+      env:
+        ITERATION: "{{blackboard.iteration_number + 1}}"
+        CODE: "{{GENERATE.output}}"
+        ERRORS: "{{state.feedback}}"
+      transitions:
+        - condition: custom
+          expression: "{{blackboard.iteration_number < workflow.context.max_iterations}}"
+          target: GENERATE
+        - condition: custom
+          expression: "{{blackboard.iteration_number >= workflow.context.max_iterations}}"
+          target: FAILED
+
+    COMPLETE:
+      kind: System
+      command: echo
+      env:
+        RESULT: "{{EXECUTE.output.stdout}}"
+      transitions: []
+
+    FAILED:
+      kind: System
+      command: echo
+      env:
+        REASON: "Max iterations ({{workflow.context.max_iterations}}) reached"
+      transitions: []
+```
+
+### The Forge
+
+Constitutional Development Lifecycle with human approval gates and adversarial multi-judge audit.
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+
+metadata:
+  name: the-forge
+  version: "1.0.0"
+  description: "Constitutional Development Lifecycle with adversarial testing"
+  labels:
+    category: development
+    pattern: constitutional-lifecycle
+
+spec:
+  context:
+    max_code_iterations: 5
+    constitution_path: constitution.md
+
+  initial_state: ANALYZE
+
+  states:
+    ANALYZE:
+      kind: Agent
+      agent: requirements-ai-v1
+      input: |
+        User request: {{workflow.user_request}}
+        Codebase: {{workflow.codebase}}
+        Generate requirements (functional, non-functional, acceptance criteria).
+      transitions:
+        - condition: always
+          target: AWAIT_REQUIREMENTS_APPROVAL
+
+    AWAIT_REQUIREMENTS_APPROVAL:
+      kind: Human
+      prompt: |
+        Requirements:
+        {{ANALYZE.output}}
+
+        Approve? (yes/no)
+      timeout: 3600s
+      transitions:
+        - condition: input_equals_yes
+          target: ARCHITECT
+        - condition: input_equals_no
+          target: ANALYZE
+          feedback: "{{human.feedback}}"
+
+    ARCHITECT:
+      kind: Agent
+      agent: architect-ai-v1
+      input: |
+        Requirements: {{ANALYZE.output}}
+        Constitution: {{workflow.context.constitution_path}}
+        Design system architecture.
+      transitions:
+        - condition: always
+          target: AWAIT_ARCH_APPROVAL
+
+    AWAIT_ARCH_APPROVAL:
+      kind: Human
+      prompt: |
+        Architecture:
+        {{ARCHITECT.output}}
+
+        Approve? (yes/no)
+      timeout: 3600s
+      transitions:
+        - condition: input_equals_yes
+          target: TEST
+        - condition: input_equals_no
+          target: ARCHITECT
+          feedback: "{{human.feedback}}"
+
+    TEST:
+      kind: Agent
+      agent: tester-ai-v1
+      input: |
+        Requirements: {{ANALYZE.output}}
+        Architecture: {{ARCHITECT.output}}
+        Write TDD tests (pytest).
+      transitions:
+        - condition: always
+          target: CODE
+
+    CODE:
+      kind: Agent
+      agent: coder-ai-v1
+      input: |
+        Tests: {{TEST.output}}
+        Architecture: {{ARCHITECT.output}}
+        Constitution: {{workflow.context.constitution_path}}
+        Implement code to pass tests.
+      transitions:
+        - condition: always
+          target: EXECUTE_TESTS
+
+    EXECUTE_TESTS:
+      kind: System
+      command: pytest tests/ -v
+      env:
+        PYTHONPATH: /workspace
+      transitions:
+        - condition: exit_code_zero
+          target: AUDIT
+        - condition: exit_code_non_zero
+          target: CODE
+          feedback: "Tests failed: {{EXECUTE_TESTS.output.stderr}}"
+
+    AUDIT:
+      kind: ParallelAgents
+      agents:
+        - agent: reviewer-ai-v1
+          input: "Review code quality: {{CODE.output}}"
+          weight: 1.0
+          timeout_seconds: 120
+        - agent: critic-ai-v1
+          input: "Adversarial review — try to break this code: {{CODE.output}}"
+          weight: 1.5
+          timeout_seconds: 90
+        - agent: security-ai-v1
+          input: "Security audit: {{CODE.output}}"
+          weight: 2.0
+          timeout_seconds: 180
+      consensus:
+        strategy: weighted_average
+        threshold: 0.95
+        min_agreement_confidence: 0.8
+        min_judges_required: 2
+        confidence_weighting:
+          agreement_factor: 0.8
+          self_confidence_factor: 0.2
+      transitions:
+        - condition: consensus
+          threshold: 0.95
+          agreement: 0.8
+          target: COMPLETE
+        - condition: score_below
+          threshold: 0.95
+          target: CODE
+          feedback: |
+            Audit failed (score: {{AUDIT.consensus.score}}, confidence: {{AUDIT.consensus.confidence}}):
+            Reviewer: {{AUDIT.agents.0.output}}
+            Critic:   {{AUDIT.agents.1.output}}
+            Security: {{AUDIT.agents.2.output}}
+
+    COMPLETE:
+      kind: System
+      command: finalize
+      env:
+        CODE: "{{CODE.output}}"
+        TESTS: "{{TEST.output}}"
+        AUDIT_SCORE: "{{AUDIT.consensus.score}}"
+      transitions: []
+```
+
+### Security Gate (Unanimous)
+
+All judges must independently approve before promotion to production. A single dissenter blocks the gate.
+
+```yaml
+SECURITY_GATE:
+  kind: ParallelAgents
+  agents:
+    - agent: static-analyzer
+      input: "{{CODE.output}}"
+      timeout_seconds: 300
+    - agent: penetration-tester
+      input: "{{CODE.output}}"
+      timeout_seconds: 600
+    - agent: security-expert
+      input: "{{CODE.output}}"
+      timeout_seconds: 180
+  consensus:
+    strategy: unanimous
+    threshold: 0.95
+    min_judges_required: 3
+  transitions:
+    - condition: score_above
+      threshold: 0.94
+      target: PRODUCTION
+    - condition: always
+      target: SECURITY_FAILED
+      feedback: "Security gate failed — not all judges approved at 95%"
+```
+
+---
+
+## Cross-References
+
+| Topic | See |
 |---|---|
-| `{{blackboard.<key>}}` | Any top-level Blackboard key |
-| `{{blackboard.<state>.<field>}}` | Output field from a completed state (e.g., `{{blackboard.requirements.output}}`) |
-| `{{input.<key>}}` | Key from the workflow's start input |
-| `{{execution.id}}` | Workflow execution UUID |
-| `{{workflow.name}}` | Workflow name |
+| Writing judge agents for `ParallelAgents` states | [Agent Manifest Reference](/docs/reference/agent-manifest) |
+| Step-by-step workflow construction guide | [Building Workflows](/docs/guides/building-workflows) |
+| Conceptual FSM overview and state kinds | [Workflows](/docs/concepts/workflows) |
+| Gradient scoring and validation confidence | [Validation Guide](/docs/guides/validation) |
+| Storage volumes and AegisFSAL | [Storage Gateway](/docs/architecture/storage-gateway) |
+
+---
+
+## Version History
+
+| Version | Date | Notes |
+|---|---|---|
+| **v1.0** | 2026-02-16 | Initial canonical format. All four state kinds (`Agent`, `System`, `Human`, `ParallelAgents`). Named-condition transitions. Handlebars templates. Four consensus strategies. |

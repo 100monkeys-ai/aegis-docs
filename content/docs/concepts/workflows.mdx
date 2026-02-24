@@ -16,63 +16,72 @@ apiVersion: 100monkeys.ai/v1
 kind: Workflow
 metadata:
   name: code-review-pipeline
+  version: "1.0.0"
+  labels:
+    category: development
 spec:
-  initial_state: analyze
-  blackboard_defaults:
-    reviewer_style: strict
+  context:
+    review_threshold: 0.85
+  initial_state: ANALYZE
   states:
-    analyze:
+    ANALYZE:
       kind: Agent
-      agent_id: code-analyzer
-      timeout_secs: 120
+      agent: code-analyzer
+      timeout: 120s
       transitions:
-        - condition:
-            field: analyze.status
-            operator: eq
-            value: success
-          target: review
-        - target: failed
+        - condition: on_success
+          target: REVIEW
+        - condition: on_failure
+          target: FAILED
 
-    review:
+    REVIEW:
       kind: Agent
-      agent_id: code-reviewer
-      timeout_secs: 180
+      agent: code-reviewer
+      timeout: 180s
       transitions:
-        - condition:
-            field: review.score
-            operator: gte
-            value: "0.85"
-          target: approve
-        - target: failed
+        - condition: score_above
+          threshold: 0.85
+          target: APPROVE
+        - condition: score_below
+          threshold: 0.85
+          target: FAILED
+          feedback: "Score too low ({{REVIEW.score}}): {{REVIEW.output.reasoning}}"
 
-    approve:
+    APPROVE:
       kind: Human
-      timeout_secs: 86400
-      transitions:
-        - condition:
-            field: approve.decision
-            operator: eq
-            value: approved
-          target: merge
-        - target: rejected
+      prompt: |
+        Review score: {{REVIEW.score}}
+        Analysis: {{REVIEW.output}}
 
-    merge:
+        Approve to merge? (yes/no)
+      timeout: 86400s
+      transitions:
+        - condition: input_equals_yes
+          target: MERGE
+        - condition: input_equals_no
+          target: REJECTED
+          feedback: "{{human.feedback}}"
+
+    MERGE:
       kind: System
-      command: "aegis-merge-tool --pr-id {{blackboard.pr_id}}"
+      command: "aegis-merge-tool --pr-id {{input.pr_id}}"
       transitions:
-        - target: done
+        - condition: exit_code_zero
+          target: DONE
+        - condition: exit_code_non_zero
+          target: FAILED
 
-    done:
+    DONE:
       kind: System
       command: "echo done"
       transitions: []
 
-    failed:
+    FAILED:
       kind: System
       command: "echo failed"
       transitions: []
 
-    rejected:
+    REJECTED:
       kind: System
       command: "echo rejected"
       transitions: []
@@ -87,90 +96,140 @@ spec:
 Executes an AEGIS agent using the 100monkeys iterative loop. The state waits for the agent execution to reach `completed` or `failed` before evaluating transitions.
 
 ```yaml
-analyze:
+ANALYZE:
   kind: Agent
-  agent_id: code-analyzer     # must be a deployed agent name
-  timeout_secs: 300           # cancels execution if not complete within this time
+  agent: code-analyzer        # must be a deployed agent name
+  timeout: 300s               # cancels execution if not complete within this time
+  input: |
+    {{workflow.task}}
+  transitions:
+    - condition: on_success
+      target: REVIEW
+    - condition: on_failure
+      target: FAILED
 ```
 
-The agent's final output is available in the Blackboard as `{{STATENAME.output}}`. Execution status is available as `{{STATENAME.status}}`.
+The agent's final output is available as `{{ANALYZE.output}}`. Status is available as `{{ANALYZE.status}}`.
 
 ### `System`
 
 Runs a shell command on the orchestrator host. Useful for triggering external processes, sending notifications, or performing cleanup.
 
 ```yaml
-notify:
+NOTIFY:
   kind: System
   command: "curl -X POST https://hooks.example.com/notify -d '{\"status\": \"done\"}'"
-  timeout_secs: 30
+  timeout: 30s
+  transitions:
+    - condition: exit_code_zero
+      target: DONE
+    - condition: exit_code_non_zero
+      target: FAILED
 ```
 
 ### `Human`
 
-Suspends the workflow and waits for an operator to signal a decision. The workflow persists durably in Temporal — it will wait indefinitely (or until `timeout_secs`).
+Suspends the workflow and waits for an operator to signal a decision. The workflow persists durably in Temporal — it will wait indefinitely (or until `timeout`).
 
 ```yaml
-approval_gate:
+APPROVAL_GATE:
   kind: Human
-  timeout_secs: 86400   # 24 hours; transitions to timeout branch if not approved
+  prompt: |
+    Output: {{GENERATE.output}}
+    Approve to proceed? (yes/no)
+  timeout: 86400s   # 24 hours; default_response taken if not signalled
+  default_response: reject
+  transitions:
+    - condition: input_equals_yes
+      target: PROCEED
+    - condition: input_equals_no
+      target: REDESIGN
+      feedback: "{{human.feedback}}"
 ```
 
 To resume a suspended workflow from the CLI:
 
 ```bash
-aegis workflow signal <execution-id> --state approval_gate --decision approved
+aegis workflow signal <execution-id> --state APPROVAL_GATE --decision approved
 ```
 
 ### `ParallelAgents`
 
-Fans out to multiple agent executions simultaneously. All agents run concurrently; the state waits until all have completed before evaluating transitions.
+Fans out to multiple agent executions simultaneously. All agents run concurrently; the state waits until all have completed (or `timeout` elapses) before evaluating transitions using the `consensus` configuration.
 
 ```yaml
-parallel_review:
+PARALLEL_REVIEW:
   kind: ParallelAgents
   agents:
-    - security-reviewer
-    - performance-reviewer
-    - style-reviewer
-  timeout_secs: 600
+    - agent: security-reviewer
+      input: "Security audit: {{GENERATE.output}}"
+      weight: 2.0
+      timeout_seconds: 300
+    - agent: performance-reviewer
+      input: "Performance review: {{GENERATE.output}}"
+      weight: 1.0
+      timeout_seconds: 180
+    - agent: style-reviewer
+      input: "Style review: {{GENERATE.output}}"
+      weight: 1.0
+      timeout_seconds: 60
+  consensus:
+    strategy: weighted_average   # weighted_average | majority | unanimous | best_of_n
+    threshold: 0.85
+    min_agreement_confidence: 0.75
+    min_judges_required: 2
+  timeout: 600s
+  transitions:
+    - condition: consensus
+      threshold: 0.85
+      agreement: 0.75
+      target: DONE
+    - condition: score_below
+      threshold: 0.85
+      target: FAILED
+      feedback: "Parallel review failed (score: {{PARALLEL_REVIEW.consensus.score}})"
 ```
 
-Results from each agent are available as `{{STATENAME.results.AGENTNAME.output}}`.
+Individual results are available as `{{STATENAME.agents.N.output}}` (0-indexed). The aggregated score is `{{STATENAME.consensus.score}}`.
 
 ---
 
 ## The Blackboard
 
-The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is initialized from `spec.blackboard_defaults` and updated as states complete.
+The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is initialised from `spec.context` (and the optional `blackboard_defaults` alias) and updated as states complete.
 
 ### Accessing Blackboard Values
 
-Use Handlebars template syntax in `command` fields and transition conditions:
+Use Handlebars template syntax in `input`, `command`, `env`, `prompt`, and transition `expression`/`feedback` fields:
 
 ```yaml
 # Access a prior state's output
-command: "process-results --input '{{analyze.output}}'"
+command: "process-results --input '{{ANALYZE.output}}'"
 
-# Access a blackboard key set externally
-command: "git clone {{blackboard.repo_url}}"
+# Access a spec.context value
+command: "run-tests --threshold {{workflow.context.review_threshold}}"
 
-# Access a prior state's status
-condition:
-  field: analyze.status
-  operator: eq
-  value: success
+# Access workflow start input
+command: "git clone {{input.repo_url}}"
 ```
 
 Available template variables:
 
 | Variable | Description |
 |---|---|
-| `{{STATENAME.output}}` | Final text output of an Agent state. |
-| `{{STATENAME.status}}` | Status of a completed state (`success`, `failed`, `timeout`). |
-| `{{STATENAME.score}}` | Validation score of an Agent state (0.0–1.0). |
-| `{{blackboard.KEY}}` | A key set in `blackboard_defaults` or by a prior `System` state. |
-| `{{input.KEY}}` | A key from the workflow start input payload. |
+| `{{workflow.task}}` | `task` key from the workflow start `--input` payload. |
+| `{{workflow.context.KEY}}` | Value from `spec.context`. |
+| `{{STATE.output}}` | Final text output of an Agent state. |
+| `{{STATE.output.stdout}}` | stdout of a System state. |
+| `{{STATE.output.exit_code}}` | Exit code of a System state. |
+| `{{STATE.status}}` | Status: `success`, `failed`, or `timeout`. |
+| `{{STATE.score}}` | Validation score of an Agent state (0.0–1.0). |
+| `{{STATE.consensus.score}}` | Aggregated score of a ParallelAgents state. |
+| `{{STATE.agents.N.output}}` | Individual judge output (ParallelAgents, 0-indexed). |
+| `{{blackboard.KEY}}` | Any key set in `spec.context` or by a System state. |
+| `{{state.feedback}}` | `feedback` string from the incoming transition. |
+| `{{human.feedback}}` | Feedback text from the Human `signal --feedback` argument. |
+| `{{input.KEY}}` | Key from the workflow start `--input` payload. |
 
 ---
 
@@ -180,20 +239,47 @@ Each state has a `transitions` list. Rules are evaluated in order; the first mat
 
 ```yaml
 transitions:
-  - condition:
-      field: analyze.status   # dot-path into blackboard/state data
-      operator: eq            # eq | neq | gte | lte | gt | lt | contains
-      value: success          # string; numbers compared numerically if parseable
-    target: review
-  - condition:
-      field: analyze.score
-      operator: gte
-      value: "0.7"
-    target: partial_review
-  - target: failed            # no condition = default fallback
+  # Score-based routing (Agent states)
+  - condition: score_above
+    threshold: 0.95
+    target: EXCELLENT
+
+  - condition: score_between
+    min: 0.70
+    max: 0.95
+    target: GOOD
+
+  # Exit-code routing (System states)
+  - condition: exit_code_zero
+    target: SUCCESS
+  - condition: exit_code_non_zero
+    target: RETRY
+    feedback: "Command failed: {{EXECUTE.output.stderr}}"
+
+  # Human approval routing (Human states)
+  - condition: input_equals_yes
+    target: APPROVED
+  - condition: input_equals_no
+    target: REJECTED
+    feedback: "{{human.feedback}}"
+
+  # Consensus routing (ParallelAgents states)
+  - condition: consensus
+    threshold: 0.85
+    agreement: 0.75
+    target: PASSED
+
+  # Custom Handlebars expression
+  - condition: custom
+    expression: "{{blackboard.retry_count < workflow.context.max_retries}}"
+    target: RETRY
+
+  # Unconditional fallback — always place last
+  - condition: always
+    target: FAILED
 ```
 
-A transition with no `condition` is an unconditional fallback. Always include a fallback as the last transition to prevent the FSM from getting stuck.
+A transition with no `condition` (or `condition: always`) is an unconditional fallback. Always include one as the last transition to prevent the FSM from stalling. For the complete list of condition types per state kind, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).
 
 ---
 

@@ -26,77 +26,79 @@ apiVersion: 100monkeys.ai/v1
 kind: Workflow
 metadata:
   name: dev-pipeline
+  version: "1.0.0"
 spec:
-  initial_state: requirements
-  blackboard_defaults:
+  context:
     language: python
     test_framework: pytest
+
+  initial_state: REQUIREMENTS
 
   states:
 
     # Stage 1: Analyze the task and produce a requirements document
-    requirements:
+    REQUIREMENTS:
       kind: Agent
-      agent_id: requirements-agent
-      timeout_secs: 180
+      agent: requirements-agent
+      timeout: 180s
       transitions:
-        - condition:
-            field: requirements.status
-            operator: eq
-            value: success
-          target: approve_requirements
-        - target: failed
+        - condition: on_success
+          target: APPROVE_REQUIREMENTS
+        - condition: on_failure
+          target: FAILED
 
     # Stage 2: Human approval gate before implementation begins
-    approve_requirements:
+    APPROVE_REQUIREMENTS:
       kind: Human
-      timeout_secs: 86400   # Wait up to 24 hours for operator approval
+      prompt: |
+        Requirements:
+        {{REQUIREMENTS.output}}
+
+        Approve? (yes/no)
+      timeout: 86400s   # Wait up to 24 hours for operator approval
       transitions:
-        - condition:
-            field: approve_requirements.decision
-            operator: eq
-            value: approved
-          target: implement
-        - condition:
-            field: approve_requirements.decision
-            operator: eq
-            value: rejected
-          target: failed
+        - condition: input_equals_yes
+          target: IMPLEMENT
+        - condition: input_equals_no
+          target: FAILED
+          feedback: "{{human.feedback}}"
 
     # Stage 3: Implement based on the approved requirements
-    implement:
+    IMPLEMENT:
       kind: Agent
-      agent_id: coder-agent
-      timeout_secs: 600
+      agent: coder-agent
+      timeout: 600s
+      input: |
+        Implement in {{workflow.context.language}} using {{workflow.context.test_framework}}.
+        Requirements: {{REQUIREMENTS.output}}
       transitions:
-        - condition:
-            field: implement.status
-            operator: eq
-            value: success
-          target: review
-        - target: failed
+        - condition: on_success
+          target: REVIEW
+        - condition: on_failure
+          target: FAILED
 
     # Stage 4: Review the implementation
-    review:
+    REVIEW:
       kind: Agent
-      agent_id: reviewer-agent
-      timeout_secs: 300
+      agent: reviewer-agent
+      timeout: 300s
       transitions:
-        - condition:
-            field: review.score
-            operator: gte
-            value: "0.85"
-          target: done
-        - target: failed
+        - condition: score_above
+          threshold: 0.85
+          target: DONE
+        - condition: score_below
+          threshold: 0.85
+          target: FAILED
+          feedback: "Review score too low ({{REVIEW.score}}): {{REVIEW.output.reasoning}}"
 
-    done:
+    DONE:
       kind: System
       command: "echo 'Pipeline complete. Output at /workspace/output.'"
       transitions: []
 
-    failed:
+    FAILED:
       kind: System
-      command: "echo 'Pipeline failed at state: {{blackboard.failed_state}}'"
+      command: "echo 'Pipeline failed'"
       transitions: []
 ```
 
@@ -104,34 +106,24 @@ spec:
 
 ## Step 2: Using Blackboard Templates
 
-Agents in downstream states automatically receive earlier states' outputs via Blackboard templates. The `coder-agent`'s system prompt or input can reference the requirements output:
+Agents in downstream states automatically receive earlier states' outputs via Handlebars templates in the `input` field. For example, the `coder-agent`'s `input` already references `{{REQUIREMENTS.output}}` from Step 1.
 
-In the `coder-agent`'s `bootstrap.py`:
+In the agent's `bootstrap.py`, the rendered input arrives via `task.input`:
 
 ```python
-from aegis import AegisClient, TaskInput
+from aegis import AegisClient
 
 client = AegisClient()
 task = client.get_task()
 
-# The blackboard is available in the task input
-requirements_output = task.blackboard.get("requirements", {}).get("output", "")
+# The rendered input is available directly
+print(task.input)  # "Implement in python using pytest.\nRequirements: ..."
+
+# You can also access the raw blackboard if needed
 language = task.blackboard.get("language", "python")
-
-messages = [
-    {
-        "role": "system",
-        "content": f"Implement the following requirements in {language}."
-    },
-    {
-        "role": "user",
-        "content": f"Requirements:\n{requirements_output}\n\nTask: {task.input.get('task', '')}"
-    }
-]
-
-response = client.generate(messages=messages)
-print(response.content)
 ```
+
+For the full list of available template variables, see the [Workflow Manifest Reference — Handlebars Template Variables](/docs/reference/workflow-manifest).
 
 ---
 
@@ -180,34 +172,35 @@ Example output:
 Execution ID: wfx-a1b2c3d4-1111-...
 Workflow:     dev-pipeline
 Status:       running
-Current State: approve_requirements (WAITING FOR HUMAN SIGNAL)
+Current State: APPROVE_REQUIREMENTS (WAITING FOR HUMAN SIGNAL)
 
 State History:
-  requirements     completed  (2026-02-23T10:00:01Z → 10:02:14Z)
-  approve_requirements  waiting   (2026-02-23T10:02:15Z → ...)
+  REQUIREMENTS          completed  (2026-02-23T10:00:01Z → 10:02:14Z)
+  APPROVE_REQUIREMENTS  waiting    (2026-02-23T10:02:15Z → ...)
 ```
 
 ---
 
 ## Step 5: Signal a Human State
 
-The workflow is suspended at `approve_requirements`. To approve:
+The workflow is suspended at `APPROVE_REQUIREMENTS`. To approve:
 
 ```bash
 aegis workflow signal wfx-a1b2c3d4-1111-... \
-  --state approve_requirements \
+  --state APPROVE_REQUIREMENTS \
   --decision approved
 ```
 
-To reject:
+To reject with feedback:
 
 ```bash
 aegis workflow signal wfx-a1b2c3d4-1111-... \
-  --state approve_requirements \
-  --decision rejected
+  --state APPROVE_REQUIREMENTS \
+  --decision rejected \
+  --feedback "Requirements need more detail on error handling"
 ```
 
-After approval, the workflow continues to the `implement` state automatically.
+After approval, the workflow continues to the `IMPLEMENT` state automatically.
 
 ---
 
@@ -225,26 +218,46 @@ aegis execution list --output json | jq '[.[] | select(.workflow_execution_id=="
 
 ## Using ParallelAgents States
 
-Run multiple agents concurrently at any workflow stage:
+Run multiple judges concurrently and gate on consensus. Add a `AUDIT` state that evaluates the implementation from multiple perspectives simultaneously:
 
 ```yaml
-parallel_review:
+AUDIT:
   kind: ParallelAgents
   agents:
-    - security-reviewer
-    - performance-reviewer
-    - style-reviewer
-  timeout_secs: 600
+    - agent: security-reviewer
+      input: "Security audit: {{IMPLEMENT.output}}"
+      weight: 2.0              # weighted higher
+      timeout_seconds: 300
+    - agent: performance-reviewer
+      input: "Performance review: {{IMPLEMENT.output}}"
+      weight: 1.0
+      timeout_seconds: 180
+    - agent: style-reviewer
+      input: "Style review: {{IMPLEMENT.output}}"
+      weight: 1.0
+      timeout_seconds: 60
+  consensus:
+    strategy: weighted_average   # weighted_average | majority | unanimous | best_of_n
+    threshold: 0.85
+    min_agreement_confidence: 0.75
+    min_judges_required: 2       # at least 2 of 3 must succeed
+  timeout: 600s
   transitions:
-    - condition:
-        field: parallel_review.all_succeeded
-        operator: eq
-        value: "true"
-      target: done
-    - target: failed
+    - condition: consensus
+      threshold: 0.85
+      agreement: 0.75
+      target: DONE
+    - condition: score_below
+      threshold: 0.85
+      target: FAILED
+      feedback: |
+        Audit failed (score: {{AUDIT.consensus.score}}, confidence: {{AUDIT.consensus.confidence}}):
+        Security: {{AUDIT.agents.0.output}}
+        Performance: {{AUDIT.agents.1.output}}
+        Style: {{AUDIT.agents.2.output}}
 ```
 
-All three agents run simultaneously. The state waits until all have completed or any one fails (or `timeout_secs` is hit).
+All three judges run simultaneously. The state waits until all have completed (or `timeout` is hit), then evaluates the `consensus` block. See the [Workflow Manifest Reference — `kind: ParallelAgents`](/docs/reference/workflow-manifest) for all consensus strategies.
 
 ---
 
