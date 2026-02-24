@@ -73,6 +73,8 @@ spec:
 
 ## Manifest Fields
 
+The table below covers the most common fields. For the complete field-by-field specification including all options, defaults, and validation rules, see the [Agent Manifest Reference](/docs/reference/agent-manifest).
+
 ### `metadata`
 
 | Field | Type | Required | Description |
@@ -181,3 +183,12 @@ llm:
 To swap the model backing the `default` alias for all agents on the node, change the alias mapping in config and restart the daemon — no manifest changes required.
 
 See [Configuring LLM Providers](/docs/guides/llm-providers) for the full provider configuration reference.
+
+---
+
+## See Also
+
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — Complete field-by-field specification for `kind: Agent` manifests
+- [Workflow Manifest Reference](/docs/reference/workflow-manifest) — Declarative FSM manifest for multi-agent coordination
+- [Executions](/docs/concepts/execution) — How agents are run and iterated
+- [Swarms](/docs/concepts/swarms) — Coordinating multiple agents in a parent-child hierarchy
