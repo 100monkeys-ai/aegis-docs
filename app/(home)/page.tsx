@@ -39,7 +39,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className="flex flex-col items-center text-center px-4 pt-20 pb-16 max-w-3xl">
         <div className="mb-4 inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-          Open Source · Apache 2.0 / AGPL 3.0
+          Open Source · AGPL 3.0
         </div>
         <h1 className="text-5xl font-bold tracking-tight mb-5">
           The orchestrator for autonomous AI agents
