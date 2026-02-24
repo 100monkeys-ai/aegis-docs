@@ -375,7 +375,7 @@ Child  SecurityContext: "read-only-research" ✅ allowed (subset)
 Child  SecurityContext: "admin-unrestricted" ❌ rejected (SpawnError::ContextExceedsParentCeiling)
 ```
 
-Rate limits from the root user's `ZaruTier` `SecurityContext` apply collectively across all child tool calls within a swarm.
+Rate limits defined in the root execution's `SecurityContext` apply collectively across all child tool calls within a swarm.
 
 ---
 
@@ -462,7 +462,7 @@ SMCP uses structured error codes in HTTP 4xx responses:
 
 ## Audit Trail
 
-Every SMCP operation publishes a domain event for the audit trail. These are consumed by the Cortex, The Synapse, and compliance reporting:
+Every SMCP operation publishes a domain event for the audit trail. These are consumed by event bus subscribers and compliance reporting systems:
 
 | Event | Trigger |
 |---|---|

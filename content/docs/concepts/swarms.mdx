@@ -12,7 +12,7 @@ A **Swarm** is a group of agent executions that share a common parent root execu
 ## Swarm Topology
 
 ```
-Root Execution (ZaruSession / parent)
+Root Execution (parent)
 ├── Child Execution A  (depth 1)
 │   ├── Child Execution A1  (depth 2)
 │   └── Child Execution A2  (depth 2)
@@ -60,7 +60,7 @@ else:
 
 A child agent's `security_context` must be a **subset** of its parent's `security_context`. The orchestrator enforces this at spawn time and rejects the call with `SpawnError::ContextExceedsParentCeiling` if the child requests broader permissions than the parent holds.
 
-This prevents privilege escalation via spawned children. A `zaru-free` tier parent cannot spawn a child with `zaru-pro` capabilities.
+This prevents privilege escalation via spawned children. A parent holding a restricted `SecurityContext` cannot grant a child execution broader permissions than it holds itself.
 
 ---
 

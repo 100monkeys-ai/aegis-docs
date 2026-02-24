@@ -43,23 +43,24 @@ The release archive contains a single `aegis` binary. Place it anywhere on your 
 
 ## Start the Local Stack
 
-Clone the orchestrator repository to get the Docker Compose files and example configuration:
+Clone the examples repository — it contains the Docker Compose stack and example agents:
 
 ```bash
-git clone https://github.com/100monkeys-ai/aegis-orchestrator.git
-cd aegis-orchestrator
+git clone https://github.com/100monkeys-ai/aegis-examples.git
+cd aegis-examples
 ```
 
-Start all backing services:
+Copy the environment file and start all backing services:
 
 ```bash
-docker compose -f docker/docker-compose.dev.yml up -d
+cp deploy/.env.example deploy/.env
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-This starts PostgreSQL, SeaweedFS, and Temporal. Wait ~15 seconds for Temporal to finish initializing:
+This starts PostgreSQL, SeaweedFS, Temporal, Keycloak, Ollama, and the Cortex services. Wait ~30 seconds for Temporal to finish initializing:
 
 ```bash
-docker compose -f docker/docker-compose.dev.yml ps
+docker compose -f deploy/docker-compose.yml ps
 ```
 
 All services should show `running` (healthy).
@@ -71,7 +72,7 @@ All services should show `running` (healthy).
 Copy the reference configuration and edit it for your environment:
 
 ```bash
-cp aegis-config.yaml my-aegis-config.yaml
+cp deploy/aegis-config.yaml my-aegis-config.yaml
 ```
 
 At minimum, set your LLM provider credentials. The example below uses OpenAI:
@@ -141,11 +142,11 @@ Run the daemon in the background or manage it with systemd. See [Docker Runtime]
 
 ## Deploy a Demo Agent
 
-The repository ships with example agent manifests in `demo-agents/`.
+The `aegis-examples` repo you cloned earlier includes agent manifests ready to deploy. Start with the `hello-world` agent:
 
 ```bash
 # Deploy the hello-world agent
-aegis agent deploy ./demo-agents/hello-world/agent.yaml
+aegis agent deploy ./hello-world/agent.yaml
 
 # Confirm it is deployed
 aegis agent list

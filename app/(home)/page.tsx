@@ -78,18 +78,19 @@ export default function HomePage() {
 curl -fsSL https://github.com/100monkeys-ai/aegis-orchestrator/releases/latest/download/aegis-linux-x86_64.tar.gz \\
   | tar -xz -C /usr/local/bin
 
-# 2. Clone the repo for Docker Compose and demo agents
-git clone https://github.com/100monkeys-ai/aegis-orchestrator.git && cd aegis-orchestrator
+# 2. Clone aegis-examples for the Docker Compose stack and demo agents
+git clone https://github.com/100monkeys-ai/aegis-examples.git && cd aegis-examples
 
-# 3. Start backing services (Postgres, SeaweedFS, Temporal)
-docker compose -f docker/docker-compose.dev.yml up -d
+# 3. Start backing services (Postgres, SeaweedFS, Temporal, Ollama, ...)
+cp deploy/.env.example deploy/.env
+docker compose -f deploy/docker-compose.yml up -d
 
 # 4. Configure your LLM provider and start the daemon
 export OPENAI_API_KEY="sk-..."
-aegis daemon --config aegis-config.yaml
+aegis daemon --config deploy/aegis-config.yaml
 
 # 5. Deploy the hello-world agent and run it
-aegis agent deploy ./demo-agents/hello-world/agent.yaml
+aegis agent deploy ./hello-world/agent.yaml
 aegis execute --agent hello-world \\
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \\
   --watch
