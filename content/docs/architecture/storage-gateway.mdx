@@ -1,0 +1,178 @@
+---
+title: Storage Gateway
+description: AegisFSAL architecture, user-space NFSv3, FileHandle structure, UID/GID squashing, path canonicalization, and SeaweedFS integration.
+---
+
+# Storage Gateway
+
+The AEGIS Storage Gateway is the security boundary for all filesystem access by agent containers. It is implemented as a user-space NFSv3 server (`AegisFSAL`) running on the orchestrator host, with agent containers mounting their volumes via the kernel NFS client.
+
+---
+
+## Design Philosophy
+
+Traditional container volume mounts (bind mounts, `CAP_SYS_ADMIN` FUSE mounts) give agent containers unrestricted access to mounted storage once the mount is established. AEGIS takes a different approach:
+
+Every POSIX operation is routed through the orchestrator-controlled `AegisFSAL` before reaching SeaweedFS. This means:
+
+- **Per-operation authorization**: The orchestrator validates every read, write, create, and delete against the execution's manifest policies.
+- **Full audit trail**: Every file operation is published as a `StorageEvent` domain event.
+- **Path traversal prevention**: Server-side path canonicalization blocks `../` attempts before they reach SeaweedFS.
+- **No elevated privileges**: Agent containers require zero special capabilities (`CAP_SYS_ADMIN` is not needed).
+
+---
+
+## Component Hierarchy
+
+```
+Agent Container (Docker)
+  │  kernel NFS client
+  │  mount: addr=orchestrator_host, nfsvers=3, proto=tcp, nolock
+  │  /workspace → NFS server
+  ▼
+Orchestrator Host: NFS Server Gateway (user-space, tcp, port 2049)
+  │  NFSv3 protocol handler (nfsserve Rust crate)
+  ▼
+AegisFSAL (File System Abstraction Layer)
+  │  receive: LOOKUP, READ, WRITE, READDIR, GETATTR, CREATE, REMOVE
+  ├──► Decode FileHandle → extract execution_id + volume_id
+  ├──► Authorize: does execution own this volume?
+  ├──► Canonicalize path: reject ".." components
+  ├──► Enforce FilesystemPolicy (manifest allowlists)
+  ├──► Apply UID/GID squashing (return agent container's UID/GID, not real ownership)
+  ├──► Enforce quota (size_limit_bytes)
+  ├──► Publish StorageEvent to Event Bus
+  ▼
+StorageProvider trait
+  ├── SeaweedFS POSIX API client (default)
+  └── (future) S3-compatible / local filesystem
+```
+
+---
+
+## AegisFileHandle
+
+The NFSv3 protocol requires servers to return an opaque `FileHandle` for each file and directory. AEGIS encodes authorization information directly into the `FileHandle`:
+
+```
+FileHandle layout (48 bytes raw, ≤64 bytes serialized for NFSv3 compliance):
+┌──────────────────────────────────────────────┐
+│  execution_id  (UUID, 16 bytes)               │
+│  volume_id     (UUID, 16 bytes)               │
+│  inode_number  (u64, 8 bytes)                 │
+│  file_type     (u8, 1 byte: dir/file/symlink) │
+│  reserved      (7 bytes padding)              │
+└──────────────────────────────────────────────┘
+```
+
+When the NFS server receives a `READ` or `WRITE` for a given `FileHandle`, `AegisFSAL` extracts `execution_id` and `volume_id` and verifies that the requesting execution is authorized to access that volume. If the execution does not own the volume, the operation fails with `NFS3ERR_ACCES`.
+
+The 64-byte NFSv3 `FileHandle` size limit is a hard protocol constraint. The current layout uses 48 bytes raw + ~4 bytes bincode overhead = ~52 bytes serialized, safely within the limit.
+
+---
+
+## UID/GID Squashing
+
+When SeaweedFS stores files, they carry a real POSIX UID/GID. Agent containers run as varying user IDs. Without squashing, file ownership mismatches would cause permission errors.
+
+`AegisFSAL` overrides all file metadata returned by `GETATTR` to report the agent container's UID/GID rather than the real file ownership:
+
+- All `GETATTR` responses return `uid = agent_container_uid`, `gid = agent_container_gid`.
+- POSIX permission bit checks (`chmod 600`) are **not** enforced by the NFS server.
+- Authorization is handled entirely by the manifest `FilesystemPolicy`, not kernel permission bits.
+
+The `agent_container_uid` and `agent_container_gid` are stored in the `Execution` metadata when the container is created and retrieved by `AegisFSAL` during each operation.
+
+---
+
+## Path Canonicalization
+
+All incoming paths are canonicalized before reaching the `StorageProvider`:
+
+1. Resolve any `.` components.
+2. Detect any `..` components.
+3. If `..` is detected, reject the entire operation with `NFS3ERR_ACCES` and publish a `PathTraversalBlocked` event.
+4. Strip the volume's root prefix to produce a path relative to the SeaweedFS bucket.
+
+Example:
+```
+Incoming:    /workspace/../etc/passwd
+Step 2:      ".." detected
+Step 3:      REJECTED → NFS3ERR_ACCES
+             PathTraversalBlocked event published
+```
+
+---
+
+## Filesystem Policy Enforcement
+
+Each `WRITE`, `CREATE`, and `REMOVE` operation is validated against the manifest's `FilesystemPolicy`:
+
+```yaml
+spec:
+  security:
+    filesystem_policy:
+      read_paths:
+        - /workspace
+        - /agent
+      write_paths:
+        - /workspace
+```
+
+If an agent attempts to write to `/agent/config.py` but only `/workspace` is in `write_paths`, the operation is blocked with `NFS3ERR_PERM` and a `FilesystemPolicyViolation` event is published.
+
+---
+
+## Quota Enforcement
+
+When `size_limit_bytes` is set in the volume declaration, `AegisFSAL` tracks cumulative bytes written to the volume. Before each `WRITE`:
+
+```
+current_volume_size + write_size > size_limit_bytes?
+  → YES: fail with NFS3ERR_NOSPC, emit VolumeQuotaExceeded event
+  → NO:  proceed with write
+```
+
+Quota accounting is maintained in-memory per execution and persisted to PostgreSQL. It is not affected by file deletions in Phase 1 (quota only tracks bytes written, not net storage used).
+
+---
+
+## Transport Abstraction (AegisFSAL)
+
+`AegisFSAL` is designed as a transport-agnostic core. The NFSv3 server is the Phase 1 transport for Docker-based deployments. In Phase 2 (Firecracker), a `virtio-fs` frontend will use the same `AegisFSAL` security and authorization logic with zero code duplication:
+
+```
+Phase 1: Docker
+  NFSv3 Frontend → AegisFSAL → StorageProvider
+
+Phase 2: Firecracker
+  virtio-fs Frontend → AegisFSAL → StorageProvider
+```
+
+The FSAL authorization logic, path canonicalization, UID/GID squashing, quota tracking, and event publishing are written once in `AegisFSAL` and shared across both transports.
+
+---
+
+## Phase 1 Constraints
+
+### `nolock` Mount Option
+
+All NFS mounts in Phase 1 use `nolock`. This disables the NLM (Network Lock Manager) protocol, meaning POSIX advisory file locks (`flock`, `fcntl`) are not coordinated across agents.
+
+This is safe for the common case of single-agent-per-volume. For multi-agent coordination (swarms), use the [ResourceLock](/docs/concepts/swarms#resource-locking) mechanism provided by the swarm coordination context instead of POSIX locks.
+
+### Single-Writer Constraint
+
+Persistent volumes with `ReadWrite` access can only be mounted by one execution at a time. Attempting a second `ReadWrite` mount on the same volume returns `VolumeAlreadyMounted`. Multiple executions may hold `ReadOnly` mounts simultaneously.
+
+---
+
+## SeaweedFS Integration
+
+SeaweedFS is the default `StorageProvider`. `AegisFSAL` communicates with SeaweedFS via its POSIX-compatible FILER API. Volume data is stored in SeaweedFS with paths structured as:
+
+```
+/{tenant_id}/{volume_id}/{file_path}
+```
+
+SeaweedFS replication and erasure coding configuration is independent of AEGIS and managed via the SeaweedFS admin interface.

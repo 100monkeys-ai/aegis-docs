@@ -1,0 +1,12 @@
+{
+    "title": "Guides",
+    "pages": [
+        "writing-agents",
+        "deploying-agents",
+        "building-workflows",
+        "building-swarms",
+        "configuring-storage",
+        "llm-providers",
+        "validation"
+    ]
+}

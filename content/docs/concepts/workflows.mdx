@@ -1,0 +1,250 @@
+---
+title: Workflows
+description: Declarative finite state machine workflows backed by Temporal. State types, Blackboard context, transition rules, and the Forge reference pattern.
+---
+
+# Workflows
+
+A **Workflow** in AEGIS is a declarative finite state machine (FSM) defined in YAML. It coordinates multiple agent executions, system commands, and human approval gates into a durable, restartable sequence. Workflows are executed by the Temporal-backed workflow engine, which guarantees that execution state survives orchestrator restarts.
+
+---
+
+## Manifest Structure
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: code-review-pipeline
+spec:
+  initial_state: analyze
+  blackboard_defaults:
+    reviewer_style: strict
+  states:
+    analyze:
+      kind: Agent
+      agent_id: code-analyzer
+      timeout_secs: 120
+      transitions:
+        - condition:
+            field: analyze.status
+            operator: eq
+            value: success
+          target: review
+        - target: failed
+
+    review:
+      kind: Agent
+      agent_id: code-reviewer
+      timeout_secs: 180
+      transitions:
+        - condition:
+            field: review.score
+            operator: gte
+            value: "0.85"
+          target: approve
+        - target: failed
+
+    approve:
+      kind: Human
+      timeout_secs: 86400
+      transitions:
+        - condition:
+            field: approve.decision
+            operator: eq
+            value: approved
+          target: merge
+        - target: rejected
+
+    merge:
+      kind: System
+      command: "aegis-merge-tool --pr-id {{blackboard.pr_id}}"
+      transitions:
+        - target: done
+
+    done:
+      kind: System
+      command: "echo done"
+      transitions: []
+
+    failed:
+      kind: System
+      command: "echo failed"
+      transitions: []
+
+    rejected:
+      kind: System
+      command: "echo rejected"
+      transitions: []
+```
+
+---
+
+## State Types
+
+### `Agent`
+
+Executes an AEGIS agent using the 100monkeys iterative loop. The state waits for the agent execution to reach `completed` or `failed` before evaluating transitions.
+
+```yaml
+analyze:
+  kind: Agent
+  agent_id: code-analyzer     # must be a deployed agent name
+  timeout_secs: 300           # cancels execution if not complete within this time
+```
+
+The agent's final output is available in the Blackboard as `{{STATENAME.output}}`. Execution status is available as `{{STATENAME.status}}`.
+
+### `System`
+
+Runs a shell command on the orchestrator host. Useful for triggering external processes, sending notifications, or performing cleanup.
+
+```yaml
+notify:
+  kind: System
+  command: "curl -X POST https://hooks.example.com/notify -d '{\"status\": \"done\"}'"
+  timeout_secs: 30
+```
+
+### `Human`
+
+Suspends the workflow and waits for an operator to signal a decision. The workflow persists durably in Temporal — it will wait indefinitely (or until `timeout_secs`).
+
+```yaml
+approval_gate:
+  kind: Human
+  timeout_secs: 86400   # 24 hours; transitions to timeout branch if not approved
+```
+
+To resume a suspended workflow from the CLI:
+
+```bash
+aegis workflow signal <execution-id> --state approval_gate --decision approved
+```
+
+### `ParallelAgents`
+
+Fans out to multiple agent executions simultaneously. All agents run concurrently; the state waits until all have completed before evaluating transitions.
+
+```yaml
+parallel_review:
+  kind: ParallelAgents
+  agents:
+    - security-reviewer
+    - performance-reviewer
+    - style-reviewer
+  timeout_secs: 600
+```
+
+Results from each agent are available as `{{STATENAME.results.AGENTNAME.output}}`.
+
+---
+
+## The Blackboard
+
+The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is initialized from `spec.blackboard_defaults` and updated as states complete.
+
+### Accessing Blackboard Values
+
+Use Handlebars template syntax in `command` fields and transition conditions:
+
+```yaml
+# Access a prior state's output
+command: "process-results --input '{{analyze.output}}'"
+
+# Access a blackboard key set externally
+command: "git clone {{blackboard.repo_url}}"
+
+# Access a prior state's status
+condition:
+  field: analyze.status
+  operator: eq
+  value: success
+```
+
+Available template variables:
+
+| Variable | Description |
+|---|---|
+| `{{STATENAME.output}}` | Final text output of an Agent state. |
+| `{{STATENAME.status}}` | Status of a completed state (`success`, `failed`, `timeout`). |
+| `{{STATENAME.score}}` | Validation score of an Agent state (0.0–1.0). |
+| `{{blackboard.KEY}}` | A key set in `blackboard_defaults` or by a prior `System` state. |
+| `{{input.KEY}}` | A key from the workflow start input payload. |
+
+---
+
+## Transition Rules
+
+Each state has a `transitions` list. Rules are evaluated in order; the first matching condition wins.
+
+```yaml
+transitions:
+  - condition:
+      field: analyze.status   # dot-path into blackboard/state data
+      operator: eq            # eq | neq | gte | lte | gt | lt | contains
+      value: success          # string; numbers compared numerically if parseable
+    target: review
+  - condition:
+      field: analyze.score
+      operator: gte
+      value: "0.7"
+    target: partial_review
+  - target: failed            # no condition = default fallback
+```
+
+A transition with no `condition` is an unconditional fallback. Always include a fallback as the last transition to prevent the FSM from getting stuck.
+
+---
+
+## The Forge Reference Workflow
+
+The **Forge** is the canonical multi-agent development workflow. It implements a 7-state sequential pipeline with a human approval gate:
+
+```
+RequirementsAI → [Human Approval] → ArchitectureAI → TesterAI → CoderAI → ReviewerAI → CriticAI → SecurityAI
+```
+
+| State | Kind | Agent | Description |
+|---|---|---|---|
+| `requirements` | Agent | `requirements-agent` | Analyzes the input task and writes a structured requirements document. |
+| `approve_requirements` | Human | — | Operator reviews and approves requirements before proceeding. |
+| `architecture` | Agent | `architect-agent` | Designs system architecture based on approved requirements. |
+| `tests` | Agent | `tester-agent` | Writes test cases and test harness before any implementation. |
+| `code` | Agent | `coder-agent` | Implements the solution, running tests iteratively via the execution loop. |
+| `review` | Agent | `reviewer-agent` | Reviews code for correctness, style, and adherence to requirements. |
+| `critic` | Agent | `critic-agent` | Adversarial review — attempts to find failure cases and security issues. |
+| `security` | Agent | `security-agent` | Static analysis and security-specific validation. |
+
+Deploy and run the Forge workflow:
+
+```bash
+aegis workflow deploy ./workflows/forge.yaml
+aegis workflow start forge --input '{"task": "Build a REST API for user authentication", "repo_url": "https://github.com/org/repo"}'
+```
+
+---
+
+## Deploying and Managing Workflows
+
+```bash
+# Deploy a workflow manifest
+aegis workflow deploy ./my-workflow.yaml
+
+# List all deployed workflows
+aegis workflow list
+
+# Start a workflow execution
+aegis workflow start <workflow-name> --input '{"key": "value"}'
+
+# Check execution status
+aegis workflow status <execution-id>
+
+# Signal a Human state
+aegis workflow signal <execution-id> --state <state-name> --decision <value>
+
+# Cancel a running workflow
+aegis workflow cancel <execution-id>
+```
+
+See the [Workflow Manifest Reference](/docs/reference/workflow-manifest) for the complete field specification.

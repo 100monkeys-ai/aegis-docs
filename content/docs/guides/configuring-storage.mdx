@@ -1,0 +1,170 @@
+---
+title: Configuring Storage Volumes
+description: Declaring ephemeral and persistent volumes, volume mounts, access modes, quotas, and managing volumes via CLI.
+---
+
+# Configuring Storage Volumes
+
+AEGIS provides agents with filesystem storage via **Volumes**. Volumes are first-class domain entities managed by the orchestrator and backed by SeaweedFS. Agents access their volumes as a standard POSIX filesystem — the NFS mount is transparent to agent code.
+
+---
+
+## Volume Types
+
+| Storage Class | Description | TTL |
+|---|---|---|
+| **Ephemeral** | Temporary workspace; auto-deleted after execution or when TTL expires. | Required; e.g., `1h`, `30m`, `2h` |
+| **Persistent** | Survives across executions; must be explicitly deleted. | Not applicable |
+
+Use **ephemeral** volumes for scratch space, build artifacts, and intermediate results that do not need to outlive the execution.
+
+Use **persistent** volumes for data that must be shared across multiple executions, stored long-term, or readable by other agents.
+
+---
+
+## Declaring Volumes in the Manifest
+
+```yaml
+spec:
+  volumes:
+    # Ephemeral workspace scratch volume — deleted after 1 hour
+    - name: workspace
+      mount_path: /workspace
+      access_mode: ReadWrite
+      storage_class: ephemeral
+      ttl: 1h
+
+    # Persistent output volume — survives across executions
+    - name: output-store
+      mount_path: /output
+      access_mode: ReadWrite
+      storage_class: persistent
+
+    # Read-only access to a shared reference dataset
+    - name: reference-data
+      mount_path: /reference
+      access_mode: ReadOnly
+      storage_class: persistent
+      volume_id: "vol-a1b2c3d4-..."   # reference an existing volume by ID
+```
+
+### Volume Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Local identifier used to reference this mount within the manifest. |
+| `mount_path` | string | ✓ | Absolute path inside the container where the volume appears. |
+| `access_mode` | `ReadOnly` \| `ReadWrite` | ✓ | Access mode enforced by the storage gateway. |
+| `storage_class` | `ephemeral` \| `persistent` | ✓ | Lifetime of the volume. |
+| `ttl` | duration string | Required for ephemeral | Auto-deletion TTL. Supports `m` (minutes), `h` (hours), `d` (days). |
+| `volume_id` | string | | Pin to a specific existing volume. If omitted, a new volume is created. |
+| `size_limit_bytes` | integer | | Maximum allowed size. Writes that exceed this emit a `VolumeQuotaExceeded` event and return an error. |
+
+---
+
+## How Volumes Are Mounted
+
+When an execution starts, the orchestrator:
+
+1. Creates the declared volumes in SeaweedFS (or resolves existing ones via `volume_id`).
+2. Starts the NFS server gateway for each volume.
+3. Mounts the volumes into the agent container via the kernel NFS client (`nfsvers=3`).
+4. The agent sees the mount path as a standard filesystem directory.
+
+**No special code is required in `bootstrap.py`.** The agent can use ordinary Python `open()`, `os.path`, `shutil`, etc. to access volume contents.
+
+```python
+# Agents read and write volumes like any filesystem
+with open("/workspace/solution.py", "w") as f:
+    f.write(code_content)
+
+# Files written are immediately visible to the orchestrator
+# for FSAL tool operations (fs.read, fs.write, etc.)
+```
+
+---
+
+## Storage Gateway Security
+
+The AEGIS storage gateway (`AegisFSAL`) intercepts every POSIX operation on the volume:
+
+- **Authorization**: Verifies the requesting execution holds the volume's `FileHandle` (encoding `execution_id + volume_id`).
+- **Path canonicalization**: All paths are normalized server-side. Any `..` component is rejected before reaching SeaweedFS.
+- **Filesystem policy enforcement**: Read/write path allowlists from `spec.security.filesystem_policy` are enforced per-operation.
+- **Quota enforcement**: Writes that would exceed `size_limit_bytes` are blocked and emit `VolumeQuotaExceeded`.
+- **Audit logging**: Every operation (open, read, write, create, delete, readdir) is published as a `StorageEvent` domain event to the event bus.
+
+---
+
+## Quota Configuration
+
+Set a maximum volume size in bytes:
+
+```yaml
+volumes:
+  - name: workspace
+    mount_path: /workspace
+    access_mode: ReadWrite
+    storage_class: ephemeral
+    ttl: 2h
+    size_limit_bytes: 5368709120   # 5 GiB
+```
+
+If the agent writes data that would exceed the quota, the write fails with `ENOSPC` inside the container and a `VolumeQuotaExceeded` event is emitted.
+
+---
+
+## Phase 1 Constraints
+
+**Single-writer constraint**: In Phase 1, a persistent volume with `ReadWrite` access can only be mounted by one execution at a time. Attempting to mount an already-in-use `ReadWrite` persistent volume will cause the second execution to fail at startup with a `VolumeAlreadyMounted` error.
+
+**File locking**: NFS mounts use the `nolock` option. POSIX advisory locks (`flock`, `fcntl`) are not coordinated between agents. For multi-agent coordination on shared files, use the [ResourceLock](/docs/concepts/swarms#resource-locking) mechanism instead.
+
+---
+
+## Managing Volumes via CLI
+
+```bash
+# List all volumes on the node
+aegis volume list
+
+# Filter by storage class
+aegis volume list --storage-class persistent
+
+# Inspect a specific volume
+aegis volume get vol-a1b2c3d4-...
+
+# Delete a volume (persistent volumes only; ephemeral volumes auto-delete)
+aegis volume delete vol-a1b2c3d4-...
+
+# Force-delete (skips confirmation)
+aegis volume delete vol-a1b2c3d4-... --yes
+```
+
+Volumes used by an active execution cannot be deleted. The delete command returns an error if the volume is currently mounted.
+
+---
+
+## Pinning to an Existing Volume
+
+To pass data between executions via a persistent volume:
+
+```bash
+# Get the volume ID created by a previous execution
+VOL_ID=$(aegis volume list --output json | jq -r '[.[] | select(.name=="output-store")][0].id')
+echo $VOL_ID
+# vol-a1b2c3d4-...
+```
+
+In the next agent manifest:
+
+```yaml
+volumes:
+  - name: previous-output
+    mount_path: /previous
+    access_mode: ReadOnly
+    storage_class: persistent
+    volume_id: "vol-a1b2c3d4-..."
+```
+
+The previous execution's output is now readable at `/previous` in the new agent container.

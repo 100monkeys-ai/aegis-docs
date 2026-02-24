@@ -1,0 +1,228 @@
+---
+title: Workflow Engine
+description: Architecture of the AEGIS workflow FSM, Temporal integration, Blackboard system, and workflow execution lifecycle.
+---
+
+# Workflow Engine
+
+The AEGIS workflow engine executes declarative finite-state machine (FSM) workflows defined in YAML. It uses **Temporal** as the durable execution backend — Temporal guarantees that workflow state survives orchestrator restarts, container crashes, and network partitions.
+
+---
+
+## Architecture Overview
+
+```
+Workflow YAML manifest
+         │
+         ▼
+  WorkflowParser          Validates YAML; builds Workflow aggregate
+         │
+         ▼
+  WorkflowRepository      Persists to PostgreSQL
+         │
+         ▼
+  StartWorkflowUseCase    Creates WorkflowExecution, registers Temporal workflow
+         │
+         ▼
+  Temporal Worker ─────── Executes AegisWorkflow (Rust Temporal workflow function)
+         │
+         ├──► WorkflowState.Agent    → dispatches to ExecutionSupervisor
+         │                                (spins up container, runs 100monkeys loop)
+         │
+         ├──► WorkflowState.System   → runs shell command on orchestrator host
+         │
+         ├──► WorkflowState.Human    → suspends workflow; awaits external signal
+         │
+         └──► WorkflowState.Parallel → dispatches N agent executions concurrently;
+                                        waits for all to complete
+```
+
+---
+
+## Temporal Integration
+
+Temporal is used for **durable workflow execution** only. AEGIS does not expose Temporal concepts (workflows, activities, signals) in its public API or manifest format. Temporal is an infrastructure concern behind an Anti-Corruption Layer (ACL).
+
+The AEGIS Workflow manifest maps to Temporal as follows:
+
+| AEGIS Concept | Temporal Concept |
+|---|---|
+| `Workflow` | Temporal Workflow Definition |
+| `WorkflowExecution` | Temporal Workflow Run |
+| `WorkflowState` (Agent) | Temporal Activity |
+| `WorkflowState` (Human) | Temporal Signal Handler |
+| `Blackboard` | Temporal Workflow State (persisted in Temporal's event history) |
+| `TransitionRule` | Conditional logic within the Temporal workflow function |
+
+### Durability Benefits
+
+Because Temporal persists workflow event history:
+
+- An orchestrator crash during `WorkflowState.Agent` (e.g., while the agent container is running) will resume from the last committed state when the orchestrator restarts.
+- Human states can wait indefinitely for signals without consuming memory or CPU.
+- Workflow executions running for hours or days are fully supported.
+
+---
+
+## Domain Model
+
+```rust
+struct Workflow {
+    id: WorkflowId,
+    name: String,
+    initial_state_name: String,
+    states: HashMap<String, WorkflowState>,
+    blackboard_defaults: HashMap<String, Value>,
+}
+
+struct WorkflowState {
+    name: String,
+    kind: StateKind,
+    agent_id: Option<AgentId>,      // Agent states only
+    command: Option<String>,         // System states only
+    timeout_secs: u64,
+    transitions: Vec<TransitionRule>,
+}
+
+enum StateKind {
+    Agent,
+    System,
+    Human,
+    ParallelAgents,
+}
+
+struct TransitionRule {
+    condition: Option<Condition>,    // None = unconditional (default transition)
+    target: String,                  // Target state name
+}
+
+struct Condition {
+    field: String,                   // Blackboard field (e.g., "review.score")
+    operator: ConditionOperator,     // eq | ne | gt | gte | lt | contains
+    value: String,
+}
+```
+
+---
+
+## Blackboard System
+
+The **Blackboard** is the shared mutable context for a workflow execution. Each state reads from and writes to the Blackboard.
+
+### State Output Conventions
+
+When a `WorkflowState.Agent` completes, the orchestrator writes the execution result to the Blackboard under the state name:
+
+```
+Blackboard["requirements"] = {
+  "status": "success",
+  "output": "...agent's final output text...",
+  "score": 0.92,
+  "iterations": 2
+}
+```
+
+Downstream states reference these fields in `TransitionRule.condition.field`:
+
+```yaml
+- condition:
+    field: requirements.status
+    operator: eq
+    value: success
+  target: implement
+```
+
+### Template Variables
+
+The Blackboard also supports Handlebars template variables in agent input injected by the workflow engine:
+
+```yaml
+states:
+  implement:
+    kind: Agent
+    agent_id: coder-agent
+    input_template: |
+      Implement this task in {{blackboard.language}}.
+      Requirements: {{blackboard.requirements.output}}
+```
+
+Available template variables:
+
+| Variable | Description |
+|---|---|
+| `{{blackboard.<key>}}` | Any Blackboard top-level key |
+| `{{blackboard.<state>.<field>}}` | Output field from a named state |
+| `{{execution.id}}` | Current workflow execution ID |
+| `{{workflow.name}}` | Workflow name |
+| `{{input.<key>}}` | Original workflow input key |
+
+---
+
+## Human State Lifecycle
+
+A `WorkflowState.Human` suspends the Temporal workflow run and waits for an external signal:
+
+```
+WorkflowExecution
+  state = "approve_requirements"
+  status = WAITING_FOR_SIGNAL
+         │
+         │  Signal arrives via:
+         │    aegis workflow signal <exec-id> --state approve_requirements --decision approved
+         │  or via HTTP API:
+         │    POST /v1/workflow-executions/{id}/signal
+         │    {"state": "approve_requirements", "payload": {"decision": "approved"}}
+         ▼
+  Temporal signal received → Blackboard["approve_requirements"]["decision"] = "approved"
+  TransitionRule evaluates → target = "implement"
+  Workflow continues
+```
+
+Human states respect `timeout_secs`. If no signal arrives within the timeout, the workflow evaluates its `transitionS`. Typically the last (unconditional) transition leads to a `failed` state.
+
+---
+
+## ParallelAgents State
+
+When a `WorkflowState.ParallelAgents` is entered, the Temporal workflow dispatches all listed agent IDs concurrently as Temporal Activities:
+
+```
+Enter parallel_review
+│
+├── Activity: security-reviewer
+├── Activity: performance-reviewer  (all three run simultaneously)
+└── Activity: style-reviewer
+         │
+         └── All three complete
+               │
+               Blackboard["parallel_review"] = {
+                 "all_succeeded": true,
+                 "results": {
+                   "security-reviewer": {"status": "success", "score": 0.91},
+                   "performance-reviewer": {"status": "success", "score": 0.88},
+                   "style-reviewer": {"status": "success", "score": 0.95}
+                 }
+               }
+               │
+         TransitionRules evaluated → next state chosen
+```
+
+If any single agent fails, `all_succeeded` is set to `false`. The default transition (no condition) should lead to the failure handling state.
+
+---
+
+## Workflow Execution Events
+
+The workflow engine publishes to the event bus:
+
+| Event | Trigger |
+|---|---|
+| `WorkflowStarted` | `StartWorkflowUseCase` completes |
+| `WorkflowStateEntered` | Temporal activity begins |
+| `WorkflowStateCompleted` | Temporal activity succeeds |
+| `WorkflowStateFailed` | Temporal activity fails or times out |
+| `WorkflowSignalReceived` | Human state receives signal |
+| `WorkflowCompleted` | Reaches a terminal state with no transitions |
+| `WorkflowFailed` | Reaches a terminal error state or exceeds Temporal timeout |
+
+These events are consumable via the gRPC streaming API for real-time monitoring dashboards.

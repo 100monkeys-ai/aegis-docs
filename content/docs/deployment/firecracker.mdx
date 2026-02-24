@@ -1,0 +1,162 @@
+---
+title: Firecracker Deployment
+description: KVM requirements, AgentRuntime trait abstraction, isolation model, jailer hardening, and virtio-fs storage transport.
+---
+
+# Firecracker Deployment
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout type="warn">
+Firecracker support is in active development and is not yet recommended for production use. The Docker runtime is the stable Phase 1 deployment target. This page documents the planned and in-progress Firecracker integration.
+</Callout>
+
+Firecracker is a microVM technology developed by AWS that provides kernel-level isolation for workloads. In AEGIS, Firecracker replaces Docker containers as the agent execution runtime, giving each agent its own micro-virtual machine rather than a shared-kernel container.
+
+---
+
+## Why Firecracker
+
+Docker containers share the host kernel — a container escape vulnerability could give a malicious prompt-injected agent code execution on the host. Firecracker provides hardware-level isolation via KVM:
+
+| Property | Docker Container | Firecracker microVM |
+|---|---|---|
+| Kernel isolation | Shared host kernel | Dedicated guest kernel per agent |
+| Attack surface | Kernel syscall interface (~350 calls) | Minimal API (≈ 50 ops) |
+| Boot time | ~100ms | ~125ms |
+| Memory overhead | ~5 MiB | ~5 MiB |
+| Storage transport | NFS (NFSv3 over bridge network) | virtio-fs (shared memory, no network) |
+| Blast radius on escape | Host compromise possible | Bounded to single microVM |
+
+---
+
+## Hardware Requirements
+
+Firecracker requires KVM (Kernel-based Virtual Machine). This means:
+
+- **Bare-metal Linux servers** with Intel VT-x or AMD-V CPU virtualization extensions.
+- **AWS bare-metal instances** or instances with nested virtualization enabled (e.g., `c5.metal`).
+- **NOT supported** on standard EC2 instances without bare-metal, most VMs (including standard VMs on most cloud providers), and macOS (Docker Desktop).
+
+Verify KVM availability:
+
+```bash
+# Check for KVM device nodes
+ls -la /dev/kvm
+
+# Verify CPU virtualization extensions
+grep -cw vmx /proc/cpuinfo   # Intel (should return > 0)
+grep -cw svm /proc/cpuinfo   # AMD  (should return > 0)
+```
+
+---
+
+## AgentRuntime Trait
+
+The AEGIS orchestrator abstracts the container/VM runtime behind the `AgentRuntime` trait. This is the key abstraction that enables swapping Docker for Firecracker without changing any other code:
+
+```rust
+#[async_trait]
+trait AgentRuntime: Send + Sync {
+    /// Start a new execution unit (container or microVM)
+    async fn start(&self, spec: RuntimeSpec) -> Result<ExecutionUnitId>;
+
+    /// Stop and remove an execution unit
+    async fn stop(&self, id: ExecutionUnitId) -> Result<()>;
+
+    /// Check if an execution unit is still running
+    async fn is_running(&self, id: ExecutionUnitId) -> Result<bool>;
+
+    /// Get the runtime-specific address for the /v1/llm/generate endpoint
+    async fn get_agent_addr(&self, id: ExecutionUnitId) -> Result<String>;
+}
+```
+
+- `DockerRuntime` implements `AgentRuntime` using the bollard Docker library.
+- `FirecrackerRuntime` (in development) implements `AgentRuntime` using the Firecracker API over a Unix socket.
+
+---
+
+## Jailer Hardening
+
+Firecracker uses the **jailer** utility to drop privileges before starting the VMM process:
+
+- Firecracker runs as a non-root user in a `chroot` jail.
+- The jailer pre-creates the tap interface and cgroup settings.
+- `seccomp` filters limit the VMM process to only the system calls it needs.
+- Network access is fully isolated to a per-VM tap interface.
+
+AEGIS configures the jailer via `aegis-config.yaml` under `runtime.firecracker`:
+
+```yaml
+runtime:
+  type: firecracker
+  firecracker:
+    # Path to the jailer binary
+    jailer_binary: /usr/local/bin/jailer
+    # Path to the Firecracker VMM binary
+    firecracker_binary: /usr/local/bin/firecracker
+    # User/group for the jailed process
+    uid: 65534   # nobody
+    gid: 65534
+    # Kernel image for microVMs
+    kernel_image_path: /opt/aegis/vmlinux
+    # Root filesystem for agent microVMs (minimal Linux + Python)
+    rootfs_path: /opt/aegis/agent-rootfs.ext4
+    # CPU and memory limits
+    vcpu_count: 2
+    mem_size_mib: 512
+    # cgroup version (v1 or v2)
+    cgroup_version: v2
+```
+
+---
+
+## virtio-fs: Storage Transport for Firecracker
+
+In the Firecracker deployment, agent VMs cannot use NFSv3 over TCP (no network bridge by default). Instead, volumes are mounted via **virtio-fs** — a shared memory file transport that exposes the `AegisFSAL` backend directly to the microVM via a `vhost-user-fs` device.
+
+```
+microVM (guest kernel)
+  /workspace mounted via virtio-fs
+         │
+         │ shared memory (no network)
+         ▼
+vhost-user-fs process (host)
+         │
+         ▼
+AegisFSAL
+  Same security, authorization, audit, and quota logic as Phase 1 NFS
+         │
+         ▼
+SeaweedFS (StorageProvider)
+```
+
+The key architectural advantage: `AegisFSAL` is the same code regardless of transport. Security invariants (path canonicalization, UID/GID squashing, filesystem policy enforcement, quota) are implemented once and reused across NFS (Docker) and virtio-fs (Firecracker).
+
+---
+
+## Network Isolation in Firecracker
+
+Each Firecracker microVM gets its own network interface via a tap device on the host. Outbound traffic from the microVM is routed through the orchestrator proxy (SMCP), not directly to the internet. The tap interface is destroyed when the microVM stops.
+
+---
+
+## Enabling Firecracker (Development Preview)
+
+```yaml
+# aegis-config.yaml
+runtime:
+  type: firecracker
+  firecracker:
+    jailer_binary: /usr/local/bin/jailer
+    firecracker_binary: /usr/local/bin/firecracker
+    kernel_image_path: /opt/aegis/vmlinux
+    rootfs_path: /opt/aegis/agent-rootfs.ext4
+    vcpu_count: 2
+    mem_size_mib: 512
+```
+
+Pre-built kernel images and root filesystems compatible with AEGIS are available in the `aegis-orchestrator` repository under `docker/firecracker/`.
+
+Monitor progress on Firecracker support in the [aegis-orchestrator GitHub repository](https://github.com/100monkeys-ai/aegis-orchestrator).

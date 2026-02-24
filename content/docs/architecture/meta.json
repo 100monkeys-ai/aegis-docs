@@ -1,0 +1,12 @@
+{
+    "title": "Architecture",
+    "pages": [
+        "overview",
+        "execution-engine",
+        "workflow-engine",
+        "smcp",
+        "tool-routing",
+        "storage-gateway",
+        "event-bus"
+    ]
+}

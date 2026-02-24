@@ -1,0 +1,183 @@
+---
+title: Swarms
+description: Multi-agent swarm coordination — spawning child executions, inter-agent messaging, resource locking, and cascade cancellation.
+---
+
+# Swarms
+
+A **Swarm** is a group of agent executions that share a common parent root execution. One agent (the parent) spawns one or more child executions, coordinates with them via messaging, and synchronizes access to shared resources via TTL-backed locks. The orchestrator tracks the entire parent-child hierarchy and enforces security boundaries at spawn time.
+
+---
+
+## Swarm Topology
+
+```
+Root Execution (ZaruSession / parent)
+├── Child Execution A  (depth 1)
+│   ├── Child Execution A1  (depth 2)
+│   └── Child Execution A2  (depth 2)
+└── Child Execution B  (depth 1)
+    └── Child Execution B1  (depth 2)
+```
+
+**Maximum recursive depth: 3.** An execution at depth 3 cannot spawn further children. Attempts to do so are rejected with `SpawnError::MaxDepthExceeded`.
+
+---
+
+## Spawning Child Agents
+
+Agents spawn children by calling the `aegis.spawn_child` MCP tool from within `bootstrap.py`. The child executes asynchronously — `spawn_child` returns immediately with identifiers, and the parent uses `aegis.await_child` to block until completion.
+
+```python
+from aegis import AegisClient
+
+client = AegisClient()
+
+# Spawn a child agent
+result = client.call_tool("aegis.spawn_child", {
+    "manifest_yaml": open("/agent/worker-manifest.yaml").read(),
+    # swarm_id is optional; omit to have the orchestrator create a new swarm
+})
+
+child_execution_id = result["execution_id"]
+swarm_id = result["swarm_id"]
+
+# Do other work while the child runs...
+
+# Block until child completes (or timeout)
+outcome = client.call_tool("aegis.await_child", {
+    "execution_id": child_execution_id,
+    "timeout_secs": 300
+})
+
+if outcome["status"] == "completed":
+    print(f"Child succeeded: {outcome['output']}")
+else:
+    print(f"Child did not succeed: {outcome['status']}")
+```
+
+### Security Context Ceiling
+
+A child agent's `security_context` must be a **subset** of its parent's `security_context`. The orchestrator enforces this at spawn time and rejects the call with `SpawnError::ContextExceedsParentCeiling` if the child requests broader permissions than the parent holds.
+
+This prevents privilege escalation via spawned children. A `zaru-free` tier parent cannot spawn a child with `zaru-pro` capabilities.
+
+---
+
+## Inter-Agent Messaging
+
+Agents within a swarm can send messages to each other using unicast (to a specific agent) or broadcast (to all agents in the swarm).
+
+```python
+# Unicast to a specific agent
+client.call_tool("aegis.send_message", {
+    "to_agent_id": "agent-uuid-here",
+    "payload": b"<serialized task data>"
+})
+
+# Broadcast to all agents in the swarm
+client.call_tool("aegis.broadcast_message", {
+    "swarm_id": swarm_id,
+    "payload": b"<serialized task data>"
+})
+```
+
+Messages are raw bytes. Agents are responsible for serialization (e.g., JSON, msgpack). Message payloads are **not logged** — only the payload size is recorded in `MessageSent` domain events for audit purposes.
+
+There is no message ordering guarantee between different sender-receiver pairs. Within a single sender-receiver pair, messages are delivered in send order.
+
+---
+
+## Resource Locking
+
+When multiple child agents need exclusive access to a shared resource (for example, writing to the same file or updating a shared database row), they use the `ResourceLock` mechanism.
+
+```python
+# Acquire a lock
+lock = client.call_tool("aegis.acquire_lock", {
+    "resource": "workspace/shared-config.json",
+    "ttl_secs": 60   # lock auto-expires after 60 seconds even if not released
+})
+
+lock_token = lock["lock_token"]
+
+try:
+    # ... exclusive work ...
+    pass
+finally:
+    # Release the lock
+    client.call_tool("aegis.release_lock", {
+        "lock_token": lock_token
+    })
+```
+
+### Lock Behavior
+
+| Property | Value |
+|---|---|
+| **Default TTL** | 300 seconds (5 minutes) |
+| **TTL on execution end** | Lock is automatically released when the holding execution completes or is cancelled. |
+| **Contention behavior** | `acquire_lock` blocks until the lock is available or the call times out. |
+| **Expiry** | A background GC task sweeps expired locks. `LockExpired` domain event is emitted. |
+
+To avoid deadlocks:
+- Always use `try/finally` to release locks.
+- Set TTLs conservatively — if your critical section takes 10 seconds, use a 30-second TTL.
+- Avoid circular lock acquisition (A waits for B's lock while B waits for A's lock).
+
+---
+
+## Cascade Cancellation
+
+Cancelling a swarm propagates cancellation to all live child executions.
+
+```bash
+# Cancel by swarm ID (cancels all children)
+aegis swarm cancel <swarm-id>
+
+# Cancel the root execution (also cancels all children)
+aegis execution cancel <root-execution-id>
+```
+
+The cancellation reason is recorded in `ChildCancelled` domain events for the audit trail. Possible reasons:
+
+| Reason | Description |
+|---|---|
+| `ParentCancelled` | Parent execution was explicitly cancelled. |
+| `Manual` | Operator called `aegis swarm cancel` directly. |
+| `AllChildrenComplete` | Swarm dissolved naturally after all children finished. |
+| `SecurityViolation` | A security policy violation triggered swarm termination. |
+
+---
+
+## Swarm Lifecycle
+
+```
+Created ──▶ Active ──▶ Dissolving ──▶ Dissolved
+                          ▲
+                          │
+               (all children complete, or cancel called)
+```
+
+A swarm enters `Dissolving` when:
+- All child executions have completed/failed, or
+- `aegis swarm cancel` is called.
+
+It transitions to `Dissolved` once all in-flight child state is cleaned up (locks released, messages drained).
+
+---
+
+## Monitoring Swarms
+
+```bash
+# List all swarms for a root execution
+aegis swarm list --execution <root-execution-id>
+
+# Get swarm details (children, status, locks)
+aegis swarm get <swarm-id>
+
+# List child executions in a swarm
+aegis swarm children <swarm-id>
+```
+
+Swarm lifecycle events (`SwarmCreated`, `ChildAgentSpawned`, `ChildAgentCompleted`, `SwarmDissolved`, etc.) are published to the event bus and can be consumed by external systems via the gRPC streaming API.

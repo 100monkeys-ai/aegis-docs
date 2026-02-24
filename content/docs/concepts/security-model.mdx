@@ -1,0 +1,178 @@
+---
+title: Security Model
+description: The two-layer AEGIS security model — infrastructure policy enforcement and SMCP protocol-level security.
+---
+
+# Security Model
+
+AEGIS enforces security at two independent layers that work in concert: **infrastructure-level policy** (declared in the agent manifest) and **SMCP** (Secure Model Context Protocol, enforced at the tool call level). Both layers must be satisfied for any agent operation to proceed.
+
+---
+
+## Layer 1: Infrastructure Policy
+
+Infrastructure policy is declared in the agent manifest under `spec.security`. It is evaluated by the orchestrator before the container starts and enforced by runtime and network controls during execution.
+
+### Network Policy
+
+Controls which external domains the agent container is permitted to reach.
+
+```yaml
+security:
+  network_policy:
+    mode: allow          # "allow" = allowlist; "deny" = blocklist
+    allowlist:
+      - api.github.com
+      - api.openai.com
+      - pypi.org
+```
+
+In `allow` mode, all outbound connections not in the `allowlist` are blocked at the container network layer. In `deny` mode, all connections except those in the list are permitted.
+
+### Filesystem Policy
+
+Controls which paths inside the container the agent may read from or write to.
+
+```yaml
+security:
+  filesystem_policy:
+    read_paths:
+      - /workspace
+      - /agent
+    write_paths:
+      - /workspace
+```
+
+Path restrictions are enforced by the AEGIS storage gateway at the `AegisFSAL` layer — not by kernel permissions. This means UID/GID of the running process are irrelevant; the gateway checks path prefix allowlists on every filesystem operation.
+
+### Resource Limits
+
+CPU and memory ceilings prevent resource exhaustion.
+
+```yaml
+resources:
+  cpu_quota: 1.0           # fractional CPU cores
+  memory_bytes: 1073741824 # 1 GiB; container is OOM-killed if exceeded
+  timeout_secs: 300        # hard wall-clock timeout for the entire execution
+```
+
+---
+
+## Layer 2: SMCP (Secure Model Context Protocol)
+
+SMCP is the protocol-level security layer that governs all MCP tool calls. Every tool invocation from an agent is wrapped in a cryptographically signed `SmcpEnvelope`. The orchestrator verifies the signature and evaluates the call against the agent's assigned `SecurityContext` before forwarding to any tool server.
+
+### Key Concepts
+
+| Concept | Description |
+|---|---|
+| **`SecurityContext`** | A named set of permitted tool capabilities defined in node config (e.g., `"default"`, `"restricted"`, `"privileged"`). |
+| **`SecurityToken`** | A short-lived JWT issued by the orchestrator at attestation time, scoping the agent to its `SecurityContext`. |
+| **`SmcpEnvelope`** | Every tool call is wrapped in an envelope containing the `SecurityToken`, an Ed25519 signature, and the inner MCP payload. |
+| **`PolicyEngine`** | Cedar-based rule evaluator that checks each tool call against the `SecurityContext` capabilities. |
+
+### Attestation Flow
+
+At agent startup, `bootstrap.py` performs a one-time attestation:
+
+1. Bootstrap generates an **Ed25519 keypair**. The private key exists only in process memory and is never written to disk.
+2. Bootstrap sends an `AttestationRequest` (public key + container ID) to the orchestrator.
+3. The orchestrator verifies the container ID is a known live execution, then issues a `SecurityToken` (JWT signed by the orchestrator's root key via OpenBao) scoped to the agent's `security_context` from the manifest.
+4. Bootstrap receives the `SecurityToken` and uses it + the private key to sign all subsequent tool call envelopes.
+
+### Per-Call Authorization
+
+On every tool call:
+
+1. `SmcpMiddleware` in the orchestrator receives the `SmcpEnvelope`.
+2. It verifies the Ed25519 signature against the public key registered at attestation.
+3. It decodes the `SecurityToken` and verifies it is not expired and matches the current `execution_id`.
+4. It passes the tool name and parameters to the `PolicyEngine`.
+5. The `PolicyEngine` evaluates Cedar rules for the tool pattern against the `SecurityContext` capabilities:
+   - Does the capability list include a pattern matching this tool name?
+   - If the call is a filesystem operation, is the path within the allowlist for this capability?
+   - Has the rate limit for this tool been exceeded?
+6. If all checks pass, the tool call is forwarded to the appropriate routing path.
+7. Any failure at steps 2–5 emits a `PolicyViolationBlocked` event and returns an error to the agent.
+
+### Credential Isolation
+
+Agents **never receive** API keys, database credentials, or other secrets. The orchestrator resolves credentials from OpenBao (see [Secrets Management](/docs/deployment/secrets)) and injects them directly into outbound tool call requests — invisible to the agent process. This is enforced architecturally: the credential resolution happens in the orchestrator host process after the `SmcpEnvelope` is verified.
+
+### Non-Repudiation
+
+Because every tool call is signed with the agent's ephemeral Ed25519 private key, and only the orchestrator can issue `SecurityToken`s, there is a cryptographic audit trail proving which agent made which tool call. An agent cannot deny a tool invocation it made.
+
+---
+
+## SecurityContext Configuration
+
+`SecurityContext` definitions are declared in `aegis-config.yaml`:
+
+```yaml
+security_contexts:
+  - name: default
+    capabilities:
+      - tool: "fs.*"
+        path_allowlist:
+          - /workspace
+        rate_limit:
+          calls_per_minute: 100
+      - tool: "cmd.run"
+        rate_limit:
+          calls_per_minute: 30
+      - tool: "web.search"
+        rate_limit:
+          calls_per_minute: 10
+
+  - name: restricted
+    capabilities:
+      - tool: "fs.read"
+        path_allowlist:
+          - /workspace
+        rate_limit:
+          calls_per_minute: 50
+
+  - name: privileged
+    capabilities:
+      - tool: "fs.*"
+        path_allowlist:
+          - /workspace
+          - /shared
+      - tool: "cmd.run"
+        rate_limit:
+          calls_per_minute: 100
+      - tool: "web.*"
+        rate_limit:
+          calls_per_minute: 50
+      - tool: "github.*"
+        rate_limit:
+          calls_per_minute: 20
+```
+
+An agent's manifest references a context by name:
+
+```yaml
+spec:
+  security:
+    security_context: default
+```
+
+---
+
+## Runtime Isolation
+
+The security model is strengthened by the underlying container runtime:
+
+**Docker (development/staging):**
+- Container runs with default seccomp profile.
+- Network isolation via Docker bridge networks.
+- No `CAP_SYS_ADMIN` required — AEGIS volumes are mounted over NFS, not FUSE.
+
+**Firecracker (production):**
+- Each agent execution runs in an independent KVM micro-VM.
+- The VM has no knowledge of the host network, no shared memory with the host, and a strict device model.
+- A compromised agent process is contained within its VM boundary.
+- ~125ms VM boot time; overhead is amortized over the execution duration.
+
+See [Firecracker Runtime](/docs/deployment/firecracker) for production deployment details.

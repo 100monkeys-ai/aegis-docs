@@ -1,0 +1,215 @@
+---
+title: MCP Tool Routing
+description: The three tool routing paths — FSAL host file operations, SMCP External host MCP servers, and Dispatch Protocol in-container execution.
+---
+
+# MCP Tool Routing
+
+The AEGIS orchestrator mediates every tool call an agent makes. No tool call travels directly from the agent container to a tool server. Instead, the `SmcpMiddleware` receives all tool call envelopes, verifies them, and routes them via one of three paths based on the tool's type.
+
+This **Orchestrator Proxy Pattern** ensures:
+- API credentials never reach agent containers.
+- Every tool call is logged for audit.
+- SMCP policy enforcement happens before any action is taken.
+
+---
+
+## The Three Routing Paths
+
+```
+Agent Container                  Orchestrator Host                   External
+    │                                   │                              │
+    │  POST /v1/llm/generate             │                              │
+    │  (with tool call in messages)      │                              │
+    │──────────────────────────────────►│                              │
+    │                                   │                              │
+    │                         SmcpMiddleware: verify envelope          │
+    │                                   │                              │
+    │                         Route Tool Call:                         │
+    │                                   │                              │
+    │                    ┌──────────────┼──────────────┐               │
+    │                    │              │              │               │
+    │               PATH 1:        PATH 2:        PATH 3:              │
+    │               FSAL           SMCP           Dispatch             │
+    │               Host File      External       Protocol             │
+    │               Ops            Host MCP                            │
+    │                    │              │              │               │
+    │                    ▼              ▼              │               │
+    │               AegisFSAL      Tool Server    ◄────┘               │
+    │               (SeaweedFS)    Process        OrchestratorMessage  │
+    │                    │         (e.g.,          {type:"dispatch"}   │
+    │                    │         web-search,      │                  │
+    │                    │         gmail)           │                  │
+    │                    │              │           ▼                  │
+    │                    │              └──────────►│ External API     │
+    │                    │                              │              │
+    │                    │                              │              │
+    │◄───────────────────┴──────────────Tool result returned ─────────────│
+```
+
+---
+
+## Path 1: FSAL Host File Operations
+
+Used for: `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list`
+
+File system operations are executed **directly on the orchestrator host** via the `AegisFSAL` (File System Abstraction Layer). The agent container does not receive a dispatch message for `fs.*` calls — the result is returned synchronously as part of the LLM API response.
+
+```
+Agent LLM output: tool call {name: "fs.write", arguments: {path: "/workspace/solution.py", content: "..."}}
+         │
+         ▼
+SmcpMiddleware
+  - Verify SmcpEnvelope (signature, token, expiry)
+  - PolicyEngine: path /workspace/solution.py in allowlist? YES
+         │
+         ▼
+AegisFSAL.write(file_handle, offset, data)
+  - file_handle encodes execution_id + volume_id (64-byte max, NFSv3 constraint)
+  - Path canonicalization (reject any ".." components)
+  - Write to SeaweedFS via StorageProvider trait
+  - Publish StorageEvent.FileWritten to event bus
+         │
+         ▼
+Result: {success: true, bytes_written: 234}
+  - Injected into LLM message history as tool result
+```
+
+---
+
+## Path 2: SMCP External (Host MCP Servers)
+
+Used for: `web.fetch`, `web.search`, `email.send`, `calendar.*`, and any other external-access tool
+
+Long-running MCP server processes (`Tool Servers`) run on the orchestrator host. They make external API calls using credentials sourced from OpenBao — credentials never enter agent containers.
+
+```
+Agent tool call: {name: "web.fetch", arguments: {url: "https://api.github.com/..."}}
+         │
+         ▼
+SmcpMiddleware
+  - Verify envelope
+  - PolicyEngine: domain api.github.com in allowlist? YES
+  - Rate limit check: under 20/minute? YES
+         │
+         ▼
+Tool Router: forward to web-search Tool Server (stdio MCP process on host)
+         │
+         ▼
+Tool Server makes HTTP request to api.github.com
+  (using GITHUB_TOKEN sourced from OpenBao KV mount)
+         │
+         ▼
+Response returned to Orchestrator → injected as tool result in LLM context
+```
+
+### Tool Server Configuration
+
+MCP tool servers are declared in `aegis-config.yaml`:
+
+```yaml
+tools:
+  mcp_servers:
+    - name: web-search
+      command: ["node", "/opt/aegis-tools/web-search/index.js"]
+      env:
+        SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+      capabilities:
+        - web.search
+        - web.fetch
+
+    - name: gmail-tools
+      command: ["python", "/opt/aegis-tools/gmail/server.py"]
+      env:
+        GOOGLE_OAUTH_TOKEN: "vault:aegis-system/tools/gmail-oauth"
+      capabilities:
+        - email.send
+        - email.read
+```
+
+Servers are started on-demand and kept running (with a configurable idle timeout). If a tool server process crashes, the orchestrator restarts it before the next tool call.
+
+---
+
+## Path 3: Dispatch Protocol (In-Container Execution)
+
+Used for: `cmd.run` — any tool that requires executing a subprocess **inside** the agent container
+
+The Dispatch Protocol sends a typed command message from the orchestrator to `bootstrap.py`, which runs the subprocess and reports the result back.
+
+### Wire Format
+
+```
+Orchestrator → bootstrap.py:
+{
+  "type": "dispatch",
+  "dispatch_id": "uuid-v4-...",
+  "action": "exec",
+  "command": "python",
+  "args": ["/workspace/solution.py"]
+}
+
+bootstrap.py runs subprocess (e.g., "python /workspace/solution.py")
+
+bootstrap.py → Orchestrator (POST /v1/llm/generate):
+{
+  "type": "dispatch_result",
+  "dispatch_id": "uuid-v4-...",    ← must match
+  "exit_code": 0,
+  "stdout": "All tests passed.\n",
+  "stderr": ""
+}
+```
+
+The `dispatch_id` is a UUID generated by the orchestrator for each dispatch. `bootstrap.py` echoes it back to prevent result correlation errors. Mismatched IDs are rejected.
+
+### `BuiltinDispatcher`
+
+`cmd.run` is handled by the `BuiltinDispatcher` — it is NOT an external MCP server process. The `BuiltinDispatcher` is a logical node in the tool routing configuration that validates commands against the `SubcommandAllowlist` before issuing the dispatch message.
+
+In `aegis-config.yaml`:
+
+```yaml
+tools:
+  builtin_dispatcher:
+    enabled: true
+    output_limit_bytes: 1048576    # 1 MiB per stdout/stderr
+    timeout_secs: 60               # individual subprocess timeout
+  subcommand_allowlist:
+    python:
+      - /workspace
+    pytest:
+      - /workspace/tests
+    npm:
+      - install
+      - run
+      - test
+```
+
+---
+
+## Tool Routing Decision Table
+
+| Tool Name | SMCP Policy Applied | Routing Path | Executor |
+|---|---|---|---|
+| `fs.read`, `fs.write`, `fs.create`, `fs.delete` | Filesystem allowlist | FSAL | AegisFSAL on orchestrator host |
+| `cmd.run` | SubcommandAllowlist | Dispatch Protocol | subprocess in agent container via bootstrap.py |
+| `web.fetch`, `web.search` | Domain allowlist, rate limit | SMCP External | `web-search` Tool Server on host |
+| `email.send` | Domain and account allowlist | SMCP External | `gmail-tools` Tool Server on host |
+| Any unregistered tool | — | Rejected | `ToolPolicyViolation` event emitted |
+
+---
+
+## Event Audit Trail
+
+Every tool call routing decision produces a domain event published to the event bus:
+
+| Event | Trigger |
+|---|---|
+| `MCPToolEvent::InvocationRequested` | SmcpMiddleware receives and validates envelope |
+| `MCPToolEvent::InvocationCompleted` | Tool result returned to agent |
+| `MCPToolEvent::InvocationFailed` | Tool server error or subprocess non-zero exit |
+| `MCPToolEvent::ToolPolicyViolation` | PolicyEngine denies the call |
+| `CommandExecutionEvent::CommandExecutionStarted` | Dispatch message sent to bootstrap.py |
+| `CommandExecutionEvent::CommandPolicyViolation` | SubcommandAllowlist check fails |
+| `StorageEvent::FileWritten` / `FileRead` etc. | AegisFSAL processes fs.* operation |

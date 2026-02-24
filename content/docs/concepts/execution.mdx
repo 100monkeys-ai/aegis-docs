@@ -1,0 +1,179 @@
+---
+title: The Execution Loop
+description: How the 100monkeys outer loop, inner loop, and Dispatch Protocol work together to run an agent execution.
+---
+
+# The Execution Loop
+
+AEGIS executes agents in a two-loop architecture. The **outer loop** (`ExecutionSupervisor`) manages retries across fresh container instances. The **inner loop** (`InnerLoopService`) handles transparent LLM tool call interception within a single container run. Understanding both is essential for reasoning about agent behavior, debugging failures, and configuring validation correctly.
+
+---
+
+## The Outer Loop: ExecutionSupervisor
+
+The `ExecutionSupervisor` drives the 100monkeys iterative refinement strategy. When an execution is started, the supervisor:
+
+1. **Spawns a fresh, isolated container** from the agent's image. Each iteration gets a clean environment — no shared process state from previous iterations.
+2. **Injects context** into the container: the task input, any prior iteration errors (on retries), and tool definitions filtered to the agent's declared capabilities.
+3. **Monitors execution** until the inner loop reports completion or timeout.
+4. **Runs validators** against the iteration output. Validators produce a `ValidationScore` (0.0–1.0) and `Confidence` (0.0–1.0).
+5. **Decides the next action**:
+   - Score ≥ threshold → `IterationStatus::Success` → execution completes.
+   - Score < threshold, iterations remaining → `IterationStatus::Refining` → error context injected, next container spawned.
+   - Score < threshold, max iterations reached → `IterationStatus::Failed` → execution fails.
+   - Hard timeout hit → execution cancelled.
+
+### Iteration State Machine
+
+```
+          ┌─────────┐
+          │ Running │
+          └────┬────┘
+               │ inner loop completes
+               ▼
+         ┌──────────┐      score ≥ threshold     ┌─────────┐
+         │ Validating│─────────────────────────▶ │ Success │
+         └──────────┘                            └─────────┘
+               │ score < threshold
+               │ iterations < max
+               ▼
+          ┌──────────┐
+          │ Refining │──── inject error, spawn next container
+          └──────────┘
+               │ iterations == max
+               ▼
+           ┌────────┐
+           │ Failed │
+           └────────┘
+```
+
+### `Execution` Aggregate
+
+The `Execution` aggregate root enforces these invariants at the domain level:
+
+- At most one iteration is `running` at a time.
+- Iteration numbers are sequential with no gaps.
+- `max_iterations` cannot be exceeded (default: 10).
+- A completed or failed execution is immutable.
+
+---
+
+## The Inner Loop: InnerLoopService
+
+Within a single container run, `InnerLoopService` implements transparent LLM tool call interception. The agent's `bootstrap.py` never receives raw tool call JSON from the LLM — the orchestrator handles it completely.
+
+### Communication Channel
+
+`bootstrap.py` communicates with the orchestrator over a single long-running HTTP POST to `/v1/llm/generate`. This channel carries a discriminated union of message types in both directions.
+
+**Agent → Orchestrator (`AgentMessage`):**
+
+```json
+// Start an LLM inference pass
+{ "type": "generate", "messages": [...], "tools": [...] }
+
+// Return result of a dispatched subprocess
+{ "type": "dispatch_result", "dispatch_id": "<uuid>", "exit_code": 0, "stdout": "...", "stderr": "" }
+```
+
+**Orchestrator → Agent (`OrchestratorMessage`):**
+
+```json
+// LLM produced a final text response — iteration complete
+{ "type": "final", "content": "I have written the solution to /workspace/solution.py" }
+
+// LLM requested a subprocess execution — run it and report back
+{ "type": "dispatch", "dispatch_id": "<uuid>", "action": "exec", "command": "python", "args": ["/workspace/test.py"] }
+```
+
+### Tool Call Flow
+
+When the LLM emits a tool call in its response:
+
+1. The orchestrator intercepts and routes the tool call via the Tool Router (see [MCP Tool Routing](/docs/architecture/tool-routing)).
+2. The tool result is appended to the conversation as a tool message.
+3. The orchestrator makes another LLM inference call with the updated conversation.
+4. Steps 1–3 repeat until the LLM emits a response with no tool calls.
+5. The orchestrator returns `OrchestratorMessage { type: "final" }` to `bootstrap.py`.
+
+From `bootstrap.py`'s perspective, it sends one `generate` message and receives one `final` response. All tool calls happen inside the orchestrator.
+
+---
+
+## The Dispatch Protocol
+
+The Dispatch Protocol handles tool calls that require running a subprocess **inside** the agent container — for example, compiling code, running tests, or executing an interpreter. This is Path 3 of the three-path tool router.
+
+### Why Not Docker Exec?
+
+The orchestrator cannot call Docker exec API directly because:
+- It would be runtime-specific (breaks Firecracker support).
+- It bypasses the bootstrap script's process supervision and output capture.
+
+Instead, the orchestrator sends a `dispatch` message over the existing HTTP channel to `bootstrap.py`, which runs the subprocess and sends back a `dispatch_result`.
+
+### Wire Format
+
+```
+Orchestrator                              bootstrap.py (in container)
+     │                                           │
+     │  POST /v1/llm/generate                    │
+     │  { type: "generate", messages: [...] }    │
+     │ ─────────────────────────────────────────▶│
+     │                                           │  (LLM calls cmd.run)
+     │  { type: "dispatch",                      │
+     │    dispatch_id: "abc-123",                │
+     │    action: "exec",                        │
+     │    command: "python",                     │
+     │    args: ["/workspace/test.py"] }         │
+     │ ◀─────────────────────────────────────────│
+     │                                           │  (runs subprocess)
+     │  POST /v1/llm/generate                    │
+     │  { type: "dispatch_result",               │
+     │    dispatch_id: "abc-123",                │
+     │    exit_code: 0,                          │
+     │    stdout: "All tests passed",            │
+     │    stderr: "" }                           │
+     │ ─────────────────────────────────────────▶│
+     │                                           │  (LLM continues)
+     │  { type: "final", content: "..." }        │
+     │ ◀─────────────────────────────────────────│
+```
+
+### SubcommandAllowlist
+
+Not every `cmd.run` invocation is permitted. The node config's `SubcommandAllowlist` is a `HashMap<String, Vec<String>>` mapping base commands to their allowed first positional arguments:
+
+```yaml
+tools:
+  subcommand_allowlist:
+    python: ["test.py", "-m", "-c"]
+    node: ["index.js", "test.js"]
+    cargo: ["build", "test", "run"]
+    npm: ["install", "test", "run"]
+    git: ["status", "diff", "log"]
+```
+
+If an agent attempts `cmd.run` with a command or subcommand not in the allowlist, the orchestrator rejects the dispatch and returns a policy violation event.
+
+---
+
+## Validation: Gradient Scoring
+
+AEGIS does not use binary pass/fail validation. Every validator produces:
+
+- **`ValidationScore`** (0.0–1.0): how well the output meets the criteria.
+- **`Confidence`** (0.0–1.0): certainty of the score.
+
+This allows nuanced threshold configuration. An agent can succeed with a score of 0.8 if `min_score: 0.8` is set, or be required to reach 0.95 for high-stakes tasks.
+
+Multiple validators are applied in order. The execution proceeds to the next iteration if any validator's score falls below its threshold.
+
+Validator types:
+- **`exit_code`** — deterministic; checks process exit code.
+- **`json_schema`** — deterministic; validates stdout against a JSON Schema.
+- **`regex`** — deterministic; matches stdout against a pattern.
+- **`semantic`** — LLM-as-Judge; single judge agent produces a score.
+- **`multi_judge`** — consensus across N judge agents.
+
+See [Configuring Agent Validation](/docs/guides/validation) for full configuration details.

@@ -1,0 +1,9 @@
+{
+    "title": "Reference",
+    "pages": [
+        "agent-manifest",
+        "workflow-manifest",
+        "cli",
+        "grpc-api"
+    ]
+}

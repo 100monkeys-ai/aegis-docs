@@ -1,0 +1,267 @@
+---
+title: Building Workflows
+description: Step-by-step guide to writing, deploying, and running multi-agent workflow FSMs with the Forge reference pattern.
+---
+
+# Building Workflows
+
+This guide walks through creating a multi-agent workflow using the AEGIS workflow YAML format. You will build a simplified version of the **Forge** reference pattern: a pipeline that takes a programming task through requirements analysis, implementation, and review.
+
+---
+
+## Prerequisites
+
+- AEGIS daemon running with Temporal configured (see [Getting Started](/docs/getting-started))
+- At least three agents deployed: `requirements-agent`, `coder-agent`, `reviewer-agent`
+- Basic familiarity with [Workflows](/docs/concepts/workflows)
+
+---
+
+## Step 1: Write the Workflow Manifest
+
+Create `my-pipeline.yaml`:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: dev-pipeline
+spec:
+  initial_state: requirements
+  blackboard_defaults:
+    language: python
+    test_framework: pytest
+
+  states:
+
+    # Stage 1: Analyze the task and produce a requirements document
+    requirements:
+      kind: Agent
+      agent_id: requirements-agent
+      timeout_secs: 180
+      transitions:
+        - condition:
+            field: requirements.status
+            operator: eq
+            value: success
+          target: approve_requirements
+        - target: failed
+
+    # Stage 2: Human approval gate before implementation begins
+    approve_requirements:
+      kind: Human
+      timeout_secs: 86400   # Wait up to 24 hours for operator approval
+      transitions:
+        - condition:
+            field: approve_requirements.decision
+            operator: eq
+            value: approved
+          target: implement
+        - condition:
+            field: approve_requirements.decision
+            operator: eq
+            value: rejected
+          target: failed
+
+    # Stage 3: Implement based on the approved requirements
+    implement:
+      kind: Agent
+      agent_id: coder-agent
+      timeout_secs: 600
+      transitions:
+        - condition:
+            field: implement.status
+            operator: eq
+            value: success
+          target: review
+        - target: failed
+
+    # Stage 4: Review the implementation
+    review:
+      kind: Agent
+      agent_id: reviewer-agent
+      timeout_secs: 300
+      transitions:
+        - condition:
+            field: review.score
+            operator: gte
+            value: "0.85"
+          target: done
+        - target: failed
+
+    done:
+      kind: System
+      command: "echo 'Pipeline complete. Output at /workspace/output.'"
+      transitions: []
+
+    failed:
+      kind: System
+      command: "echo 'Pipeline failed at state: {{blackboard.failed_state}}'"
+      transitions: []
+```
+
+---
+
+## Step 2: Using Blackboard Templates
+
+Agents in downstream states automatically receive earlier states' outputs via Blackboard templates. The `coder-agent`'s system prompt or input can reference the requirements output:
+
+In the `coder-agent`'s `bootstrap.py`:
+
+```python
+from aegis import AegisClient, TaskInput
+
+client = AegisClient()
+task = client.get_task()
+
+# The blackboard is available in the task input
+requirements_output = task.blackboard.get("requirements", {}).get("output", "")
+language = task.blackboard.get("language", "python")
+
+messages = [
+    {
+        "role": "system",
+        "content": f"Implement the following requirements in {language}."
+    },
+    {
+        "role": "user",
+        "content": f"Requirements:\n{requirements_output}\n\nTask: {task.input.get('task', '')}"
+    }
+]
+
+response = client.generate(messages=messages)
+print(response.content)
+```
+
+---
+
+## Step 3: Deploy the Workflow
+
+```bash
+aegis workflow deploy ./my-pipeline.yaml
+```
+
+Expected output:
+
+```
+Deployed workflow "dev-pipeline" (id: wf-a1b2c3d4-0000-...)
+```
+
+List deployed workflows:
+
+```bash
+aegis workflow list
+```
+
+---
+
+## Step 4: Start a Workflow Execution
+
+```bash
+aegis workflow start dev-pipeline \
+  --input '{"task": "Write a REST API for a simple to-do list with CRUD operations."}'
+```
+
+Expected output:
+
+```
+Workflow execution started: wfx-a1b2c3d4-1111-...
+```
+
+Watch the execution progress:
+
+```bash
+aegis workflow status wfx-a1b2c3d4-1111-...
+```
+
+Example output:
+
+```
+Execution ID: wfx-a1b2c3d4-1111-...
+Workflow:     dev-pipeline
+Status:       running
+Current State: approve_requirements (WAITING FOR HUMAN SIGNAL)
+
+State History:
+  requirements     completed  (2026-02-23T10:00:01Z → 10:02:14Z)
+  approve_requirements  waiting   (2026-02-23T10:02:15Z → ...)
+```
+
+---
+
+## Step 5: Signal a Human State
+
+The workflow is suspended at `approve_requirements`. To approve:
+
+```bash
+aegis workflow signal wfx-a1b2c3d4-1111-... \
+  --state approve_requirements \
+  --decision approved
+```
+
+To reject:
+
+```bash
+aegis workflow signal wfx-a1b2c3d4-1111-... \
+  --state approve_requirements \
+  --decision rejected
+```
+
+After approval, the workflow continues to the `implement` state automatically.
+
+---
+
+## Step 6: Monitor to Completion
+
+```bash
+# Continue watching status
+aegis workflow status wfx-a1b2c3d4-1111-...
+
+# Or watch agent executions spawned by the workflow
+aegis execution list --output json | jq '[.[] | select(.workflow_execution_id=="wfx-a1b2c3d4-1111-...")]'
+```
+
+---
+
+## Using ParallelAgents States
+
+Run multiple agents concurrently at any workflow stage:
+
+```yaml
+parallel_review:
+  kind: ParallelAgents
+  agents:
+    - security-reviewer
+    - performance-reviewer
+    - style-reviewer
+  timeout_secs: 600
+  transitions:
+    - condition:
+        field: parallel_review.all_succeeded
+        operator: eq
+        value: "true"
+      target: done
+    - target: failed
+```
+
+All three agents run simultaneously. The state waits until all have completed or any one fails (or `timeout_secs` is hit).
+
+---
+
+## Temporal UI
+
+Temporal provides a built-in workflow visibility UI that shows the durable state of every workflow execution. Access it at `http://localhost:8233` when running the local dev stack.
+
+The UI shows:
+- Current state of each execution
+- History of state transitions
+- Any pending timers (e.g., Human state timeouts)
+- Detailed error information for failed executions
+
+This is the authoritative view for debugging stuck or failed workflow executions.
+
+---
+
+## Workflow Manifest Reference
+
+For the complete field specification including all `StateKind` options, `TransitionRule` operators, and Blackboard template variables, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).

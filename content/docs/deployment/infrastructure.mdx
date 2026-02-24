@@ -1,0 +1,132 @@
+---
+title: Infrastructure Requirements
+description: Dependency matrix, hardware requirements, network topology, and the local development stack.
+---
+
+# Infrastructure Requirements
+
+This page defines the infrastructure components required to run AEGIS, their inter-dependencies, and minimum hardware specifications.
+
+---
+
+## Dependency Matrix
+
+| Component | Version | Role | Required |
+|---|---|---|---|
+| Docker Engine | 24.0+ | Agent container runtime (Phase 1) | ✓ |
+| Docker Compose | 2.20+ | Dev/staging orchestration | Dev only |
+| PostgreSQL | 15+ | Primary data store (agents, executions, events) | ✓ |
+| Temporal | 1.22+ | Durable workflow execution | ✓ (if using workflows) |
+| SeaweedFS | 3.60+ | Volume storage backend | ✓ |
+| OpenBao | 2.0+ | Secrets management | Recommended |
+| Keycloak | 24.0+ | OIDC identity provider | Recommended |
+| Linux kernel | 5.15+ | KVM support for Firecracker (Phase 2) | Phase 2 only |
+
+Minimum viable deployment (no Temporal, no workflows, OpenBao, or Keycloak) requires only Docker, PostgreSQL, and SeaweedFS.
+
+---
+
+## Network Architecture
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  AEGIS Node                                                   │
+│                                                               │
+│  ┌────────────────┐                                           │
+│  │ AEGIS Daemon   │  :9090 (gRPC)                             │
+│  │                │  :8080 (HTTP/REST)                        │
+│  │                │  :2049 (NFS server for agent volumes)     │
+│  └───┬────────────┘                                           │
+│      │                                                        │
+│      ├──► PostgreSQL  :5432  (private network)                │
+│      ├──► SeaweedFS   :8333  (private network)                │
+│      ├──► Temporal    :7233  (private network)                │
+│      ├──► OpenBao     :8200  (private network, TLS)           │
+│      └──► Keycloak    :8443  (can be shared service)          │
+│                                                               │
+│  ┌────────────────────────────────────────────────────────┐   │
+│  │  Agent Containers (Docker bridge network)              │   │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐       │   │
+│  │  │ container1 │  │ container2 │  │ container3 │       │   │
+│  │  │  NFS mount │  │  NFS mount │  │  NFS mount │       │   │
+│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘       │   │
+│  └────────┼───────────────┼───────────────┼───────────────┘   │
+│           └───────────────┴───────────────┘                   │
+│           All NFS traffic → Daemon host (port 2049)           │
+└───────────────────────────────────────────────────────────────┘
+```
+
+Agent containers communicate **only** with the AEGIS daemon (via `/v1/llm/generate` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, Keycloak, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
+
+---
+
+## Hardware Requirements
+
+### Development / Single-Node
+
+| Resource | Minimum | Recommended |
+|---|---|---|
+| CPU | 4 cores | 8+ cores |
+| RAM | 8 GiB | 16 GiB |
+| Disk | 40 GiB SSD | 200 GiB SSD |
+| OS | Linux, macOS (Docker Desktop) | Ubuntu 22.04 LTS |
+
+Note: macOS is supported for local development only (Docker Desktop). Production deployments require Linux.
+
+### Production Multi-Node
+
+Minimum 3 nodes for high availability:
+
+| Node Type | Role | CPU | RAM | Disk |
+|---|---|---|---|---|
+| AEGIS Orchestrator | Agent execution host | 16 cores | 32 GiB | 100 GiB SSD |
+| Database | PostgreSQL + Temporal | 8 cores | 16 GiB | 500 GiB NVMe |
+| Storage | SeaweedFS master + filer | 4 cores | 8 GiB | 1+ TiB HDD or NVMe |
+
+Scale AEGIS Orchestrator nodes horizontally to increase concurrent execution capacity. PostgreSQL and SeaweedFS can be scaled independently.
+
+---
+
+## Local Development Stack
+
+AEGIS provides a Docker Compose stack for local development:
+
+```bash
+# Start all services: PostgreSQL, SeaweedFS, Temporal, and dependencies
+docker compose -f docker/docker-compose.dev.yml up -d
+
+# Check service status
+docker compose -f docker/docker-compose.dev.yml ps
+
+# View logs
+docker compose -f docker/docker-compose.dev.yml logs -f
+```
+
+### Dev Stack Services
+
+| Service | Port | Purpose |
+|---|---|---|
+| PostgreSQL | 5432 | AEGIS database |
+| SeaweedFS Master | 9333 | SeaweedFS coordination |
+| SeaweedFS Filer | 8888 | SeaweedFS POSIX layer |
+| SeaweedFS Volume | 8080 | SeaweedFS data server |
+| Temporal Server | 7233 | Workflow execution |
+| Temporal Web UI | 8233 | Workflow visibility UI |
+
+Start the AEGIS daemon against the dev stack:
+
+```bash
+aegis daemon --config ./aegis-config.yaml
+```
+
+---
+
+## Ports
+
+| Port | Protocol | Service | Exposure |
+|---|---|---|---|
+| 8080 | HTTP | AEGIS REST API | Internal / load-balanced |
+| 9090 | gRPC | AEGIS gRPC API | Internal / load-balanced |
+| 2049 | TCP | NFS Server Gateway | Agent container LAN only |
+
+Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. It is intended for intra-host or intra-cluster communication only.

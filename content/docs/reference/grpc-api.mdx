@@ -1,0 +1,256 @@
+---
+title: gRPC API Reference
+description: aegis.runtime.v1 service methods, key message types, authentication, and versioning.
+---
+
+# gRPC API Reference
+
+AEGIS exposes a gRPC API at the address configured by `server.grpc_addr` (default `0.0.0.0:9090`). The API is defined in Protocol Buffers and versioned under the `aegis.runtime.v1` package.
+
+Proto source files are available in the `aegis-orchestrator` repository under `proto/`.
+
+---
+
+## Authentication
+
+All gRPC methods require a Bearer JWT in the `authorization` metadata key:
+
+```
+authorization: Bearer <keycloak-issued-jwt>
+```
+
+The `KeycloakAuthInterceptor` validates the token on every call. Unauthenticated calls receive `UNAUTHENTICATED`. Calls with insufficient role receive `PERMISSION_DENIED`.
+
+For `AegisRole` requirements per method, see the [IAM documentation](/docs/deployment/iam).
+
+---
+
+## Versioning
+
+The current stable API package is `aegis.runtime.v1`. Breaking changes are introduced in a new version (`v2`) and the old version is maintained for a minimum of 6 months. Non-breaking additions (new fields, new methods) are made within the existing version.
+
+---
+
+## `AgentService`
+
+Manages agent definitions.
+
+### `DeployAgent`
+
+```protobuf
+rpc DeployAgent(DeployAgentRequest) returns (DeployAgentResponse);
+```
+
+Creates a new agent or updates an existing one with the same name.
+
+```protobuf
+message DeployAgentRequest {
+  string manifest_yaml = 1;  // Complete Agent manifest YAML
+}
+
+message DeployAgentResponse {
+  string agent_id = 1;       // UUID of the created/updated agent
+  string name = 2;
+  string status = 3;         // "deployed"
+}
+```
+
+### `GetAgent`
+
+```protobuf
+rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+```
+
+```protobuf
+message GetAgentRequest {
+  string agent_id = 1;      // UUID or name
+}
+
+message GetAgentResponse {
+  string agent_id = 1;
+  string name = 2;
+  string status = 3;        // deployed | paused | archived
+  string manifest_yaml = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  map<string, string> labels = 7;
+}
+```
+
+### `ListAgents`
+
+```protobuf
+rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+```
+
+```protobuf
+message ListAgentsRequest {
+  string status_filter = 1;           // optional; "deployed" | "paused" | "archived"
+  map<string, string> label_filter = 2;  // optional; filter by labels
+}
+
+message ListAgentsResponse {
+  repeated AgentSummary agents = 1;
+}
+```
+
+### `PauseAgent`, `ResumeAgent`, `DeleteAgent`
+
+Follow the same request/response pattern as `GetAgent`, taking `agent_id` and returning the updated agent record.
+
+---
+
+## `ExecutionService`
+
+Manages executions.
+
+### `StartExecution`
+
+```protobuf
+rpc StartExecution(StartExecutionRequest) returns (StartExecutionResponse);
+```
+
+```protobuf
+message StartExecutionRequest {
+  string agent_id = 1;              // UUID or agent name
+  string input_json = 2;            // JSON input for bootstrap.py
+  optional uint32 max_iterations = 3; // override manifest default
+}
+
+message StartExecutionResponse {
+  string execution_id = 1;
+  string status = 2;                // "pending"
+}
+```
+
+### `GetExecution`
+
+```protobuf
+rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse);
+```
+
+```protobuf
+message GetExecutionResponse {
+  string execution_id = 1;
+  string agent_id = 2;
+  string status = 3;                // pending | running | completed | failed | cancelled
+  uint32 total_iterations = 4;
+  optional string final_output = 5;
+  google.protobuf.Timestamp started_at = 6;
+  optional google.protobuf.Timestamp ended_at = 7;
+  repeated IterationSummary iterations = 8;
+}
+
+message IterationSummary {
+  uint32 number = 1;
+  string status = 2;               // running | failed | refining | success
+  optional float validation_score = 3;
+  google.protobuf.Timestamp started_at = 4;
+  optional google.protobuf.Timestamp ended_at = 5;
+}
+```
+
+### `StreamExecution` (server-streaming)
+
+```protobuf
+rpc StreamExecution(StreamExecutionRequest) returns (stream ExecutionEvent);
+```
+
+Streams all events for an execution as they occur. If called after the execution has already completed, streams the historical events and then closes.
+
+```protobuf
+message StreamExecutionRequest {
+  string execution_id = 1;
+}
+
+message ExecutionEvent {
+  string event_type = 1;  // ExecutionStarted | IterationStarted | IterationCompleted | ...
+  string payload_json = 2; // JSON-encoded event payload
+  google.protobuf.Timestamp timestamp = 3;
+}
+```
+
+### `CancelExecution`
+
+```protobuf
+rpc CancelExecution(CancelExecutionRequest) returns (CancelExecutionResponse);
+```
+
+---
+
+## `WorkflowService`
+
+### `DeployWorkflow`
+
+```protobuf
+rpc DeployWorkflow(DeployWorkflowRequest) returns (DeployWorkflowResponse);
+```
+
+### `StartWorkflow`
+
+```protobuf
+rpc StartWorkflow(StartWorkflowRequest) returns (StartWorkflowResponse);
+```
+
+```protobuf
+message StartWorkflowRequest {
+  string workflow_id = 1;    // UUID or workflow name
+  string input_json = 2;     // JSON input available as {{input.*}} templates
+}
+
+message StartWorkflowResponse {
+  string workflow_execution_id = 1;
+}
+```
+
+### `GetWorkflowExecution`
+
+Returns current state, history of state transitions, and Blackboard contents.
+
+### `SignalWorkflowExecution`
+
+```protobuf
+rpc SignalWorkflowExecution(SignalWorkflowRequest) returns (SignalWorkflowResponse);
+```
+
+```protobuf
+message SignalWorkflowRequest {
+  string workflow_execution_id = 1;
+  string state_name = 2;
+  string payload_json = 3;   // Written directly to Blackboard[state_name]
+}
+```
+
+### `StreamWorkflow` (server-streaming)
+
+```protobuf
+rpc StreamWorkflow(StreamWorkflowRequest) returns (stream WorkflowEvent);
+```
+
+Streams workflow state transitions and agent execution events in real-time.
+
+---
+
+## `VolumeService`
+
+### `ListVolumes`, `GetVolume`, `DeleteVolume`
+
+Standard CRUD operations for volumes. `DeleteVolume` fails with `FAILED_PRECONDITION` if the volume is currently mounted.
+
+---
+
+## Error Codes
+
+| gRPC Status | Meaning |
+|---|---|
+| `OK` | Success. |
+| `NOT_FOUND` | Resource not found. |
+| `INVALID_ARGUMENT` | Manifest or input validation error. |
+| `ALREADY_EXISTS` | Agent/workflow name conflict. |
+| `PERMISSION_DENIED` | AegisRole insufficient for this operation. |
+| `UNAUTHENTICATED` | Missing or invalid Bearer token. |
+| `FAILED_PRECONDITION` | Operation not valid in current state (e.g., delete on active volume). |
+| `RESOURCE_EXHAUSTED` | Rate limit or concurrency limit reached. |
+| `INTERNAL` | Unhandled internal error. Check daemon logs. |
+
+Error details are included in the gRPC status `details` field as `google.rpc.BadRequest` (for validation errors) or `google.rpc.ErrorInfo` (for others).

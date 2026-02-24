@@ -1,0 +1,224 @@
+---
+title: Writing Your First Agent
+description: Step-by-step guide to writing an agent.yaml manifest and bootstrap.py from scratch.
+---
+
+# Writing Your First Agent
+
+This guide walks through creating a working agent from scratch: an `agent.yaml` manifest and the `bootstrap.py` script that runs inside the container. By the end, you will have an agent that accepts a task prompt, writes code to a workspace volume, runs it, and validates the output.
+
+---
+
+## Prerequisites
+
+- AEGIS daemon running locally (see [Getting Started](/docs/getting-started))
+- Python 3.11+ in your target container image
+- The `aegis-python` SDK installed in the container image
+
+---
+
+## Step 1: Create the Project Structure
+
+```
+my-agent/
+├── agent.yaml
+├── bootstrap.py
+├── Dockerfile
+└── output_schema.json
+```
+
+---
+
+## Step 2: Write the Dockerfile
+
+Your agent runs inside the container image specified in the manifest. Build a minimal image with Python and the AEGIS SDK:
+
+```dockerfile
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir aegis-sdk
+
+WORKDIR /agent
+COPY bootstrap.py .
+COPY output_schema.json .
+
+CMD ["python", "/agent/bootstrap.py"]
+```
+
+Build and push the image:
+
+```bash
+docker build -t myregistry/my-agent:latest .
+docker push myregistry/my-agent:latest
+```
+
+---
+
+## Step 3: Write bootstrap.py
+
+`bootstrap.py` is the entrypoint for your agent. It uses the AEGIS Python SDK, which handles the `/v1/llm/generate` communication loop automatically.
+
+```python
+import os
+import json
+from aegis import AegisClient, TaskInput
+
+def main():
+    client = AegisClient()
+
+    # Receive the task input injected by the orchestrator
+    task: TaskInput = client.get_task()
+    user_request = task.input.get("task", "")
+
+    # Build the initial conversation
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a Python developer. Write code to solve the given task. "
+                "Save your solution to /workspace/solution.py. "
+                "Run the solution with cmd.run to verify it works. "
+                "When done, write a JSON summary to /workspace/result.json with "
+                "fields: 'solution_path' and 'output'."
+            )
+        },
+        {
+            "role": "user",
+            "content": user_request
+        }
+    ]
+
+    # Run the inner loop — the SDK handles tool call interception transparently
+    response = client.generate(messages=messages)
+
+    # The response is the final text from the LLM after all tool calls are resolved
+    print(response.content)
+
+if __name__ == "__main__":
+    main()
+```
+
+The SDK's `client.generate()` blocks until the LLM produces a non-tool-call response. All `fs.*`, `cmd.run`, and other capability calls are intercepted and executed by the orchestrator transparently.
+
+---
+
+## Step 4: Write the Output Schema
+
+Define what a valid output looks like. The `json_schema` validator checks `/workspace/result.json` against this schema.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["solution_path", "output"],
+  "properties": {
+    "solution_path": {
+      "type": "string",
+      "pattern": "^/workspace/"
+    },
+    "output": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+---
+
+## Step 5: Write the Agent Manifest
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: python-coder
+  labels:
+    type: developer
+spec:
+  description: "Writes Python solutions to programming tasks."
+  image: myregistry/my-agent:latest
+  capabilities:
+    - fs.read
+    - fs.write
+    - cmd.run
+  security:
+    network_policy:
+      mode: allow
+      allowlist:
+        - pypi.org
+    filesystem_policy:
+      read_paths:
+        - /workspace
+        - /agent
+      write_paths:
+        - /workspace
+    security_context: default
+  resources:
+    cpu_quota: 1.0
+    memory_bytes: 1073741824
+    timeout_secs: 300
+  validation:
+    - type: exit_code
+      expected: 0
+    - type: json_schema
+      schema_path: /agent/output_schema.json
+      target_path: /workspace/result.json
+      min_score: 1.0
+  environment:
+    PYTHONUNBUFFERED: "1"
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+      access_mode: ReadWrite
+      storage_class: ephemeral
+      ttl: 30m
+```
+
+---
+
+## Step 6: Deploy and Test
+
+Deploy the agent:
+
+```bash
+aegis agent deploy ./my-agent/agent.yaml
+```
+
+Confirm it's registered:
+
+```bash
+aegis agent get python-coder
+```
+
+Run an execution:
+
+```bash
+aegis execute \
+  --agent python-coder \
+  --input '{"task": "Write a function that checks if a number is prime."}' \
+  --watch
+```
+
+If the first iteration fails validation, the orchestrator injects the error into the next iteration's context and retries automatically (up to 10 times by default).
+
+---
+
+## Common Issues
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Container fails to start | Image not found or not pullable | Verify `image_pull_policy: always` and registry credentials in node config |
+| `cmd.run` rejected | Command or subcommand not in `SubcommandAllowlist` | Add the command to `tools.subcommand_allowlist` in `aegis-config.yaml` |
+| Validation always fails | Schema path wrong | Double-check `schema_path` and `target_path` in the manifest |
+| Timeout on first iteration | Task too complex for `timeout_secs` | Increase `resources.timeout_secs` |
+| Network call rejected | Domain not in `allowlist` | Add the domain to `spec.security.network_policy.allowlist` |
+
+---
+
+## Next Steps
+
+- [Deploying Agents](/docs/guides/deploying-agents) — full CLI lifecycle management.
+- [Configuring Agent Validation](/docs/guides/validation) — all validator types and threshold tuning.
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — complete field specification.

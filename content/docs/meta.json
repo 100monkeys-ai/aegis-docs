@@ -1,0 +1,12 @@
+{
+    "title": "AEGIS Orchestrator",
+    "pages": [
+        "index",
+        "getting-started",
+        "concepts",
+        "guides",
+        "architecture",
+        "deployment",
+        "reference"
+    ]
+}

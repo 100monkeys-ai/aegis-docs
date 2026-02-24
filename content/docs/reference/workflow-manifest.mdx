@@ -1,0 +1,220 @@
+---
+title: Workflow Manifest Reference
+description: Complete field-by-field specification for the Workflow YAML format.
+---
+
+# Workflow Manifest Reference
+
+This page is the authoritative reference for all fields in an AEGIS workflow manifest YAML file.
+
+---
+
+## Annotated Full Example
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+
+metadata:
+  name: dev-pipeline
+  labels:
+    stage: production
+
+spec:
+  initial_state: requirements       # required; name of the first state to enter
+
+  # Optional default values for Blackboard keys at execution start
+  blackboard_defaults:
+    language: python
+    test_framework: pytest
+
+  states:
+
+    requirements:
+      kind: Agent                   # StateKind: Agent | System | Human | ParallelAgents
+      agent_id: requirements-agent  # required for Agent kind; deployed agent name or ID
+      timeout_secs: 180
+      transitions:
+        - condition:
+            field: requirements.status   # Blackboard key path (dot-separated)
+            operator: eq                  # eq | ne | gt | gte | lt | lte | contains
+            value: success
+          target: approve_requirements
+        - target: failed                  # unconditional (no condition) = default fallback
+
+    approve_requirements:
+      kind: Human
+      timeout_secs: 86400
+      transitions:
+        - condition:
+            field: approve_requirements.decision
+            operator: eq
+            value: approved
+          target: implement
+        - condition:
+            field: approve_requirements.decision
+            operator: eq
+            value: rejected
+          target: failed
+        - target: failed              # timeout fallback
+
+    implement:
+      kind: Agent
+      agent_id: coder-agent
+      timeout_secs: 600
+      # Inject Blackboard values into the agent's task context via Handlebars templates
+      input_template: |
+        Implement in {{blackboard.language}} using {{blackboard.test_framework}}.
+        Requirements: {{blackboard.requirements.output}}
+      transitions:
+        - condition:
+            field: implement.status
+            operator: eq
+            value: success
+          target: parallel_review
+        - target: failed
+
+    parallel_review:
+      kind: ParallelAgents
+      agents:
+        - security-reviewer
+        - performance-reviewer
+        - style-reviewer
+      timeout_secs: 600
+      transitions:
+        - condition:
+            field: parallel_review.all_succeeded
+            operator: eq
+            value: "true"
+          target: done
+        - target: failed
+
+    done:
+      kind: System
+      command: "echo 'Pipeline complete. Results in /workspace/output.'"
+      transitions: []               # empty = terminal state; workflow completes
+
+    failed:
+      kind: System
+      command: "echo 'Pipeline failed'"
+      transitions: []               # terminal state
+```
+
+---
+
+## Field Reference
+
+### Top-Level Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `apiVersion` | string | ✓ | Must be `100monkeys.ai/v1`. |
+| `kind` | string | ✓ | Must be `Workflow`. |
+| `metadata` | object | ✓ | Manifest metadata. |
+| `spec` | object | ✓ | Workflow specification. |
+
+### `metadata`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Unique workflow name. Must be lowercase alphanumeric with hyphens. |
+| `labels` | `map[string]string` | | Arbitrary key-value labels. |
+
+### `spec`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `initial_state` | string | ✓ | Name of the first state to enter when the workflow starts. |
+| `blackboard_defaults` | `map[string, any]` | | Default Blackboard values at execution start. |
+| `states` | `map[string, WorkflowState]` | ✓ | Map of state name → state definition. Must contain `initial_state`. |
+
+### `spec.states[*]` — Common Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` |
+| `timeout_secs` | integer | | `300` | Maximum time to wait in this state before evaluating transitions. |
+| `transitions` | `object[]` | ✓ | | List of transition rules. Evaluated in order. |
+
+### `spec.states[*]` — Kind-Specific Fields
+
+#### `kind: Agent`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `agent_id` | string | ✓ | Deployed agent name or UUID. |
+| `input_template` | string | | Handlebars template for the agent's task input. Variables: `{{blackboard.<key>}}`, `{{input.<key>}}`, `{{execution.id}}`. |
+
+The agent executes the full 100monkeys loop (up to its `max_iterations`). When it completes, the following is written to the Blackboard under the state name:
+
+```json
+{
+  "status": "success" | "failed",
+  "output": "<agent's final text output>",
+  "score": 0.91,
+  "iterations": 2
+}
+```
+
+#### `kind: System`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | ✓ | Shell command to run on the orchestrator host. Handlebars templates supported. |
+
+System states run the command on the orchestrator host (not inside a container). Output is written to the Blackboard as `{state_name}.stdout` and `{state_name}.exit_code`.
+
+#### `kind: Human`
+
+No additional fields. The workflow suspends and waits for a signal via:
+
+```bash
+aegis workflow signal <workflow-execution-id> \
+  --state <state-name> \
+  --decision <value>
+```
+
+The signal payload is written to `Blackboard[state_name]` as-is and transition conditions are evaluated. The `decision` key is a convention; any JSON-serializable payload is accepted.
+
+#### `kind: ParallelAgents`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `agents` | `string[]` | ✓ | List of deployed agent names or UUIDs to run concurrently. |
+
+All agents start simultaneously. The state waits for all to complete or for `timeout_secs` to elapse. Results are written to the Blackboard as:
+
+```json
+{
+  "all_succeeded": true | false,
+  "results": {
+    "<agent-name>": {"status": "success", "output": "...", "score": 0.91}
+  }
+}
+```
+
+### `spec.states[*].transitions[]`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `condition` | object | | If absent, this is an unconditional (default) transition. |
+| `condition.field` | string | ✓ | Dot-separated path into the Blackboard. E.g., `requirements.status`, `blackboard.language`. |
+| `condition.operator` | string | ✓ | `eq` \| `ne` \| `gt` \| `gte` \| `lt` \| `lte` \| `contains` |
+| `condition.value` | string | ✓ | Value to compare against. Numeric comparisons are coerced from string. |
+| `target` | string | ✓ | Name of the state to transition to. Must exist in `spec.states`. |
+
+**Evaluation order**: transitions are evaluated top-to-bottom. The first matching transition is taken. An unconditional transition (no `condition`) always matches and should be placed last as a default/fallback.
+
+**Terminal states**: A state with an empty `transitions` list (`transitions: []`) is a terminal state. When reached, the workflow execution completes with status `completed`.
+
+---
+
+## Blackboard Template Variables
+
+| Template Variable | Value |
+|---|---|
+| `{{blackboard.<key>}}` | Any top-level Blackboard key |
+| `{{blackboard.<state>.<field>}}` | Output field from a completed state (e.g., `{{blackboard.requirements.output}}`) |
+| `{{input.<key>}}` | Key from the workflow's start input |
+| `{{execution.id}}` | Workflow execution UUID |
+| `{{workflow.name}}` | Workflow name |

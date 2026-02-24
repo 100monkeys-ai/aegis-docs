@@ -1,0 +1,336 @@
+---
+title: CLI Reference
+description: Complete reference for all aegis CLI commands, subcommands, flags, and exit codes.
+---
+
+# CLI Reference
+
+The `aegis` binary is the primary interface for managing the AEGIS daemon and all resources.
+
+## Global Flags
+
+These flags are available on all commands:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config <path>` | `./aegis-config.yaml` | Path to the daemon configuration file. |
+| `--daemon-addr <host:port>` | `localhost:9090` | gRPC address of the target AEGIS daemon. |
+| `--output <format>` | `table` | Output format: `table`, `json`, `yaml`. |
+| `--token <jwt>` | `$AEGIS_TOKEN` | Bearer JWT for authentication. Can also be set via `AEGIS_TOKEN` environment variable. |
+| `--yes` | `false` | Skip confirmation prompts. |
+| `--debug` | `false` | Enable verbose debug logging. |
+
+---
+
+## `aegis daemon`
+
+Manage the AEGIS daemon process.
+
+### `aegis daemon start`
+
+Start the daemon foreground process.
+
+```bash
+aegis daemon start --config /etc/aegis/config.yaml
+```
+
+### `aegis daemon reload`
+
+Gracefully reload configuration without stopping the daemon. Running executions continue. New executions use updated configuration.
+
+```bash
+aegis daemon reload --config /etc/aegis/config.yaml
+```
+
+### `aegis daemon status`
+
+Show daemon status, version, uptime, and connected dependencies.
+
+```bash
+aegis daemon status
+```
+
+---
+
+## `aegis agent`
+
+Manage agent definitions.
+
+### `aegis agent deploy <manifest>`
+
+Deploy or update an agent from a manifest file.
+
+```bash
+aegis agent deploy ./agent.yaml
+aegis agent deploy ./agent.yaml --output json
+```
+
+### `aegis agent list`
+
+List all agents.
+
+```bash
+aegis agent list
+aegis agent list --status deployed
+aegis agent list --status paused
+aegis agent list --label type=developer
+```
+
+### `aegis agent get <name-or-id>`
+
+Show full details of an agent, including the stored manifest.
+
+```bash
+aegis agent get python-coder
+aegis agent get a1b2c3d4-0000-...
+```
+
+### `aegis agent pause <name-or-id>`
+
+Pause an agent. New executions are blocked.
+
+```bash
+aegis agent pause python-coder
+```
+
+### `aegis agent resume <name-or-id>`
+
+Resume a paused agent.
+
+```bash
+aegis agent resume python-coder
+```
+
+### `aegis agent delete <name-or-id>`
+
+Archive an agent. Historical execution data is retained.
+
+```bash
+aegis agent delete python-coder
+aegis agent delete python-coder --yes
+```
+
+---
+
+## `aegis execute`
+
+Start a single agent execution.
+
+```bash
+aegis execute --agent <name-or-id> --input '<json>'
+aegis execute --agent python-coder --input '{"task": "Write a primality check."}'
+aegis execute --agent python-coder --input '{"task": "..."}' --watch
+aegis execute --agent python-coder --input '{"task": "..."}' --max-iterations 3
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--agent <name-or-id>` | required | Agent to execute. |
+| `--input <json>` | `"{}"` | JSON input passed to bootstrap.py via `task.input`. |
+| `--watch` | `false` | Stream iteration events to stdout. |
+| `--max-iterations <n>` | manifest default | Override max iterations for this execution. |
+| `--output json\|table` | `table` | Output format for the return value (execution ID). |
+
+---
+
+## `aegis execution`
+
+Manage and inspect executions.
+
+### `aegis execution list`
+
+```bash
+aegis execution list
+aegis execution list --agent python-coder
+aegis execution list --status running
+aegis execution list --status failed
+aegis execution list --limit 50
+```
+
+### `aegis execution get <id>`
+
+```bash
+aegis execution get a1b2c3d4-1111-...
+```
+
+### `aegis execution logs <id>`
+
+Stream or print iteration logs.
+
+```bash
+aegis execution logs a1b2c3d4-1111-...
+aegis execution logs a1b2c3d4-1111-... --iteration 2
+aegis execution logs a1b2c3d4-1111-... --follow
+```
+
+### `aegis execution cancel <id>`
+
+Cancel a running execution.
+
+```bash
+aegis execution cancel a1b2c3d4-1111-...
+```
+
+---
+
+## `aegis workflow`
+
+Manage workflows.
+
+### `aegis workflow deploy <manifest>`
+
+```bash
+aegis workflow deploy ./my-pipeline.yaml
+```
+
+### `aegis workflow list`
+
+```bash
+aegis workflow list
+```
+
+### `aegis workflow get <name-or-id>`
+
+```bash
+aegis workflow get dev-pipeline
+```
+
+### `aegis workflow delete <name-or-id>`
+
+```bash
+aegis workflow delete dev-pipeline --yes
+```
+
+### `aegis workflow start <name-or-id>`
+
+Start a workflow execution.
+
+```bash
+aegis workflow start dev-pipeline --input '{"task": "..."}'
+aegis workflow start dev-pipeline --input '{"task": "..."}' --watch
+```
+
+### `aegis workflow status <execution-id>`
+
+Show the current status of a workflow execution.
+
+```bash
+aegis workflow status wfx-a1b2c3d4-1111-...
+```
+
+### `aegis workflow signal <execution-id>`
+
+Send a signal to a Human state.
+
+```bash
+aegis workflow signal wfx-a1b2c3d4-1111-... \
+  --state approve_requirements \
+  --decision approved
+```
+
+### `aegis workflow cancel <execution-id>`
+
+Cancel a running workflow execution.
+
+```bash
+aegis workflow cancel wfx-a1b2c3d4-1111-...
+```
+
+---
+
+## `aegis swarm`
+
+Manage swarms (multi-agent groups).
+
+### `aegis swarm list`
+
+```bash
+aegis swarm list
+```
+
+### `aegis swarm get <id>`
+
+```bash
+aegis swarm get swarm-a1b2c3d4-...
+```
+
+### `aegis swarm children <id>`
+
+List all child execution IDs in a swarm.
+
+```bash
+aegis swarm children swarm-a1b2c3d4-...
+```
+
+### `aegis swarm cancel <id>`
+
+Cancel all agents in a swarm (cascade cancellation).
+
+```bash
+aegis swarm cancel swarm-a1b2c3d4-...
+```
+
+---
+
+## `aegis volume`
+
+Manage volumes.
+
+### `aegis volume list`
+
+```bash
+aegis volume list
+aegis volume list --storage-class persistent
+aegis volume list --output json
+```
+
+### `aegis volume get <id>`
+
+```bash
+aegis volume get vol-a1b2c3d4-...
+```
+
+### `aegis volume delete <id>`
+
+Delete a persistent volume. Volumes in use cannot be deleted.
+
+```bash
+aegis volume delete vol-a1b2c3d4-...
+aegis volume delete vol-a1b2c3d4-... --yes
+```
+
+---
+
+## `aegis config`
+
+Utility commands for configuration.
+
+### `aegis config validate`
+
+Validate an `aegis-config.yaml` file without starting the daemon.
+
+```bash
+aegis config validate --config ./aegis-config.yaml
+```
+
+### `aegis config dump`
+
+Print the fully resolved configuration (with `env:` references expanded, redacted).
+
+```bash
+aegis config dump --config ./aegis-config.yaml
+```
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Resource not found |
+| `2` | Validation error (manifest, config) |
+| `3` | Permission denied (IAM role insufficient) |
+| `4` | Resource conflict (e.g., agent name already exists) |
+| `5` | Connection error (daemon unreachable) |
+| `10` | Unhandled internal error |

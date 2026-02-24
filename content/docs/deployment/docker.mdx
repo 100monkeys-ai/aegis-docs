@@ -1,0 +1,190 @@
+---
+title: Docker Deployment
+description: Docker Engine setup, agent container lifecycle, bollard integration, NFS volume mounting, and systemd service configuration.
+---
+
+# Docker Deployment
+
+Docker is the Phase 1 container runtime for AEGIS. The orchestrator communicates with Docker via the **bollard** Rust library (Docker API over the Unix socket). This page covers production Docker deployment, container lifecycle, and the NFS volume mounting model.
+
+---
+
+## Prerequisites
+
+- Docker Engine 24.0+
+- The AEGIS daemon process has read/write access to `/var/run/docker.sock`
+- Agent container images are accessible from the daemon host (either locally present or pullable)
+- NFS traffic (TCP port 2049) is routable between agent containers and the daemon host
+
+---
+
+## Docker Socket Access
+
+The AEGIS daemon must be able to connect to the Docker socket. In production, run the daemon as a user in the `docker` group, or configure a dedicated socket permission:
+
+```bash
+# Add the aegis service user to the docker group
+sudo usermod -aG docker aegis
+
+# Verify
+sudo -u aegis docker ps
+```
+
+Never run the AEGIS daemon as root.
+
+---
+
+## Container Lifecycle
+
+When an execution starts, the orchestrator:
+
+1. **Pulls the image** (respecting `image_pull_policy` in `aegis-config.yaml`).
+2. **Creates the container** with:
+   - CPU quota and memory limit from `spec.resources`
+   - NFS volume mounts (described below)
+   - Network configuration from `spec.security.network_policy`
+   - Environment variables from `spec.environment`
+   - The container UID/GID stored in the `Execution` metadata for UID/GID squashing
+3. **Starts the container** — `bootstrap.py` begins executing.
+4. **Monitors** the container for the duration of the iteration.
+5. **Stops and removes** the container after the iteration completes or times out.
+
+Containers are removed immediately after each iteration. A fresh container is created for each iteration in the 100monkeys loop.
+
+---
+
+## Resource Limits
+
+Manifest resource limits are translated to Docker container constraints:
+
+```yaml
+spec:
+  resources:
+    cpu_quota: 1.0          # → Docker --cpus=1.0
+    memory_bytes: 1073741824  # → Docker --memory=1073741824
+    timeout_secs: 300
+```
+
+`timeout_secs` is enforced by the `ExecutionSupervisor`. If the inner loop has not produced a final response within `timeout_secs`, the container is force-killed and the iteration is failed.
+
+---
+
+## NFS Volume Mounting
+
+Agent containers mount their volumes via the kernel NFS client to the orchestrator's NFS server gateway (port 2049):
+
+```
+# Example Docker API mount configuration produced by AEGIS for a volume named "workspace":
+{
+  "Target": "/workspace",
+  "Type": "volume",
+  "VolumeOptions": {
+    "DriverConfig": {
+      "Name": "local",
+      "Options": {
+        "type":   "nfs",
+        "o":      "addr=<orchestrator-host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock",
+        "device": ":/<tenant_id>/<volume_id>"
+      }
+    }
+  }
+}
+```
+
+The agent container does not require `CAP_SYS_ADMIN` or any elevated capabilities for NFS mounts. The kernel NFS client is used (as opposed to FUSE), which runs in user space without special privileges.
+
+### Network Reachability of NFS
+
+Agent containers must be able to reach the orchestrator host on TCP port 2049. In single-host deployments using the Docker bridge network, the orchestrator host is typically reachable at `172.17.0.1` (Docker default bridge gateway).
+
+Configure the NFS listen address in `aegis-config.yaml`:
+
+```yaml
+storage:
+  nfs_listen_addr: "0.0.0.0:2049"
+```
+
+In multi-host deployments, use the orchestrator host's external IP or hostname.
+
+---
+
+## Network Isolation
+
+Each agent container is placed on a user-defined Docker bridge network. Network egress is controlled by the manifest `network_policy`:
+
+```yaml
+spec:
+  security:
+    network_policy:
+      mode: allow
+      allowlist:
+        - pypi.org
+        - api.github.com
+```
+
+The AEGIS daemon enforces network policy at the SMCP layer (per tool call), not via Docker network rules. In high-security environments, you may additionally configure Docker network rules or firewall rules to enforce the allowlist at the kernel level.
+
+---
+
+## systemd Service
+
+For production deployments, run the AEGIS daemon as a systemd service:
+
+```ini
+# /etc/systemd/system/aegis.service
+[Unit]
+Description=AEGIS Orchestrator Daemon
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+User=aegis
+Group=docker
+WorkingDirectory=/opt/aegis
+ExecStart=/usr/local/bin/aegis daemon --config /etc/aegis/config.yaml
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=65535
+
+# Environment variables for secrets (avoid plaintext in config)
+EnvironmentFile=/etc/aegis/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# /etc/aegis/env (chmod 600)
+DATABASE_URL=postgresql://aegis:password@localhost:5432/aegis
+OPENAI_API_KEY=sk-...
+OPENBAO_ROLE_ID=...
+OPENBAO_SECRET_ID=...
+```
+
+```bash
+# Enable and start
+sudo systemctl enable aegis
+sudo systemctl start aegis
+
+# Check status
+sudo systemctl status aegis
+
+# Follow logs
+sudo journalctl -u aegis -f
+```
+
+---
+
+## Health Checks
+
+The AEGIS daemon exposes health endpoints:
+
+```bash
+# Liveness (daemon process alive)
+curl http://localhost:8080/health/live
+
+# Readiness (daemon ready to accept requests; all dependencies connected)
+curl http://localhost:8080/health/ready
+```
+
+Use these in load balancer health check configuration or Kubernetes readiness probes.

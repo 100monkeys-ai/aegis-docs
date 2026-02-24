@@ -1,0 +1,181 @@
+---
+title: Agents
+description: The agent manifest format, lifecycle states, runtime selection, and BYOLLM model alias system.
+---
+
+# Agents
+
+An **Agent** in AEGIS is a stateless compute process defined entirely by a declarative YAML manifest. The orchestrator reads the manifest to determine what container image to run, what tools the agent is allowed to use, what security constraints to enforce, what resources to allocate, and how to validate the output.
+
+Agents do not maintain state between executions. Context is injected by the orchestrator at the start of each execution and tool results are returned to the agent via the orchestrator proxy.
+
+---
+
+## Manifest Structure
+
+All agent manifests follow a Kubernetes-style format:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: code-reviewer
+  labels:
+    team: platform
+    environment: production
+spec:
+  description: "Reviews pull requests and outputs structured feedback."
+  image: ghcr.io/100monkeys-ai/base-agent:latest
+  command: ["python", "/agent/bootstrap.py"]
+  capabilities:
+    - fs.read
+    - fs.write
+    - cmd.run
+    - web.search
+  security:
+    network_policy:
+      mode: allow
+      allowlist:
+        - api.github.com
+        - api.openai.com
+    filesystem_policy:
+      read_paths: ["/workspace"]
+      write_paths: ["/workspace"]
+    security_context: default
+  resources:
+    cpu_quota: 1.0
+    memory_bytes: 1073741824  # 1 GiB
+    timeout_secs: 300
+  validation:
+    - type: exit_code
+      expected: 0
+    - type: json_schema
+      schema_path: /agent/output_schema.json
+  environment:
+    LOG_LEVEL: info
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+      access_mode: ReadWrite
+      storage_class: ephemeral
+      ttl: 1h
+```
+
+---
+
+## Manifest Fields
+
+### `metadata`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Unique identifier for the agent on this node. Used in CLI commands and gRPC calls. |
+| `labels` | map[string]string | | Arbitrary key-value tags for filtering and organization. |
+
+### `spec`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `description` | string | | Human-readable description injected into the system prompt. |
+| `image` | string | ✓ | Container image to pull and run. Full registry path supported. |
+| `command` | string[] | | Entrypoint override. Defaults to the image's `CMD`. |
+| `capabilities` | string[] | ✓ | List of MCP tool patterns the agent is permitted to call. See [Tool Routing](/docs/architecture/tool-routing). |
+| `security` | object | ✓ | Network policy, filesystem policy, resource context. See below. |
+| `resources` | object | ✓ | CPU quota, memory limit, execution timeout. |
+| `validation` | object[] | | Ordered list of validators to apply after each iteration. See [Validation Guide](/docs/guides/validation). |
+| `environment` | map[string]string | | Environment variables injected into the agent container. |
+| `volumes` | object[] | | Volume mounts. See [Configuring Storage](/docs/guides/configuring-storage). |
+
+### `spec.security`
+
+| Field | Type | Description |
+|---|---|---|
+| `network_policy.mode` | `allow` \| `deny` | Whether `allowlist` defines permitted or blocked domains. |
+| `network_policy.allowlist` | string[] | Domain names. Wildcards not supported in Phase 1. |
+| `filesystem_policy.read_paths` | string[] | Absolute paths inside the container the agent may read. |
+| `filesystem_policy.write_paths` | string[] | Absolute paths inside the container the agent may write. |
+| `security_context` | string | Name of a `SecurityContext` defined in node config. Controls SMCP capability set. |
+
+### `spec.resources`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `cpu_quota` | float | `1.0` | CPU cores (fractional allowed). Passed as `NanoCPUs` to Docker. |
+| `memory_bytes` | integer | `536870912` | Memory ceiling in bytes. Container is OOM-killed if exceeded. |
+| `timeout_secs` | integer | `300` | Hard wall-clock timeout per execution. Iteration loop is cancelled when exceeded. |
+
+---
+
+## Agent Lifecycle
+
+An agent transitions through the following states after `deploy`:
+
+```
+deployed → paused → deployed
+    │
+    └──────────────────────→ archived
+```
+
+| State | Description |
+|---|---|
+| `deployed` | The manifest is registered. New executions can be started against this agent. |
+| `paused` | The manifest is retained but no new executions are accepted. Running executions complete normally. |
+| `archived` | The manifest is soft-deleted. Cannot be unarchived. Historical execution records are retained. |
+
+```bash
+aegis agent deploy ./agent.yaml
+aegis agent pause <id>
+aegis agent resume <id>
+aegis agent delete <id>   # archives, does not hard-delete
+```
+
+---
+
+## Runtime Selection
+
+The runtime used to execute an agent is determined by the node configuration, not the agent manifest. All agents on a given node use the same runtime.
+
+| Runtime | Use Case | Requirement |
+|---|---|---|
+| `docker` | Development and staging | Docker daemon accessible |
+| `firecracker` | Production | Bare-metal or KVM-passthrough host, Linux kernel 5.10+ |
+
+The `AgentRuntime` trait abstracts both runtimes. Switching a node from Docker to Firecracker requires only a config change — no agent manifest changes needed.
+
+See [Docker Runtime](/docs/deployment/docker) and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.
+
+---
+
+## BYOLLM: Model Alias System
+
+Agent manifests reference LLM models by **alias**, not by provider name. This decouples agent definitions from infrastructure choices.
+
+In the agent manifest, specify the model alias in the `spec` or within the `bootstrap.py` client initialization:
+
+```python
+from aegis import AegisClient
+client = AegisClient(model="default")  # resolves to whatever "default" maps to in node config
+```
+
+In `aegis-config.yaml`, the node operator maps aliases to providers:
+
+```yaml
+llm:
+  providers:
+    - name: openai-gpt4o
+      type: openai
+      api_key: "env:OPENAI_API_KEY"
+      model: gpt-4o
+    - name: claude-3-5-sonnet
+      type: anthropic
+      api_key: "env:ANTHROPIC_API_KEY"
+      model: claude-3-5-sonnet-20241022
+  aliases:
+    default: openai-gpt4o
+    fast: claude-3-5-sonnet
+    reasoning: openai-gpt4o
+```
+
+To swap the model backing the `default` alias for all agents on the node, change the alias mapping in config and restart the daemon — no manifest changes required.
+
+See [Configuring LLM Providers](/docs/guides/llm-providers) for the full provider configuration reference.

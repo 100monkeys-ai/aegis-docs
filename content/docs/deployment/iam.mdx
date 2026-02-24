@@ -1,0 +1,176 @@
+---
+title: IAM & Identity Federation
+description: Keycloak realms, AegisRole claims, M2M service accounts, SAML federation, JWKS cache, and KeycloakAuthInterceptor.
+---
+
+# IAM & Identity Federation
+
+AEGIS uses **Keycloak** as its OIDC identity provider. Keycloak issues JWTs for all human operators and machine-to-machine (M2M) clients. The orchestrator validates these JWTs on every API request via the `KeycloakAuthInterceptor`.
+
+---
+
+## Realm Structure
+
+AEGIS uses multiple Keycloak realms:
+
+| Realm | Purpose | Audience |
+|---|---|---|
+| `aegis-system` | Operator and admin identities, API access | DevOps / SRE / SDK clients |
+| `tenant-{slug}` | Per-enterprise consumer tenant (optional) | Enterprise end-users |
+
+For most self-hosted deployments, only the `aegis-system` realm is required.
+
+---
+
+## AegisRole Claims
+
+The `aegis-system` realm issues JWTs containing an `aegis_role` claim that determines operator authorization level:
+
+| Role | Permissions |
+|---|---|
+| `aegis:admin` | Full read/write on all objects; daemon configuration; user management |
+| `aegis:operator` | Deploy/manage agents and workflows; start/cancel executions; manage volumes |
+| `aegis:readonly` | Read any object; list executions; stream events; no write access |
+
+Configure roles in Keycloak using the `aegis-system` realm's client roles and a protocol mapper to include them as a flat array in the JWT claim `aegis_role`.
+
+---
+
+## Setting Up the aegis-system Realm
+
+### 1. Create the Realm
+
+In the Keycloak Admin console, create a new realm named `aegis-system`.
+
+### 2. Create the AEGIS Client
+
+Create an OpenID Connect client:
+- **Client ID**: `aegis-orchestrator`
+- **Client authentication**: ON (confidential)
+- **Valid redirect URIs**: `http://localhost:*` (dev), your production Control Plane URL
+- **Standard flow**: ON (for human operators via browser)
+- **Service accounts**: ON (for M2M clients)
+
+### 3. Create Client Roles
+
+In the `aegis-orchestrator` client, create three roles:
+- `aegis:admin`
+- `aegis:operator`
+- `aegis:readonly`
+
+### 4. Add Protocol Mapper
+
+Add a roles protocol mapper to include client roles in the JWT:
+- Mapper type: `User Client Role`
+- Client ID: `aegis-orchestrator`
+- Token claim name: `aegis_role`
+- Claim JSON type: `String`
+- Add to: ID token ✓, access token ✓
+
+### 5. Configure AEGIS
+
+```yaml
+iam:
+  keycloak:
+    url: "https://keycloak.example.com"
+    realm: aegis-system
+    jwks_cache_ttl: 300s
+```
+
+---
+
+## M2M Service Accounts (SDK / CI-CD)
+
+For SDK clients and CI/CD pipelines that need programmatic API access:
+
+### Create a Service Account Client
+
+In Keycloak, create a new client:
+- **Client ID**: `my-sdk-client`
+- **Client authentication**: ON
+- **Service accounts**: ON
+- **Standard flow**: OFF
+
+Assign the `aegis:operator` role to the service account.
+
+### Obtain a Token
+
+```bash
+# Client Credentials grant
+curl -X POST https://keycloak.example.com/realms/aegis-system/protocol/openid-connect/token \
+  -d grant_type=client_credentials \
+  -d client_id=my-sdk-client \
+  -d client_secret=$CLIENT_SECRET
+```
+
+Use the returned `access_token` as a Bearer token on all AEGIS API requests:
+
+```bash
+aegis agent list --token $ACCESS_TOKEN
+# or set in environment:
+export AEGIS_TOKEN=$ACCESS_TOKEN
+aegis agent list
+```
+
+---
+
+## SAML Federation for Enterprise Tenants
+
+For enterprise deployments with an existing IdP (Azure AD, Okta):
+
+1. Create a `tenant-{slug}` realm in Keycloak.
+2. Configure a SAML Identity Provider in that realm pointing to the enterprise IdP.
+3. Map enterprise groups to Keycloak roles via identity provider mappers.
+4. Add the `tenant-{slug}` realm to AEGIS configuration.
+
+AEGIS then validates tokens from both `aegis-system` (operators) and `tenant-{slug}` (tenant users) JWTs automatically.
+
+---
+
+## JWKS Cache
+
+The `KeycloakAuthInterceptor` maintains a per-realm JWKS cache (fetched from `https://{keycloak}/realms/{realm}/protocol/openid-connect/certs`).
+
+Default cache TTL is 300 seconds (configurable via `iam.keycloak.jwks_cache_ttl`). When Keycloak rotates signing keys, the cache is refreshed automatically on the next TTL expiry. Key rotation completes without any AEGIS downtime.
+
+If you rotate keys manually and need the cache cleared immediately, restart the daemon:
+
+```bash
+aegis daemon reload --config aegis-config.yaml
+```
+
+---
+
+## Authentication Flow (HTTP API)
+
+```
+Client sends request:
+  GET /v1/agents
+  Authorization: Bearer <keycloak-issued-jwt>
+         │
+         ▼
+KeycloakAuthInterceptor
+  1. Extract Bearer token from Authorization header
+  2. Fetch JWKS from cache (or refresh if stale)
+  3. Verify JWT signature
+  4. Check exp claim (not expired)
+  5. Resolve aegis_role claim → AegisRole
+         │
+         ▼
+axum middleware
+  6. Attach UserIdentity to request context
+  7. Forward to handler
+         │
+         ▼
+Handler
+  8. Check AegisRole against required permission for this endpoint
+  9. Process request
+```
+
+Requests without a valid Bearer token receive `401 Unauthorized`. Requests with a valid token but insufficient role receive `403 Forbidden`.
+
+---
+
+## OpenBao OIDC Integration
+
+OpenBao can be configured to use Keycloak as its human operator authentication backend. This allows vault administrators to log in with their Keycloak credentials rather than maintaining separate OpenBao tokens. See the [Secrets Management](/docs/deployment/secrets) page for configuration details.

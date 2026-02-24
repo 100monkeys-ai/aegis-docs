@@ -1,0 +1,7 @@
+name = "aegis-docs"
+compatibility_date = "2025-01-01"
+
+# Cloudflare Pages — static Next.js export
+# Build command: npm run build
+# The `output: 'export'` config in next.config.mjs writes to out/
+pages_build_output_dir = "out"

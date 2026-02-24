@@ -1,0 +1,186 @@
+---
+title: Secure Model Context Protocol (SMCP)
+description: Ed25519 signed envelopes, agent attestation, Cedar policy evaluation, and SecurityContext architecture.
+---
+
+# Secure Model Context Protocol (SMCP)
+
+SMCP is the cryptographic security layer that governs every tool call an agent makes. It extends the standard Model Context Protocol (MCP) with signed envelopes, agent identity attestation, and Cedar-based policy evaluation.
+
+Standard MCP has no authentication — any client that can reach a tool server can invoke any tool. SMCP closes this gap by:
+
+1. **Attesting agent identity** before any tools are callable.
+2. **Signing every tool call** with the agent's ephemeral Ed25519 key.
+3. **Evaluating each call** against a named `SecurityContext` before forwarding.
+
+---
+
+## Components
+
+| Component | Role |
+|---|---|
+| `AttestationService` | Issues `SecurityToken` JWTs to agents that prove their identity. |
+| `SmcpMiddleware` | Intercepts all incoming tool call envelopes; verifies signature and token. |
+| `PolicyEngine` | Cedar-based evaluator; checks tool call against `SecurityContext` rules. |
+| `SecurityContext` | Named permission boundary; defines allowed/denied tool capabilities. |
+| `SmcpSession` | Aggregate root tracking one agent's full SMCP session from attestation to revocation. |
+
+---
+
+## Agent Attestation
+
+Attestation happens once per execution, before any tool calls:
+
+```
+bootstrap.py generates Ed25519 keypair (in-memory only, never written to disk)
+         │
+         ▼
+POST /v1/smcp/attest
+{
+  "public_key": "<base64-encoded Ed25519 public key>",
+  "container_id": "<docker container ID>",
+  "execution_id": "<UUID>"
+}
+         │
+         ▼
+AttestationService
+  1. Verifies container_id matches the execution's known container (from Execution aggregate)
+  2. Signs a SecurityToken JWT with orchestrator's root key (via OpenBao Transit Engine)
+  3. JWT payload (ContextClaims):
+     { "sub": "<agent_id>", "execution_id": "...", "security_context": "default", "iat": ..., "exp": ... }
+         │
+         ▼
+Response: { "security_token": "<JWT>", "expiry": "..." }
+```
+
+The agent's Ed25519 private key never leaves the container memory. The public key is registered during attestation so the orchestrator can verify subsequent envelopes.
+
+---
+
+## SmcpEnvelope
+
+Every tool call from a post-attestation agent is wrapped in an `SmcpEnvelope`:
+
+```json
+{
+  "security_token": "<JWT from AttestationService>",
+  "signature": "<Ed25519 signature of canonical envelope bytes>",
+  "timestamp": "2026-02-23T10:00:00Z",
+  "payload": {
+    "method": "tools/call",
+    "params": {
+      "name": "cmd.run",
+      "arguments": {
+        "command": "python",
+        "args": ["/workspace/solution.py"]
+      }
+    }
+  }
+}
+```
+
+The signature covers: `security_token + timestamp + canonical(payload)`. This prevents replay attacks and proves the call originated from the agent that holds the private key.
+
+---
+
+## Per-Call Authorization Flow
+
+```
+SmcpMiddleware receives SmcpEnvelope
+        │
+        ├── 1. Decode security_token → parse ContextClaims
+        ├── 2. Verify JWT signature against orchestrator root key
+        ├── 3. Check token expiry (exp claim)
+        ├── 4. Retrieve agent's registered Ed25519 public key (from SmcpSession)
+        ├── 5. Verify SmcpEnvelope.signature against public key
+        ├── 6. Load SecurityContext named in token.security_context
+        ├── 7. PolicyEngine.evaluate(call, security_context):
+        │         Cedar rule evaluation:
+        │         - Is tool in capabilities list?
+        │         - Is path in allowlist (for fs.* tools)?
+        │         - Is domain in allowlist (for web.* tools)?
+        │         - Is command/subcommand in SubcommandAllowlist?
+        │         - Is rate limit within bounds?
+        │
+        ├── ALLOW → forward to Tool Router
+        └── DENY  → emit PolicyViolationBlocked event, return error to agent
+```
+
+---
+
+## SecurityContext Structure
+
+`SecurityContext` objects are stored in the orchestrator's configuration (or database in multi-node deployments). They define named permission boundaries that map to agent tiers:
+
+```yaml
+security_contexts:
+  - name: default
+    capabilities:
+      - tool: "fs.*"
+        path_allowlist:
+          - /workspace
+          - /agent
+      - tool: "cmd.run"
+        subcommand_allowlist:
+          python: [/workspace]
+          pytest: [/workspace/tests]
+          npm: [install, run, test]
+      - tool: "web.fetch"
+        domain_allowlist:
+          - pypi.org
+          - api.github.com
+        rate_limit: 20/minute
+
+  - name: restricted
+    capabilities:
+      - tool: "fs.read"
+        path_allowlist:
+          - /workspace
+          - /agent
+      - tool: "fs.write"
+        path_allowlist:
+          - /workspace
+    # No cmd.run, no network access
+
+  - name: privileged
+    capabilities:
+      - tool: "fs.*"
+        path_allowlist: ["*"]
+      - tool: "cmd.run"
+        subcommand_allowlist: {}   # empty = use global SubcommandAllowlist
+      - tool: "web.*"
+        domain_allowlist: ["*"]
+        rate_limit: 100/minute
+```
+
+---
+
+## Security Properties
+
+| Property | Mechanism |
+|---|---|
+| **Agent identity** | Ephemeral Ed25519 keypair generated per-execution; public key registered at attestation. |
+| **Non-repudiation** | Every tool call is signed; logs include signatures for forensic audit. |
+| **Replay prevention** | Envelopes include `timestamp`; replayed envelopes fail the timestamp freshness check. |
+| **Confused deputy prevention** | Token binds `execution_id` to `security_context`; a forged claim cannot escalate permissions. |
+| **Credential isolation** | API keys are held by the orchestrator; agent containers receive only a time-limited JWT. |
+| **Authorization scope** | `SecurityContext` enforces per-tool-capability constraints including path allowlists and rate limits. |
+
+---
+
+## Token Expiry and Refresh
+
+`SecurityToken` JWTs have a configurable expiry (default: 30 minutes per execution). For long-running executions, the orchestrator automatically refreshes the token and publishes a `SecurityTokenRefreshed` event. `bootstrap.py` does not need to manage token refresh — the AEGIS Python SDK handles it transparently.
+
+---
+
+## SMCP vs Standard MCP
+
+| Feature | Standard MCP | SMCP |
+|---|---|---|
+| Authentication | ❌ None | ✅ Ed25519-attested JWT |
+| Call authorization | ❌ None | ✅ Cedar PolicyEngine |
+| Path/domain enforcement | ❌ None | ✅ Per-capability allowlists |
+| Rate limiting | ❌ None | ✅ Per-capability rate limits |
+| Audit trail | ❌ None | ✅ Signed event log |
+| Replay protection | ❌ None | ✅ Timestamp + signature |

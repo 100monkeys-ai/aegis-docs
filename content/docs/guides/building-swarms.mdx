@@ -1,0 +1,228 @@
+---
+title: Building Multi-Agent Swarms
+description: How to spawn child agents, pass messages, use resource locks, and manage swarm lifecycle.
+---
+
+# Building Multi-Agent Swarms
+
+This guide covers how to build agents that coordinate with other agents via the AEGIS swarm system. Swarms are built programmatically from within `bootstrap.py` using SMCP-secured MCP tool calls.
+
+---
+
+## When to Use Swarms
+
+Use swarms when a single agent's task is best decomposed into parallel or sequential sub-tasks:
+
+- **Parallel processing**: Analyze multiple files simultaneously with one agent per file.
+- **Specialization**: Route sub-tasks to agents with different capabilities (e.g., a `python-expert` and a `security-reviewer` in parallel).
+- **Pipeline decomposition**: Break a large task into sequential stages, each with isolated state and its own iteration loop.
+
+If your decomposition is static and predictable, consider a [Workflow FSM](/docs/concepts/workflows) instead — it is easier to monitor and debug. Use swarms when decomposition needs to be dynamic (e.g., spawn one child per input item).
+
+---
+
+## Basic Spawn and Await Pattern
+
+```python
+import json
+from aegis import AegisClient
+
+client = AegisClient()
+task = client.get_task()
+
+files = task.input.get("files", [])
+
+# Spawn a child agent for each file
+spawned = []
+for file_path in files:
+    result = client.call_tool("aegis.spawn_child", {
+        "manifest_yaml": f"""
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: file-analyzer-child
+spec:
+  image: myregistry/file-analyzer:latest
+  capabilities:
+    - fs.read
+    - cmd.run
+  security:
+    security_context: default
+  resources:
+    timeout_secs: 120
+""",
+    })
+    spawned.append({
+        "file": file_path,
+        "execution_id": result["execution_id"],
+        "swarm_id": result["swarm_id"]
+    })
+
+# Await all children
+results = []
+for item in spawned:
+    outcome = client.call_tool("aegis.await_child", {
+        "execution_id": item["execution_id"],
+        "timeout_secs": 150
+    })
+    results.append({
+        "file": item["file"],
+        "status": outcome["status"],
+        "output": outcome.get("output", "")
+    })
+
+# Write summary
+with open("/workspace/analysis_results.json", "w") as f:
+    json.dump(results, f, indent=2)
+
+print(json.dumps({"processed": len(results), "results_path": "/workspace/analysis_results.json"}))
+```
+
+---
+
+## Passing Context to Children
+
+The child agent manifest's `bootstrap.py` receives what is passed via `task.input`. You can inject per-child context by embedding it in the manifest's `environment` section, or by having the child read from a shared volume that the parent writes first.
+
+### Option A: Volume-Backed Context
+
+Write a context file to the shared workspace before spawning:
+
+```python
+# Parent writes per-child task files
+for i, file_path in enumerate(files):
+    context_path = f"/workspace/tasks/task_{i}.json"
+    client.call_tool("fs.write", {
+        "path": context_path,
+        "content": json.dumps({"target_file": file_path})
+    })
+
+    client.call_tool("aegis.spawn_child", {
+        "manifest_yaml": child_manifest(task_index=i),
+    })
+```
+
+The child reads its task file from `/workspace/tasks/task_{i}.json` at startup.
+
+### Option B: Environment Variables in the Manifest
+
+Embed small parameters directly in the dynamically generated manifest:
+
+```python
+def child_manifest(file_path: str) -> str:
+    return f"""
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: worker
+spec:
+  image: myregistry/worker:latest
+  capabilities:
+    - fs.read
+    - fs.write
+  security:
+    security_context: default
+  resources:
+    timeout_secs: 120
+  environment:
+    TARGET_FILE: "{file_path}"
+"""
+```
+
+The child reads `os.environ["TARGET_FILE"]` in its `bootstrap.py`.
+
+---
+
+## Resource Locking
+
+When multiple children might write to the same file or shared state, use resource locks:
+
+```python
+# Child agent acquires a lock before writing to shared output
+lock = client.call_tool("aegis.acquire_lock", {
+    "resource": "workspace/aggregated_output.json",
+    "ttl_secs": 30
+})
+
+try:
+    # Read current state
+    try:
+        current = json.loads(client.call_tool("fs.read", {"path": "/workspace/aggregated_output.json"})["content"])
+    except:
+        current = []
+
+    # Append this child's result
+    current.append({"file": os.environ["TARGET_FILE"], "result": my_result})
+
+    # Write back
+    client.call_tool("fs.write", {
+        "path": "/workspace/aggregated_output.json",
+        "content": json.dumps(current)
+    })
+finally:
+    client.call_tool("aegis.release_lock", {
+        "lock_token": lock["lock_token"]
+    })
+```
+
+---
+
+## Inter-Agent Messaging
+
+Use messaging for lightweight coordination between long-running agents in the same swarm:
+
+```python
+# Parent sends work items to a child
+client.call_tool("aegis.send_message", {
+    "to_agent_id": child_agent_id,
+    "payload": json.dumps({"command": "analyze", "target": "/workspace/file.py"}).encode()
+})
+
+# Broadcast a cancellation signal to all agents in the swarm
+client.call_tool("aegis.broadcast_message", {
+    "swarm_id": swarm_id,
+    "payload": b'{"command": "stop"}'
+})
+```
+
+Messages are delivered in send order between the same sender-receiver pair. There is no delivery guarantee across different sender-receiver pairs.
+
+---
+
+## Security Context Ceiling
+
+A child agent's `security_context` must be a subset of the parent's. If your parent runs with `security_context: default` and you attempt to spawn a child with `security_context: privileged`, the spawn will be rejected:
+
+```
+SpawnError: ContextExceedsParentCeiling (requested=privileged, parent=default)
+```
+
+Always use the same or more restrictive security context for child agents.
+
+---
+
+## Depth Limit
+
+AEGIS enforces a maximum swarm depth of 3. A root agent (depth 0) can spawn depth-1 children. Depth-1 children can spawn depth-2 children. Depth-2 children can spawn depth-3 children. Attempting to spawn from depth-3 returns `SpawnError::MaxDepthExceeded`.
+
+Design your decomposition to stay within this limit. If you need deeper hierarchies, flatten the decomposition into wider (more parallel) rather than deeper (more sequential) structures.
+
+---
+
+## Monitoring Swarms
+
+```bash
+# List all swarms
+aegis swarm list
+
+# Get details about a specific swarm
+aegis swarm get <swarm-id>
+
+# List all child executions in a swarm
+aegis swarm children <swarm-id>
+
+# Cancel all agents in a swarm
+aegis swarm cancel <swarm-id>
+```
+
+Swarm events (child spawned, child completed, locks acquired/released, cascade cancellation) are published to the event bus and available via gRPC streaming.

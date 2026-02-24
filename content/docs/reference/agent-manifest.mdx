@@ -1,0 +1,181 @@
+---
+title: Agent Manifest Reference
+description: Complete field-by-field specification for the AgentManifest YAML format.
+---
+
+# Agent Manifest Reference
+
+This page is the authoritative reference for all fields in an AEGIS agent manifest YAML file.
+
+---
+
+## Annotated Full Example
+
+```yaml
+apiVersion: 100monkeys.ai/v1      # required; must be exactly this value
+kind: Agent                        # required; must be exactly "Agent"
+
+metadata:
+  name: python-coder               # required; unique name within the deployment
+  labels:                          # optional; arbitrary key-value pairs for filtering
+    type: developer
+    team: platform
+
+spec:
+  description: "Writes Python solutions to programming tasks."   # optional
+  image: myregistry/my-agent:latest                              # required
+  capabilities:                    # required; list of MCP tool capabilities
+    - fs.read
+    - fs.write
+    - cmd.run
+    - web.fetch
+
+  security:                        # required
+    network_policy:
+      mode: allow                  # required; "allow" = use allowlist (least privileged)
+      allowlist:                   # required when mode=allow
+        - pypi.org
+        - api.github.com
+
+    filesystem_policy:
+      read_paths:                  # required; paths inside container
+        - /workspace
+        - /agent
+      write_paths:                 # required
+        - /workspace
+
+    security_context: default      # required; name of a SecurityContext in config
+
+  resources:
+    cpu_quota: 1.0                 # optional; fractional CPUs. Default: 1.0
+    memory_bytes: 1073741824       # optional; bytes. Default: 1 GiB
+    timeout_secs: 300              # optional; per-iteration timeout. Default: 300
+
+  max_iterations: 10               # optional; max 100monkeys attempts. Default: 10
+
+  validation:                      # optional; list of validators. Default: exit_code only
+    - type: exit_code
+      expected: 0
+    - type: json_schema
+      schema_path: /agent/schema.json
+      target_path: /workspace/result.json
+      min_score: 1.0
+    - type: semantic
+      judge_agent: code-quality-judge
+      criteria: "Evaluate overall code quality and correctness."
+      min_score: 0.80
+      min_confidence: 0.70
+
+  environment:                     # optional; env vars injected into container
+    PYTHONUNBUFFERED: "1"
+    LOG_LEVEL: "debug"
+
+  volumes:                         # optional; list of volume mounts
+    - name: workspace
+      mount_path: /workspace
+      access_mode: ReadWrite
+      storage_class: ephemeral
+      ttl: 1h
+      size_limit_bytes: 5368709120
+
+    - name: shared-data
+      mount_path: /data
+      access_mode: ReadOnly
+      storage_class: persistent
+      volume_id: "vol-a1b2c3d4-..."
+```
+
+---
+
+## Field Reference
+
+### Top-Level Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `apiVersion` | string | ✓ | Must be `100monkeys.ai/v1`. |
+| `kind` | string | ✓ | Must be `Agent`. |
+| `metadata` | object | ✓ | Manifest metadata. |
+| `spec` | object | ✓ | Agent specification. |
+
+### `metadata`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Unique agent name. Must be lowercase alphanumeric with hyphens. Max 63 characters. |
+| `labels` | `map[string]string` | | Arbitrary key-value labels for organization and filtering. |
+
+### `spec`
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `description` | string | | | Human-readable description of the agent's purpose. |
+| `image` | string | ✓ | | OCI container image reference. |
+| `capabilities` | `string[]` | ✓ | | List of MCP tool capabilities the agent may use. See below. |
+| `security` | object | ✓ | | Security policy. |
+| `resources` | object | | See below | CPU, memory, and timeout limits. |
+| `max_iterations` | integer | | `10` | Maximum iterations in the 100monkeys loop. Range: 1–100. |
+| `validation` | `object[]` | | `[{type: exit_code}]` | Validators run after each iteration. |
+| `environment` | `map[string]string` | | | Environment variables injected into the container. Values may use `env:VAR` to forward from daemon environment. |
+| `volumes` | `object[]` | | `[]` | Volume mount declarations. |
+
+### `spec.capabilities`
+
+| Capability | Description | Tool Path |
+|---|---|---|
+| `fs.read` | Read files from mounted volumes. | FSAL |
+| `fs.write` | Write files to mounted volumes. | FSAL |
+| `fs.create` | Create files and directories. | FSAL |
+| `fs.delete` | Delete files and directories. | FSAL |
+| `fs.list` | List directory contents. | FSAL |
+| `fs.*` | All filesystem operations. | FSAL |
+| `cmd.run` | Run subprocesses inside the container. | Dispatch Protocol |
+| `web.fetch` | Fetch a URL. | SMCP External |
+| `web.search` | Perform a web search. | SMCP External |
+
+### `spec.security`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `network_policy.mode` | `allow` \| `deny` | ✓ | `allow` = use allowlist (default). `deny` = no network. |
+| `network_policy.allowlist` | `string[]` | Required if mode=allow | Domain names permitted for outbound requests. |
+| `filesystem_policy.read_paths` | `string[]` | ✓ | Paths inside container where reads are permitted. |
+| `filesystem_policy.write_paths` | `string[]` | ✓ | Paths inside container where writes are permitted. |
+| `security_context` | string | ✓ | Name of a `SecurityContext` defined in `aegis-config.yaml`. |
+
+### `spec.resources`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `cpu_quota` | float | `1.0` | Number of fractional CPUs. Docker `--cpus` value. |
+| `memory_bytes` | integer | `1073741824` | Memory limit in bytes. Docker `--memory` value. |
+| `timeout_secs` | integer | `300` | Per-iteration timeout in seconds. Range: 1–3600. |
+
+### `spec.validation[]`
+
+| Field | Applicable Types | Required | Default | Description |
+|---|---|---|---|---|
+| `type` | all | ✓ | | `exit_code` \| `json_schema` \| `regex` \| `semantic` \| `multi_judge` |
+| `min_score` | all | | `1.0` | Minimum score (0.0–1.0) to pass this validator. |
+| `min_confidence` | `semantic`, `multi_judge` | | `0.0` | Minimum confidence to accept the score. |
+| `expected` | `exit_code` | | `0` | Expected process exit code. |
+| `schema_path` | `json_schema` | ✓ | | Path to JSON Schema file inside container. |
+| `target_path` | `json_schema` | ✓ | | Path to file to validate inside container. |
+| `pattern` | `regex` | ✓ | | Regular expression pattern. |
+| `target` | `regex` | | `stdout` | `stdout` or absolute path inside container. |
+| `judge_agent` | `semantic` | ✓ | | Name of the deployed judge agent. |
+| `judges` | `multi_judge` | ✓ | | List of deployed judge agent names. |
+| `consensus` | `multi_judge` | | `mean` | `mean` \| `min` \| `max` \| `majority` |
+| `criteria` | `semantic`, `multi_judge` | ✓ | | Scoring instructions given to the judge(s). |
+
+### `spec.volumes[]`
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | ✓ | | Local identifier. Must be unique within this manifest. |
+| `mount_path` | string | ✓ | | Absolute path inside container. |
+| `access_mode` | `ReadOnly` \| `ReadWrite` | ✓ | | Access mode enforced by AegisFSAL. |
+| `storage_class` | `ephemeral` \| `persistent` | ✓ | | Lifetime of the volume. |
+| `ttl` | duration | Required for ephemeral | | Auto-deletion TTL. Format: `30m`, `1h`, `2d`. |
+| `volume_id` | string | | | Pin to an existing volume by ID. If omitted, a new volume is created. |
+| `size_limit_bytes` | integer | | no limit | Maximum volume size. Writes beyond this return `ENOSPC`. |

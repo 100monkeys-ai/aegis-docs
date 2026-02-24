@@ -1,0 +1,244 @@
+---
+title: Execution Engine
+description: Deep dive into the ExecutionSupervisor outer loop, InnerLoopService, and the Dispatch Protocol wire format.
+---
+
+# Execution Engine
+
+The AEGIS execution engine is the subsystem that runs an agent against a task and iteratively refines the output until it passes validation. It consists of two nested loops:
+
+- **Outer loop** (`ExecutionSupervisor`): Manages the full execution lifecycle across up to `max_iterations` attempts.
+- **Inner loop** (`InnerLoopService`): Runs inside each iteration — drives the LLM conversation and intercepts tool calls until the model produces a final (non-tool-call) response.
+
+---
+
+## Domain Model
+
+```rust
+struct Execution {
+    id: ExecutionId,
+    agent_id: AgentId,
+    status: ExecutionStatus,
+    iterations: Vec<Iteration>,
+    max_iterations: u8,           // default: 10
+    started_at: DateTime<Utc>,
+    ended_at: Option<DateTime<Utc>>,
+}
+
+struct Iteration {
+    number: u8,                   // 1-based
+    status: IterationStatus,
+    output: Option<String>,
+    error: Option<IterationError>,
+    started_at: DateTime<Utc>,
+    ended_at: Option<DateTime<Utc>>,
+}
+```
+
+### `ExecutionStatus` State Machine
+
+```
+pending ──► running ──► completed
+               │
+               ▼
+            failed
+               │
+            cancelled  (from any state)
+```
+
+### `IterationStatus` Values
+
+| Value | Meaning |
+|---|---|
+| `running` | Container is active, inner loop in progress. |
+| `failed` | Inner loop exited with error; max iterations not yet reached; refinement will proceed. |
+| `refining` | Validator rejected the output; error context injected; next iteration beginning. |
+| `success` | All validators passed; execution completes. |
+
+---
+
+## Outer Loop: ExecutionSupervisor
+
+The `ExecutionSupervisor` manages a single `Execution` aggregate and orchestrates the iteration lifecycle.
+
+```
+ExecutionSupervisor
+│
+├── 1. Resolve Agent manifest from AgentRepository
+├── 2. Create Execution aggregate (status=pending)
+├── 3. Provision volumes → start NFS gateways for each volume
+├── 4. Pull and start container (Docker daemon via bollard)
+│
+└── ITERATION LOOP (max_iterations times):
+    │
+    ├── 5. Call InnerLoopService.run(context)
+    │         → blocks until LLM produces final response
+    │         → returns IterationOutput
+    │
+    ├── 6. Run all validators in manifest.validation
+    │         → each produces ValidationScore (0.0–1.0) + Confidence
+    │
+    ├── 7. Evaluate aggregate score
+    │    ├── Score ≥ threshold for all validators → SUCCESS
+    │    │     └── Set Execution.status = completed
+    │    │     └── Publish ExecutionCompleted event
+    │    │
+    │    ├── Score < threshold AND iterations_remaining > 0 → REFINE
+    │    │     └── Inject error context into next iteration context
+    │    │     └── Start next Iteration
+    │    │
+    │    └── Score < threshold AND iterations_remaining == 0 → FAIL
+    │          └── Set Execution.status = failed
+    │          └── Publish ExecutionFailed event
+    │
+└── 8. Stop container, detach volumes, release locks
+```
+
+---
+
+## Inner Loop: InnerLoopService
+
+The `InnerLoopService` drives the conversation loop for a single iteration. It communicates with `bootstrap.py` running inside the container via a bidirectional HTTP channel.
+
+### Communication Protocol
+
+The inner loop uses a single HTTP endpoint on the orchestrator host:
+
+```
+POST /v1/llm/generate
+```
+
+Both sides use a discriminated-union message format.
+
+#### `AgentMessage` (bootstrap.py → orchestrator)
+
+```json
+{
+  "type": "generate",
+  "messages": [
+    {"role": "system", "content": "..."},
+    {"role": "user",   "content": "..."}
+  ]
+}
+```
+
+Or, after a command runs:
+
+```json
+{
+  "type": "dispatch_result",
+  "dispatch_id": "a1b2c3d4-...",
+  "exit_code": 0,
+  "stdout": "Hello world\n",
+  "stderr": ""
+}
+```
+
+#### `OrchestratorMessage` (orchestrator → bootstrap.py)
+
+After LLM inference, if the model produced tool calls:
+
+```json
+{
+  "type": "dispatch",
+  "dispatch_id": "a1b2c3d4-...",
+  "action": "exec",
+  "command": "python",
+  "args": ["/workspace/solution.py"]
+}
+```
+
+When the model produced a final text response:
+
+```json
+{
+  "type": "final",
+  "content": "The solution has been written to /workspace/solution.py."
+}
+```
+
+### Inner Loop Steps
+
+```
+bootstrap.py  ──► POST /v1/llm/generate {type:"generate", messages:[...]}
+                                │
+                         Orchestrator receives request
+                         Calls LLM provider API with full message history
+                         LLM returns response (may contain tool calls)
+                                │
+            ┌───────────────────▼────────────────────────────────────────┐
+            │  Tool calls in response?                                   │
+            │                                                            │
+            │  YES → Route each tool call:                               │
+            │    fs.* calls   → AegisFSAL (host, direct)                │
+            │    cmd.run      → Dispatch Protocol (in-container)         │  
+            │    web.*, etc.  → SMCP External (host MCP server)          │
+            │                                                            │
+            │   cmd.run → return {type:"dispatch", dispatch_id, ...}     │
+            │        bootstrap.py receives dispatch message              │
+            │        runs subprocess                                     │
+            │        POST /v1/llm/generate {type:"dispatch_result", ...} │
+            │        loop continues with subprocess result in context    │
+            │                                                            │
+            │  NO → return {type:"final", content:"..."}                 │
+            │       InnerLoopService marks iteration status              │
+            └────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Dispatch Protocol
+
+The Dispatch Protocol is how the orchestrator triggers subprocess execution inside the agent container.
+
+### Wire Format Summary
+
+| Message | Direction | Fields |
+|---|---|---|
+| `OrchestratorMessage{type:"dispatch"}` | Orchestrator → bootstrap.py | `dispatch_id` (UUID), `action` ("exec"), `command`, `args` |
+| `AgentMessage{type:"dispatch_result"}` | bootstrap.py → orchestrator | `dispatch_id` (echoed), `exit_code`, `stdout`, `stderr` |
+
+The `dispatch_id` is a UUID generated by the orchestrator. bootstrap.py echoes it back in the `dispatch_result` message for correlation. Mismatched `dispatch_id`s are rejected.
+
+### SubcommandAllowlist
+
+Every `cmd.run` invocation is validated against the `SubcommandAllowlist` in `aegis-config.yaml` before execution:
+
+```yaml
+tools:
+  subcommand_allowlist:
+    python:
+      - /workspace   # allow running any .py file under /workspace
+    pytest:
+      - /workspace/tests
+    npm:
+      - install
+      - run
+      - test
+    git:
+      - status
+      - diff
+      - add
+      - commit
+```
+
+If the command or subcommand is not in the allowlist, the dispatch is rejected with `CommandPolicyViolation` and the error is returned to the LLM as context.
+
+### Output Limits
+
+`subprocess` stdout and stderr are captured up to a configurable limit (default 1 MiB each). Content exceeding the limit is truncated and a warning is appended to the output. This prevents agent containers from flooding orchestrator memory with large outputs.
+
+---
+
+## Execution Context in Refinement
+
+When a validator fails and a new iteration begins, the orchestrator injects additional context into the next iteration's message history:
+
+```json
+{
+  "role": "system",
+  "content": "Iteration 1 failed validation.\n\nValidator: json_schema\nScore: 0.0 (threshold: 1.0)\nDetails: Required property 'output' is missing.\n\nPlease fix the issue and try again."
+}
+```
+
+This context is injected after the user's original task message but before the new iteration begins, so the LLM sees both the original task and the specific failure reason.

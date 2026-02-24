@@ -1,0 +1,208 @@
+---
+title: Configuring Agent Validation
+description: Validator types, gradient scoring, threshold configuration, and chaining multiple validators.
+---
+
+# Configuring Agent Validation
+
+AEGIS uses a **gradient validation** system. Instead of binary pass/fail, each validator produces a `ValidationScore` (0.0–1.0) and a `Confidence` (0.0–1.0). The execution loop compares the score against a configured threshold to decide whether to proceed to the next iteration or accept the output.
+
+---
+
+## How Validation Works
+
+At the end of each iteration:
+
+1. Each validator in `spec.validation` is evaluated in order.
+2. If all validators' scores meet their thresholds → `IterationStatus::Success` → execution completes.
+3. If any validator's score falls below its threshold and iterations remain → `IterationStatus::Refining` → error context is injected and the next iteration begins.
+4. If retries are exhausted → `IterationStatus::Failed`.
+
+---
+
+## Validator Types
+
+### `exit_code`
+
+Checks the container's process exit code. Deterministic; `ValidationScore` is always 1.0 (pass) or 0.0 (fail).
+
+```yaml
+validation:
+  - type: exit_code
+    expected: 0          # any non-zero exit code fails this validator
+```
+
+Use this as the first validator to catch hard failures (e.g., uncaught exceptions, build failures) cheaply before running more expensive validators.
+
+### `json_schema`
+
+Validates a file in the agent's workspace against a JSON Schema. Deterministic.
+
+```yaml
+validation:
+  - type: json_schema
+    schema_path: /agent/output_schema.json   # path inside container
+    target_path: /workspace/result.json      # file to validate
+    min_score: 1.0                           # must fully pass schema
+```
+
+The schema file is baked into the container image at `schema_path`. The `target_path` is the file the agent is expected to produce in its workspace volume.
+
+### `regex`
+
+Validates that stdout matches a regular expression. Deterministic.
+
+```yaml
+validation:
+  - type: regex
+    pattern: "^\\{.*\"status\":\\s*\"success\".*\\}$"
+    target: stdout        # "stdout" or a file path
+    min_score: 1.0
+```
+
+### `semantic`
+
+A single LLM-as-Judge agent evaluates the output and produces a gradient score.
+
+```yaml
+validation:
+  - type: semantic
+    judge_agent: code-quality-judge    # must be a deployed agent
+    criteria: |
+      Evaluate the submitted Python code on:
+      1. Correctness: Does it solve the stated problem?
+      2. Code quality: Is it idiomatic Python?
+      3. Error handling: Does it handle edge cases?
+      Score 0.0 for fundamentally broken code, 1.0 for production-ready code.
+    min_score: 0.75
+    min_confidence: 0.70
+```
+
+The judge agent receives the iteration's output and the `criteria` text, then returns a JSON object:
+```json
+{ "score": 0.82, "confidence": 0.91, "reasoning": "..." }
+```
+
+### `multi_judge`
+
+Runs multiple judge agents and aggregates their scores via consensus. Useful for high-stakes validation where a single judge's bias could skew results.
+
+```yaml
+validation:
+  - type: multi_judge
+    judges:
+      - code-quality-judge
+      - security-reviewer-judge
+      - test-coverage-judge
+    consensus: mean          # "mean" | "min" | "max" | "majority"
+    criteria: |
+      Score the output from 0.0 to 1.0 on overall production readiness.
+    min_score: 0.80
+    min_confidence: 0.65
+```
+
+| Consensus Mode | Description |
+|---|---|
+| `mean` | Average of all judges' scores. |
+| `min` | Minimum score (most conservative — all judges must agree). |
+| `max` | Maximum score (most permissive — any judge's approval is enough). |
+| `majority` | Score from the majority position (rounded). |
+
+---
+
+## Gradient Scoring vs. Binary Validation
+
+Traditional validators return pass/fail. AEGIS validators return a score and confidence, enabling:
+
+- **Threshold tuning**: Set `min_score: 0.6` for fast iteration during development; tighten to `0.9` for production agents.
+- **Multi-criteria ranking**: Compare two executions by their aggregate score to pick the better output.
+- **Confidence gating**: Set `min_confidence: 0.7` to reject verdicts from judges that are uncertain.
+
+---
+
+## Chaining Validators
+
+Validators run in the declared order. Each must pass for the iteration to succeed. The execution loop uses the **lowest-scoring validator** as the reported score for the iteration.
+
+A typical chain orders validators cheapest-first:
+
+```yaml
+validation:
+  # 1. Cheapest: deterministic exit code check
+  - type: exit_code
+    expected: 0
+
+  # 2. Deterministic: JSON schema check
+  - type: json_schema
+    schema_path: /agent/schema.json
+    target_path: /workspace/output.json
+    min_score: 1.0
+
+  # 3. Expensive: LLM judge (only runs if the above pass)
+  - type: semantic
+    judge_agent: quality-judge
+    criteria: "Is the output correct and complete?"
+    min_score: 0.80
+    min_confidence: 0.70
+```
+
+This avoids running the LLM judge (slow and costly) when the deterministic checks fail.
+
+---
+
+## Agent-as-Judge Pattern
+
+The judge agent specified in `semantic` or `multi_judge` validators is a regular AEGIS agent defined with its own manifest. This means judges can:
+
+- Be updated independently of the agent they evaluate.
+- Run in an isolated container with their own resource limits.
+- Themselves be subject to the 100monkeys iteration loop for their own output quality.
+- Be specialized for specific domains (e.g., a judge trained to evaluate security code reviews).
+
+Example judge agent manifest:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: code-quality-judge
+spec:
+  description: "Evaluates Python code quality and returns a gradient score."
+  image: myregistry/judge-agent:latest
+  capabilities:
+    - fs.read
+  security:
+    network_policy:
+      mode: allow
+      allowlist: []          # no network access needed for code review
+    security_context: restricted
+  resources:
+    timeout_secs: 60
+    memory_bytes: 536870912
+  validation:
+    - type: json_schema
+      schema_path: /agent/judge_output_schema.json
+      target_path: /workspace/verdict.json
+      min_score: 1.0
+```
+
+The judge's `bootstrap.py` reads the code under review from the shared workspace, evaluates it, and writes the JSON verdict to `/workspace/verdict.json`.
+
+---
+
+## Validation Configuration Reference
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `type` | string | — | Validator type: `exit_code`, `json_schema`, `regex`, `semantic`, `multi_judge`. |
+| `min_score` | float | `1.0` | Minimum `ValidationScore` to consider this validator passed. |
+| `min_confidence` | float | `0.0` | Minimum `Confidence` to accept the score. If confidence is below this, the score is treated as failing. |
+| `judge_agent` | string | — | (`semantic` only) Name of the judge agent to invoke. |
+| `judges` | string[] | — | (`multi_judge` only) List of judge agent names. |
+| `consensus` | string | `mean` | (`multi_judge` only) Score aggregation strategy. |
+| `criteria` | string | — | (`semantic`, `multi_judge`) Instructions to the judge about what to evaluate. |
+| `expected` | integer | `0` | (`exit_code` only) Expected process exit code. |
+| `schema_path` | string | — | (`json_schema` only) Path to the JSON Schema file inside the container. |
+| `target_path` | string | — | (`json_schema` only) Path to the file to validate. |
+| `pattern` | string | — | (`regex` only) Regular expression pattern. |
+| `target` | string | `stdout` | (`regex` only) `stdout` or an absolute file path. |

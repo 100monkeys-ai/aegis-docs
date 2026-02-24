@@ -1,0 +1,99 @@
+---
+title: Welcome to AEGIS
+description: AEGIS is an open-source orchestrator for running autonomous AI agents in isolated, policy-enforced runtimes.
+---
+
+# Welcome to AEGIS
+
+AEGIS is a self-hosted orchestrator that manages the full lifecycle of autonomous AI agents — from manifest deployment through iterative execution, workflow coordination, multi-agent swarms, and secure tool access.
+
+Agents are defined as declarative YAML manifests, executed inside isolated containers (Docker for development, Firecracker micro-VMs for production), and interact with external tools exclusively through the AEGIS orchestrator proxy. The orchestrator enforces security policies, manages credentials, routes tool calls, and handles storage — agents themselves are stateless compute processes.
+
+---
+
+## Core Capabilities
+
+| Capability | Description |
+|---|---|
+| **Declarative agent manifests** | Define agents as Kubernetes-style YAML with `apiVersion`, `kind`, `metadata`, and `spec`. Deploy, update, pause, and delete agents via CLI or gRPC API. |
+| **100monkeys iterative execution** | Agents run in a supervised loop: generate output → validate → inject feedback → retry. Up to 10 iterations per execution. Validation is gradient-scored (0.0–1.0), not binary pass/fail. |
+| **Workflow FSMs** | Compose multiple agents into durable finite state machines backed by Temporal.io. States can be agent executions, system commands, or human approval gates. |
+| **Multi-agent swarms** | A parent agent can spawn child executions, pass messages between agents, and coordinate on shared resources using TTL-backed locks. |
+| **SMCP tool routing** | All MCP tool calls are proxied through the orchestrator with Ed25519-signed envelopes. Agents never hold credentials — the orchestrator resolves secrets and enforces Cedar-based policy rules per call. |
+| **Storage volumes** | Agents mount ephemeral or persistent volumes over a user-space NFSv3 server. The orchestrator intercepts every POSIX operation for authorization, path validation, and audit logging. |
+| **BYOLLM** | Agent manifests reference model aliases. Node config maps aliases to providers (OpenAI, Anthropic, Ollama). Swap models without redeploying agents. |
+| **gRPC + HTTP APIs** | Full `aegis.runtime.v1` gRPC service with bidirectional streaming for execution events. HTTP endpoints for agent bootstrap communication. |
+
+---
+
+## Where to Start
+
+**I want to deploy and run my first agent**
+→ [Getting Started](/docs/getting-started) — install the binary, start the stack, run a demo agent.
+
+**I want to understand how agents work**
+→ [Agents](/docs/concepts/agents) — manifest format, lifecycle, runtime selection.
+→ [The Execution Loop](/docs/concepts/execution) — how the 100monkeys loop and inner tool interception work.
+
+**I want to build a multi-agent workflow**
+→ [Workflows](/docs/concepts/workflows) — FSM manifests, Blackboard context, state types.
+→ [Building Workflows](/docs/guides/building-workflows) — step-by-step guide with the Forge reference workflow.
+
+**I want to understand security and tool access**
+→ [Security Model](/docs/concepts/security-model) — the two-layer security model.
+→ [SMCP: Secure Model Context Protocol](/docs/architecture/smcp) — attestation flow, signed envelopes, policy enforcement.
+
+**I'm deploying AEGIS to production**
+→ [Infrastructure Overview](/docs/deployment/infrastructure) — dependencies, topology, hardware requirements.
+→ [Node Configuration Reference](/docs/deployment/configuration) — annotated `aegis-config.yaml`.
+→ [Firecracker Runtime](/docs/deployment/firecracker) — production-grade KVM isolation.
+
+**I need the API or CLI reference**
+→ [CLI Reference](/docs/reference/cli) — all `aegis` subcommands and flags.
+→ [gRPC API Reference](/docs/reference/grpc-api) — `aegis.runtime.v1` service methods.
+→ [Agent Manifest Reference](/docs/reference/agent-manifest) — every manifest field.
+
+---
+
+## Architecture at a Glance
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    AEGIS Orchestrator                   │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ Agent        │  │ Execution    │  │ Workflow     │  │
+│  │ Lifecycle    │  │ Supervisor   │  │ Engine       │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ SMCP / Tool  │  │ Storage      │  │ Swarm        │  │
+│  │ Router       │  │ Gateway      │  │ Coordinator  │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ Secrets      │  │ IAM /        │  │ Event Bus    │  │
+│  │ (OpenBao)    │  │ Keycloak     │  │ (broadcast)  │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────┘
+          │                                │
+          │ NFS mount                      │ gRPC / HTTP
+          ▼                                ▼
+┌──────────────────┐           ┌────────────────────────┐
+│  Agent Container │           │  CLI / Control Plane / │
+│  (Docker or      │           │  SDK Client            │
+│   Firecracker)   │           └────────────────────────┘
+└──────────────────┘
+          │
+          ▼
+┌──────────────────┐    ┌──────────────┐    ┌──────────────┐
+│   PostgreSQL     │    │  SeaweedFS   │    │  Temporal    │
+│   (state)        │    │  (volumes)   │    │  (workflows) │
+└──────────────────┘    └──────────────┘    └──────────────┘
+```
+
+---
+
+## Licensing
+
+AEGIS is licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html). The AGPL-3.0 copyleft requirement applies to modified versions, including those run as network services. See `LICENSE` in the repository for the full text.

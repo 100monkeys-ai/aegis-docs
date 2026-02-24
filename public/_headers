@@ -1,0 +1,22 @@
+# Cloudflare Pages custom response headers
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+# Immutable hashed assets (Next.js _next/static/**)
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# OG images
+/og/*
+  Cache-Control: public, max-age=86400
+
+# LLM text files — short cache so they refresh with new content
+/llms.txt
+  Cache-Control: public, max-age=3600
+/llms-full.txt
+  Cache-Control: public, max-age=3600
+
+# HTML pages — always revalidate
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin

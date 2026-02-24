@@ -1,0 +1,198 @@
+---
+title: Configuring LLM Providers
+description: The BYOLLM model alias system — configuring OpenAI, Anthropic, and Ollama providers and mapping them to agent-facing aliases.
+---
+
+# Configuring LLM Providers
+
+AEGIS uses a **BYOLLM** (Bring Your Own LLM) system. Agent manifests and `bootstrap.py` reference model **aliases** (e.g., `default`, `fast`, `reasoning`), not provider names. Node configuration maps these aliases to concrete providers. This decouples agent code from infrastructure choices — you can swap providers or models without changing any agent manifest.
+
+---
+
+## How the Alias System Works
+
+```
+Agent manifest: spec uses model alias "fast"
+         ↓
+bootstrap.py:  client = AegisClient(model="fast")
+         ↓
+Node config:   aliases.fast → "claude-3-5-haiku"
+         ↓
+Provider:      type: anthropic, model: claude-3-5-haiku-20241022
+         ↓
+LLM API call to api.anthropic.com
+```
+
+Credential resolution happens in the orchestrator. The agent process never receives API keys.
+
+---
+
+## Configuring Providers
+
+All provider configuration lives under `llm` in `aegis-config.yaml`.
+
+### OpenAI
+
+```yaml
+llm:
+  providers:
+    - name: gpt-4o
+      type: openai
+      api_key: "env:OPENAI_API_KEY"
+      model: gpt-4o
+      max_tokens: 4096
+      context_window: 128000
+      temperature: 0.2
+
+    - name: gpt-4o-mini
+      type: openai
+      api_key: "env:OPENAI_API_KEY"
+      model: gpt-4o-mini
+      max_tokens: 2048
+      context_window: 128000
+```
+
+For Azure OpenAI:
+
+```yaml
+    - name: azure-gpt4o
+      type: openai
+      api_key: "env:AZURE_OPENAI_KEY"
+      base_url: "https://my-resource.openai.azure.com/openai/deployments/gpt-4o"
+      api_version: "2024-02-01"
+      model: gpt-4o
+      max_tokens: 4096
+```
+
+### Anthropic
+
+```yaml
+llm:
+  providers:
+    - name: claude-3-5-sonnet
+      type: anthropic
+      api_key: "env:ANTHROPIC_API_KEY"
+      model: claude-3-5-sonnet-20241022
+      max_tokens: 8192
+      context_window: 200000
+
+    - name: claude-3-5-haiku
+      type: anthropic
+      api_key: "env:ANTHROPIC_API_KEY"
+      model: claude-3-5-haiku-20241022
+      max_tokens: 4096
+      context_window: 200000
+```
+
+### Ollama (Local / Air-Gapped)
+
+Ollama runs a local inference server. No API key is required. This is ideal for air-gapped environments or cost-sensitive workloads.
+
+```yaml
+llm:
+  providers:
+    - name: ollama-qwen
+      type: ollama
+      base_url: "http://localhost:11434"
+      model: qwen2.5-coder:32b
+      max_tokens: 4096
+      context_window: 32000
+```
+
+Ensure the Ollama server is running and the model is pulled before starting the AEGIS daemon:
+
+```bash
+ollama pull qwen2.5-coder:32b
+ollama serve
+```
+
+---
+
+## Mapping Aliases
+
+After defining providers, map alias names to provider names. The alias name is what agent code references.
+
+```yaml
+llm:
+  providers:
+    - name: gpt-4o
+      ...
+    - name: gpt-4o-mini
+      ...
+    - name: claude-3-5-sonnet
+      ...
+    - name: claude-3-5-haiku
+      ...
+    - name: ollama-qwen
+      ...
+
+  aliases:
+    default: gpt-4o              # Used when no model is specified
+    fast: claude-3-5-haiku       # Low latency, lower cost
+    reasoning: gpt-4o            # High-capability tasks
+    local: ollama-qwen           # Air-gapped / zero API cost
+    review: claude-3-5-sonnet    # Long-context review tasks
+```
+
+---
+
+## Using Aliases in bootstrap.py
+
+```python
+from aegis import AegisClient
+
+# Use a specific alias
+client = AegisClient(model="fast")
+
+# Use the default alias (omit model parameter)
+client = AegisClient()
+```
+
+The SDK resolves the alias to a provider at runtime via the orchestrator. Changing the alias mapping in node config and restarting the daemon immediately affects all subsequent executions — no agent code changes needed.
+
+---
+
+## Hot-Swapping Models
+
+To change which model backs a given alias:
+
+1. Update `aegis-config.yaml`:
+   ```yaml
+   aliases:
+     default: claude-3-5-sonnet   # was: gpt-4o
+   ```
+
+2. Restart the AEGIS daemon:
+   ```bash
+   # Graceful restart (waits for in-flight executions to complete or timeout)
+   aegis daemon reload --config aegis-config.yaml
+
+   # Hard restart
+   systemctl restart aegis
+   ```
+
+Running executions continue using the provider that was active when they started. New executions use the updated alias mapping.
+
+---
+
+## Provider Configuration Reference
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✓ | Internal identifier. Referenced by `aliases`. |
+| `type` | `openai` \| `anthropic` \| `ollama` | ✓ | Provider adapter to use. |
+| `api_key` | string | ✓ (except Ollama) | API key value or `env:VAR_NAME` reference. Never hardcode keys. |
+| `base_url` | string | | Override the default API endpoint. Required for Azure OpenAI and Ollama. |
+| `model` | string | ✓ | Model identifier as accepted by the provider's API. |
+| `max_tokens` | integer | | Maximum tokens in the completion. |
+| `context_window` | integer | | Provider's context window size. Used for context truncation decisions. |
+| `temperature` | float | | Sampling temperature (0.0–2.0). Defaults to provider default. |
+| `api_version` | string | | API version string. Required for Azure OpenAI. |
+
+---
+
+## Credential Security
+
+API keys configured as `env:VAR_NAME` are read from the daemon's environment at startup. They are stored in memory and never written to disk or logs. When OpenBao secrets management is configured (see [Secrets Management](/docs/deployment/secrets)), credentials can also be sourced from OpenBao with the `vault:path/to/secret` syntax.
+
+Agents never receive API keys. All LLM API calls are made by the orchestrator host process using the resolved credential.

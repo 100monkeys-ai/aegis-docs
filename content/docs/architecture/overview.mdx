@@ -1,0 +1,172 @@
+---
+title: Architecture Overview
+description: Component map, bounded contexts, data flow, and technology stack for the AEGIS orchestrator.
+---
+
+# Architecture Overview
+
+AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page provides the system-wide component map and explains how subsystems interact.
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Language | Rust (2021 edition) |
+| Async runtime | Tokio |
+| HTTP API | Axum |
+| gRPC API | Tonic + Prost |
+| Database | PostgreSQL via SQLx |
+| Workflow durability | Temporal |
+| Container runtime | Docker (via bollard) — Firecracker in development |
+| Container image distribution | OCI registries (Docker Hub, GHCR, private) |
+| Storage backend | SeaweedFS |
+| Storage transport | User-space NFSv3 (`nfsserve` crate) |
+| Secrets management | OpenBao |
+| IAM / OIDC | Keycloak |
+| Agent tool protocol | MCP (Model Context Protocol) |
+| Agent security protocol | SMCP (Secure Model Context Protocol) |
+| Policy engine | Cedar |
+
+---
+
+## Component Map
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        AEGIS Orchestrator                           │
+│                                                                     │
+│  Presentation Layer                                                 │
+│  ┌──────────────────┐  ┌────────────────────────────────────────┐  │
+│  │  HTTP API (Axum) │  │       gRPC API (Tonic)                 │  │
+│  │  /v1/...         │  │  aegis.runtime.v1                      │  │
+│  └────────┬─────────┘  └────────────────┬───────────────────────┘  │
+│           │                             │                           │
+│  Application Layer                      │                           │
+│  ┌────────▼─────────────────────────────▼────────────────────────┐ │
+│  │           Application Services / Use Cases                     │ │
+│  │  DeployAgent  StartExecution  StartWorkflow  SpawnChild        │ │
+│  └───────┬────────────────┬──────────────┬─────────────┬─────────┘ │
+│          │                │              │             │            │
+│  Domain Layer             │              │             │            │
+│  ┌───────▼──────┐  ┌──────▼──────┐  ┌───▼────┐  ┌────▼────────┐  │
+│  │ Agent        │  │ Execution   │  │Workflow│  │  Swarm      │  │
+│  │ Aggregate    │  │ Aggregate   │  │ FSM    │  │  Context    │  │
+│  └──────────────┘  └─────────────┘  └────────┘  └─────────────┘  │
+│                                                                     │
+│  Infrastructure Layer                                               │
+│  ┌──────────────┐  ┌──────────┐  ┌─────────┐  ┌────────────────┐ │
+│  │   Docker /   │  │  SMCP    │  │  NFS    │  │  PostgreSQL    │ │
+│  │  Firecracker │  │ Gateway  │  │ Gateway │  │  Repositories  │ │
+│  │  Runtime     │  │ + Cedar  │  │ FSAL    │  │                │ │
+│  └──────────────┘  └──────────┘  └─────────┘  └────────────────┘ │
+│  ┌──────────────┐  ┌──────────┐  ┌─────────┐                      │
+│  │   Temporal   │  │ OpenBao  │  │Keycloak │                      │
+│  │  (Workflow)  │  │ Secrets  │  │  IAM    │                      │
+│  └──────────────┘  └──────────┘  └─────────┘                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Bounded Contexts
+
+AEGIS is divided into 13 bounded contexts. Each owns its domain model and exposes well-defined service traits:
+
+| # | Context | Language | Primary Responsibility |
+|---|---|---|---|
+| 1 | Agent Lifecycle | Rust | Manifest CRUD, agent status |
+| 2 | Execution | Rust | 100monkeys loop, container lifecycle |
+| 3 | Workflow Orchestration | Rust | FSM execution, Blackboard, Temporal |
+| 4 | Security Policy | Rust | SMCP, Cedar policy engine, attestation |
+| 5 | Cortex (Memory) | Rust + Python | Pattern storage — cloud-managed; not in OSS deployment |
+| 6 | Swarm Coordination | Rust | Multi-agent hierarchy, messaging, locks |
+| 7 | Storage Gateway | Rust | NFS server, AegisFSAL, SeaweedFS |
+| 8 | Stimulus–Response | Rust | Webhook ingestion, workflow routing |
+| 9 | Control Plane (UX) | TypeScript | Operator dashboard (separate repo) |
+| 10 | Client SDK | Python, TypeScript | Programmatic access (separate repos) |
+| 11 | Secrets & Identity | Rust | OpenBao, credential resolution |
+| 12 | Zaru Consumer Product | TypeScript / Rust | Consumer surface (separate deployment) |
+| 13 | IAM & Identity Federation | Rust | Keycloak OIDC, JWT validation |
+
+Contexts communicate via service traits and domain events. No cross-context direct database access.
+
+---
+
+## Request Data Flow
+
+### Agent Execution Request
+
+```
+Client
+  │  POST /v1/executions (HTTP) or ExecuteAgent (gRPC)
+  ▼
+Presentation Layer
+  │  KeycloakAuthInterceptor validates Bearer JWT
+  ▼
+Application Layer: StartExecutionUseCase
+  │  1. Resolves Agent by ID from AgentRepository
+  │  2. Creates Execution aggregate (ExecutionId, status=pending)
+  │  3. Saves to PostgreSQL
+  │  4. Publishes ExecutionStarted domain event
+  ▼
+Execution Context: ExecutionSupervisor
+  │  5. Starts Container (Docker / Firecracker)
+  │  6. Resolves volumes, starts NFS gateways
+  │  7. Begins outer iteration loop
+  ▼
+NFS Server Gateway
+  │  8. Mounts volumes into container via NFSv3
+  ▼
+Container: bootstrap.py
+  │  9. Calls /v1/llm/generate → inner loop begins
+  ▼
+Orchestrator: InnerLoopService
+  │  10. Forwards to LLM provider (OpenAI / Anthropic / Ollama)
+  │  11. Receives tool calls  → routes via SMCP → executes → returns
+  │  12. Loop until no more tool calls
+  ▼
+Validators
+  │  13. Each validator runs; scores aggregated
+  │  14. If score ≥ threshold → success → execution completes
+  │  15. If score < threshold and retries remain → refine → back to step 9
+  ▼
+Event Bus
+  │  16. ExecutionCompleted / ExecutionFailed published
+  ▼
+Client (gRPC stream or polling)
+     17. Receives final status and output
+```
+
+---
+
+## Layer Structure (Codebase)
+
+```
+aegis-orchestrator/
+├── orchestrator/
+│   ├── core/
+│   │   ├── domain/           # Aggregates, value objects, domain services
+│   │   ├── application/      # Use cases, application services
+│   │   ├── infrastructure/   # Repositories, runtime adapters, external clients
+│   │   └── presentation/     # HTTP and gRPC handlers, auth middleware
+│   └── swarm/                # Swarm coordination domain
+├── aegis-config.yaml         # Node runtime configuration
+└── Cargo.toml
+```
+
+Each layer only depends on layers below it. The domain layer has no external dependencies other than `serde`.
+
+---
+
+## Deep Dives
+
+| Topic | Page |
+|---|---|
+| Execution engine (outer loop, inner loop, Dispatch Protocol) | [Execution Engine](/docs/architecture/execution-engine) |
+| Workflow FSM and Temporal integration | [Workflow Engine](/docs/architecture/workflow-engine) |
+| SMCP security protocol | [SMCP](/docs/architecture/smcp) |
+| MCP tool routing paths | [Tool Routing](/docs/architecture/tool-routing) |
+| AegisFSAL and NFS storage gateway | [Storage Gateway](/docs/architecture/storage-gateway) |
+| Event bus and domain events | [Event Bus](/docs/architecture/event-bus) |
