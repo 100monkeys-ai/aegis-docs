@@ -92,14 +92,23 @@ enum StateKind {
 }
 
 struct TransitionRule {
-    condition: Option<Condition>,    // None = unconditional (default transition)
-    target: String,                  // Target state name
+    condition: Option<TransitionCondition>,  // None = unconditional (default transition)
+    target: String,                          // Target state name
+    feedback: Option<String>,                // Handlebars template; resolves as {{state.feedback}}
 }
 
-struct Condition {
-    field: String,                   // Blackboard field (e.g., "review.score")
-    operator: ConditionOperator,     // eq | ne | gt | gte | lt | contains
-    value: String,
+enum TransitionCondition {
+    Always,
+    OnSuccess,
+    OnFailure,
+    ScoreAbove { threshold: f64 },
+    ScoreBelow { threshold: f64 },
+    ScoreBetween { min: f64, max: f64 },
+    Consensus { threshold: f64, agreement: f64 },
+    InputEquals { value: String },
+    Custom { expression: String },   // Handlebars boolean expression
+    ExitCodeZero,
+    ExitCodeNonZero,
 }
 ```
 
@@ -107,14 +116,26 @@ struct Condition {
 
 ## Blackboard System
 
-The **Blackboard** is the shared mutable context for a workflow execution. Each state reads from and writes to the Blackboard.
+The **Blackboard** is a `HashMap<String, serde_json::Value>` that carries shared context across all states in a workflow execution. It is owned by the Temporal worker during live execution and persisted by Temporal's event-sourcing.
+
+### Ownership Lifecycle
+
+The Blackboard moves through three distinct phases:
+
+| Phase | Owner | What happens |
+|---|---|---|
+| **Seed** | Rust orchestrator | `spec.context` keys and any values from `StartWorkflowExecutionRequest.blackboard` are written into `WorkflowExecution.blackboard` before the Temporal worker starts. Accessible in manifests as `{{workflow.context.KEY}}` or `{{blackboard.KEY}}`. |
+| **Live execution** | TypeScript Temporal worker | The FSM runs. Each state's output is written to the Blackboard under the state's name (e.g. `REQUIREMENTS.output`, `REQUIREMENTS.status`, `REQUIREMENTS.score`). Handlebars templates in `input`, `command`, `env`, `prompt`, and `feedback` fields are resolved against the live Blackboard. |
+| **Capture** | Rust orchestrator | On `WorkflowExecutionCompleted`, the `final_blackboard` snapshot from Temporal is merged back into `WorkflowExecution.blackboard` and persisted to PostgreSQL. A `WorkflowCompleted` domain event carrying `final_blackboard` is published to the event bus. |
+
+The Rust orchestrator **never mutates the Blackboard during live execution** — only the Temporal worker does.
 
 ### State Output Conventions
 
-When a `WorkflowState.Agent` completes, the orchestrator writes the execution result to the Blackboard under the state name:
+When a `WorkflowState.Agent` completes, the Temporal worker writes the execution result to the Blackboard under the state's name:
 
 ```
-Blackboard["requirements"] = {
+Blackboard["REQUIREMENTS"] = {
   "status": "success",
   "output": "...agent's final output text...",
   "score": 0.92,
@@ -122,39 +143,40 @@ Blackboard["requirements"] = {
 }
 ```
 
-Downstream states reference these fields in `TransitionRule.condition.field`:
+Downstream states reference these values via Handlebars:
 
 ```yaml
-- condition:
-    field: requirements.status
-    operator: eq
-    value: success
-  target: implement
+ARCHITECTURE:
+  kind: Agent
+  agent: architect-agent
+  input: |
+    Requirements: {{REQUIREMENTS.output}}
+    
+    Design the architecture.
+  transitions:
+    - condition: on_success
+      target: ARCH_APPROVAL
 ```
 
 ### Template Variables
 
-The Blackboard also supports Handlebars template variables in agent input injected by the workflow engine:
+Handlebars templates are rendered against the live Blackboard at the moment each state executes. The full variable reference is in the [Workflow Manifest Reference](/docs/reference/workflow-manifest#handlebars-template-variables).
 
-```yaml
-states:
-  implement:
-    kind: Agent
-    agent_id: coder-agent
-    input_template: |
-      Implement this task in {{blackboard.language}}.
-      Requirements: {{blackboard.requirements.output}}
-```
-
-Available template variables:
+Key variables:
 
 | Variable | Description |
 |---|---|
-| `{{blackboard.<key>}}` | Any Blackboard top-level key |
-| `{{blackboard.<state>.<field>}}` | Output field from a named state |
-| `{{execution.id}}` | Current workflow execution ID |
-| `{{workflow.name}}` | Workflow name |
-| `{{input.<key>}}` | Original workflow input key |
+| `{{STATE.output}}` | Final output text of an Agent state. |
+| `{{STATE.output.stdout}}` | stdout of a System state. |
+| `{{STATE.output.stderr}}` | stderr of a System state. |
+| `{{STATE.status}}` | `"success"` or `"failed"`. |
+| `{{STATE.score}}` | Validation score of an Agent state (0.0–1.0). |
+| `{{STATE.consensus.score}}` | Aggregated score of a ParallelAgents state. |
+| `{{STATE.agents.N.output}}` | Individual judge output (ParallelAgents, 0-indexed). |
+| `{{workflow.context.KEY}}` | Value from `spec.context`. |
+| `{{blackboard.KEY}}` | Any key set in `spec.context` or by a prior `System` state. |
+| `{{state.feedback}}` | `feedback` string from the incoming transition. |
+| `{{input.KEY}}` | Key from the workflow start `--input` payload. |
 
 ---
 
@@ -187,7 +209,7 @@ Human states respect `timeout_secs`. If no signal arrives within the timeout, th
 When a `WorkflowState.ParallelAgents` is entered, the Temporal workflow dispatches all listed agent IDs concurrently as Temporal Activities:
 
 ```
-Enter parallel_review
+Enter PARALLEL_REVIEW
 │
 ├── Activity: security-reviewer
 ├── Activity: performance-reviewer  (all three run simultaneously)
@@ -195,13 +217,17 @@ Enter parallel_review
          │
          └── All three complete
                │
-               Blackboard["parallel_review"] = {
-                 "all_succeeded": true,
-                 "results": {
-                   "security-reviewer": {"status": "success", "score": 0.91},
-                   "performance-reviewer": {"status": "success", "score": 0.88},
-                   "style-reviewer": {"status": "success", "score": 0.95}
-                 }
+               Blackboard["PARALLEL_REVIEW"] = {
+                 "consensus": {
+                   "score": 0.91,
+                   "confidence": 0.87,
+                   "all_succeeded": true
+                 },
+                 "agents": [
+                   {"status": "success", "score": 0.91, "output": "{...}"},
+                   {"status": "success", "score": 0.88, "output": "{...}"},
+                   {"status": "success", "score": 0.95, "output": "{...}"}
+                 ]
                }
                │
          TransitionRules evaluated → next state chosen

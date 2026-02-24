@@ -415,7 +415,8 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 | `{{STATE.score}}` | States after STATE | Validation score (Agent states, 0.0–1.0). |
 | `{{STATE.consensus.score}}` | States after STATE | Consensus score (ParallelAgents states). |
 | `{{STATE.consensus.confidence}}` | States after STATE | Consensus confidence (ParallelAgents states). |
-| `{{STATE.agents.N.output}}` | States after STATE | Individual judge output (ParallelAgents, 0-indexed). |
+| `{{STATE.agents.N.output}}` | States after STATE | Individual judge full output (ParallelAgents, 0-indexed). |
+| `{{STATE.agents.N.output.FIELD}}` | States after STATE | Field from a judge's JSON output (e.g. `{{AUDIT.agents.0.output.score}}`, `{{AUDIT.agents.1.output.reasoning}}`). |
 | `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state. |
 | `{{state.feedback}}` | All states | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | After Human states | Additional feedback text from the `signal --feedback` argument. |
@@ -435,7 +436,25 @@ input: |
 
 **Comparison operators in `custom` expressions:** `<`, `>`, `<=`, `>=`, `==`, `!=`, `&&`, `||`, `!`
 
-**Built-in helpers:** `{{length array}}`, `{{upper string}}`, `{{lower string}}`, `{{trim string}}`, `{{json object}}`
+**Built-in helpers:**
+
+| Helper | Example | Description |
+|---|---|---|
+| `{{length array}}` | `{{length AUDIT.agents}}` | Number of elements in an array. |
+| `{{upper string}}` | `{{upper workflow.task}}` | Convert to upper case. |
+| `{{lower string}}` | `{{lower STATE.status}}` | Convert to lower case. |
+| `{{trim string}}` | `{{trim STATE.output}}` | Strip leading/trailing whitespace. |
+| `{{json object}}` | `{{json AUDIT.agents.0.output}}` | Pretty-print an object as a JSON string. |
+| `{{first_line string}}` | `{{first_line GENERATE.output}}` | Return only the first line of a multi-line string. |
+| `{{default value fallback}}` | `{{default blackboard.lang "python"}}` | Return `value` if present and non-empty, otherwise `fallback`. |
+
+**Missing key behavior:** if a template references a key that doesn't exist in the Blackboard at render time, the engine renders a descriptive placeholder rather than crashing the workflow:
+
+```
+{{{{ ERROR: missing key 'GENERATE.output' — state GENERATE has not yet completed }}}}
+```
+
+This ensures a workflow state receives a clear signal about a misconfigured template rather than silently receiving an empty string or aborting execution.
 
 ---
 

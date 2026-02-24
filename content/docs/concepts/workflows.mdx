@@ -196,7 +196,15 @@ Individual results are available as `{{STATENAME.agents.N.output}}` (0-indexed).
 
 ## The Blackboard
 
-The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is initialised from `spec.context` (and the optional `blackboard_defaults` alias) and updated as states complete.
+The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is seeded from `spec.context` at workflow start and updated as states complete.
+
+### Lifecycle
+
+The Blackboard has three lifecycle phases:
+
+1. **Seed** — Before the workflow starts, the orchestrator writes all `spec.context` keys into the Blackboard. These are accessible via `{{workflow.context.KEY}}` or `{{blackboard.KEY}}`.
+2. **Live execution** — The Temporal worker owns the Blackboard during execution. After each state completes, its output is written to the Blackboard under the state's name (e.g. `REQUIREMENTS.output`, `REQUIREMENTS.status`, `REQUIREMENTS.score`). All Handlebars templates in subsequent states are resolved against this live state.
+3. **Capture** — When the workflow finishes, the orchestrator captures the final Blackboard snapshot from Temporal and persists it to PostgreSQL, where it is available via the execution history API.
 
 ### Accessing Blackboard Values
 
