@@ -95,10 +95,13 @@ aegis task execute hello-world \\
   --follow
 
 # Output:
-# [Iteration 1] Tool call: fs.write /workspace/solution.py
-# [Iteration 1] Tool call: cmd.run python /workspace/test_solution.py
-# [Iteration 1] Validation: score=0.92 confidence=0.88 → Success
-# [Execution ...] Completed in 1 iteration (12.4s)`}</code>
+# 2026-02-25T13:56:43.091943Z  INFO Delegating to daemon API
+# Executing agent 88b73d1b-0da0-4b92-9376-fd744b9cafbf...
+# ✓ Execution started: f668f593-370f-4c19-b043-0487e9bd1ae5
+# [2026-02-25T13:56:43.140898+00:00] Execution started
+# [2026-02-25T13:56:43.164238272+00:00] Iteration 1
+# [2026-02-25T13:57:34.455428513+00:00] LLM [default]
+# [STDOUT] "First, I would write the required \`fib_sequence\` function in \`/workspace/solution.py\`:\n\n\`\`...`}</code>
           </pre>
         </div>
         <p className="text-center text-sm text-muted-foreground mt-4">
