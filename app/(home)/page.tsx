@@ -85,15 +85,14 @@ git clone https://github.com/100monkeys-ai/aegis-examples.git && cd aegis-exampl
 cp deploy/.env.example deploy/.env
 docker compose -f deploy/docker-compose.yml up -d
 
-# 4. Configure your LLM provider and start the daemon
-export OPENAI_API_KEY="sk-..."
-aegis daemon --config deploy/aegis-config.yaml
+# 4. Pull the default model for ollama
+docker compose -f deploy/docker-compose.yml exec ollama ollama pull phi3:mini
 
 # 5. Deploy the hello-world agent and run it
 aegis agent deploy ./agents/hello-world/agent.yaml
-aegis execute --agent hello-world \\
+aegis task execute hello-world \\
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \\
-  --watch
+  --follow
 
 # Output:
 # [Iteration 1] Tool call: fs.write /workspace/solution.py
