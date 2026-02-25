@@ -105,7 +105,7 @@ The `InnerLoopService` drives the conversation loop for a single iteration. It c
 The inner loop uses a single HTTP endpoint on the orchestrator host:
 
 ```
-POST /v1/llm/generate
+POST /v1/dispatch-gateway
 ```
 
 Both sides use a discriminated-union message format.
@@ -160,7 +160,7 @@ When the model produced a final text response:
 ### Inner Loop Steps
 
 ```
-bootstrap.py  ──► POST /v1/llm/generate {type:"generate", messages:[...]}
+bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[...]}
                                 │
                          Orchestrator receives request
                          Calls LLM provider API with full message history
@@ -177,7 +177,7 @@ bootstrap.py  ──► POST /v1/llm/generate {type:"generate", messages:[...]}
             │   cmd.run → return {type:"dispatch", dispatch_id, ...}     │
             │        bootstrap.py receives dispatch message              │
             │        runs subprocess                                     │
-            │        POST /v1/llm/generate {type:"dispatch_result", ...} │
+            │        POST /v1/dispatch-gateway {type:"dispatch_result", ...} │
             │        loop continues with subprocess result in context    │
             │                                                            │
             │  NO → return {type:"final", content:"..."}                 │

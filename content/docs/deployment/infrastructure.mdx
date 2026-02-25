@@ -56,7 +56,7 @@ Minimum viable deployment (no Temporal, no workflows, OpenBao, or Keycloak) requ
 └───────────────────────────────────────────────────────────────┘
 ```
 
-Agent containers communicate **only** with the AEGIS daemon (via `/v1/llm/generate` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, Keycloak, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
+Agent containers communicate **only** with the AEGIS daemon (via `/v1/dispatch-gateway` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, Keycloak, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
 
 ---
 

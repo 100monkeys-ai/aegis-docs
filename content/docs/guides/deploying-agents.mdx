@@ -34,7 +34,7 @@ For most use cases you do not need to build or maintain a Docker image. Define t
 2. It injects `bootstrap.py` into the container automatically.
 3. It renders the final LLM prompt by substituting Handlebars variables in `spec.task.prompt_template` — replacing `{{instruction}}` with the manifest's `spec.task.instruction` text and `{{input}}` with the JSON passed at execution time.
 4. The rendered prompt is passed to `bootstrap.py` as `argv[1]`.
-5. `bootstrap.py` calls the LLM proxy at `/v1/llm/generate` and streams back the response.
+5. `bootstrap.py` calls the LLM proxy at `/v1/dispatch-gateway` and streams back the response.
 6. If validation fails, `{{previous_error}}` is populated with the failure output and the next iteration begins automatically.
 
 No Python file to write. No Docker build. No image registry.

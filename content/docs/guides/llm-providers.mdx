@@ -14,7 +14,7 @@ AEGIS uses a **BYOLLM** (Bring Your Own LLM) system. Agent manifests reference m
 ```
 Agent manifest:  spec.runtime.model = "fast"
          ↓
-bootstrap.py:    POST /v1/llm/generate  { "model": "fast" }
+bootstrap.py:    POST /v1/dispatch-gateway  { "model": "fast" }
          ↓
 Node config:     spec.llm_providers[].models[].alias = "fast"
                    → provider: ollama, model: qwen2.5-coder:7b

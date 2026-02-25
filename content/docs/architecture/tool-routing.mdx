@@ -19,7 +19,7 @@ This **Orchestrator Proxy Pattern** ensures:
 ```
 Agent Container                  Orchestrator Host                   External
     │                                   │                              │
-    │  POST /v1/llm/generate             │                              │
+    │  POST /v1/dispatch-gateway             │                              │
     │  (with tool call in messages)      │                              │
     │──────────────────────────────────►│                              │
     │                                   │                              │
@@ -151,7 +151,7 @@ Orchestrator → bootstrap.py:
 
 bootstrap.py runs subprocess (e.g., "python /workspace/solution.py")
 
-bootstrap.py → Orchestrator (POST /v1/llm/generate):
+bootstrap.py → Orchestrator (POST /v1/dispatch-gateway):
 {
   "type": "dispatch_result",
   "dispatch_id": "uuid-v4-...",    ← must match

@@ -67,7 +67,7 @@ trait AgentRuntime: Send + Sync {
     /// Check if an execution unit is still running
     async fn is_running(&self, id: ExecutionUnitId) -> Result<bool>;
 
-    /// Get the runtime-specific address for the /v1/llm/generate endpoint
+    /// Get the runtime-specific address for the /v1/dispatch-gateway endpoint
     async fn get_agent_addr(&self, id: ExecutionUnitId) -> Result<String>;
 }
 ```

@@ -64,7 +64,7 @@ Within a single container run, `InnerLoopService` implements transparent LLM too
 
 ### Communication Channel
 
-`bootstrap.py` communicates with the orchestrator over a single long-running HTTP POST to `/v1/llm/generate`. This channel carries a discriminated union of message types in both directions.
+`bootstrap.py` communicates with the orchestrator over a single long-running HTTP POST to `/v1/dispatch-gateway`. This channel carries a discriminated union of message types in both directions.
 
 **Agent → Orchestrator (`AgentMessage`):**
 
@@ -117,7 +117,7 @@ Instead, the orchestrator sends a `dispatch` message over the existing HTTP chan
 ```
 Orchestrator                              bootstrap.py (in container)
      │                                           │
-     │  POST /v1/llm/generate                    │
+     │  POST /v1/dispatch-gateway                    │
      │  { type: "generate", messages: [...] }    │
      │ ─────────────────────────────────────────▶│
      │                                           │  (LLM calls cmd.run)
@@ -128,7 +128,7 @@ Orchestrator                              bootstrap.py (in container)
      │    args: ["/workspace/test.py"] }         │
      │ ◀─────────────────────────────────────────│
      │                                           │  (runs subprocess)
-     │  POST /v1/llm/generate                    │
+     │  POST /v1/dispatch-gateway                    │
      │  { type: "dispatch_result",               │
      │    dispatch_id: "abc-123",                │
      │    exit_code: 0,                          │

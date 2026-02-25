@@ -56,7 +56,7 @@ docker push myregistry/my-agent:latest
 
 ## Step 3: Write bootstrap.py
 
-`bootstrap.py` is the entrypoint for your agent. It uses the AEGIS Python SDK, which handles the `/v1/llm/generate` communication loop automatically.
+`bootstrap.py` is the entrypoint for your agent. It uses the AEGIS Python SDK, which handles the `/v1/dispatch-gateway` communication loop automatically.
 
 ```python
 import os
