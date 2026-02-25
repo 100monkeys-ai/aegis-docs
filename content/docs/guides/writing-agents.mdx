@@ -223,10 +223,10 @@ aegis agent get python-coder
 Run an execution:
 
 ```bash
-aegis execute \
-  --agent python-coder \
+aegis task execute \
+  python-coder \
   --input '{"task": "Write a function that checks if a number is prime."}' \
-  --watch
+  --follow
 ```
 
 If the first iteration fails validation, the orchestrator injects the error into the next iteration's context and retries automatically (up to 10 times by default).
