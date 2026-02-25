@@ -116,7 +116,7 @@ Agent                          Gateway                          KMS
   │     Ed25519 keypair           │                               │
   │     (in-memory only)          │                               │
   │                               │                               │
-  │─── 2. POST /smcp/v1/attest ──►│                               │
+  │─── 2. POST /v1/smcp/attest ──►│                               │
   │   {                           │                               │
   │     "public_key": "<B64>",    │                               │
   │     "workload_id": "<exec>",  │                               │
@@ -140,7 +140,7 @@ Agent                          Gateway                          KMS
 
 ### Attestation Request
 
-`POST /smcp/v1/attest`
+`POST /v1/smcp/attest`
 
 ```json
 {
