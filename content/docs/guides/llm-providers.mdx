@@ -5,150 +5,200 @@ description: The BYOLLM model alias system — configuring OpenAI, Anthropic, an
 
 # Configuring LLM Providers
 
-AEGIS uses a **BYOLLM** (Bring Your Own LLM) system. Agent manifests and `bootstrap.py` reference model **aliases** (e.g., `default`, `fast`, `reasoning`), not provider names. Node configuration maps these aliases to concrete providers. This decouples agent code from infrastructure choices — you can swap providers or models without changing any agent manifest.
+AEGIS uses a **BYOLLM** (Bring Your Own LLM) system. Agent manifests reference model **aliases** (e.g., `default`, `fast`, `smart`), not provider names. Node configuration maps these aliases to concrete providers and models. This decouples agent code from infrastructure choices — you can swap providers or models without changing any agent manifest.
 
 ---
 
 ## How the Alias System Works
 
 ```
-Agent manifest: spec uses model alias "fast"
+Agent manifest:  spec.runtime.model = "fast"
          ↓
-bootstrap.py:  client = AegisClient(model="fast")
+bootstrap.py:    POST /v1/llm/generate  { "model": "fast" }
          ↓
-Node config:   aliases.fast → "claude-3-5-haiku"
+Node config:     spec.llm_providers[].models[].alias = "fast"
+                   → provider: ollama, model: qwen2.5-coder:7b
          ↓
-Provider:      type: anthropic, model: claude-3-5-haiku-20241022
-         ↓
-LLM API call to api.anthropic.com
+LLM API call to http://ollama:11434
 ```
 
 Credential resolution happens in the orchestrator. The agent process never receives API keys.
+
+### Standard Aliases
+
+AEGIS defines five conventional aliases. You can map any of these (or create your own) in your node config:
+
+| Alias | Intent | Typical Mapping |
+|-------|--------|-----------------|
+| `default` | General-purpose, used when no model is specified | GPT-4o, Claude Sonnet, phi3 |
+| `fast` | Low latency, high throughput | GPT-4o-mini, Claude Haiku, qwen2.5-coder:7b |
+| `smart` | Maximum capability for complex tasks | GPT-4o, Claude Sonnet, deepseek-coder-v2 |
+| `cheap` | Minimize API cost | GPT-4o-mini, Ollama local models |
+| `local` | Air-gapped / zero API cost | Any Ollama model |
 
 ---
 
 ## Configuring Providers
 
-All provider configuration lives under `llm` in `aegis-config.yaml`.
-
-### OpenAI
-
-```yaml
-llm:
-  providers:
-    - name: gpt-4o
-      type: openai
-      api_key: "env:OPENAI_API_KEY"
-      model: gpt-4o
-      max_tokens: 4096
-      context_window: 128000
-      temperature: 0.2
-
-    - name: gpt-4o-mini
-      type: openai
-      api_key: "env:OPENAI_API_KEY"
-      model: gpt-4o-mini
-      max_tokens: 2048
-      context_window: 128000
-```
-
-For Azure OpenAI:
-
-```yaml
-    - name: azure-gpt4o
-      type: openai
-      api_key: "env:AZURE_OPENAI_KEY"
-      base_url: "https://my-resource.openai.azure.com/openai/deployments/gpt-4o"
-      api_version: "2024-02-01"
-      model: gpt-4o
-      max_tokens: 4096
-```
-
-### Anthropic
-
-```yaml
-llm:
-  providers:
-    - name: claude-3-5-sonnet
-      type: anthropic
-      api_key: "env:ANTHROPIC_API_KEY"
-      model: claude-3-5-sonnet-20241022
-      max_tokens: 8192
-      context_window: 200000
-
-    - name: claude-3-5-haiku
-      type: anthropic
-      api_key: "env:ANTHROPIC_API_KEY"
-      model: claude-3-5-haiku-20241022
-      max_tokens: 4096
-      context_window: 200000
-```
+All provider configuration lives under `spec.llm_providers` in `aegis-config.yaml`.
 
 ### Ollama (Local / Air-Gapped)
 
 Ollama runs a local inference server. No API key is required. This is ideal for air-gapped environments or cost-sensitive workloads.
 
 ```yaml
-llm:
-  providers:
-    - name: ollama-qwen
-      type: ollama
-      base_url: "http://localhost:11434"
-      model: qwen2.5-coder:32b
-      max_tokens: 4096
-      context_window: 32000
+spec:
+  llm_providers:
+    - name: "local"
+      type: "ollama"
+      endpoint: "http://ollama:11434"
+      models:
+        - alias: "default"
+          model: "phi3:mini"
+          capabilities: ["code", "reasoning"]
+          context_window: 4096
+        - alias: "fast"
+          model: "qwen2.5-coder:7b"
+          capabilities: ["code"]
+          context_window: 4096
+        - alias: "local"
+          model: "phi3:mini"
+          capabilities: ["code", "reasoning"]
+          context_window: 4096
 ```
 
 Ensure the Ollama server is running and the model is pulled before starting the AEGIS daemon:
 
 ```bash
-ollama pull qwen2.5-coder:32b
+ollama pull phi3:mini
+ollama pull qwen2.5-coder:7b
 ollama serve
 ```
 
----
-
-## Mapping Aliases
-
-After defining providers, map alias names to provider names. The alias name is what agent code references.
+### OpenAI
 
 ```yaml
-llm:
-  providers:
-    - name: gpt-4o
-      ...
-    - name: gpt-4o-mini
-      ...
-    - name: claude-3-5-sonnet
-      ...
-    - name: claude-3-5-haiku
-      ...
-    - name: ollama-qwen
-      ...
+spec:
+  llm_providers:
+    - name: "openai"
+      type: "openai"
+      api_key: "env:OPENAI_API_KEY"
+      models:
+        - alias: "default"
+          model: "gpt-4o"
+          capabilities: ["code", "reasoning"]
+          context_window: 128000
+        - alias: "fast"
+          model: "gpt-4o-mini"
+          capabilities: ["code"]
+          context_window: 128000
+        - alias: "smart"
+          model: "gpt-4o"
+          capabilities: ["code", "reasoning"]
+          context_window: 128000
+        - alias: "cheap"
+          model: "gpt-4o-mini"
+          capabilities: ["code"]
+          context_window: 128000
+```
 
-  aliases:
-    default: gpt-4o              # Used when no model is specified
-    fast: claude-3-5-haiku       # Low latency, lower cost
-    reasoning: gpt-4o            # High-capability tasks
-    local: ollama-qwen           # Air-gapped / zero API cost
-    review: claude-3-5-sonnet    # Long-context review tasks
+For Azure OpenAI, add `base_url` and `api_version`:
+
+```yaml
+    - name: "azure-openai"
+      type: "openai"
+      api_key: "env:AZURE_OPENAI_KEY"
+      base_url: "https://my-resource.openai.azure.com/openai/deployments/gpt-4o"
+      api_version: "2024-02-01"
+      models:
+        - alias: "default"
+          model: "gpt-4o"
+          capabilities: ["code", "reasoning"]
+          context_window: 128000
+```
+
+### Anthropic
+
+```yaml
+spec:
+  llm_providers:
+    - name: "anthropic"
+      type: "anthropic"
+      api_key: "env:ANTHROPIC_API_KEY"
+      models:
+        - alias: "default"
+          model: "claude-sonnet-4-20250514"
+          capabilities: ["code", "reasoning"]
+          context_window: 200000
+        - alias: "fast"
+          model: "claude-3-5-haiku-20241022"
+          capabilities: ["code"]
+          context_window: 200000
+        - alias: "smart"
+          model: "claude-sonnet-4-20250514"
+          capabilities: ["code", "reasoning"]
+          context_window: 200000
+```
+
+### OpenAI-Compatible Providers
+
+Any provider that exposes an OpenAI-compatible API (e.g., vLLM, LM Studio, Together AI) can be used with `type: "openai"` plus a custom `base_url`:
+
+```yaml
+    - name: "together"
+      type: "openai"
+      api_key: "env:TOGETHER_API_KEY"
+      base_url: "https://api.together.xyz/v1"
+      models:
+        - alias: "cheap"
+          model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+          capabilities: ["code"]
+          context_window: 8192
 ```
 
 ---
 
-## Using Aliases in bootstrap.py
+## Selection Strategy
 
-```python
-from aegis import AegisClient
+The `spec.llm_selection` block controls how the orchestrator resolves aliases when multiple providers define the same alias:
 
-# Use a specific alias
-client = AegisClient(model="fast")
-
-# Use the default alias (omit model parameter)
-client = AegisClient()
+```yaml
+spec:
+  llm_selection:
+    strategy: "prefer-local"     # Prefer local providers, fall back to cloud
+    default_provider: "local"    # Provider to try first for all aliases
+    max_retries: 3               # Retry count on transient failures
+    retry_delay_ms: 1000         # Delay between retries
 ```
 
-The SDK resolves the alias to a provider at runtime via the orchestrator. Changing the alias mapping in node config and restarting the daemon immediately affects all subsequent executions — no agent code changes needed.
+| Strategy | Behavior |
+|----------|----------|
+| `prefer-local` | Use the local provider if it defines the requested alias; fall back to cloud providers |
+| `round-robin` | Distribute requests across providers that define the alias |
+| `failover` | Always use `default_provider`; switch to next provider only on error |
+
+---
+
+## Using Aliases in Agent Manifests
+
+Set `spec.runtime.model` in your agent manifest to select a model alias:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: "my-agent"
+  version: "1.0.0"
+spec:
+  runtime:
+    language: "python"
+    version: "3.11"
+    model: "smart"        # ← Model alias
+  task:
+    instruction: "..."
+```
+
+If `model` is omitted, it defaults to `"default"`.
 
 ---
 
@@ -158,17 +208,19 @@ To change which model backs a given alias:
 
 1. Update `aegis-config.yaml`:
    ```yaml
-   aliases:
-     default: claude-3-5-sonnet   # was: gpt-4o
+   spec:
+     llm_providers:
+       - name: "openai"
+         type: "openai"
+         api_key: "env:OPENAI_API_KEY"
+         models:
+           - alias: "default"
+             model: "gpt-4o"          # Change this to swap models
    ```
 
 2. Restart the AEGIS daemon:
    ```bash
-   # Graceful restart (waits for in-flight executions to complete or timeout)
-   aegis daemon reload --config aegis-config.yaml
-
-   # Hard restart
-   systemctl restart aegis
+   aegis daemon restart --config aegis-config.yaml
    ```
 
 Running executions continue using the provider that was active when they started. New executions use the updated alias mapping.
@@ -177,17 +229,24 @@ Running executions continue using the provider that was active when they started
 
 ## Provider Configuration Reference
 
+### Provider Fields
+
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | ✓ | Internal identifier. Referenced by `aliases`. |
-| `type` | `openai` \| `anthropic` \| `ollama` | ✓ | Provider adapter to use. |
-| `api_key` | string | ✓ (except Ollama) | API key value or `env:VAR_NAME` reference. Never hardcode keys. |
-| `base_url` | string | | Override the default API endpoint. Required for Azure OpenAI and Ollama. |
-| `model` | string | ✓ | Model identifier as accepted by the provider's API. |
-| `max_tokens` | integer | | Maximum tokens in the completion. |
-| `context_window` | integer | | Provider's context window size. Used for context truncation decisions. |
-| `temperature` | float | | Sampling temperature (0.0–2.0). Defaults to provider default. |
-| `api_version` | string | | API version string. Required for Azure OpenAI. |
+| `name` | string | Yes | Internal identifier for the provider. |
+| `type` | `openai` \| `anthropic` \| `ollama` | Yes | Provider adapter to use. Use `openai` for any OpenAI-compatible API. |
+| `api_key` | string | Except Ollama | API key value or `env:VAR_NAME` reference. Never hardcode keys. |
+| `endpoint` / `base_url` | string | Ollama, Azure | Override the default API endpoint. |
+| `api_version` | string | Azure only | API version string for Azure OpenAI. |
+
+### Model Entry Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `alias` | string | Yes | Agent-facing name (e.g., `default`, `fast`, `smart`). |
+| `model` | string | Yes | Model identifier as accepted by the provider's API. |
+| `capabilities` | string[] | No | Tags like `code`, `reasoning`, `vision`. |
+| `context_window` | integer | No | Provider's context window size in tokens. |
 
 ---
 
