@@ -149,10 +149,10 @@ aegis daemon start --config my-aegis-config.yaml
 The daemon starts the HTTP server, NFS storage gateway, and event bus. You should see output similar to:
 
 ```
-2026-02-23T10:00:00Z  INFO aegis_core: AEGIS orchestrator starting
-2026-02-23T10:00:00Z  INFO aegis_core: HTTP server listening on 0.0.0.0:8088
-2026-02-23T10:00:00Z  INFO aegis_core::nfs: NFS server ready
-2026-02-23T10:00:00Z  INFO aegis_core: Ready
+2026-02-23T10:00:00Z  INFO aegis_orchestrator_core: AEGIS orchestrator starting
+2026-02-23T10:00:00Z  INFO aegis_orchestrator_core: HTTP server listening on 0.0.0.0:8088
+2026-02-23T10:00:00Z  INFO aegis_orchestrator_core::nfs: NFS server ready
+2026-02-23T10:00:00Z  INFO aegis_orchestrator_core: Ready
 ```
 
 Run the daemon in the background or manage it with systemd. See [Docker Runtime](/docs/deployment/docker) for the systemd unit example.
