@@ -108,6 +108,16 @@ The table below covers the most common fields. For the complete field-by-field s
 | `resources.memory` | string | Memory limit. Human-readable: `"512Mi"`, `"1Gi"`. Default: `"512Mi"`. |
 | `resources.timeout` | string | Total execution timeout. Human-readable: `"300s"`, `"5m"`. Max `"1h"`. |
 
+### `spec.execution`
+
+| Field | Type | Description |
+|---|---|---|
+| `mode` | `one-shot` \| `iterative` | Execution strategy. `iterative` enables the 100monkeys refinement loop. Default: `one-shot`. |
+| `max_iterations` | integer | Maximum refinement loops (for iterative mode). Default: `5`. |
+| `iteration_timeout` | string | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Default: `"300s"` (5 minutes). Each iteration gets this much time for LLM calls + tool invocations. |
+| `llm_timeout_seconds` | integer | HTTP socket timeout for `bootstrap.py` LLM calls. Default: `300` seconds. |
+| `memory` | boolean | Enable Cortex memory system. Default: `false`. |
+
 ---
 
 ## Agent Lifecycle
