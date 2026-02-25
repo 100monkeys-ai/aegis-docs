@@ -460,6 +460,36 @@ secrets:
       ttl_seconds: 30
       max_entries: 1000
 
+# ─── Database ─────────────────────────────────────────────────────────────────
+# Optional. If omitted the daemon uses InMemory repositories (dev only).
+database:
+  # PostgreSQL connection URL. Supports env: and vault: prefixes.
+  url: "env:AEGIS_DATABASE_URL"
+  # Maximum connections in the pool. Default: 5
+  max_connections: 10
+  # Connection timeout in seconds. Default: 5
+  connect_timeout_seconds: 5
+
+# ─── Temporal ─────────────────────────────────────────────────────────────────
+# Optional. If omitted workflow orchestration is unavailable.
+temporal:
+  # Temporal gRPC server address. Default: temporal:7233
+  address: "temporal:7233"
+  # HTTP endpoint for Temporal worker callbacks. Default: http://localhost:3000
+  worker_http_endpoint: "http://aegis-runtime:3000"
+  # Shared secret for authenticating worker callbacks. Supports env:.
+  worker_secret: "env:TEMPORAL_WORKER_SECRET"
+  # Temporal namespace. Default: default
+  namespace: "default"
+  # Temporal task queue. Default: aegis-agents
+  task_queue: "aegis-agents"
+
+# ─── Cortex ───────────────────────────────────────────────────────────────────
+# Optional. If omitted or grpc_url is null the daemon runs in memoryless mode.
+cortex:
+  # Cortex gRPC service URL. Supports env:.
+  grpc_url: "http://cortex:50052"
+
 # ─── Observability ────────────────────────────────────────────────────────────
 # Optional.
 observability:
@@ -731,6 +761,42 @@ Optional. Configures OpenBao as the secrets backend. Follows the Keymaster Patte
 | `openbao.cache.enabled` | bool | `true` | Enable in-memory secret cache |
 | `openbao.cache.ttl_seconds` | u64 | `30` | Cache entry TTL |
 | `openbao.cache.max_entries` | u64 | `1000` | Maximum cache entries |
+
+---
+
+### `spec.database`
+
+Optional. PostgreSQL connection for persistent state (executions, patterns, workflows). If omitted, the daemon uses in-memory repositories (development mode only).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `url` | string | — | PostgreSQL connection URL. Supports `env:` and `vault:`. |
+| `max_connections` | u32 | `5` | Maximum connections in the pool |
+| `connect_timeout_seconds` | u64 | `5` | Connection timeout |
+
+---
+
+### `spec.temporal`
+
+Optional. Temporal workflow engine configuration for durable workflow execution. If omitted, workflow orchestration features are unavailable.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `address` | string | `temporal:7233` | Temporal gRPC server address |
+| `worker_http_endpoint` | string | `http://localhost:3000` | HTTP endpoint for Temporal worker callbacks. Supports `env:`. |
+| `worker_secret` | string | null | Shared secret for authenticating worker callbacks. Supports `env:` and `vault:`. |
+| `namespace` | string | `default` | Temporal namespace |
+| `task_queue` | string | `aegis-agents` | Temporal task queue name |
+
+---
+
+### `spec.cortex`
+
+Optional. Cortex memory and learning service configuration. If omitted or `grpc_url` is null, the daemon runs in **memoryless mode** — patterns are simply not stored.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `grpc_url` | string | null | Cortex gRPC service URL. Supports `env:`. |
 
 ---
 

@@ -3,6 +3,7 @@
     "pages": [
         "agent-manifest",
         "workflow-manifest",
+        "node-config",
         "cli",
         "grpc-api"
     ]

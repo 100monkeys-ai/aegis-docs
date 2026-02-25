@@ -93,15 +93,19 @@ spec:
     - name: "openai"
       type: "openai"
       endpoint: "https://api.openai.com/v1"
+      enabled: true
+      api_key: "env:OPENAI_API_KEY"
       models:
         - alias: "default"
           model: "gpt-4o"
           capabilities: ["code", "reasoning"]
           context_window: 128000
+          cost_per_1k_tokens: 0.01
         - alias: "fast"
           model: "gpt-4o-mini"
           capabilities: ["code"]
           context_window: 128000
+          cost_per_1k_tokens: 0.00015
 
   llm_selection:
     strategy: "prefer-local"
