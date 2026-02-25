@@ -30,7 +30,7 @@ The shortest path to a working end-to-end run:
 
 ```bash
 pkill aegis || true && \
-cargo build -p aegis-cli && \
+cargo build -p aegis-orchestrator && \
 target/debug/aegis daemon start && \
 target/debug/aegis daemon status && \
 target/debug/aegis agent deploy ./agents/echo/agent.yaml && \
@@ -52,17 +52,17 @@ This single chain:
 
 | Goal | Command |
 |---|---|
-| Debug build (fast) | `cargo build -p aegis-cli` |
-| Release build (optimised) | `cargo build --release -p aegis-cli` |
+| Debug build (fast) | `cargo build -p aegis-orchestrator` |
+| Release build (optimised) | `cargo build --release -p aegis-orchestrator` |
 | Full workspace | `cargo build` |
 | Lint check only | `cargo check` |
-| Specific crate | `cargo check -p aegis-cli` |
+| Specific crate | `cargo check -p aegis-orchestrator` |
 
 Clean between major changes:
 
 ```bash
 cargo clean
-cargo build -p aegis-cli
+cargo build -p aegis-orchestrator
 ```
 
 ### Deploying Demo Agents
@@ -115,7 +115,7 @@ echo "=== AEGIS Build and Test ==="
 pkill aegis || true
 sleep 2
 
-cargo build -p aegis-cli
+cargo build -p aegis-orchestrator
 
 target/debug/aegis daemon start
 sleep 3
@@ -157,7 +157,7 @@ Write-Host "=== AEGIS Build and Test ===" -ForegroundColor Green
 Get-Process aegis -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
 
-cargo build -p aegis-cli
+cargo build -p aegis-orchestrator
 
 .\target\debug\aegis.exe daemon start
 Start-Sleep -Seconds 3
