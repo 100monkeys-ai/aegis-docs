@@ -230,6 +230,7 @@ spec:
 | `mode` | `iterative` \| `one-shot` | | `one-shot` | Execution strategy. |
 | `max_iterations` | integer | | `10` | Maximum refinement loops. Range: 1–20. |
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
+| `llm_timeout_seconds` | integer | | `300` | HTTP socket timeout for bootstrap.py LLM proxy calls in seconds. Applies to network requests from agent to orchestrator. |
 | `validation` | object | | | Acceptance criteria (see below). |
 
 ### `spec.execution.validation`
