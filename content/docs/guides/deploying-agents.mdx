@@ -7,7 +7,7 @@ description: Full agent lifecycle management via the AEGIS CLI — deploy, pause
 
 This guide covers the complete agent lifecycle using the `aegis` CLI: deploying manifests, managing agent state, triggering executions, streaming iteration output, and inspecting execution history.
 
-All operations assume the AEGIS daemon is running and accessible. Use `--host <host>` and `--port <port>` to target a remote daemon, or the defaults (`127.0.0.1:8000`) if running locally.
+All operations assume the AEGIS daemon is running and accessible. Use `--host <host>` and `--port <port>` to target a remote daemon, or the defaults (`127.0.0.1:8088`) if running locally.
 
 ---
 
@@ -345,5 +345,5 @@ echo "Final status: $STATUS"
 |---|---|
 | `--config <path>` | Path to `aegis-config.yaml`. Defaults to `./aegis-config.yaml`. |
 | `--host <host>` | Target daemon hostname. Defaults to `127.0.0.1`. |
-| `--port <port>` | Target daemon port. Defaults to `8000`. |
+| `--port <port>` | Target daemon port. Defaults to `8088`. |
 | `--log-level <level>` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`. |

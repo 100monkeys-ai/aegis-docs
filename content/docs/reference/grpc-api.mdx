@@ -7,7 +7,7 @@ description: aegis.runtime.v1 AegisRuntime service — the Temporal-worker-facin
 
 AEGIS exposes a gRPC service on port `50051` (default). The service is defined in Protocol Buffers under the `aegis.runtime.v1` package.
 
-> **Note:** The gRPC API is the **Temporal-worker-facing transport**. It is used by `aegis-temporal-worker` to drive agent executions, run validation, and access Cortex patterns. Agent management (deploy, list, delete agents and workflows) uses the **HTTP REST API** on port `8000` — see the [HTTP API Contracts](/docs/integration/api-contracts).
+> **Note:** The gRPC API is the **Temporal-worker-facing transport**. It is used by `aegis-temporal-worker` to drive agent executions, run validation, and access Cortex patterns. Agent management (deploy, list, delete agents and workflows) uses the **HTTP REST API** on port `8088` — see the [HTTP API Contracts](/docs/integration/api-contracts).
 
 Proto source files are in the [`aegis-proto`](https://github.com/100monkeys-ai/aegis-proto) repository under `proto/aegis_runtime.proto`.
 

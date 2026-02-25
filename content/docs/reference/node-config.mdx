@@ -112,7 +112,7 @@ spec:
   # ─── Network ────────────────────────────────────────────────────────────────
   network:
     bind_address: "0.0.0.0"
-    port: 8000
+    port: 8088
     grpc_port: 50051
     orchestrator_endpoint: null      # WebSocket URL for edge → orchestrator (edge nodes only)
     heartbeat_interval_seconds: 30
@@ -418,7 +418,7 @@ Optional. Controls how agent containers are launched.
 | `default_isolation` | enum | `inherit` | `docker` \| `firecracker` \| `inherit` \| `process` |
 | `docker_socket_path` | string | *(platform default)* | Custom Docker socket path |
 | `docker_network_mode` | string | null | Docker network name for agent containers. Supports `env:`. |
-| `orchestrator_url` | string | `http://localhost:8000` | Callback URL reachable from inside agent containers. Supports `env:`. |
+| `orchestrator_url` | string | `http://localhost:8088` | Callback URL reachable from inside agent containers. Supports `env:`. |
 | `nfs_server_host` | string | null | NFS server host as seen by the Docker daemon host OS. Supports `env:`. |
 | `nfs_port` | u16 | `2049` | NFS server port |
 | `nfs_mountport` | u16 | `2049` | NFS mountd port |
@@ -442,7 +442,7 @@ Optional. Configures ports and TLS.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `bind_address` | string | `0.0.0.0` | Network interface to bind all listeners |
-| `port` | u16 | `8000` | HTTP REST API port |
+| `port` | u16 | `8088` | HTTP REST API port |
 | `grpc_port` | u16 | `50051` | gRPC API port |
 | `orchestrator_endpoint` | string | null | WebSocket URL for edge → orchestrator connection (edge nodes only) |
 | `heartbeat_interval_seconds` | u64 | `30` | Health check ping interval |

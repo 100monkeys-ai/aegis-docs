@@ -167,7 +167,7 @@ runtime:
   docker_network_mode: "aegis-network"
   # URL that agent containers use to call back to the orchestrator.
   # Must be reachable from inside Docker containers, not from the host.
-  # Default: http://localhost:8000
+  # Default: http://localhost:8088
   orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
 
   # ── NFS Storage Gateway (required when spec.storage.backend: seaweedfs) ───
@@ -191,8 +191,8 @@ runtime:
 network:
   # Bind address for all listeners. Default: 0.0.0.0
   bind_address: "0.0.0.0"
-  # HTTP REST API port. Default: 8000
-  port: 8000
+  # HTTP REST API port. Default: 8088
+  port: 8088
   # gRPC API port (inner-loop transport, Temporal workers). Default: 50051
   grpc_port: 50051
   # WebSocket URL for edge-node → orchestrator connection. Omit on orchestrator nodes.
@@ -578,7 +578,7 @@ Optional. Controls how agent containers are launched.
 | `default_isolation` | enum | `inherit` | `docker` \| `firecracker` \| `inherit` \| `process` |
 | `docker_socket_path` | string | *(platform default)* | Custom Docker socket path |
 | `docker_network_mode` | string | null | Docker network name for agent containers |
-| `orchestrator_url` | string | `http://localhost:8000` | Callback URL reachable from inside agent containers |
+| `orchestrator_url` | string | `http://localhost:8088` | Callback URL reachable from inside agent containers |
 | `nfs_server_host` | string | null | **Critical for volume mounts.** NFS server host as seen by the Docker daemon host OS. See platform table below. |
 | `nfs_port` | u16 | `2049` | NFS server port |
 | `nfs_mountport` | u16 | `2049` | NFS mountd port |
@@ -602,7 +602,7 @@ Optional. Configures ports and TLS.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `bind_address` | string | `0.0.0.0` | Network interface to bind all listeners |
-| `port` | u16 | `8000` | HTTP REST API port |
+| `port` | u16 | `8088` | HTTP REST API port |
 | `grpc_port` | u16 | `50051` | gRPC API port |
 | `orchestrator_endpoint` | string | null | WebSocket URL for edge → orchestrator connection (edge nodes only) |
 | `heartbeat_interval_seconds` | u64 | `30` | Health check ping interval |
