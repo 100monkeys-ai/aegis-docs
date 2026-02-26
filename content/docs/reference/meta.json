@@ -2,6 +2,7 @@
     "title": "Reference",
     "pages": [
         "agent-manifest",
+        "standard-runtime-registry",
         "workflow-manifest",
         "node-config",
         "cli",

@@ -3,6 +3,8 @@ title: Custom Runtime Agents (Advanced)
 description: Advanced guide for building a custom container image and bootstrap script when manifest-only agents are not enough.
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
 # Custom Runtime Agents (Advanced)
 
 This guide covers the advanced path for agents that require a custom container image, non-standard dependencies, or a custom runtime script.
@@ -20,6 +22,56 @@ Use a custom runtime only when you need one or more of the following:
 - A specialized bootstrap loop for tightly controlled execution behavior
 
 If you only need instruction, tools, security policies, and validation, stay manifest-only.
+
+---
+
+## Two Paths: Standard Runtime vs CustomRuntime
+
+AEGIS provides two runtime modes, specified in `spec.runtime`:
+
+### StandardRuntime (Manifest-Only Path)
+
+Specify language and version; orchestrator determines the official Docker image:
+
+```yaml
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+    # Orchestrator resolves to: python:3.11-slim (Docker Hub)
+```
+
+**Best for:** Most agents. No image building. Automatic updates.
+
+### CustomRuntime (This Path)
+
+Specify a fully-qualified Docker image reference instead:
+
+```yaml
+spec:
+  runtime:
+    image: "ghcr.io/my-org/my-agent:v1.0"
+    image_pull_policy: IfNotPresent  # Always | IfNotPresent | Never
+```
+
+**Mutual Exclusion:** `image` and `language`/`version` are mutually exclusive — the orchestrator infers the runtime type from which fields are present:
+
+| `image` | `language` | `version` | Result |
+|---|---|---|---|
+| ❌ | ✅ | ✅ | StandardRuntime ✅ |
+| ❌ | ❌ | ❌ | **Error** — must specify either `image` OR `language`+`version` |
+| ❌ | ✅ | ❌ | **Error** — `language` requires `version` |
+| ❌ | ❌ | ✅ | **Error** — `version` requires `language` |
+| ✅ | ❌ | ❌ | CustomRuntime ✅ |
+| ✅ | ✅ | ❌ | **Error** — cannot specify both `image` and `language` |
+| ✅ | ❌ | ✅ | **Error** — cannot specify both `image` and `version` |
+| ✅ | ✅ | ✅ | **Error** — cannot specify `image` + `language` + `version` |
+
+Validation is performed at manifest deserialization time; invalid combinations are rejected before any container is started.
+
+**Image format:** The `image` value must be fully-qualified and include a registry component (at least one `/`). Bare names like `my-agent:latest` are invalid; use `myregistry.io/myorg/my-agent:latest`.
+
+**You must build and push the image** (see Step 1 below).
 
 ---
 
@@ -125,9 +177,10 @@ metadata:
   name: python-coder
   version: "1.0.0"
 spec:
+  # CustomRuntime: Specify image instead of language+version
   runtime:
-    language: python
-    version: "3.11"
+    image: "ghcr.io/my-org/my-agent:latest"
+    image_pull_policy: IfNotPresent  # Always | IfNotPresent | Never
     isolation: docker
 
   task:
@@ -185,6 +238,57 @@ spec:
 
 ---
 
+## Security Policy Enforcement
+
+<Callout type="warn">
+All `spec.security` policies — network allowlist, filesystem permissions, and resource limits — are enforced by the orchestrator regardless of what the container image contains. A custom image cannot override or bypass these constraints.
+</Callout>
+
+This applies to every field under `spec.security`: network mode and allowlist, filesystem read/write paths, and CPU/memory/timeout limits. The orchestrator layers enforce isolation at the network and filesystem level, independent of what runs inside the image.
+
+---
+
+## Bootstrap Handling
+
+When you specify `spec.runtime.image`, the orchestrator injects its standard bootstrap script into your container, which manages the 100monkeys iteration loop.
+
+**Default behavior (Option A — Orchestrator injects bootstrap):**
+
+The orchestrator copies `assets/bootstrap.py` into the container at `/usr/local/bin/aegis-bootstrap` if that path is not already present, then executes it. Your image must have Python available.
+
+```yaml
+spec:
+  runtime:
+    image: "ghcr.io/myorg/my-agent:latest"
+  # Bootstrap injected automatically by orchestrator
+```
+
+**Custom bootstrap (Option B — Bootstrap bundled in image):**
+
+Include your own bootstrap script in the image and declare its path in `spec.advanced.bootstrap_path`. The orchestrator detects the file is already present and skips injection, executing your script directly instead.
+
+```yaml
+spec:
+  runtime:
+    image: "ghcr.io/myorg/node-agent:1.0"
+  advanced:
+    bootstrap_path: "/agent/bootstrap.js"  # Path inside the container
+```
+
+```dockerfile
+# Dockerfile
+FROM node:20-alpine
+RUN apk add --no-cache python3
+COPY bootstrap.js /agent/bootstrap.js
+CMD ["tail", "-f", "/dev/null"]
+```
+
+The custom bootstrap must implement the dispatch protocol to communicate with the orchestrator via `AEGIS_ORCHESTRATOR_URL`.
+
+> **Implementation status:** `spec.advanced.bootstrap_path` is declared in the manifest schema and exposed in both the Python SDK (`ManifestBuilder.with_bootstrap_path()`) and TypeScript SDK (`ManifestBuilder.withBootstrapPath()`). The runtime wiring that actually uses this path at container execution time is tracked in the orchestrator backlog and is not yet active in the current release.
+
+---
+
 ## Step 5: Deploy and Execute
 
 ```bash
@@ -198,7 +302,7 @@ aegis task execute python-coder --input '{"task":"Write a prime checker"}' --fol
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Image pull failure | Registry auth/image tag issue | Verify image exists and node has registry credentials |
+| Image pull failure | Registry auth/image tag issue | Verify image exists and is fully-qualified (`registry/org/image:tag`); see [Container Registry & Image Management](/docs/deployment/container-registry) for credential setup |
 | Startup error in container | Missing package or bad entrypoint | Validate Dockerfile and `CMD` |
 | Tool call rejected | Tool not declared in manifest | Add required tool to `spec.tools` |
 | Timeout during run | Heavy workload or slow dependency | Increase resource timeout or optimize bootstrap flow |
@@ -207,6 +311,8 @@ aegis task execute python-coder --input '{"task":"Write a prime checker"}' --fol
 
 ## Related Docs
 
-- [Writing Your First Agent](/docs/guides/writing-agents)
+- [Writing Your First Agent](/docs/guides/writing-agents) — Standard (manifest-only) agents
+- [Standard Runtime Registry](/docs/reference/standard-runtime-registry) — Supported language versions and their Docker images
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — Complete `spec.runtime` field reference
+- [Container Registry & Image Management](/docs/deployment/container-registry) — ImagePullPolicy, private registry credentials, and pull failure troubleshooting
 - [Deploying Agents](/docs/guides/deploying-agents)
-- [Agent Manifest Reference](/docs/reference/agent-manifest)

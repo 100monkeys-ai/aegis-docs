@@ -6,6 +6,7 @@
         "iam",
         "secrets",
         "docker",
-        "firecracker"
+        "firecracker",
+        "container-registry"
     ]
 }

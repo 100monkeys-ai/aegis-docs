@@ -1,0 +1,183 @@
+---
+title: Container Registry & Image Management
+description: How AEGIS discovers, pulls, caches, and authenticates container images for standard and custom runtimes — including ImagePullPolicy, private registry credentials, failure scenarios, and pre-caching for airgapped environments.
+---
+
+# Container Registry & Image Management
+
+Every AEGIS agent execution requires a container image. AEGIS delegates image discovery, pulling, and caching to the Docker daemon's native mechanisms, with explicit `ImagePullPolicy` control and support for both public and private registries.
+
+---
+
+## Image Resolution
+
+AEGIS resolves the container image for each execution from one of two sources depending on the runtime mode declared in the agent manifest:
+
+| Runtime Mode | Image Source |
+|---|---|
+| **StandardRuntime** (`language` + `version`) | Resolved at execution time via the StandardRuntime Registry (`runtime-registry.yaml`). Example: `language: python` + `version: "3.11"` → `python:3.11-slim`. See [Standard Runtime Registry](/docs/reference/standard-runtime-registry). |
+| **CustomRuntime** (`image`) | Taken directly from `spec.runtime.image` in the manifest. Must be a fully-qualified reference that includes a registry component (e.g. `ghcr.io/myorg/agent:v1.0`). |
+
+Once the image reference is known, the orchestrator applies the `ImagePullPolicy` to decide whether to pull from the registry or use the local Docker daemon cache.
+
+---
+
+## ImagePullPolicy
+
+Set `image_pull_policy` in `spec.runtime` to control when the orchestrator pulls images:
+
+```yaml
+spec:
+  runtime:
+    image: "ghcr.io/myorg/agent:v1.0"
+    image_pull_policy: "IfNotPresent"  # Always | IfNotPresent | Never
+```
+
+### Always
+
+Pulls from the registry before every execution, even if the image is already cached locally.
+
+```yaml
+image_pull_policy: "Always"
+```
+
+**Use when:** Your image uses a mutable tag (e.g., `:latest`) and you need every execution to use the current push. Slower due to the network round-trip.
+
+### IfNotPresent (Default)
+
+Uses the local Docker daemon cache if the image is already present. Pulls from the registry only if the image is missing locally.
+
+```yaml
+image_pull_policy: "IfNotPresent"
+```
+
+**Use when:** Standard production deployments with pinned version tags. Fast on repeated executions; requires one initial pull.
+
+### Never
+
+Uses only the local Docker daemon cache. Fails immediately if the image is not already present — no network attempt is made.
+
+```yaml
+image_pull_policy: "Never"
+```
+
+**Use when:** Airgapped or offline environments where network access to a registry is unavailable or prohibited. Requires images to be pre-cached before execution. See [Pre-Caching for Airgapped Environments](#pre-caching-for-airgapped-environments) below.
+
+---
+
+## Registry Authentication
+
+### Public Registries (Phase 1)
+
+Standard runtime images pull from Docker Hub without authentication. Custom runtime images from public repositories (Docker Hub, GHCR public repos) also require no credentials.
+
+### Private Registries (Phase 1)
+
+Credentials for private registries are injected via node configuration. The intended configuration shape uses a `dockerconfigjson`-format secret:
+
+```yaml
+# In node-config
+secrets:
+  ghcr-credentials:
+    type: dockercfg
+    data:
+      .dockerconfigjson: |
+        {
+          "auths": {
+            "ghcr.io": {
+              "username": "user@example.com",
+              "password": "ghp_xxxxxxxxxxxx",
+              "auth": "<base64(username:password)>"
+            },
+            "docker.io": {
+              "username": "dockerhub_user",
+              "password": "dckr_pat_xxxx",
+              "auth": "<base64(username:password)>"
+            }
+          }
+        }
+```
+
+The orchestrator passes these credentials to the Docker daemon API when pulling the image. Credentials are never exposed to the agent container.
+
+> **Note:** The `registry_credentials` field in `NodeConfigSpec` is a planned Phase 1 feature and is not yet fully wired in the current release. Track progress in the orchestrator repository.
+
+### Phase 2: Dynamic Credentials via OpenBao
+
+A future phase will support short-lived dynamic credentials sourced from OpenBao (an open-source secrets manager). The credential retrieval happens entirely in the orchestrator — agents never access the secrets store directly.
+
+---
+
+## Image Caching
+
+Images pulled by the Docker daemon are stored in the local Docker image cache. AEGIS does not manage its own image cache layer — it delegates entirely to Docker.
+
+```bash
+# View cached images on your node
+docker images
+
+# Remove unused images to free disk space
+docker image prune
+
+# Remove all unused images (including those not referenced by any container)
+docker image prune -a
+```
+
+For StandardRuntime images, each distinct `language`+`version` pair resolves to a pinned, immutable image tag — the same tag is always used for a given version, so images are effectively cached after the first execution on a node.
+
+---
+
+## Pre-Caching for Airgapped Environments
+
+When using `image_pull_policy: Never`, images must be present in the local Docker cache before any execution attempt. Pre-cache images on each node manually or as part of your CI/CD provisioning pipeline:
+
+```bash
+# Pull StandardRuntime images (example: all Python versions)
+docker pull python:3.11-slim
+docker pull python:3.10-slim
+
+# Pull your custom runtime images
+docker pull ghcr.io/myorg/agent:v1.0.0
+
+# Verify images are present
+docker images
+```
+
+If the image is not found locally and `image_pull_policy: Never` is set, the execution fails immediately with an `ImageNotFound` error.
+
+---
+
+## Pull Failure Scenarios
+
+When an image pull fails, the execution is rejected and no container is started. Phase 1 makes a single attempt with no automatic retries.
+
+| Scenario | Cause | Resolution |
+|---|---|---|
+| **Image not found** | Typo in image name; image deleted from registry | Verify the image exists in the registry and the reference is correct |
+| **Authentication failed** | Invalid or missing credentials; insufficient permissions | Update node-config registry credentials; verify token scopes |
+| **Network timeout** | Registry unreachable; slow network | Verify network connectivity to the registry; consider `IfNotPresent` with a pre-pulled image |
+| **Rate limited** | Docker Hub free-tier pull rate limit exceeded | Authenticate to Docker Hub (authenticated users have higher limits); use a private registry mirror |
+| **Disk full** | Docker daemon storage exhausted | Run `docker image prune` on the node to free space |
+
+---
+
+## Observability
+
+AEGIS publishes domain events for all image operations. These events are available on the event bus and can be consumed by monitoring integrations:
+
+| Event | When Published |
+|---|---|
+| `ImagePullStarted` | Orchestrator begins a registry pull |
+| `ImagePullCompleted` | Pull succeeded; includes whether the image came from cache (`Cached`) or was freshly downloaded (`Downloaded`) |
+| `ImagePullFailed` | Pull failed; includes failure reason |
+| `ImageCached` | Image successfully stored in local Docker cache |
+| `ImageRemoved` | Image removed from local cache (e.g., after prune) |
+
+---
+
+## See Also
+
+- [Standard Runtime Registry](/docs/reference/standard-runtime-registry) — Full language-version-to-image mapping table
+- [Custom Runtime Agents](/docs/guides/custom-runtime-agents) — Building and using your own container images
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.runtime` field definitions including `image_pull_policy`
+- [Docker Deployment](/docs/deployment/docker) — Docker daemon setup and container lifecycle

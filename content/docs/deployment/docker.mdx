@@ -38,7 +38,7 @@ Never run the AEGIS daemon as root.
 
 When an execution starts, the orchestrator:
 
-1. **Pulls the image** (respecting `image_pull_policy` in `aegis-config.yaml`).
+1. **Pulls the image** (respecting `spec.runtime.image_pull_policy` from the agent manifest — see [Container Registry & Image Management](/docs/deployment/container-registry)).
 2. **Creates the container** with:
    - CPU quota and memory limit from `spec.resources`
    - NFS volume mounts (described below)

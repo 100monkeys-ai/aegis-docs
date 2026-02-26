@@ -147,16 +147,32 @@ aegis agent delete <id>   # archives, does not hard-delete
 
 ## Runtime Selection
 
-The runtime used to execute an agent is determined by the node configuration, not the agent manifest. All agents on a given node use the same runtime.
+Two separate concerns govern how an agent runs:
 
-| Runtime | Use Case | Requirement |
+1. **The container image** — defined entirely by the agent manifest (`spec.runtime`). Each agent declares its own image, independently of other agents on the same node.
+2. **The isolation technology** — determined by node configuration (`aegis-config.yaml`). This controls whether images run inside Docker containers or Firecracker microVMs.
+
+### Container Image: Manifest-Driven
+
+AEGIS supports two mutually exclusive ways to specify the container image in `spec.runtime`:
+
+| Mode | Manifest Fields | How the Image Is Resolved |
+|---|---|---|
+| **StandardRuntime** | `language` + `version` | Orchestrator resolves to a pinned official image (e.g., `python:3.11-slim`). No image to build or maintain. |
+| **CustomRuntime** | `image` | Orchestrator pulls directly from your registry. You build and maintain the image. |
+
+See [Standard Runtime Registry](/docs/reference/standard-runtime-registry) for the full language-version table, and [Custom Runtime Agents](/docs/guides/custom-runtime-agents) for the custom image path.
+
+### Isolation Technology: Node-Config-Driven
+
+The `AgentRuntime` trait abstracts both isolation backends. Switching a node from Docker to Firecracker requires only a config change — no agent manifest changes needed.
+
+| Isolation | Use Case | Requirement |
 |---|---|---|
 | `docker` | Development and staging | Docker daemon accessible |
 | `firecracker` | Production | Bare-metal or KVM-passthrough host, Linux kernel 5.10+ |
 
-The `AgentRuntime` trait abstracts both runtimes. Switching a node from Docker to Firecracker requires only a config change — no agent manifest changes needed.
-
-See [Docker Runtime](/docs/deployment/docker) and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.
+See [Docker Deployment](/docs/deployment/docker) and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.
 
 ---
 

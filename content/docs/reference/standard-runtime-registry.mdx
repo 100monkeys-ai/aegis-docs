@@ -1,0 +1,145 @@
+---
+title: Standard Runtime Registry
+description: The complete language-version-to-image mapping table for AEGIS StandardRuntime — supported versions, base images, pre-installed toolchains, and the version support lifecycle.
+---
+
+# Standard Runtime Registry
+
+When an agent manifest specifies `spec.runtime.language` and `spec.runtime.version`, the AEGIS orchestrator resolves them to a deterministic, pinned Docker image at execution time. The canonical mapping is defined in `runtime-registry.yaml`, which is committed to the orchestrator repository and loaded at daemon startup.
+
+Using StandardRuntime means you never specify a Docker image directly — AEGIS selects a vetted, pinned image on your behalf.
+
+---
+
+## Runtime Matrix
+
+| Language | Version | Docker Image | Base OS | Package Manager | Status |
+|---|---|---|---|---|---|
+| `python` | `3.11` | `python:3.11-slim` | Debian 12 | pip | **Supported** |
+| `python` | `3.10` | `python:3.10-slim` | Debian 12 | pip | **Supported** |
+| `python` | `3.9` | `python:3.9-slim` | Debian 12 | pip | **Deprecated** — Phase 2 removal planned; migrate to `3.10` or `3.11` |
+| `javascript` | `20` | `node:20-alpine` | Alpine 3.18 | npm | **Supported** (Current LTS) |
+| `javascript` | `18` | `node:18-alpine` | Alpine 3.18 | npm | **Supported** (Legacy LTS) |
+| `typescript` | `5.1` | `node:20-alpine` | Alpine 3.18 | npm, ts-node | **Supported** |
+| `go` | `1.21` | `golang:1.21-alpine` | Alpine 3.18 | go | **Supported** |
+| `go` | `1.20` | `golang:1.20-alpine` | Alpine 3.18 | go | **Supported** (Legacy) |
+| `rust` | `1.75` | `rust:1.75-alpine` | Alpine 3.18 | cargo | **Supported** |
+| `rust` | `1.74` | `rust:1.74-alpine` | Alpine 3.18 | cargo | **Supported** (Legacy) |
+
+---
+
+## Manifest Usage
+
+```yaml
+spec:
+  runtime:
+    language: "python"   # Required (StandardRuntime)
+    version: "3.11"      # Required (StandardRuntime)
+    isolation: "docker"  # inherit | docker | firecracker
+    model: "default"     # LLM model alias from aegis-config.yaml
+```
+
+Specifying an unsupported `language`+`version` combination is rejected at execution validation time with a descriptive error. There is no fallback to a default version.
+
+---
+
+## Pre-Installed Toolchains
+
+Each StandardRuntime image includes the language's standard package toolchain. You can install additional dependencies inside your agent's bootstrap or using `cmd.run` tools.
+
+### Python (`python:3.x-slim`, Debian 12)
+
+- `pip` (Python package manager)
+- `apt` (Debian package manager, for OS-level packages)
+
+```bash
+# Install a Python package inside the agent
+pip install requests numpy
+
+# Install an OS package
+apt-get install -y libssl-dev
+```
+
+> **Tip:** If you need more than a few OS packages, consider a [Custom Runtime](/docs/guides/custom-runtime-agents) to avoid repeated installs at execution time.
+
+### JavaScript / TypeScript (`node:x-alpine`, Alpine 3.18)
+
+- `npm` (Node.js package manager)
+- `apk` (Alpine package manager)
+
+For TypeScript (`5.1`), the orchestrator sets the `TYPESCRIPT_VERSION=5.1` environment variable. Your bootstrap or Dockerfile should install the TypeScript toolchain:
+
+```bash
+npm install -g typescript ts-node
+```
+
+### Go (`golang:1.x-alpine`, Alpine 3.18)
+
+- `go` binary and build toolchain
+- `apk` (Alpine package manager)
+
+```bash
+# Install a Go dependency
+go get github.com/some/library
+```
+
+### Rust (`rust:1.x-alpine`, Alpine 3.18)
+
+- `cargo` (Rust package manager and build tool)
+- `rustc` (Rust compiler)
+- Rust standard library
+
+```bash
+# Add a crate dependency
+cargo add serde
+```
+
+---
+
+## Bootstrap Mechanism
+
+For all StandardRuntime agents, the orchestrator:
+
+1. Resolves `language`+`version` → Docker image via the registry
+2. Creates the container: `docker run -d --name aegis-<execution_id> <image> tail -f /dev/null`
+3. Checks whether `/usr/local/bin/aegis-bootstrap` already exists inside the container
+4. If absent, uploads the orchestrator's `assets/bootstrap.py` to `/usr/local/bin/aegis-bootstrap`
+5. Executes `python /usr/local/bin/aegis-bootstrap <prompt>`
+
+The bootstrap script connects to `AEGIS_ORCHESTRATOR_URL` → `/v1/dispatch-gateway` and runs the 100monkeys iteration loop (generate → execute → validate → refine).
+
+---
+
+## Version Support Lifecycle
+
+Each language version in the registry follows a support lifecycle:
+
+| Status | Meaning |
+|---|---|
+| **Supported** | Maintained; receives security patches from the upstream language project |
+| **Deprecated** | Still functional, but officially end-of-life upstream; logs a warning at execution time |
+| **Removed** | No longer accepted in manifests; execution validation fails |
+
+Version removals are announced **two phases in advance**: a deprecation warning phase (still functional) is followed by a removal phase. Agents using deprecated versions will see warnings in execution logs; migrate proactively.
+
+**Currently deprecated:** `python: "3.9"` — official upstream EOL. Manifests using this version will execute but log deprecation warnings. Migrate to `python: "3.10"` or `python: "3.11"`.
+
+---
+
+## Choosing Between StandardRuntime and CustomRuntime
+
+| Need | Use |
+|---|---|
+| Supported language and version | StandardRuntime — no image to build or maintain |
+| OS-level packages (e.g., `ffmpeg`, `graphviz`) | [CustomRuntime](/docs/guides/custom-runtime-agents) |
+| Language version not in the registry | [CustomRuntime](/docs/guides/custom-runtime-agents) |
+| Pre-compiled binaries in the image | [CustomRuntime](/docs/guides/custom-runtime-agents) |
+| Proprietary or private dependencies | [CustomRuntime](/docs/guides/custom-runtime-agents) |
+
+---
+
+## See Also
+
+- [Custom Runtime Agents](/docs/guides/custom-runtime-agents) — Using your own Docker image
+- [Container Registry & Image Management](/docs/deployment/container-registry) — ImagePullPolicy, private registry authentication, and image caching
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.runtime` field definitions

@@ -30,11 +30,21 @@ metadata:
     maintainer: "platform@example.com"
 
 spec:
-  # Runtime configuration
+  # Runtime configuration (StandardRuntime path: language + version)
   runtime:
-    language: python              # required; python | javascript | typescript | rust | go
-    version: "3.11"              # required; language version string
+    language: python              # StandardRuntime: required if image not specified
+    version: "3.11"              # StandardRuntime: required if image not specified
     isolation: docker             # optional; inherit | firecracker | docker | process
+    # image_pull_policy: IfNotPresent  # optional for StandardRuntime; default: IfNotPresent
+
+  # OR, for CustomRuntime (uncomment to use private/custom image):
+  #
+  # runtime:
+  #   image: "ghcr.io/my-org/custom-agent:v1.0"  # CustomRuntime: fully-qualified image
+  #   image_pull_policy: IfNotPresent             # optional; Always | IfNotPresent | Never
+  #   isolation: docker                           # optional; inherit | firecracker | docker | process
+  # 
+  # NOTE: Mutual Exclusion — specify EITHER (language + version) OR image, NOT both.
 
   # Task definition (instructions for the agent)
   task:
@@ -179,12 +189,30 @@ spec:
 
 ### `spec.runtime`
 
+Supports two mutually exclusive runtime modes:
+
+- **StandardRuntime:** Specify `language` + `version`; orchestrator resolves to official Docker image
+- **CustomRuntime:** Specify `image` (fully-qualified reference); orchestrator pulls from registry
+
+**Mutual Exclusion:** Cannot specify both paths in one manifest.
+
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `language` | string | ✓ | | `python` \| `javascript` \| `typescript` \| `rust` \| `go` |
-| `version` | string | ✓ | | Language version (e.g., `"3.11"`, `"20"`). |
+| `language` | string | Conditional | | StandardRuntime: Programming language (`python`, `javascript`, `typescript`, `rust`, `go`). Required unless `image` is specified. |
+| `version` | string | Conditional | | StandardRuntime: Language version (e.g., `"3.11"`, `"20"`). Required if `language` is specified. |
+| `image` | string | Conditional | | CustomRuntime: Fully-qualified Docker image (e.g., `ghcr.io/org/agent:v1.0`). Required unless both `language` and `version` are specified. |
+| `image_pull_policy` | string | | `IfNotPresent` | Image caching strategy: `Always` (pull from registry every time), `IfNotPresent` (use cache if available, pull if missing), `Never` (cache only — fail if missing, no network attempt). See [Container Registry & Image Management](/docs/deployment/container-registry). |
 | `isolation` | string | | `inherit` | `inherit` \| `firecracker` \| `docker` \| `process` |
 | `model` | string | | `default` | LLM model alias from `aegis-config.yaml`. |
+
+**Mutual Exclusion Validation Rules:**
+
+- ✅ **Valid (StandardRuntime):** `language: "python"` + `version: "3.11"`
+- ✅ **Valid (CustomRuntime):** `image: "ghcr.io/org/custom:latest"`
+- ❌ **Invalid:** Both `language+version` AND `image` specified
+- ❌ **Invalid:** `language` without `version`
+- ❌ **Invalid:** `version` without `language`
+- ❌ **Invalid:** `image` without fully-qualified format (missing `/`)
 
 ### `spec.task`
 
@@ -333,7 +361,56 @@ Environment variable values support three formats:
 
 ### `spec.runtime`
 
-Defines the execution environment for the agent. `isolation` inherits from node configuration when set to `inherit`, allowing ops teams to override isolation mode at the host level without changing individual manifests.
+Defines the execution environment for the agent.
+
+#### StandardRuntime (Official Images)
+
+When you specify `language` and `version`, the orchestrator resolves them to a deterministic official Docker image by consulting the **StandardRuntime Registry** committed to the repository. The registry enforces:
+
+1. **No "latest" tags**: Every language+version maps to an exact, immutable image tag
+2. **Production-grade variants**: `-slim` for Debian-based, `-alpine` for Alpine (minimal image size)
+3. **Validation at execution time**: Unsupported language/version combinations fail fast with clear error messages
+
+| Language | Version | Docker Image | Status |
+|---|---|---|---|
+| `python` | `3.11` | `python:3.11-slim` | Supported |
+| `python` | `3.10` | `python:3.10-slim` | Supported |
+| `python` | `3.9` | `python:3.9-slim` | **Deprecated** — migrate to `3.10` or `3.11` |
+| `javascript` | `20` | `node:20-alpine` | Supported (Current LTS) |
+| `javascript` | `18` | `node:18-alpine` | Supported (Legacy LTS) |
+| `typescript` | `5.1` | `node:20-alpine` | Supported |
+| `rust` | `1.75` | `rust:1.75-alpine` | Supported |
+| `rust` | `1.74` | `rust:1.74-alpine` | Supported (Legacy) |
+| `go` | `1.21` | `golang:1.21-alpine` | Supported |
+| `go` | `1.20` | `golang:1.20-alpine` | Supported (Legacy) |
+
+For the full matrix including pre-installed toolchains, deprecation lifecycle, and pre-caching guidance, see [Standard Runtime Registry](/docs/reference/standard-runtime-registry).
+
+**Where the mapping lives:** The canonical registry is defined in `runtime-registry.yaml` in the orchestrator repository. This file is committed and loaded at daemon startup.
+
+**Benefits:** 
+- **Deterministic**: Same language+version always pulls the same vetted image
+- **Managed by AEGIS**: No arbitrary image choices; all runtimes are vetted for security and compatibility
+- **Fast**: Images are cached; only pulled once
+- **Validated**: Manifests with unsupported language/version combinations are rejected at execution validation time
+
+#### CustomRuntime (User-Supplied Images)
+
+When you specify `image`, the orchestrator pulls from your container registry. Supports fully-qualified references like `ghcr.io/org/custom:v1.0`.
+
+**Benefits:** Flexibility for OS packages, custom dependencies, private registries. See [Custom Runtime Agents](/docs/guides/custom-runtime-agents) for a complete walkthrough.
+
+#### Bootstrap Script
+
+Both paths use the orchestrator-provided bootstrap script for 100monkeys iteration control. To bundle your own bootstrap script in a CustomRuntime image, declare its path in `spec.advanced.bootstrap_path`. See [Custom Runtime Agents — Bootstrap Handling](/docs/guides/custom-runtime-agents#bootstrap-handling).
+
+#### Isolation Mode
+
+`isolation` specifies process isolation technology:
+- `inherit` (default): Use node configuration setting
+- `docker`: Run in Docker container (Phase 1)
+- `firecracker`: Firecracker microVM (Phase 2)
+- `process`: Host process (Phase 2)
 
 ### `spec.task`
 
@@ -457,6 +534,15 @@ Additional resources attached to the agent at execution time.
 | `timezone` | string | IANA timezone (e.g., `"America/New_York"`). |
 | `enabled` | boolean | Whether the schedule is active. |
 
+### `spec.advanced`
+
+| Field | Type | Description |
+|---|---|---|
+| `bootstrap_path` | string | Path to custom bootstrap script inside the container. Only valid for CustomRuntime. The field is declared in the schema and exposed in the Python and TypeScript SDKs; runtime wiring is tracked in the orchestrator backlog and is not yet active in the current release. |
+| `warm_pool_size` | integer | Number of pre-warmed container instances. |
+| `swarm_enabled` | boolean | Enable multi-agent coordination. |
+| `startup_script` | string | Custom startup script. |
+
 ### `spec.delivery`
 
 Output delivery destinations evaluated after execution completes. Each destination:
@@ -484,7 +570,7 @@ Output delivery destinations evaluated after execution completes. Each destinati
 
 ## Examples
 
-### Minimal Agent
+### Minimal Agent (StandardRuntime)
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
@@ -521,6 +607,52 @@ spec:
   execution:
     mode: iterative
     max_iterations: 5
+```
+
+### Minimal Agent (CustomRuntime)
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+
+metadata:
+  name: diagram-generator
+  version: "1.0.0"
+  description: "Generates diagrams using Graphviz (requires custom image)."
+
+spec:
+  runtime:
+    image: "ghcr.io/my-org/diagram-generator:latest"
+    image_pull_policy: IfNotPresent  # Use cache if available
+
+  task:
+    instruction: |
+      Generate a Graphviz diagram from the user's description.
+      Save the DOT file to /workspace/diagram.dot
+      Render to SVG: dot -Tsvg diagram.dot -o diagram.svg
+
+  security:
+    filesystem:
+      read:
+        - /workspace
+      write:
+        - /workspace
+    resources:
+      cpu: 1000
+      memory: "1Gi"
+      timeout: "120s"
+
+  volumes:
+    - name: workspace
+      storage_class: ephemeral
+      mount_point: /workspace
+      access_mode: read-write
+      ttl_hours: 1
+      size_limit_mb: 1000
+
+  execution:
+    mode: iterative
+    max_iterations: 3
 ```
 
 ### Agent with JSON Output Validation
@@ -698,6 +830,51 @@ For validation requiring multiple independent judges with consensus aggregation,
 | Consensus algorithm | N/A | `mean`, `min`, `max`, `majority` |
 | Configuration location | Agent manifest | Workflow manifest |
 | Use case | Per-iteration quality gate | Final output multi-panel review |
+
+---
+
+## Runtime Selection Guide
+
+### When to Use StandardRuntime
+
+✅ **Choose StandardRuntime if:**
+- Your agent only needs Python, Node.js, TypeScript, Rust, or Go
+- Standard system packages are sufficient (no OS binaries required)
+- You want AEGIS to manage image updates
+- You want deterministic, cached deployments
+
+### When to Use CustomRuntime
+
+✅ **Choose CustomRuntime if:**
+- You need OS-level packages (graphviz, imagemagick, system libraries)
+- You require a specialized language version not in StandardRuntime registry
+- You want to include custom dependencies in the image
+- You're using a private container registry
+- You need image signing or vulnerability scanning
+
+**See:** [Custom Runtime Agents](/docs/guides/custom-runtime-agents) for complete walkthrough.
+
+---
+
+## Image Pull Policies
+
+### `IfNotPresent` (Default)
+
+Use local cached image if available; pull from registry only if missing.
+
+**Best for:** Release versions (stable, changes rarely), reducing network traffic, offline deployments.
+
+### `Always`
+
+Always pull from registry, even if already cached locally.
+
+**Best for:** `-dev`, `-latest` tags (frequently updated), ensuring agents use current fixes.
+
+### `Never`
+
+Only use cached images; fail if image is not already cached.
+
+**Best for:** Locked production versions, guaranteed deterministic content, airgapped deployments. Images must be pre-loaded on the node via `docker pull` before execution. See [Pre-Caching for Airgapped Environments](/docs/deployment/container-registry#pre-caching-for-airgapped-environments).
 
 ---
 
