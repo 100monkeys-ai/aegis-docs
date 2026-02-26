@@ -18,7 +18,7 @@ There are two ways to supply an agent's runtime:
 | Approach | When to Use |
 |---|---|
 | **Generic AEGIS runtime** | Most agents. Define all behavior in the manifest via `spec.task.instruction`. No Dockerfile or custom image needed. |
-| **Custom container** | Agents with complex dependencies, non-standard libraries, or a fully custom `bootstrap.py`. See [Writing Your First Agent](/docs/guides/writing-agents). |
+| **Custom container** | Advanced use case for complex dependencies or a custom `bootstrap.py`. See [Custom Runtime Agents (Advanced)](/docs/guides/custom-runtime-agents). |
 
 Both approaches use identical lifecycle and execution commands. The difference is entirely in the manifest format.
 

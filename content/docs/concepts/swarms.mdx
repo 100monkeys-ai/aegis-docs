@@ -26,7 +26,7 @@ Root Execution (parent)
 
 ## Spawning Child Agents
 
-Agents spawn children by calling the `aegis.spawn_child` MCP tool from within `bootstrap.py`. The child executes asynchronously — `spawn_child` returns immediately with identifiers, and the parent uses `aegis.await_child` to block until completion.
+Agents spawn children by calling the `aegis.spawn_child` MCP tool at runtime. The child executes asynchronously — `spawn_child` returns immediately with identifiers, and the parent uses `aegis.await_child` to block until completion.
 
 ```python
 from aegis import AegisClient

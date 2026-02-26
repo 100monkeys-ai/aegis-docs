@@ -108,7 +108,7 @@ spec:
 
 Agents in downstream states automatically receive earlier states' outputs via Handlebars templates in the `input` field. For example, the `coder-agent`'s `input` already references `{{REQUIREMENTS.output}}` from Step 1.
 
-In the agent's `bootstrap.py`, the rendered input arrives via `task.input`:
+At execution time, the rendered input is available via `task.input` in the runtime:
 
 ```python
 from aegis import AegisClient

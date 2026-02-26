@@ -1,19 +1,27 @@
 ---
 title: Writing Your First Agent
-description: Step-by-step guide to writing an agent.yaml manifest and bootstrap.py from scratch.
+description: Step-by-step guide to creating your first agent with a declarative manifest.
 ---
 
 # Writing Your First Agent
 
-This guide walks through creating a working agent from scratch: an `agent.yaml` manifest and the `bootstrap.py` script that runs inside the container. By the end, you will have an agent that accepts a task prompt, writes code to a workspace volume, runs it, and validates the output.
+In AEGIS, agents are created declaratively with a `kind: Agent` manifest. You define behavior, security, tools, and validation in YAML, then deploy it with the CLI.
+
+This guide walks through the default and recommended path:
+
+1. Write `agent.yaml`
+2. Deploy the manifest
+3. Execute a task
+4. Tune validation and permissions
+
+No custom `bootstrap.py` is required for this flow.
 
 ---
 
 ## Prerequisites
 
 - AEGIS daemon running locally (see [Getting Started](/docs/getting-started))
-- Python 3.11+ in your target container image
-- The `aegis-python` SDK installed in the container image
+- A working `aegis` CLI installation
 
 ---
 
@@ -22,112 +30,11 @@ This guide walks through creating a working agent from scratch: an `agent.yaml` 
 ```
 my-agent/
 ├── agent.yaml
-├── bootstrap.py
-├── Dockerfile
-└── output_schema.json
 ```
 
 ---
 
-## Step 2: Write the Dockerfile
-
-Your agent runs inside the container image specified in the manifest. Build a minimal image with Python and the AEGIS SDK:
-
-```dockerfile
-FROM python:3.11-slim
-
-RUN pip install --no-cache-dir aegis-sdk
-
-WORKDIR /agent
-COPY bootstrap.py .
-COPY output_schema.json .
-
-CMD ["python", "/agent/bootstrap.py"]
-```
-
-Build and push the image:
-
-```bash
-docker build -t myregistry/my-agent:latest .
-docker push myregistry/my-agent:latest
-```
-
----
-
-## Step 3: Write bootstrap.py
-
-`bootstrap.py` is the entrypoint for your agent. It uses the AEGIS Python SDK, which handles the `/v1/dispatch-gateway` communication loop automatically.
-
-```python
-import os
-import json
-from aegis import AegisClient, TaskInput
-
-def main():
-    client = AegisClient()
-
-    # Receive the task input injected by the orchestrator
-    task: TaskInput = client.get_task()
-    user_request = task.input.get("task", "")
-
-    # Build the initial conversation
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a Python developer. Write code to solve the given task. "
-                "Save your solution to /workspace/solution.py. "
-                "Run the solution with cmd.run to verify it works. "
-                "When done, write a JSON summary to /workspace/result.json with "
-                "fields: 'solution_path' and 'output'."
-            )
-        },
-        {
-            "role": "user",
-            "content": user_request
-        }
-    ]
-
-    # Run the inner loop — the SDK handles tool call interception transparently
-    response = client.generate(messages=messages)
-
-    # The response is the final text from the LLM after all tool calls are resolved
-    print(response.content)
-
-if __name__ == "__main__":
-    main()
-```
-
-The SDK's `client.generate()` blocks until the LLM produces a non-tool-call response. All `fs.*`, `cmd.run`, and other capability calls are intercepted and executed by the orchestrator transparently.
-
----
-
-## Step 4: Write the Output Schema
-
-Define what a valid output looks like. The `json_schema` validator checks `/workspace/result.json` against this schema.
-
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["solution_path", "output"],
-  "properties": {
-    "solution_path": {
-      "type": "string",
-      "pattern": "^/workspace/"
-    },
-    "output": {
-      "type": "string",
-      "minLength": 1
-    }
-  },
-  "additionalProperties": false
-}
-```
-
----
-
-## Step 5: Write the Agent Manifest
+## Step 2: Write the Agent Manifest
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
@@ -143,26 +50,31 @@ spec:
   runtime:
     language: python
     version: "3.11"
-    isolation: docker
+    isolation: inherit
 
   task:
     instruction: |
-      You are a Python developer. Write code to solve the given task.
-      Save your solution to /workspace/solution.py.
-      Run the solution to verify it works.
-      Write a JSON summary to /workspace/result.json with fields: solution_path and output.
+      Review the provided pull request diff and return structured feedback.
+      Include findings for security, performance, and maintainability.
+      Return JSON with keys: summary, risks, recommendations.
+    prompt_template: |
+      {{instruction}}
+
+      Pull request context:
+      {{input}}
+
+      Assistant:
 
   security:
     network:
       mode: allow
       allowlist:
-        - pypi.org
+        - api.github.com
     filesystem:
       read:
         - /workspace
-        - /agent
       write:
-        - /workspace
+        - /workspace/output
     resources:
       cpu: 1000
       memory: "1Gi"
@@ -178,7 +90,7 @@ spec:
 
   execution:
     mode: iterative
-    max_iterations: 10
+    max_iterations: 5
     validation:
       system:
         must_succeed: true
@@ -186,50 +98,64 @@ spec:
         format: json
         schema:
           type: object
-          required: ["solution_path", "output"]
+          required: ["summary", "risks", "recommendations"]
           properties:
-            solution_path:
+            summary:
               type: string
-            output:
+            risks:
+              type: array
+              items:
+                type: string
+            recommendations:
               type: string
 
   tools:
     - name: filesystem
       server: "mcp:filesystem"
       config:
-        allowed_paths: ["/workspace", "/agent"]
+        allowed_paths: ["/workspace"]
         access_mode: read-write
-
-  env:
-    PYTHONUNBUFFERED: "1"
 ```
 
 ---
 
-## Step 6: Deploy and Test
-
-Deploy the agent:
+## Step 3: Deploy the Agent
 
 ```bash
 aegis agent deploy ./my-agent/agent.yaml
 ```
 
-Confirm it's registered:
+Confirm registration:
 
 ```bash
 aegis agent show python-coder
 ```
 
-Run an execution:
+---
+
+## Step 4: Execute a Task
+
+Run an execution and stream iterations:
 
 ```bash
 aegis task execute \
-  python-coder \
-  --input '{"task": "Write a function that checks if a number is prime."}' \
+  pr-reviewer \
+  --input '{"repo":"my-org/service","pr":42,"diff":"<git diff>"}' \
   --follow
 ```
 
-If the first iteration fails validation, the orchestrator injects the error into the next iteration's context and retries automatically (up to 10 times by default).
+If validation fails, AEGIS automatically refines and retries up to `max_iterations`.
+
+---
+
+## Step 5: Tighten Security and Validation
+
+After your first successful run:
+
+- Restrict `spec.security.network.allowlist` to only required domains.
+- Restrict `spec.security.filesystem.read`/`write` to minimal paths.
+- Add or tighten `spec.execution.validation.output.schema` rules.
+- Lower `max_iterations` when your agent behavior is stable.
 
 ---
 
@@ -237,11 +163,18 @@ If the first iteration fails validation, the orchestrator injects the error into
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Container fails to start | Image not found or not pullable | Verify `spec.runtime.isolation` and registry credentials in node config |
-| Tool call rejected | Tool not declared in `spec.tools` | Add the tool to `spec.tools` in the manifest |
-| Validation always fails | Schema path wrong | Double-check `execution.validation.output.schema` definition |
-| Timeout on first iteration | Task too complex | Increase `security.resources.timeout` or `execution.validation.system.timeout_seconds` |
-| Network call rejected | Domain not in allowlist | Add the domain to `spec.security.network.allowlist` |
+| Tool call rejected | Tool not declared in `spec.tools` | Add the MCP tool entry under `spec.tools` |
+| Validation fails repeatedly | Output schema too strict or mismatched | Align the schema with expected output shape |
+| Execution times out | Resource timeout too low | Increase `spec.security.resources.timeout` and/or validation timeouts |
+| Network denied | Domain missing from allowlist | Add required host to `spec.security.network.allowlist` |
+
+---
+
+## Advanced: Custom Runtime
+
+Most agents should stay manifest-only. If you need custom dependencies or your own runtime script, use the advanced guide:
+
+- [Custom Runtime Agents](/docs/guides/custom-runtime-agents)
 
 ---
 
@@ -250,4 +183,3 @@ If the first iteration fails validation, the orchestrator injects the error into
 - [Deploying Agents](/docs/guides/deploying-agents) — full CLI lifecycle management.
 - [Configuring Agent Validation](/docs/guides/validation) — all validator types and threshold tuning.
 - [Agent Manifest Reference](/docs/reference/agent-manifest) — complete field specification.
-- [Manifest Specification v1.0](/docs/reference/manifest-spec) — full specification with extended examples.
