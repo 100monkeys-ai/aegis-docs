@@ -149,44 +149,6 @@ echo "=== Test Complete ==="
 chmod +x test-aegis.sh && ./test-aegis.sh
 ```
 
-#### Windows — `test-aegis.ps1`
-
-```powershell
-Write-Host "=== AEGIS Build and Test ===" -ForegroundColor Green
-
-Get-Process aegis -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 2
-
-cargo build -p aegis-orchestrator
-
-.\target\debug\aegis.exe daemon start
-Start-Sleep -Seconds 3
-.\target\debug\aegis.exe daemon status
-
-$agents = @("echo", "greeter", "coder", "debater", "poet", "piglatin")
-foreach ($agent in $agents) {
-    Write-Host "  Deploying $agent..." -ForegroundColor Cyan
-    .\target\debug\aegis.exe agent deploy ".\agents\$agent\agent.yaml"
-}
-
-.\target\debug\aegis.exe agent list
-
-.\target\debug\aegis.exe task execute echo     --input "Hello Daemon"
-.\target\debug\aegis.exe task execute greeter  --input "Jeshua"
-.\target\debug\aegis.exe task execute coder    --input "What are the advantages of using this language?"
-.\target\debug\aegis.exe task execute debater  --input "Sushi is delicious."
-.\target\debug\aegis.exe task execute poet     --input "Tell me about the stars"
-.\target\debug\aegis.exe task execute piglatin --input "How are you doing today my friend?"
-
-.\target\debug\aegis.exe task list
-
-Write-Host "=== Test Complete ===" -ForegroundColor Green
-```
-
-```powershell
-.\test-aegis.ps1
-```
-
 ### Debugging the Daemon
 
 **View daemon logs:**
@@ -195,10 +157,6 @@ Write-Host "=== Test Complete ===" -ForegroundColor Green
 # Linux / macOS
 tail -f /tmp/aegis.out
 tail -f /tmp/aegis.err
-
-# Windows
-Get-Content $env:TEMP\aegis.out -Wait
-Get-Content $env:TEMP\aegis.err -Wait
 ```
 
 **Enable debug logging:**

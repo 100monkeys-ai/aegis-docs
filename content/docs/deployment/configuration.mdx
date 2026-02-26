@@ -21,7 +21,7 @@ The daemon searches for a config file in the following order. The first match wi
 2. `AEGIS_CONFIG_PATH` environment variable
 3. `./aegis-config.yaml` (working directory)
 4. `~/.aegis/config.yaml`
-5. `/etc/aegis/config.yaml` (Linux/macOS) or `C:\ProgramData\Aegis\config.yaml` (Windows)
+5. `/etc/aegis/config.yaml` (Linux/macOS)
 
 ---
 
@@ -160,7 +160,6 @@ runtime:
   default_isolation: docker
   # Custom Docker socket path. Omit to use the platform default:
   #   Linux/macOS: /var/run/docker.sock
-  #   Windows:     //./pipe/docker_engine
   docker_socket_path: "/var/run/docker.sock"
   # Docker network name for agent containers.
   # Supports env: prefix. Example: "env:AEGIS_DOCKER_NETWORK"
@@ -585,7 +584,7 @@ Optional. Controls how agent containers are launched.
 | Environment | Value |
 |-------------|-------|
 | WSL2 / Linux native | `"127.0.0.1"` |
-| Docker Desktop (Windows / macOS) | `"host.docker.internal"` |
+| Docker Desktop (macOS) | `"host.docker.internal"` |
 | Linux bridge network | `"172.17.0.1"` (Docker bridge gateway) |
 | Remote / VM host | `<physical host IP>` |
 | Via env var | `"env:AEGIS_NFS_HOST"` |
