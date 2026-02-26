@@ -142,21 +142,4 @@ Each Firecracker microVM gets its own network interface via a tap device on the 
 
 ---
 
-## Enabling Firecracker (Development Preview)
-
-```yaml
-# aegis-config.yaml
-runtime:
-  type: firecracker
-  firecracker:
-    jailer_binary: /usr/local/bin/jailer
-    firecracker_binary: /usr/local/bin/firecracker
-    kernel_image_path: /opt/aegis/vmlinux
-    rootfs_path: /opt/aegis/agent-rootfs.ext4
-    vcpu_count: 2
-    mem_size_mib: 512
-```
-
-Pre-built kernel images and root filesystems compatible with AEGIS are available in the `aegis-orchestrator` repository under `docker/firecracker/`.
-
 Monitor progress on Firecracker support in the [aegis-orchestrator GitHub repository](https://github.com/100monkeys-ai/aegis-orchestrator).
