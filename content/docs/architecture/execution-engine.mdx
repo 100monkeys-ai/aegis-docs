@@ -15,23 +15,50 @@ The AEGIS execution engine is the subsystem that runs an agent against a task an
 ## Domain Model
 
 ```rust
-struct Execution {
-    id: ExecutionId,
-    agent_id: AgentId,
-    status: ExecutionStatus,
-    iterations: Vec<Iteration>,
-    max_iterations: u8,           // default: 10
-    started_at: DateTime<Utc>,
-    ended_at: Option<DateTime<Utc>>,
+/// Maximum swarm nesting depth; enforced at spawn time.
+pub const MAX_RECURSIVE_DEPTH: u8 = 3;
+
+pub struct Execution {
+    pub id: ExecutionId,
+    pub agent_id: AgentId,
+    pub status: ExecutionStatus,
+    pub iterations: Vec<Iteration>,
+    pub max_iterations: u8,              // default: 10
+    pub input: ExecutionInput,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub error: Option<String>,
+    pub hierarchy: ExecutionHierarchy,   // depth tracking; max depth = MAX_RECURSIVE_DEPTH
+    pub container_uid: u32,              // default: 1000 — UID squashed onto all NFS file ops
+    pub container_gid: u32,              // default: 1000 — GID squashed onto all NFS file ops
 }
 
-struct Iteration {
-    number: u8,                   // 1-based
-    status: IterationStatus,
-    output: Option<String>,
-    error: Option<IterationError>,
-    started_at: DateTime<Utc>,
-    ended_at: Option<DateTime<Utc>>,
+pub struct ExecutionHierarchy {
+    pub parent_execution_id: Option<ExecutionId>,
+    pub depth: u8,  // 0 = root; increments with each swarm child level
+    pub path: Vec<ExecutionId>,  // breadcrumb from root to this execution
+}
+
+pub struct Iteration {
+    pub number: u8,                           // 1-based
+    pub status: IterationStatus,
+    pub action: String,
+    pub output: Option<String>,
+    pub validation_results: Option<ValidationResults>,
+    pub error: Option<IterationError>,
+    pub code_changes: Option<CodeDiff>,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub llm_interactions: Vec<LlmInteraction>, // full message history for this iteration
+}
+
+/// Collects the results of every validator that ran for an iteration.
+pub struct ValidationResults {
+    pub system:    Option<SystemValidationResult>,  // exit code / stdout text checks
+    pub output:    Option<OutputValidationResult>,  // regex / JSON schema
+    pub semantic:  Option<SemanticValidationResult>, // single LLM judge
+    pub gradient:  Option<GradientResult>,           // score: f64, confidence: f64
+    pub consensus: Option<MultiJudgeConsensus>,      // multi-judge aggregate
 }
 ```
 

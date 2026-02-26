@@ -94,7 +94,8 @@ validation:
       - code-quality-judge
       - security-reviewer-judge
       - test-coverage-judge
-    consensus: mean          # "mean" | "min" | "max" | "majority"
+    consensus: weighted_average  # "weighted_average" | "majority" | "unanimous" | "best_of_n"
+    min_judges_required: 2       # at least 2 judges must respond; otherwise the validator fails
     criteria: |
       Score the output from 0.0 to 1.0 on overall production readiness.
     min_score: 0.80
@@ -103,10 +104,10 @@ validation:
 
 | Consensus Mode | Description |
 |---|---|
-| `mean` | Average of all judges' scores. |
-| `min` | Minimum score (most conservative — all judges must agree). |
-| `max` | Maximum score (most permissive — any judge's approval is enough). |
-| `majority` | Score from the majority position (rounded). |
+| `weighted_average` | Weighted average of all judges' scores. Weights can be tuned per judge; confidence weighting is applied when `confidence_weighting` is configured. |
+| `majority` | The result of the majority of judges determines the outcome. |
+| `unanimous` | All judges must exceed the threshold. Most conservative — a single dissenting judge fails the validator. |
+| `best_of_n` | Highest score among all judges. Most permissive — any judge's approval suffices. |
 
 ---
 
@@ -222,7 +223,9 @@ The judge runtime reads the code under review from the shared workspace, evaluat
 | `min_confidence` | float | `0.0` | Minimum `Confidence` to accept the score. If confidence is below this, the score is treated as failing. |
 | `judge_agent` | string | — | (`semantic` only) Name of the judge agent to invoke. |
 | `judges` | string[] | — | (`multi_judge` only) List of judge agent names. |
-| `consensus` | string | `mean` | (`multi_judge` only) Score aggregation strategy. |
+| `consensus` | string | `weighted_average` | (`multi_judge` only) Score aggregation strategy: `weighted_average`, `majority`, `unanimous`, or `best_of_n`. |
+| `min_judges_required` | integer | `1` | (`multi_judge` only) Minimum number of judges that must return a result. If fewer respond, the validator fails regardless of scores. |
+| `min_agreement_confidence` | float | — | (`multi_judge` only) Minimum inter-judge agreement factor required before the consensus score is accepted. |
 | `criteria` | string | — | (`semantic`, `multi_judge`) Instructions to the judge about what to evaluate. |
 | `expected` | integer | `0` | (`exit_code` only) Expected process exit code. |
 | `schema_path` | string | — | (`json_schema` only) Path to the JSON Schema file inside the container. |
