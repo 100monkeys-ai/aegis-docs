@@ -11,30 +11,42 @@ The AEGIS workflow engine executes declarative finite-state machine (FSM) workfl
 
 ## Architecture Overview
 
+The workflow engine spans two components: the Rust orchestrator handles registration, state persistence, and event sourcing; the TypeScript worker owns FSM interpretation and delegates all agent execution back to the Rust runtime via gRPC.
+
 ```
-Workflow YAML manifest
-         │
-         ▼
-  WorkflowParser          Validates YAML; builds Workflow aggregate
-         │
-         ▼
-  WorkflowRepository      Persists to PostgreSQL
-         │
-         ▼
-  StartWorkflowUseCase    Creates WorkflowExecution, registers Temporal workflow
-         │
-         ▼
-  Temporal Worker ─────── Executes AegisWorkflow (Rust Temporal workflow function)
-         │
-         ├──► WorkflowState.Agent    → dispatches to ExecutionSupervisor
-         │                                (spins up container, runs 100monkeys loop)
-         │
-         ├──► WorkflowState.System   → runs shell command on orchestrator host
-         │
-         ├──► WorkflowState.Human    → suspends workflow; awaits external signal
-         │
-         └──► WorkflowState.Parallel → dispatches N agent executions concurrently;
-                                        waits for all to complete
+              ┌─────────────Rust Orchestrator──────────────┐
+              │                                            │
+       WorkflowParser          WorkflowRepository          │
+       (YAML → domain)         (PostgreSQL)                │
+              │                                            │
+              └──────── StartWorkflowUseCase ──────────────┘
+                                  │
+               ┌──────────────────┴───────────────────┐
+               │                                      │
+   HTTP POST /register-workflow          gRPC StartWorkflowExecution
+               │                                      │
+               ▼                                      ▼
+     TypeScript Worker (:3000)           Temporal Server (:7233)
+   workflow_definitions (PostgreSQL)              │
+               │                         task queue: aegis-agents
+               └──────────────────────────────────┘
+                                  │
+                          aegis_workflow()
+                       (single generic FSM interpreter)
+                                  │
+         ┌────────────────────────┼────────────────────────┐
+         │                        │                        │
+ executeAgentActivity  executeSystemCommandActivity  validateOutputActivity
+         │                        │                        │
+         └────────────────────────┴────────────────────────┘
+                                  │
+                   gRPC AegisRuntime (:50051)  ←── Rust Orchestrator
+                   ExecuteAgent (streaming)
+                   ExecuteSystemCommand (unary)
+                   ValidateWithJudges (unary)
+                                  │
+                HTTP POST /v1/temporal-events  ──► Rust EventBus
+                (WorkflowExecution event store)
 ```
 
 ---
@@ -62,6 +74,12 @@ Because Temporal persists workflow event history:
 - Human states can wait indefinitely for signals without consuming memory or CPU.
 - Workflow executions running for hours or days are fully supported.
 
+### Generic Interpreter Pattern
+
+The TypeScript worker registers a single Temporal workflow function — `aegis_workflow` — on the `aegis-agents` task queue. Every AEGIS workflow, regardless of how many states it defines, executes through this one function. When the workflow starts, `aegis_workflow` calls the `fetchWorkflowDefinition` activity to load the FSM definition from PostgreSQL, initialises the Blackboard from the workflow's `spec.context` and any start-input, then runs the FSM loop until a terminal state (no transitions) is reached or the iteration safety bound of 1000 steps is hit.
+
+This means deploying a new workflow YAML requires no TypeScript code changes and no new Temporal workflow function. The manifest is registered to the `workflow_definitions` table and becomes immediately executable by any running worker replica.
+
 ---
 
 ## Domain Model
@@ -69,48 +87,85 @@ Because Temporal persists workflow event history:
 ```rust
 struct Workflow {
     id: WorkflowId,
-    name: String,
-    initial_state_name: String,
+    metadata: WorkflowMetadata,   // name, version, labels
+    spec: WorkflowSpec,
+    created_at: DateTime<Utc>,
+}
+
+struct WorkflowSpec {
+    initial_state: String,                      // entry state name
+    context: HashMap<String, Value>,            // default Blackboard values (spec.context)
     states: HashMap<String, WorkflowState>,
-    blackboard_defaults: HashMap<String, Value>,
 }
 
 struct WorkflowState {
-    name: String,
     kind: StateKind,
-    agent_id: Option<AgentId>,      // Agent states only
-    command: Option<String>,         // System states only
-    timeout_secs: u64,
+    timeout: Option<Duration>,
     transitions: Vec<TransitionRule>,
 }
 
+// All state-specific config is carried inside the StateKind variant.
 enum StateKind {
-    Agent,
-    System,
-    Human,
-    ParallelAgents,
+    Agent {
+        agent: String,                          // deployed agent name
+        input: String,                          // Handlebars input template
+        isolation: Option<IsolationMode>,
+    },
+    System {
+        command: String,                        // shell command (Handlebars-rendered)
+        env: HashMap<String, String>,
+        workdir: Option<String>,
+    },
+    Human {
+        prompt: String,                         // shown to operator (Handlebars-rendered)
+        default_response: Option<String>,       // used when timeout elapses with no signal
+    },
+    ParallelAgents {
+        agents: Vec<ParallelAgentConfig>,       // concurrent agent configs
+        consensus: ConsensusConfig,             // aggregation strategy
+    },
 }
 
 struct TransitionRule {
-    condition: Option<TransitionCondition>,  // None = unconditional (default transition)
-    target: String,                          // Target state name
-    feedback: Option<String>,                // Handlebars template; resolves as {{state.feedback}}
+    condition: Option<TransitionCondition>,     // None = unconditional (always)
+    target: String,                             // target state name
+    feedback: Option<String>,                   // Handlebars string; available as {{state.feedback}}
 }
 
 enum TransitionCondition {
     Always,
-    OnSuccess,
-    OnFailure,
+    OnSuccess, OnFailure,
     ScoreAbove { threshold: f64 },
     ScoreBelow { threshold: f64 },
     ScoreBetween { min: f64, max: f64 },
+    ScoreAndConfidenceAbove { score: f64, confidence: f64 },
+    ConfidenceAbove { threshold: f64 },
     Consensus { threshold: f64, agreement: f64 },
+    AllApproved, AnyRejected,
     InputEquals { value: String },
-    Custom { expression: String },   // Handlebars boolean expression
-    ExitCodeZero,
-    ExitCodeNonZero,
+    InputEqualsYes, InputEqualsNo,
+    ExitCodeZero, ExitCodeNonZero,
+    ExitCode { code: i32 },
+    Custom { expression: String },              // Handlebars boolean expression
 }
 ```
+
+---
+
+## gRPC Bridge
+
+The TypeScript worker never executes agent code directly. All compute-heavy work is delegated back to the Rust orchestrator via the `AegisRuntime` gRPC service:
+
+| Activity | gRPC Method | Call Type | Purpose |
+|---|---|---|---|
+| `executeAgentActivity` | `AegisRuntime.ExecuteAgent` | server-streaming | Runs a full 100monkeys iterative execution; collects all `ExecutionEvent` stream messages before returning. |
+| `executeSystemCommandActivity` | `AegisRuntime.ExecuteSystemCommand` | unary | Runs a shell command on the orchestrator host. |
+| `validateOutputActivity` | `AegisRuntime.ValidateWithJudges` | unary | Runs gradient validation against configured judge agents; returns a score (0.0–1.0) and confidence. |
+| `executeParallelAgentsActivity` | `AegisRuntime.ExecuteAgent` × N, then `ValidateWithJudges` | parallel + unary | Fans out to N concurrent `ExecuteAgent` calls via `Promise.all`, then computes consensus. |
+
+The gRPC server runs on port 50051 (configurable via `AEGIS_RUNTIME_GRPC_URL`). Security policy enforcement, SMCP attestation, and container lifecycle remain entirely in Rust — the TypeScript worker has no direct access to agent containers or the Docker socket.
+
+After each state transition the worker POSTs a structured event to `POST /v1/temporal-events` on the Rust orchestrator. The `TemporalEventListener` maps these to typed `WorkflowEvent` domain objects, appends them to the `WorkflowExecution` event store in PostgreSQL, and publishes them to the internal `EventBus`.
 
 ---
 

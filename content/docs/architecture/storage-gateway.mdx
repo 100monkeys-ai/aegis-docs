@@ -154,6 +154,36 @@ The FSAL authorization logic, path canonicalization, UID/GID squashing, quota tr
 
 ---
 
+## Volume Lifecycle
+
+Volumes follow a deterministic state machine managed by the orchestrator:
+
+```
+Creating ──► Available ──► Attached ──► Detached
+    │                          │             │
+    │                          └─────────────┤
+    │                                        │
+    └──────────────────────────────────► Deleting ──► Deleted
+
+Any non-terminal state ──► Failed
+```
+
+| State | Meaning |
+|---|---|
+| `Creating` | Directory being provisioned in SeaweedFS and quota being set |
+| `Available` | SeaweedFS directory ready; no container has mounted it yet |
+| `Attached` | NFS export active; container is mounted and I/O is live |
+| `Detached` | Container stopped; NFS export removed; volume data intact in SeaweedFS |
+| `Deleting` | Delete request accepted; SeaweedFS directory removal in progress |
+| `Deleted` | SeaweedFS directory confirmed removed; record retained briefly for audit trail |
+| `Failed` | A state transition failed (e.g., SeaweedFS unreachable during creation or deletion) |
+
+`Available → Attached` occurs when the container starts and the NFS mount is confirmed active. `Attached → Detached` occurs when the container stops or is killed. Ephemeral volumes with no active execution proceed immediately from `Detached` to `Deleting`. Persistent volumes remain in `Detached` until explicitly deleted via the CLI or API.
+
+`Failed` volumes are surfaced in `aegis volume list` output and may be retried with `aegis volume delete <id> --force`.
+
+---
+
 ## Phase 1 Constraints
 
 ### `nolock` Mount Option
@@ -212,10 +242,36 @@ All events carry `execution_id`, `volume_id`, and a timestamp. File operation ev
 
 ## SeaweedFS Integration
 
-SeaweedFS is the default `StorageProvider`. `AegisFSAL` communicates with SeaweedFS via its HTTP Filer API. Volume data is stored in SeaweedFS with paths structured as:
+SeaweedFS is the default `StorageProvider`. The orchestrator communicates with SeaweedFS through two separate interfaces:
+
+| Interface | Used For |
+|---|---|
+| HTTP Filer API (`port 8888`) | Directory lifecycle (create, delete, set quota, get usage, list) — called by `VolumeManager` during volume provisioning and GC |
+| HTTP Filer API (`port 8888`) | POSIX file operations (open, read, write, stat, readdir, create, rename, delete) — called by `AegisFSAL` on every NFS LOOKUP, READ, WRITE, READDIR, GETATTR etc. |
+
+Volume data is stored in SeaweedFS at the following path structure:
 
 ```
 /{tenant_id}/{volume_id}/{file_path}
 ```
 
-SeaweedFS replication and erasure coding configuration is independent of AEGIS and managed via the SeaweedFS admin interface.
+For example, a file `/workspace/main.py` written by an execution `exec-abc` on volume `vol-xyz` in the default single-tenant environment is stored at:
+
+```
+/00000000-0000-0000-0000-000000000001/vol-xyz/main.py
+```
+
+### Replication
+
+SeaweedFS replication is configured independently of AEGIS at the SeaweedFS layer. The AEGIS orchestrator does not set the replication factor on volume directories — this is controlled by the SeaweedFS default replication setting and can be overridden in SeaweedFS collection configuration.
+
+A common convention for AEGIS deployments is:
+
+| Storage Class | SeaweedFS Replication | Rationale |
+|---|---|---|
+| Ephemeral | `000` (no replication) | TTL-based; durability not required |
+| Persistent | `001` (one copy on different nodes) | Survives single node failure |
+
+### Health Checks
+
+The orchestrator checks SeaweedFS health via the Filer API on startup and periodically thereafter. If SeaweedFS is unreachable and `fallback_to_local` is enabled in the node configuration, the orchestrator falls back to a local filesystem `StorageProvider`. The local fallback does not support S3 artifact inspection or multi-node access.

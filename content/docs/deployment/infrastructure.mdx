@@ -17,7 +17,7 @@ This page defines the infrastructure components required to run AEGIS, their int
 | Docker Compose | 2.20+ | Dev/staging orchestration | Dev only |
 | PostgreSQL | 15+ | Primary data store (agents, executions, events) | ✓ |
 | Temporal | 1.22+ | Durable workflow execution | ✓ (if using workflows) |
-| SeaweedFS | 3.60+ | Volume storage backend | ✓ |
+| SeaweedFS | 3.60+ | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓ |
 | OpenBao | 2.0+ | Secrets management | Recommended |
 | Keycloak | 24.0+ | OIDC identity provider | Recommended |
 | Linux kernel | 5.15+ | KVM support for Firecracker (Phase 2) | Phase 2 only |
@@ -110,7 +110,7 @@ docker compose -f deploy/docker-compose.yml logs -f
 | Service | Port | Purpose |
 |---|---|---|
 | PostgreSQL | 5432 | AEGIS database |
-| SeaweedFS Master | 9333 | SeaweedFS coordination |
+| SeaweedFS Master | 9333 | SeaweedFS coordination — see [SeaweedFS Storage](/docs/deployment/seaweedfs) |
 | SeaweedFS Filer | 8888 | SeaweedFS POSIX layer |
 | SeaweedFS Volume | 8080 | SeaweedFS data server |
 | Temporal Server | 7233 | Workflow execution |

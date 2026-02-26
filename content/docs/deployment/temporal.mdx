@@ -1,0 +1,212 @@
+---
+title: Temporal Deployment
+description: Running Temporal Server, the TypeScript workflow worker, and PostgreSQL for durable workflow execution in AEGIS.
+---
+
+# Temporal Deployment
+
+AEGIS uses [Temporal](https://temporal.io) as the durable execution backend for all workflow FSM execution. Two additional services are required beyond the Rust orchestrator itself: **Temporal Server** and the **TypeScript workflow worker** (`aegis-temporal-worker`). Both connect to the same PostgreSQL instance used by the orchestrator.
+
+---
+
+## Prerequisites
+
+- PostgreSQL 14+ accessible from all services
+- Docker Engine (for the recommended Compose deployment) or equivalent container runtime
+- The Rust AEGIS orchestrator configured and running (see [Docker Deployment](/docs/deployment/docker))
+
+---
+
+## Running Temporal Server
+
+Temporal Server stores durable workflow state in PostgreSQL. Run it alongside its required dependencies:
+
+```yaml
+# docker-compose.temporal.yaml
+
+services:
+  temporal:
+    image: temporalio/auto-setup:1.24
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-aegis}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=${POSTGRES_HOST:-postgres}
+      - TEMPORAL_BROADCAST_ADDRESS=127.0.0.1
+    depends_on:
+      - postgres
+    restart: on-failure
+
+  temporal-ui:
+    image: temporalio/ui:2.26
+    ports:
+      - "8233:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8233
+    depends_on:
+      - temporal
+    restart: on-failure
+```
+
+The `auto-setup` image automatically creates the Temporal schema in PostgreSQL on first start. The UI is available at `http://localhost:8233`.
+
+Configure the orchestrator to reach Temporal by setting the following in `aegis-config.yaml`:
+
+```yaml
+temporal:
+  address: "localhost:7233"   # or temporal:7233 inside Compose
+  namespace: "default"
+  task_queue: "aegis-agents"
+```
+
+---
+
+## Running the TypeScript Worker
+
+The `aegis-temporal-worker` service polls the `aegis-agents` task queue and interprets all AEGIS workflow FSM definitions. It must be running for any workflow execution to make progress.
+
+### Required Environment Variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `TEMPORAL_ADDRESS` | Temporal Server gRPC address | `localhost:7233` |
+| `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
+| `TEMPORAL_TASK_QUEUE` | Task queue name (must match orchestrator config) | `aegis-agents` |
+| `DATABASE_URL` | PostgreSQL connection string (same DB as the orchestrator) | — |
+| `AEGIS_RUNTIME_GRPC_URL` | Rust AegisRuntime gRPC address | `localhost:50051` |
+| `AEGIS_ORCHESTRATOR_URL` | Base URL of the Rust HTTP API (for event publishing) | `http://localhost:8080` |
+| `PORT` | HTTP server port for workflow registration and health endpoints | `3000` |
+
+### Docker Compose
+
+```yaml
+  aegis-temporal-worker:
+    image: ghcr.io/100monkeys-ai/aegis-temporal-worker:latest
+    ports:
+      - "3000:3000"
+    environment:
+      TEMPORAL_ADDRESS: "temporal:7233"
+      TEMPORAL_NAMESPACE: "default"
+      TEMPORAL_TASK_QUEUE: "aegis-agents"
+      DATABASE_URL: "postgresql://aegis:${POSTGRES_PASSWORD}@postgres:5432/aegis"
+      AEGIS_RUNTIME_GRPC_URL: "aegis-orchestrator:50051"
+      AEGIS_ORCHESTRATOR_URL: "http://aegis-orchestrator:8080"
+    depends_on:
+      - temporal
+      - postgres
+    restart: on-failure
+```
+
+### Running Locally
+
+```bash
+cd aegis-temporal-worker
+cp .env.example .env   # fill in the required variables
+npm install
+npm start
+```
+
+---
+
+## Startup Behaviour
+
+On startup, the worker:
+
+1. Connects to PostgreSQL and runs any pending `workflow_definitions` table migrations.
+2. Loads **all registered workflow definitions** from the `workflow_definitions` table into its in-memory registry.
+3. Begins polling the `aegis-agents` Temporal task queue.
+
+Because all definitions are loaded at startup from the shared PostgreSQL table, **multiple worker replicas can run concurrently** — any replica can execute any workflow regardless of which node originally registered it.
+
+---
+
+## Verifying the Setup
+
+**1. Health check**
+
+```bash
+curl http://localhost:3000/health
+# {"status":"healthy","temporal":"connected","database":"connected"}
+```
+
+**2. Check Temporal UI**
+
+Open `http://localhost:8233`. Navigate to **Workers** → task queue `aegis-agents`. You should see at least one active poller listed.
+
+**3. Register and run a workflow**
+
+```bash
+# Deploy the example echo workflow
+aegis workflow deploy ./aegis-examples/agents/workflows/echo-workflow.yaml
+
+# Start an execution
+aegis workflow start echo-workflow --input '{"message": "hello"}'
+
+# Watch status
+aegis workflow status <execution-id>
+```
+
+The execution should appear in the Temporal UI under **Workflows** with status `Running` and then `Completed`.
+
+---
+
+## Registered Workflow Definitions
+
+The worker exposes a management HTTP API on its `PORT`:
+
+```bash
+# List all registered workflow definitions
+curl http://localhost:3000/workflows
+
+# Get a specific definition by workflow ID
+curl http://localhost:3000/workflows/<workflow-id>
+
+# Remove a definition (does not affect in-progress executions)
+curl -X DELETE http://localhost:3000/workflows/<workflow-id>
+```
+
+When `aegis workflow deploy` is run, the Rust orchestrator POSTs the serialised FSM definition to `POST /register-workflow` on this service and simultaneously saves the `Workflow` domain aggregate to PostgreSQL.
+
+---
+
+## Scaling
+
+Run additional worker replicas by starting more instances pointing at the same `TEMPORAL_ADDRESS`, `DATABASE_URL`, and `TEMPORAL_TASK_QUEUE`. Temporal distributes workflow tasks across all pollers in the task queue automatically.
+
+```bash
+# Example: two replicas via Compose scale
+docker compose up --scale aegis-temporal-worker=2
+```
+
+Each replica loads the full `workflow_definitions` registry from PostgreSQL on startup, so no sticky routing is required.
+
+---
+
+## Temporal Namespace Configuration
+
+AEGIS uses the `default` Temporal namespace. For multi-tenant production deployments, dedicated namespaces can be provisioned via the `tctl` CLI:
+
+```bash
+tctl --address localhost:7233 namespace register aegis-production \
+  --retention 30d \
+  --description "AEGIS production workflows"
+```
+
+Update `temporal.namespace` in `aegis-config.yaml` and restart the orchestrator and worker.
+
+---
+
+## Temporal UI
+
+The Temporal UI at `http://localhost:8233` provides full observability into all workflow executions:
+
+- **Workflows** — list all executions with status, start time, and duration
+- **Workers** — confirm active pollers on the `aegis-agents` task queue
+- **Schedules** — manage scheduled workflow starts (if used)
+- **Execution detail** — full event history for any execution, including Blackboard state at each transition, input/output of each activity, and any failures or retries
+
+This is the authoritative view for debugging stuck, failed, or unexpectedly slow workflow executions.
