@@ -6,6 +6,7 @@
         "iam",
         "secrets",
         "docker",
+        "seaweedfs",
         "firecracker",
         "container-registry"
     ]

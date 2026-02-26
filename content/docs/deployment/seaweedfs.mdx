@@ -1,0 +1,237 @@
+---
+title: SeaweedFS Storage
+description: Deploying SeaweedFS as the AEGIS volume storage backend — single-node dev setup, production HA topology, replication, S3 gateway, and health checks.
+---
+
+# SeaweedFS Storage
+
+SeaweedFS is the default volume storage backend for AEGIS. It provides POSIX-speed filesystem semantics for small files (critical for workloads involving `git`, `npm install`, Python venvs, and build artifacts), per-directory quota enforcement, TTL-based expiration, and an optional S3-compatible API for artifact inspection.
+
+The AEGIS orchestrator communicates with SeaweedFS via the Filer HTTP API on port 8888. Agent containers access volume data exclusively through the orchestrator's NFS Server Gateway — they never communicate with SeaweedFS directly.
+
+For the node configuration keys that point AEGIS at a SeaweedFS cluster, see [Node Config Reference — `spec.storage`](/docs/reference/node-config#specstorage).
+
+---
+
+## SeaweedFS Architecture
+
+SeaweedFS has three distinct components:
+
+| Component | Default Port | Role |
+|---|---|---|
+| **Master Server** | 9333 | Distributed coordination via Raft consensus; tracks which volume servers hold which data; leader election |
+| **Volume Server** | 8080 | Stores actual file data as binary blobs; replicates data across nodes according to replication policy |
+| **Filer** | 8888 | Provides a POSIX-style namespace (directory tree) on top of volume servers; stores file metadata (used by AEGIS) |
+
+AEGIS only communicates with the Filer. The Master and Volume Servers are internal SeaweedFS concerns.
+
+---
+
+## Single-Node / Dev Setup
+
+The `aegis-examples` repository provides a Docker Compose stack that includes a single-node SeaweedFS deployment suitable for local development:
+
+```bash
+git clone https://github.com/100monkeys-ai/aegis-examples.git
+cd aegis-examples
+docker compose -f deploy/docker-compose.yml up -d seaweedfs-master seaweedfs-volume seaweedfs-filer
+```
+
+Dev stack services:
+
+| Service | Port | Purpose |
+|---|---|---|
+| `seaweedfs-master` | 9333 | Master coordination (single node, no Raft in dev) |
+| `seaweedfs-volume` | 8080 | Data storage (no replication in dev) |
+| `seaweedfs-filer` | 8888 | Filer API (backed by LevelDB metadata store in dev) |
+
+The dev filer uses an embedded LevelDB metadata store. Production deployments should use PostgreSQL (see below).
+
+Configure AEGIS to use the dev stack by setting `spec.storage.seaweedfs.filer_url` in `aegis-config.yaml`:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: NodeConfig
+metadata:
+  name: dev-node
+spec:
+  storage:
+    backend: seaweedfs
+    nfs_port: 2049
+    seaweedfs:
+      filer_url: "http://localhost:8888"
+      default_ttl_hours: 24
+      default_size_limit_mb: 1000
+      gc_interval_minutes: 60
+```
+
+---
+
+## Production HA Topology
+
+A production SeaweedFS deployment for AEGIS requires three tiers for high availability:
+
+```
+                     Load Balancer (HAProxy / Nginx)
+                              │
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+          ┌─────────┐   ┌─────────┐   ┌─────────┐
+          │ Filer 1 │   │ Filer 2 │   │ Filer 3 │
+          └─────────┘   └─────────┘   └─────────┘
+               │              │              │
+               └──────────────┼──────────────┘
+                              ▼
+                     PostgreSQL (HA mode)      ← filer metadata
+                              │
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+          ┌─────────┐   ┌─────────┐   ┌─────────┐
+          │ Volume  │   │ Volume  │   │ Volume  │
+          │ Server1 │   │ Server2 │   │ Server3 │
+          └─────────┘   └─────────┘   └─────────┘
+               │              │              │
+               ▼              ▼              ▼
+          ┌─────────┐   ┌─────────┐   ┌─────────┐
+          │ Master1 │   │ Master2 │   │ Master3 │
+          │(Leader) │   │(Follower│   │(Follower│
+          └─────────┘   └─────────┘   └─────────┘
+```
+
+### Minimum Sizing
+
+| Node | CPU | RAM | Disk | Count |
+|---|---|---|---|---|
+| Master | 2 cores | 4 GiB | 20 GiB SSD | 3 (Raft quorum) |
+| Filer | 4 cores | 8 GiB | 20 GiB SSD | 3+ (stateless; scale for throughput) |
+| Volume Server | 4 cores | 8 GiB | 1+ TiB HDD or NVMe | 3+ (scale for storage) |
+
+Filers are stateless (metadata in PostgreSQL) and can be scaled horizontally behind the load balancer without coordination.
+
+### Filer PostgreSQL Configuration
+
+Set the following environment variables on each Filer container:
+
+```yaml
+environment:
+  - WEED_POSTGRES2_ENABLED=true
+  - WEED_POSTGRES2_HOSTNAME=db-host
+  - WEED_POSTGRES2_PORT=5432
+  - WEED_POSTGRES2_DATABASE=seaweedfs
+  - WEED_POSTGRES2_USERNAME=seaweedfs
+  - WEED_POSTGRES2_PASSWORD=changeme
+  - WEED_POSTGRES2_SSLMODE=require
+```
+
+Point AEGIS at the Filer load balancer address:
+
+```yaml
+spec:
+  storage:
+    seaweedfs:
+      filer_url: "http://seaweedfs-filer-lb:8888"
+```
+
+---
+
+## Data Replication
+
+SeaweedFS replication is specified as a three-digit number: `XYZ` where:
+
+- `X` = extra copies in the same data center
+- `Y` = extra copies in another rack
+- `Z` = extra copies in another data center
+
+AEGIS does not set the replication factor on individual volumes. Replication is configured globally in the SeaweedFS Master `defaultReplicaPlacement` setting and can be overridden per SeaweedFS collection.
+
+A common convention for AEGIS deployments:
+
+| Volume `storage_class` | Recommended Replication | Notes |
+|---|---|---|
+| `ephemeral` | `000` (no extra copies) | TTL-based; single copy is sufficient |
+| `persistent` | `001` (one extra copy on a different node) | Survives single volume server failure |
+
+To set the default placement, include `-defaultReplicaPlacement=001` in the Master command arguments:
+
+```bash
+weed master -defaultReplicaPlacement=001 -mdir=/data
+```
+
+---
+
+## S3 Gateway
+
+SeaweedFS includes an optional S3-compatible API server that exposes volume data as S3 objects. This is useful for inspecting execution artifacts using standard tools (`aws s3 ls`, S3 Browser, Cyberduck) without running a new execution.
+
+### Enabling the S3 Gateway
+
+Add an S3 gateway service to your deployment:
+
+```bash
+weed s3 -port=8333 -filer=seaweedfs-filer:8888
+```
+
+Or in Docker Compose:
+
+```yaml
+services:
+  seaweedfs-s3:
+    image: chrislusf/seaweedfs:3.60
+    command: "s3 -port=8333 -filer=seaweedfs-filer:8888"
+    ports:
+      - "8333:8333"
+    depends_on:
+      - seaweedfs-filer
+```
+
+Configure AEGIS with the S3 endpoint:
+
+```yaml
+spec:
+  storage:
+    seaweedfs:
+      filer_url: "http://seaweedfs-filer:8888"
+      s3_endpoint: "http://seaweedfs-s3:8333"
+      s3_region: "us-east-1"
+```
+
+### Path Conventions
+
+Volume data is accessible in the S3 namespace using the tenant and volume identifiers:
+
+```
+s3://<tenant_id>/<volume_id>/<file_path>
+```
+
+For example, a file `/workspace/main.py` on volume `vol-abc` in the default single-tenant deployment (`tenant_id = 00000000-0000-0000-0000-000000000001`):
+
+```
+s3://00000000-0000-0000-0000-000000000001/vol-abc/main.py
+```
+
+The S3 gateway does not enforce manifest `FilesystemPolicy` rules. Access to the S3 endpoint should be restricted to operators and debugging tooling at the network level; agent containers must not reach it.
+
+---
+
+## Health Checks
+
+AEGIS checks SeaweedFS availability on startup and periodically during the GC cycle using the Filer API:
+
+```bash
+# Check filer health
+curl -s http://seaweedfs-filer:8888/healthz
+
+# Check cluster status (via master)
+curl -s http://seaweedfs-master:9333/cluster/status | jq .
+```
+
+If the Filer is unreachable and `fallback_to_local: true` is set in the node configuration (the default), AEGIS falls back to a local filesystem volume provider. Volumes created on the local fallback are not accessible from other orchestrator nodes and do not support S3 inspection.
+
+To disable the fallback and fail hard when SeaweedFS is unavailable:
+
+```yaml
+spec:
+  storage:
+    backend: seaweedfs
+    fallback_to_local: false
+```

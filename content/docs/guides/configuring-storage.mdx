@@ -123,6 +123,37 @@ If the agent writes data that would exceed the quota, the write fails with `ENOS
 
 ---
 
+## Volume Ownership
+
+Every volume has an owner that determines its lifetime and access rules:
+
+| Ownership | Created By | Lifetime |
+|---|---|---|
+| **Execution** | Orchestrator at execution start (one per `spec.volumes` entry) | Ephemeral volumes are deleted when the execution ends; persistent volumes survive and require manual deletion |
+| **WorkflowExecution** | Orchestrator at workflow start (one per `spec.storage` entry) | Ephemeral volumes are deleted when the workflow execution completes; persistent volumes survive |
+| **Persistent** | CLI or API | No automatic cleanup; must be explicitly deleted via `aegis volume delete` |
+
+When a volume is owned by an execution, only that execution can perform write operations through `AegisFSAL`. Other executions may mount the same persistent volume `read-only` by referencing it via `source.volume_id` — this does not change ownership.
+
+---
+
+## TTL and Garbage Collection
+
+The TTL clock starts at **volume creation**, not at execution start. If provisioning pauses between volume creation and container startup, those seconds count against the TTL.
+
+The background garbage collector runs every `gc_interval_minutes` (default: 60 minutes, configurable in the node configuration under `spec.storage.seaweedfs.gc_interval_minutes`).
+
+| Scenario | What happens |
+|---|---|
+| Execution completes normally and volume is ephemeral | Volume deleted immediately on execution teardown, not waiting for GC |
+| Execution is cancelled mid-run | Volume marked expired; deleted on next GC pass |
+| Orchestrator restarts unexpectedly | GC picks up all orphaned expired volumes on the next scheduled pass |
+| `ttl_hours` not set on an ephemeral volume | `default_ttl_hours` from node configuration applies (default: `24`) |
+
+Cleanup is a two-phase soft-delete: the orchestrator transitions the volume to `Deleting`, removes the SeaweedFS directory, then transitions to `Deleted`. If the SeaweedFS deletion fails, the volume stays in `Deleting` state and the next GC pass retries.
+
+---
+
 ## Managing Volumes via CLI
 
 ```bash
@@ -214,6 +245,36 @@ spec:
 ```
 
 The reader agent sees the writer's files at `/input`. Because it mounts `read-only`, it is compatible with the [single-writer constraint](#phase-1-constraints) and can run concurrently with other readers on the same volume.
+
+---
+
+## Inspecting Volume Artifacts
+
+When `seaweedfs.s3_endpoint` is configured in the node configuration, all volume contents are also accessible via any S3-compatible client. This is useful for inspecting execution artifacts, debugging failed agents, or archiving outputs without running a new execution.
+
+Volumes are stored at the following path in the SeaweedFS S3 namespace:
+
+```
+/<tenant_id>/<volume_id>/
+```
+
+Using the AWS CLI:
+
+```bash
+# Retrieve the volume ID from a previous execution
+TENANT_ID="00000000-0000-0000-0000-000000000001"  # default single-tenant ID
+VOL_ID=$(aegis volume list --output json | jq -r '[.[] | select(.name=="output")][0].id')
+
+# List files in the volume
+aws s3 ls s3://${TENANT_ID}/${VOL_ID}/ \
+  --endpoint-url http://seaweedfs-s3:8333
+
+# Download all artifacts locally
+aws s3 cp s3://${TENANT_ID}/${VOL_ID}/ ./artifacts/ --recursive \
+  --endpoint-url http://seaweedfs-s3:8333
+```
+
+The S3 gateway does not enforce manifest `FilesystemPolicy` rules. Restrict access to the S3 gateway endpoint at the network level in production environments — it should not be reachable from agent containers or public networks.
 
 ---
 
