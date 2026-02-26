@@ -55,19 +55,20 @@ StorageProvider trait
 The NFSv3 protocol requires servers to return an opaque `FileHandle` for each file and directory. AEGIS encodes authorization information directly into the `FileHandle`:
 
 ```
-FileHandle layout (48 bytes raw, ≤64 bytes serialized for NFSv3 compliance):
-┌──────────────────────────────────────────────┐
-│  execution_id  (UUID, 16 bytes)               │
-│  volume_id     (UUID, 16 bytes)               │
-│  inode_number  (u64, 8 bytes)                 │
-│  file_type     (u8, 1 byte: dir/file/symlink) │
-│  reserved      (7 bytes padding)              │
-└──────────────────────────────────────────────┘
+FileHandle layout (48 bytes raw, ~52 bytes serialized, ≤64 bytes NFSv3 limit):
+┌──────────────────────────────────────────────────┐
+│  execution_id  (UUID binary, 16 bytes)            │
+│  volume_id     (UUID binary, 16 bytes)            │
+│  path_hash     (u64, 8 bytes)  — FNV hash of path │
+│  created_at    (i64, 8 bytes)  — Unix timestamp   │
+└──────────────────────────────────────────────────┘
 ```
 
-When the NFS server receives a `READ` or `WRITE` for a given `FileHandle`, `AegisFSAL` extracts `execution_id` and `volume_id` and verifies that the requesting execution is authorized to access that volume. If the execution does not own the volume, the operation fails with `NFS3ERR_ACCES`.
+Because NFSv3's 64-byte limit does not allow storing a full file path in the handle, `path_hash` contains a hash of the canonical path. The NFS server maintains a bidirectional in-memory `FileHandleTable` (`fileid3 ↔ AegisFileHandle`) that maps numeric file IDs to handles and reconstructs paths on demand. This table is per-execution and discarded when the execution ends.
 
-The 64-byte NFSv3 `FileHandle` size limit is a hard protocol constraint. The current layout uses 48 bytes raw + ~4 bytes bincode overhead = ~52 bytes serialized, safely within the limit.
+On every NFS operation, `AegisFSAL` decodes the `FileHandle`, extracts `execution_id` and `volume_id`, and verifies that the requesting execution is authorized to access that volume. If the execution does not own the volume, the operation fails with `NFS3ERR_ACCES` and an `UnauthorizedVolumeAccess` event is published.
+
+The 64-byte NFSv3 `FileHandle` size limit is a hard protocol constraint enforced by the kernel NFS client. The current layout serializes to ~52 bytes via `bincode`, safely within the limit.
 
 ---
 
@@ -167,9 +168,51 @@ Persistent volumes with `ReadWrite` access can only be mounted by one execution 
 
 ---
 
+## Export Path Routing
+
+Each volume gets a unique NFS export path derived from its tenant and volume identifiers:
+
+```
+/{tenant_id}/{volume_id}
+```
+
+The orchestrator maintains a runtime `NfsVolumeRegistry` — a concurrent map of `VolumeId → NfsVolumeContext`. When an execution mounts a volume, its export path is registered. When the execution ends and the volume is detached, the entry is removed. Volumes that are not currently mounted have no active export and cannot be reached via NFS.
+
+The agent container's NFS mount is configured to target the orchestrator host at the volume's export path:
+
+```
+addr=<orchestrator_host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock
+device: :/<tenant_id>/<volume_id>
+target: /workspace  (or mount_point from manifest)
+```
+
+---
+
+## Storage Events
+
+Every file operation handled by `AegisFSAL` publishes a `StorageEvent` to the event bus. These events are persisted to PostgreSQL by a background `StorageEventPersister` task and form the complete file-level audit trail for each execution.
+
+| Event | Trigger |
+|---|---|
+| `FileOpened` | Agent opens a file (`open()` / `create()`) |
+| `FileRead` | Bytes are read from a file — includes `offset` and `bytes_read` |
+| `FileWritten` | Bytes are written to a file — includes `offset` and `bytes_written` |
+| `FileClosed` | File handle is released |
+| `DirectoryListed` | `readdir` is called on a directory |
+| `FileCreated` | A new file is created |
+| `FileDeleted` | A file is removed |
+| `PathTraversalBlocked` | A `..` component was detected in the incoming path |
+| `FilesystemPolicyViolation` | An operation violated a manifest `read`/`write` allowlist |
+| `QuotaExceeded` | A write would exceed the volume's `size_limit_mb` |
+| `UnauthorizedVolumeAccess` | The requesting execution does not own the volume |
+
+All events carry `execution_id`, `volume_id`, and a timestamp. File operation events additionally carry the canonicalized `path`, byte counts, and latency in milliseconds.
+
+---
+
 ## SeaweedFS Integration
 
-SeaweedFS is the default `StorageProvider`. `AegisFSAL` communicates with SeaweedFS via its POSIX-compatible FILER API. Volume data is stored in SeaweedFS with paths structured as:
+SeaweedFS is the default `StorageProvider`. `AegisFSAL` communicates with SeaweedFS via its HTTP Filer API. Volume data is stored in SeaweedFS with paths structured as:
 
 ```
 /{tenant_id}/{volume_id}/{file_path}
