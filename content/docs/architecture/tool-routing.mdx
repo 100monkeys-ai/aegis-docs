@@ -7,25 +7,35 @@ description: The three tool routing paths — FSAL host file operations, SMCP Ex
 
 The AEGIS orchestrator mediates every tool call an agent makes. No tool call travels directly from the agent container to a tool server. Instead, the `SmcpMiddleware` receives all tool call envelopes, verifies them, and routes them via one of three paths based on the tool's type.
 
-This **Orchestrator Proxy Pattern** ensures:
-- API credentials never reach agent containers.
-- Every tool call is logged for audit.
-- SMCP policy enforcement happens before any action is taken.
+---
+
+## Security Guarantees
+
+The **Orchestrator Proxy Pattern** provides three hard guarantees regardless of which routing path is used:
+
+**Credential isolation** — API keys, OAuth tokens, and database credentials are held by the orchestrator (sourced from environment variables or OpenBao) and injected into Tool Server processes on the host. They never travel into agent containers.
+
+**Policy-before-action** — The `ToolPolicy` is evaluated against every tool call before any file is read, any process is spawned, or any external API is contacted. Calls that violate policy are rejected synchronously and never forwarded.
+
+**Full audit trail** — Every invocation, routing decision, and policy violation is published as a domain event on the internal event bus, giving the Cortex learning system and your external audit infrastructure a complete, tamper-resistant record of agent actions.
 
 ---
 
 ## The Three Routing Paths
 
-```
+```text
 Agent Container                  Orchestrator Host                   External
     │                                   │                              │
-    │  POST /v1/dispatch-gateway             │                              │
-    │  (with tool call in messages)      │                              │
+    │  POST /v1/dispatch-gateway        │                              │
+    │  (SmcpEnvelope wrapping           │                              │
+    │   tool call in messages[])        │                              │
     │──────────────────────────────────►│                              │
     │                                   │                              │
-    │                         SmcpMiddleware: verify envelope          │
-    │                                   │                              │
-    │                         Route Tool Call:                         │
+    │                         SmcpMiddleware                           │
+    │                           1. Verify Ed25519 signature            │
+    │                           2. Validate SecurityToken (JWT)        │
+    │                           3. PolicyEngine: check capabilities    │
+    │                           4. Route to ToolRouter                 │
     │                                   │                              │
     │                    ┌──────────────┼──────────────┐               │
     │                    │              │              │               │
@@ -42,174 +52,286 @@ Agent Container                  Orchestrator Host                   External
     │                    │         gmail)           │                  │
     │                    │              │           ▼                  │
     │                    │              └──────────►│ External API     │
-    │                    │                              │              │
-    │                    │                              │              │
-    │◄───────────────────┴──────────────Tool result returned ─────────────│
+    │                    │                          │                  │
+    │◄───────────────────┴──────────────────────────┘                  │
+    │              Tool result injected into LLM context               │
 ```
 
 ---
 
-## Path 1: FSAL Host File Operations
+## Tool Policy Enforcement Pipeline
 
-Used for: `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list`
+Before any routing happens, the `ToolPolicy` evaluates the invocation in order. Failure at any step rejects the call immediately and publishes a `ToolPolicyViolation` event.
 
-File system operations are executed **directly on the orchestrator host** via the `AegisFSAL` (File System Abstraction Layer). The agent container does not receive a dispatch message for `fs.*` calls — the result is returned synchronously as part of the LLM API response.
+```text
+1. Allowlist check
+   Is the tool name in spec.tools[]?
+   → NO  ‣ reject: ToolNotAllowed
 
+2. Explicit deny check
+   Is the tool name in the SecurityContext deny_list?
+   → YES ‣ reject: ToolExplicitlyDenied
+
+3. Rate limit check
+   Has this execution exceeded max_calls_per_execution?
+   → YES ‣ reject: RateLimitExceeded
+
+4a. Filesystem path check  (for fs.* tools only)
+   Does the requested path start with an entry in path_allowlist?
+   Contains ".." components?
+   → FAIL ‣ reject: PathOutsideBoundary | PathTraversalAttempt
+
+4b. Domain check  (for web.* / email.* tools only)
+   Is the target domain in domain_allowlist?
+   → NO  ‣ reject: DomainNotAllowed
+
+4c. Subcommand check  (for cmd.run only)
+   Is the base command in SubcommandAllowlist?
+   Is the first positional argument in the allowed args for that command?
+   → NO  ‣ reject: SubcommandNotAllowed | CommandNotAllowed
+
+5. Forward to ToolRouter
 ```
-Agent LLM output: tool call {name: "fs.write", arguments: {path: "/workspace/solution.py", content: "..."}}
+
+The `SubcommandAllowlist` is a map of `command → [allowed_first_positional_arguments]` defined in the agent manifest and bounded by the node-level ceiling in `builtin_dispatchers.cmd`. For example, allowing `cargo` with `[build, test]` permits `cargo build` and `cargo test` but rejects `cargo publish`.
+
+---
+
+## Path 1: FSAL — Host File Operations
+
+**Used for:** `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list`
+
+File system operations execute **directly on the orchestrator host** via the `AegisFSAL` (File System Abstraction Layer). No dispatch message goes to the container — the result is returned synchronously as part of the inner-loop LLM API response. Changes made by `AegisFSAL` are immediately visible to the agent container through its NFS volume mount.
+
+```text
+Agent LLM output:
+  tool call {name: "fs.write",
+             arguments: {path: "/workspace/solution.py", content: "..."}}
          │
          ▼
 SmcpMiddleware
-  - Verify SmcpEnvelope (signature, token, expiry)
-  - PolicyEngine: path /workspace/solution.py in allowlist? YES
+  · Verify SmcpEnvelope (Ed25519 signature, SecurityToken JWT, expiry)
+  · PolicyEngine: is /workspace/solution.py in path_allowlist? YES
          │
          ▼
 AegisFSAL.write(file_handle, offset, data)
-  - file_handle encodes execution_id + volume_id (64-byte max, NFSv3 constraint)
-  - Path canonicalization (reject any ".." components)
-  - Write to SeaweedFS via StorageProvider trait
-  - Publish StorageEvent.FileWritten to event bus
+  · file_handle encodes execution_id + volume_id
+    (48 bytes raw, ≤ 64-byte NFSv3 hard limit after bincode overhead)
+  · Path canonicalization: all ".." and "." components rejected before
+    the path reaches the StorageProvider — no exceptions
+  · UID/GID squashing: file ownership set to agent container's UID/GID
+    so kernel permission checks never interfere
+  · Write forwarded to SeaweedFS (or local fallback) via StorageProvider
+  · Publish StorageEvent::FileWritten to event bus
          │
          ▼
-Result: {success: true, bytes_written: 234}
-  - Injected into LLM message history as tool result
+Result injected into LLM context:
+  {success: true, bytes_written: 234}
 ```
+
+### `AegisFileHandle` encoding
+
+Each NFS file handle encodes exactly two fields — `execution_id` (UUID, 16 bytes) and `volume_id` (UUID, 16 bytes) — serialised with bincode. The orchestrator uses this handle on every subsequent operation to verify that the requesting execution owns the volume before proceeding. Requests with handles it did not issue are rejected with `UnauthorizedVolumeAccess`.
+
+The NFSv3 protocol imposes a 64-byte hard limit on file handles. The current encoding occupies 48 bytes raw (plus approximately 4 bytes bincode overhead), keeping total size safely within the limit.
+
+For full details on the NFS Server Gateway and storage backend, see [Storage Gateway](/docs/architecture/storage-gateway).
 
 ---
 
-## Path 2: SMCP External (Host MCP Servers)
+## Path 2: SMCP External — Host MCP Servers
 
-Used for: `web.fetch`, `web.search`, `email.send`, `calendar.*`, and any other external-access tool
+**Used for:** `web.fetch`, `web.search`, `email.send`, `email.read`, and any other tool that requires external network access
 
-Long-running MCP server processes (`Tool Servers`) run on the orchestrator host. They make external API calls using credentials sourced from OpenBao — credentials never enter agent containers.
+Long-running MCP server processes (`Tool Servers`) run on the orchestrator host. They hold credentials and make outbound API calls; credentials never enter agent containers.
 
-```
-Agent tool call: {name: "web.fetch", arguments: {url: "https://api.github.com/..."}}
+```text
+Agent tool call:
+  {name: "web.fetch", arguments: {url: "https://api.github.com/repos/..."}}
          │
          ▼
 SmcpMiddleware
-  - Verify envelope
-  - PolicyEngine: domain api.github.com in allowlist? YES
-  - Rate limit check: under 20/minute? YES
+  · Verify SmcpEnvelope
+  · PolicyEngine: is domain api.github.com in domain_allowlist? YES
+  · Rate limit: under 30 calls/60s? YES
          │
          ▼
-Tool Router: forward to web-search Tool Server (stdio MCP process on host)
+ToolRouter
+  · Capability index lookup: exact match "web.fetch" → server_id "web-search"
+  · Fallback: prefix match "web.*" if exact match not found
+  · Verify server status == Running
          │
          ▼
-Tool Server makes HTTP request to api.github.com
-  (using GITHUB_TOKEN sourced from OpenBao KV mount)
+Tool Server process (host, JSON-RPC stdio)
+  · Credentials resolved at server startup from env: or vault: references
+  · Makes HTTP request to api.github.com using GITHUB_TOKEN
+  · Returns JSON-RPC response
          │
          ▼
-Response returned to Orchestrator → injected as tool result in LLM context
+Result injected into LLM context as tool result message
+Publish MCPToolEvent::InvocationCompleted to event bus
 ```
 
-### Tool Server Configuration
+### Credential isolation
 
-MCP tool servers are declared in `aegis-config.yaml`:
+Credentials are declared in `aegis-config.yaml` under `mcp_servers[].credentials` using `env:` or `vault:` prefixes. The orchestrator resolves these values from the host environment or OpenBao at server startup time and passes them to the server process as environment variables. The values are never written to disk, never logged, and never sent to the agent container.
 
 ```yaml
-tools:
-  mcp_servers:
-    - name: web-search
-      command: ["node", "/opt/aegis-tools/web-search/index.js"]
-      env:
-        SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
-      capabilities:
-        - web.search
-        - web.fetch
-
-    - name: gmail-tools
-      command: ["python", "/opt/aegis-tools/gmail/server.py"]
-      env:
-        GOOGLE_OAUTH_TOKEN: "vault:aegis-system/tools/gmail-oauth"
-      capabilities:
-        - email.send
-        - email.read
+mcp_servers:
+  - name: web-search
+    executable: "node"
+    args: ["/opt/aegis-tools/web-search/index.js"]
+    capabilities: [web.search, web.fetch]
+    credentials:
+      SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+    health_check:
+      interval_seconds: 60
+      method: "tools/list"
 ```
 
-Servers are started on-demand and kept running (with a configurable idle timeout). If a tool server process crashes, the orchestrator restarts it before the next tool call.
+See [Node Configuration Reference](/docs/reference/node-config) for the full `mcp_servers` schema.
+
+### Capability routing index
+
+The `ToolRouter` maintains an in-memory capability index mapping each registered tool name to a `ToolServerId`. On every routing call it first tries an exact name match (`"web.fetch"`), then falls back to a prefix match (`"web.*"`). If no server is found, the call is rejected with a `ToolNotFound` error before reaching any external system.
 
 ---
 
-## Path 3: Dispatch Protocol (In-Container Execution)
+## Path 3: Dispatch Protocol — In-Container Execution
 
-Used for: `cmd.run` — any tool that requires executing a subprocess **inside** the agent container
+**Used for:** `cmd.run` — tools that require spawning a subprocess **inside** the agent container
 
-The Dispatch Protocol sends a typed command message from the orchestrator to `bootstrap.py`, which runs the subprocess and reports the result back.
+File operations backed by the NFS mount are visible to code running in the container, but code must actually execute there. The Dispatch Protocol solves this by sending a structured command message from the orchestrator back to `bootstrap.py` running inside the container. `bootstrap.py` spawns the subprocess locally and re-posts the result.
 
-### Wire Format
+### Wire format
 
-```
-Orchestrator → bootstrap.py:
+Orchestrator sends this as the HTTP response to the `POST /v1/dispatch-gateway` call that `bootstrap.py` made:
+
+```json
 {
   "type": "dispatch",
-  "dispatch_id": "uuid-v4-...",
+  "dispatch_id": "c7a3f1e2-84b1-4a3c-9d7e-1f2a3b4c5d6e",
   "action": "exec",
-  "command": "python",
-  "args": ["/workspace/solution.py"]
+  "command": "cargo",
+  "args": ["test", "--", "--test-output", "immediate"]
 }
+```
 
-bootstrap.py runs subprocess (e.g., "python /workspace/solution.py")
+`bootstrap.py` runs the subprocess and re-posts to `POST /v1/dispatch-gateway`:
 
-bootstrap.py → Orchestrator (POST /v1/dispatch-gateway):
+```json
 {
   "type": "dispatch_result",
-  "dispatch_id": "uuid-v4-...",    ← must match
+  "dispatch_id": "c7a3f1e2-84b1-4a3c-9d7e-1f2a3b4c5d6e",
   "exit_code": 0,
-  "stdout": "All tests passed.\n",
+  "stdout": "running 12 tests\ntest result: ok. 12 passed\n",
   "stderr": ""
 }
 ```
 
-The `dispatch_id` is a UUID generated by the orchestrator for each dispatch. `bootstrap.py` echoes it back to prevent result correlation errors. Mismatched IDs are rejected.
+The `dispatch_id` UUID is echoed from request to response. The orchestrator rejects any response whose `dispatch_id` does not match the outstanding dispatch. `bootstrap.py` re-posts immediately after the subprocess exits; it does not batch or defer results.
 
-### `BuiltinDispatcher`
+### `BuiltinDispatcher` and `SubcommandAllowlist`
 
-`cmd.run` is handled by the `BuiltinDispatcher` — it is NOT an external MCP server process. The `BuiltinDispatcher` is a logical node in the tool routing configuration that validates commands against the `SubcommandAllowlist` before issuing the dispatch message.
+`cmd.run` is **not** handled by an MCP server process. It is routed to the `BuiltinDispatcher` — an in-process orchestrator component. Before the dispatch message is sent, the `BuiltinDispatcher` checks the call against the `SubcommandAllowlist` specified in the agent manifest and bounded by the node-level ceiling in `builtin_dispatchers.cmd`.
 
-In `aegis-config.yaml`:
-
-```yaml
-tools:
-  builtin_dispatcher:
-    enabled: true
-    output_limit_bytes: 1048576    # 1 MiB per stdout/stderr
-    timeout_secs: 60               # individual subprocess timeout
-  subcommand_allowlist:
-    python:
-      - /workspace
-    pytest:
-      - /workspace/tests
-    npm:
-      - install
-      - run
-      - test
+```text
+cmd.run {command: "cargo", args: ["publish"]}
+         │
+         ▼
+SubcommandAllowlist check:
+  cargo → allowed first args: [build, test, fmt, clippy, check, run]
+  "publish" not in list
+         │
+         ▼
+Reject: SmcpViolationType::SubcommandNotAllowed
+Publish: CommandExecutionEvent::CommandPolicyViolation
+Return 403 to agent
 ```
+
+```text
+cmd.run {command: "cargo", args: ["build"]}
+         │
+         ▼
+SubcommandAllowlist check: PASS
+         │
+         ▼
+OrchestratorMessage {type:"dispatch", dispatch_id:"...", action:"exec",
+                     command:"cargo", args:["build"]}
+  sent to bootstrap.py as HTTP response
+         │
+bootstrap.py spawns subprocess: cargo build
+         │
+AgentMessage {type:"dispatch_result", dispatch_id:"...", exit_code:0, ...}
+  re-posted to orchestrator
+         │
+         ▼
+Result injected into LLM context
+Publish: CommandExecutionEvent::CommandExecutionCompleted
+```
+
+For the full `builtin_dispatchers` and `SubcommandAllowlist` field schemas, see [Node Configuration Reference](/docs/reference/node-config) and [Agent Manifest Reference](/docs/reference/agent-manifest).
+
+---
+
+## Policy Violation Types
+
+When a tool call is rejected, the orchestrator returns a structured error to the agent and publishes a `ToolPolicyViolation` or `CommandPolicyViolation` event. The variant describes the specific rule that fired:
+
+| Violation | Cause |
+|---|---|
+| `ToolNotAllowed` | Tool name not present in the agent's `spec.tools` list |
+| `ToolExplicitlyDenied` | Tool name matches an entry in the `SecurityContext` `deny_list` |
+| `RateLimitExceeded` | Execution has hit `max_calls_per_execution` or the per-tool rate window |
+| `PathOutsideBoundary` | Filesystem path is not prefixed by any entry in `path_allowlist` |
+| `PathTraversalAttempt` | Path contains `..` components — rejected unconditionally |
+| `DomainNotAllowed` | Target domain not in `domain_allowlist` |
+| `SubcommandNotAllowed` | First positional argument not in `SubcommandAllowlist` for the command |
+| `CommandNotAllowed` | Base command not present in `SubcommandAllowlist` at all |
+| `OutputSizeLimitExceeded` | Subprocess stdout+stderr exceeds `max_output_bytes` |
 
 ---
 
 ## Tool Routing Decision Table
 
-| Tool Name | SMCP Policy Applied | Routing Path | Executor |
+| Tool pattern | SMCP policy check | Routing path | Executor |
 |---|---|---|---|
-| `fs.read`, `fs.write`, `fs.create`, `fs.delete` | Filesystem allowlist | FSAL | AegisFSAL on orchestrator host |
-| `cmd.run` | SubcommandAllowlist | Dispatch Protocol | subprocess in agent container via bootstrap.py |
-| `web.fetch`, `web.search` | Domain allowlist, rate limit | SMCP External | `web-search` Tool Server on host |
-| `email.send` | Domain and account allowlist | SMCP External | `gmail-tools` Tool Server on host |
-| Any unregistered tool | — | Rejected | `ToolPolicyViolation` event emitted |
+| `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list` | Filesystem path allowlist + traversal check | Path 1 — FSAL | `AegisFSAL` on orchestrator host; writes visible via NFS mount |
+| `cmd.run` | `SubcommandAllowlist` | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py` |
+| `web.fetch`, `web.search` | Domain allowlist + rate limit | Path 2 — SMCP External | `web-search` Tool Server on host |
+| `email.send`, `email.read` | Domain and account allowlist | Path 2 — SMCP External | `gmail-tools` Tool Server on host |
+| Any unregistered tool | — | Rejected before routing | `ToolPolicyViolation` event emitted, 403 returned |
 
 ---
 
 ## Event Audit Trail
 
-Every tool call routing decision produces a domain event published to the event bus:
+Every routing decision publishes a domain event on the internal event bus. These events feed the Cortex learning system and can be forwarded to external audit sinks. See [Event Bus](/docs/architecture/event-bus) for the subscription and consumer model.
 
 | Event | Trigger |
 |---|---|
-| `MCPToolEvent::InvocationRequested` | SmcpMiddleware receives and validates envelope |
+| `MCPToolEvent::InvocationRequested` | `SmcpMiddleware` accepts and validates an envelope |
 | `MCPToolEvent::InvocationCompleted` | Tool result returned to agent |
 | `MCPToolEvent::InvocationFailed` | Tool server error or subprocess non-zero exit |
-| `MCPToolEvent::ToolPolicyViolation` | PolicyEngine denies the call |
-| `CommandExecutionEvent::CommandExecutionStarted` | Dispatch message sent to bootstrap.py |
-| `CommandExecutionEvent::CommandPolicyViolation` | SubcommandAllowlist check fails |
-| `StorageEvent::FileWritten` / `FileRead` etc. | AegisFSAL processes fs.* operation |
+| `MCPToolEvent::ToolPolicyViolation` | `PolicyEngine` denies the call before routing |
+| `CommandExecutionEvent::CommandExecutionStarted` | Dispatch message sent to `bootstrap.py` |
+| `CommandExecutionEvent::CommandExecutionCompleted` | `bootstrap.py` re-posts result with exit code |
+| `CommandExecutionEvent::CommandExecutionFailed` | Subprocess timeout or OS error |
+| `CommandExecutionEvent::CommandPolicyViolation` | `SubcommandAllowlist` check failed |
+| `StorageEvent::FileWritten` | `AegisFSAL` completes a write to a volume |
+| `StorageEvent::FileRead` | `AegisFSAL` completes a read from a volume |
+| `StorageEvent::PathTraversalBlocked` | `AegisFSAL` rejects a `..`-containing path |
+| `StorageEvent::UnauthorizedVolumeAccess` | File handle `execution_id` does not match caller |
+| `SmcpEvent::PolicyViolationBlocked` | `SecurityContext` policy blocks a tool call |
+| `SmcpEvent::SignatureVerificationFailed` | Ed25519 signature on envelope is invalid |
+
+---
+
+## Related Pages
+
+- [Secure Model Context Protocol (SMCP)](/docs/architecture/smcp) — cryptographic envelope format, attestation flow, `SecurityContext` design
+- [Storage Gateway](/docs/architecture/storage-gateway) — `AegisFSAL`, `AegisFileHandle` encoding, NFSv3 transport, UID/GID squashing
+- [Event Bus](/docs/architecture/event-bus) — event publishing, consumer subscriptions, persistence
+- [Node Configuration Reference](/docs/reference/node-config) — `mcp_servers`, `builtin_dispatchers`, `security_contexts` fields
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.tools`, `subcommand_allowlist`, tool config schemas
+- [Configuring Tools](/docs/guides/configuring-tools) — practical guide to enabling `cmd.run` and adding external MCP servers
