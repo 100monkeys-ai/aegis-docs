@@ -317,6 +317,35 @@ tools:
 | `max_calls_per_execution` | integer | `30` | Rate limit for Gmail API calls. |
 | `allowed_labels` | `string[]` | `[]` (all) | Restrict access to these Gmail labels. |
 
+**Builtin command executor (`builtin:cmd`):**
+
+`cmd.run` is not an MCP server. Use `executor: "builtin:cmd"` to enable in-container subprocess execution via the Dispatch Protocol. The `server` field is omitted; only `name`, `executor`, and `config` are used.
+
+```yaml
+tools:
+  - name: cmd
+    executor: "builtin:cmd"
+    config:
+      subcommand_allowlist:
+        git: [clone, add, commit, push, pull, status, diff]
+        cargo: [build, test, fmt, clippy, check, run]
+        npm: [install, run, test, build, ci]
+        python: ["-m"]
+      env_var_denylist:
+        - OPENAI_API_KEY
+      timeout_ceiling_secs: 120
+      max_output_bytes: 524288
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `subcommand_allowlist` | object | — | **Required.** Map of `command → [allowed_first_args]`. Any `cmd.run` call with a command or first argument not in this map is rejected with a policy violation. |
+| `env_var_denylist` | `string[]` | `[]` | Additional env vars stripped before forwarding to the subprocess. Appended to the node-level `global_env_denylist`. |
+| `timeout_ceiling_secs` | integer | `300` | Maximum per-subprocess timeout this agent may request. Cannot exceed `builtin_dispatchers.cmd.max_timeout_ceiling_secs` in the node config. |
+| `max_output_bytes` | integer | `524288` | Maximum captured stdout+stderr per subprocess in bytes. Truncated output is signaled to the LLM with a notice. |
+
+`builtin:cmd` is the only valid non-`mcp:` executor value. The `subcommand_allowlist` is the only required `config` field; all other fields inherit node-level defaults when omitted.
+
 ### `spec.env`
 
 Environment variable values support three formats:

@@ -259,7 +259,7 @@ SmcpMiddleware receives SmcpEnvelope
   │         b. Does any capability.tool_pattern match tool_name?
   │            - path_allowlist satisfied? (fs.* tools)
   │            - domain_allowlist satisfied? (web.* tools)
-  │            - command_allowlist satisfied? (cmd.run)
+  │            - subcommand_allowlist satisfied? (cmd.run)
   │            - rate_limit not exceeded?
   │         → ALLOW if all constraints pass
   │         c. No capability matched? → DENY (default deny)
@@ -293,10 +293,9 @@ capabilities:
         - /workspace
   - tool_pattern: "cmd.run"
     constraints:
-      command_allowlist:
-        - python
-        - pytest
-        - npm
+      subcommand_allowlist:
+        python: ["-m"]
+        npm: [install, run, test]
   - tool_pattern: "web.fetch"
     constraints:
       domain_allowlist:
@@ -340,12 +339,11 @@ capabilities:
     constraints:
       path_allowlist:
         - /workspace/project
-  - tool_pattern: "shell.run"
+  - tool_pattern: "cmd.run"
     constraints:
-      command_allowlist:
-        - npm test
-        - cargo test
-        - pytest
+      subcommand_allowlist:
+        npm: [test]
+        cargo: [test, build]
 deny_list:
   - filesystem.delete
 ```
@@ -446,7 +444,7 @@ SMCP uses structured error codes in HTTP 4xx responses:
 | `2001` | `TOOL_EXPLICITLY_DENIED` | Tool is in the `deny_list` |
 | `2002` | `PATH_NOT_ALLOWED` | Filesystem path outside `path_allowlist` |
 | `2003` | `DOMAIN_NOT_ALLOWED` | Network domain outside `domain_allowlist` |
-| `2004` | `COMMAND_NOT_ALLOWED` | Command not in `command_allowlist` |
+| `2004` | `COMMAND_NOT_ALLOWED` | Command or subcommand not in `subcommand_allowlist` |
 | `2005` | `RATE_LIMIT_EXCEEDED` | Capability rate limit reached |
 | `2006` | `OUTPUT_SIZE_EXCEEDED` | Response would exceed `max_response_size` |
 

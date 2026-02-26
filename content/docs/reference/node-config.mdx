@@ -173,7 +173,11 @@ spec:
         - tool_pattern: "fs.*"
           path_allowlist: [/workspace, /agent]
         - tool_pattern: "cmd.run"
-          command_allowlist: [git, cargo, npm, python, pytest]
+          subcommand_allowlist:
+            git: [clone, add, commit, push, pull, status, diff]
+            cargo: [build, test, fmt, clippy, check, run]
+            npm: [install, run, test, build, ci]
+            python: ["-m"]
         - tool_pattern: "web.fetch"
           domain_allowlist: [pypi.org, crates.io, npmjs.com]
           rate_limit:
@@ -530,7 +534,7 @@ Each `capabilities` entry (`CapabilityDefinition`):
 |-----|------|-------------|
 | `tool_pattern` | string | Tool name pattern (e.g., `"fs.*"`, `"cmd.run"`, `"web.fetch"`) |
 | `path_allowlist` | string[] | Allowed filesystem path prefixes (for `fs.*` tools) |
-| `command_allowlist` | string[] | Allowed shell base commands (for `cmd.run`) |
+| `subcommand_allowlist` | object | Map of base command → allowed first positional arguments (for `cmd.run`). Example: `{cargo: ["build","test"]}`. |
 | `domain_allowlist` | string[] | Allowed network domain suffixes (for `web.*` tools) |
 | `rate_limit.calls` | u32 | Number of calls allowed per window |
 | `rate_limit.per_seconds` | u32 | Window size in seconds |
