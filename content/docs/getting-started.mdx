@@ -5,22 +5,9 @@ description: Install AEGIS, start the local stack, and run your first agent exec
 
 # Getting Started
 
-This guide walks through installing the AEGIS binary, starting the required backing services, configuring the orchestrator, and executing a demo agent.
+AEGIS manages the full lifecycle of AI agents — from manifest deployment through iterative execution, secure tool access, workflow coordination, and multi-agent swarms. Agents run in isolated containers, tools are proxied through a signed security layer, and every execution is observed, scored, and learned from.
 
----
-
-## Prerequisites
-
-| Dependency | Minimum Version | Notes |
-|---|---|---|
-| **Docker** | 24.0+ | Required for agent container execution in development |
-| **Docker Compose** | v2.20+ | Used to start the local backing services stack |
-| **Linux** | Kernel 5.15+ | Required for Firecracker production mode (Docker mode works on macOS/WSL2) |
-| **PostgreSQL** | 15+ | State persistence; started via Compose in local dev |
-| **SeaweedFS** | Latest stable | Volume storage backend; started via Compose |
-| **Temporal** | 1.24+ | Workflow durability; started via Compose |
-
-For local development, all backing services are provided via Docker Compose. You do not need to install PostgreSQL, SeaweedFS, or Temporal separately.
+This guide walks you through installing AEGIS, starting the local stack, and running your first agent execution.
 
 ---
 
@@ -29,26 +16,29 @@ For local development, all backing services are provided via Docker Compose. You
 Download the latest release for your platform from the [GitHub Releases page](https://github.com/100monkeys-ai/aegis-orchestrator/releases).
 
 ```bash
-# Linux x86_64
 curl -fsSL https://github.com/100monkeys-ai/aegis-orchestrator/releases/latest/download/aegis-linux-x86_64.tar.gz \
   | tar -xz -C /usr/local/bin
+```
 
-# Verify installation
+The release archive contains a single `aegis` binary that will be extracted to `/usr/local/bin`. Verify the installation:
+
+```bash
 aegis --version
 ```
 
-The release archive contains a single `aegis` binary. Place it anywhere on your `PATH`.
+---
+
+## Clone aegis-examples
+
+The `aegis-examples` repository contains the Docker Compose stack for all backing services (PostgreSQL, SeaweedFS, Temporal, Keycloak, Ollama, Cortex) and pre-built demo agent manifests.
+
+```bash
+git clone https://github.com/100monkeys-ai/aegis-examples.git && cd aegis-examples
+```
 
 ---
 
 ## Start the Local Stack
-
-Clone the examples repository — it contains the Docker Compose stack and example agents:
-
-```bash
-git clone https://github.com/100monkeys-ai/aegis-examples.git
-cd aegis-examples
-```
 
 Copy the environment file and start all backing services:
 
@@ -57,7 +47,7 @@ cp deploy/.env.example deploy/.env
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
-This starts PostgreSQL, SeaweedFS, Temporal, Keycloak, Ollama, and the Cortex services. Wait ~30 seconds for Temporal to finish initializing:
+This starts PostgreSQL, SeaweedFS, Temporal, Keycloak, Ollama, and the Cortex services. Wait ~30 seconds for Temporal to finish initializing. You can check the status with:
 
 ```bash
 docker compose -f deploy/docker-compose.yml ps
@@ -67,144 +57,47 @@ All services should show `running` (healthy).
 
 ---
 
-## Configure the Orchestrator
+## Pull the Default Model
 
-Copy the reference configuration and edit it for your environment:
-
-```bash
-cp deploy/aegis-config.yaml my-aegis-config.yaml
-```
-
-At minimum, set your LLM provider credentials. The example below uses OpenAI:
-
-```yaml
-apiVersion: 100monkeys.ai/v1
-kind: NodeConfig
-
-metadata:
-  name: "local-dev-node"
-
-spec:
-  node:
-    id: "local-dev-node"
-    type: "edge"
-
-  llm_providers:
-    - name: "openai"
-      type: "openai"
-      endpoint: "https://api.openai.com/v1"
-      enabled: true
-      api_key: "env:OPENAI_API_KEY"
-      models:
-        - alias: "default"
-          model: "gpt-4o"
-          capabilities: ["code", "reasoning"]
-          context_window: 128000
-          cost_per_1k_tokens: 0.01
-        - alias: "fast"
-          model: "gpt-4o-mini"
-          capabilities: ["code"]
-          context_window: 128000
-          cost_per_1k_tokens: 0.00015
-
-  llm_selection:
-    strategy: "prefer-local"
-    default_provider: "openai"
-    max_retries: 3
-    retry_delay_ms: 1000
-
-  runtime:
-    docker_network_mode: "env:AEGIS_DOCKER_NETWORK"
-    orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
-
-  storage:
-    backend: "seaweedfs"
-    seaweedfs:
-      filer_url: "http://localhost:8888"
-
-  network:
-    port: 8088
-
-  observability:
-    logging:
-      level: info
-```
-
-Export your API key:
+Pull the default Ollama model that the example agents use:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
+docker compose -f deploy/docker-compose.yml exec ollama ollama pull phi3:mini
 ```
 
-See [Node Configuration Reference](/docs/deployment/configuration) for a full annotated walkthrough of every configuration field.
+This downloads the `phi3:mini` model into the Ollama container. The example agents are configured to use this model by default.
 
 ---
 
-## Start the Daemon
+## Deploy and Run the hello-world Agent
+
+Deploy the hello-world agent:
 
 ```bash
-aegis daemon start --config my-aegis-config.yaml
-```
-
-The daemon starts the HTTP server, NFS storage gateway, and event bus. You should see output similar to:
-
-```
-2026-02-23T10:00:00Z  INFO aegis_orchestrator_core: AEGIS orchestrator starting
-2026-02-23T10:00:00Z  INFO aegis_orchestrator_core: HTTP server listening on 0.0.0.0:8088
-2026-02-23T10:00:00Z  INFO aegis_orchestrator_core::nfs: NFS server ready
-2026-02-23T10:00:00Z  INFO aegis_orchestrator_core: Ready
-```
-
-Run the daemon in the background or manage it with systemd. See [Docker Runtime](/docs/deployment/docker) for the systemd unit example.
-
----
-
-## Deploy a Demo Agent
-
-The `aegis-examples` repo you cloned earlier includes agent manifests ready to deploy. Start with the `hello-world` agent:
-
-```bash
-# Deploy the hello-world agent
 aegis agent deploy ./agents/hello-world/agent.yaml
-
-# Confirm it is deployed and note the agent UUID
-aegis agent list
 ```
 
-Example output:
-
-```
-ID                                    NAME         STATUS     RUNTIME
-a1b2c3d4-0000-0000-0000-000000000001  hello-world  deployed   docker
-```
-
----
-
-## Run Your First Execution
+Execute the agent with a task:
 
 ```bash
-# Replace <AGENT_ID> with the UUID printed by 'aegis agent list'
-aegis task execute <AGENT_ID> \
+aegis task execute hello-world \
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \
   --follow
 ```
 
-The `--follow` flag streams iteration events to the terminal as they happen:
+The `--follow` flag streams iteration events to the terminal as they happen. You'll see output similar to:
 
 ```
-[Execution a1b2c3d4-1111-...] Started
-[Iteration 1] Running...
-[Iteration 1] Tool call: fs.write /workspace/solution.py
-[Iteration 1] Tool call: cmd.run python /workspace/test_solution.py
-[Iteration 1] Validation: score=0.92 confidence=0.88 → Success
-[Execution a1b2c3d4-1111-...] Completed in 1 iteration (12.4s)
+2026-02-25T13:56:43.091943Z  INFO Delegating to daemon API
+Executing agent 88b73d1b-0da0-4b92-9376-fd744b9cafbf...
+✓ Execution started: f668f593-370f-4c19-b043-0487e9bd1ae5
+[2026-02-25T13:56:43.140898+00:00] Execution started
+[2026-02-25T13:56:43.164238272+00:00] Iteration 1
+[2026-02-25T13:57:34.455428513+00:00] LLM [default]
+[STDOUT] "First, I would write the required `fib_sequence` function in `/workspace/solution.py`:
 ```
 
-Retrieve the execution record:
-
-```bash
-aegis task status a1b2c3d4-1111-...
-```
+The agent will generate code, run validation, and either succeed or refine across multiple iterations until it produces a working solution.
 
 ---
 
