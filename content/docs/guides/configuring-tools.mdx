@@ -1,0 +1,271 @@
+---
+title: Configuring Tools
+description: How to enable cmd.run subprocess execution and register external MCP tool servers in your node configuration and agent manifests.
+---
+
+# Configuring Tools
+
+This guide covers the two main categories of tools available to AEGIS agents:
+
+- **`cmd.run`** — execute subprocesses inside the agent container (compilers, test runners, interpreters)
+- **MCP Tool Servers** — long-running server processes on the orchestrator host that provide access to external APIs (web search, email, GitHub, and so on)
+
+Both categories route through the same [MCP Tool Routing](/docs/architecture/tool-routing) pipeline. The difference is where execution happens: `cmd.run` runs inside the container, MCP Tool Servers run on the host.
+
+---
+
+## Part A: Enabling `cmd.run`
+
+`cmd.run` is the mechanism for agents to execute processes inside their own container — running tests, compiling code, invoking a Python script, and so on. It is handled by the `BuiltinDispatcher`, not an external MCP server process.
+
+Because `cmd.run` gives agents the ability to spawn arbitrary processes, it requires an explicit `SubcommandAllowlist` that enumerates exactly which commands (and which first-positional-arguments for each command) are permitted. Any call that is not in the allowlist is rejected with a policy violation before the subprocess is even attempted.
+
+### Step 1 — Configure the node
+
+The `builtin_dispatchers.cmd` section in `aegis-config.yaml` sets the node-level ceilings that apply to all agents running on the node:
+
+```yaml
+# aegis-config.yaml
+spec:
+  builtin_dispatchers:
+    cmd:
+      enabled: true
+
+      # Default timeout for each subprocess (unless the agent manifest requests lower).
+      default_timeout_secs: 60
+
+      # Hard ceiling — individual agents cannot request a timeout above this value.
+      max_timeout_ceiling_secs: 300
+
+      # Maximum combined stdout + stderr captured per subprocess.
+      # Output exceeding this is truncated; the agent receives a notice.
+      max_output_bytes: 524288      # 512 KB
+
+      # Maximum concurrent subprocesses per execution.
+      # Keep this at 1 unless you have a specific use case for parallelism.
+      max_concurrent_per_execution: 1
+
+      # These environment variables are stripped from the subprocess environment
+      # regardless of what the agent requests.
+      global_env_denylist:
+        - AEGIS_TOKEN
+        - OPENAI_API_KEY
+        - ANTHROPIC_API_KEY
+```
+
+If `builtin_dispatchers` is omitted entirely, `cmd.run` is disabled node-wide.
+
+### Step 2 — Declare `cmd.run` in the agent manifest
+
+In the agent manifest, add a tool entry with `executor: "builtin:cmd"` and a `subcommand_allowlist` that explicitly lists every command and first argument the agent is allowed to run:
+
+```yaml
+# agent.yaml
+spec:
+  tools:
+    - name: cmd
+      executor: "builtin:cmd"
+      config:
+        # Required: map of base_command → [allowed_first_positional_args]
+        subcommand_allowlist:
+          python:
+            - "-m"           # allows: python -m pytest, python -m http.server, etc.
+          pytest:
+            - tests/         # allows: pytest tests/  (but not pytest /etc/)
+          pip:
+            - install        # allows: pip install <package>
+          cargo:
+            - build
+            - test
+            - fmt
+            - clippy
+            - check
+          npm:
+            - install
+            - run
+            - test
+            - ci
+
+        # Optional: strip additional env vars beyond the node global_env_denylist.
+        env_var_denylist:
+          - MY_INTERNAL_SECRET
+
+        # Optional: override per-subprocess timeout ceiling for this agent.
+        # Cannot exceed max_timeout_ceiling_secs in the node config.
+        timeout_ceiling_secs: 120
+
+        # Optional: override output byte limit for this agent.
+        max_output_bytes: 524288
+```
+
+### How the allowlist is enforced
+
+For each `cmd.run` invocation the `BuiltinDispatcher` performs two checks in order:
+
+1. **Base command check** — Is the `command` field a key in `subcommand_allowlist`? If not, the call is rejected with `CommandNotAllowed`.
+2. **First-argument check** — Is the first element of `args` in the list for that command? If not, the call is rejected with `SubcommandNotAllowed`.
+
+Both checks happen on the orchestrator **before** any dispatch message reaches `bootstrap.py`. A rejected `cmd.run` never touches the container.
+
+For example, with the allowlist above:
+
+| Call | Result |
+|---|---|
+| `cmd.run {command:"cargo", args:["test"]}` | Allowed |
+| `cmd.run {command:"cargo", args:["publish"]}` | Rejected — `publish` not in `cargo` list |
+| `cmd.run {command:"bash", args:["-c","rm -rf /"]}` | Rejected — `bash` not a key in allowlist |
+| `cmd.run {command:"python", args:["-m","pytest"]}` | Allowed — `-m` is in `python` list |
+
+### Receiving the result
+
+The agent receives the subprocess result as a tool result message in its LLM context. The message includes `exit_code`, `stdout`, and `stderr`. If `exit_code` is non-zero and the agent's `execution.validation.system.must_succeed` is `true`, the iteration is marked as failed and the refinement loop begins.
+
+---
+
+## Part B: Adding an External MCP Tool Server
+
+External tools — web search, email, calendar APIs, and similar — are handled by MCP server processes running on the orchestrator host. The orchestrator starts each server at daemon startup, monitors it with periodic health checks, and routes matching tool calls to it via JSON-RPC over stdio.
+
+### Step 1 — Register the server in the node config
+
+Add an entry to `mcp_servers` in `aegis-config.yaml`:
+
+```yaml
+# aegis-config.yaml
+spec:
+  mcp_servers:
+    - name: web-search
+      enabled: true
+
+      # The executable and its arguments. The orchestrator spawns this process
+      # and communicates with it via JSON-RPC over stdio.
+      executable: "node"
+      args: ["/opt/aegis-tools/web-search/index.js"]
+
+      # The tool names this server handles. Used to build the capability routing
+      # index. Supports exact names and "prefix.*" wildcards.
+      capabilities:
+        - web.search
+        - web.fetch
+
+      # API credentials injected as environment variables when the process starts.
+      # Values support env: (host env var) and vault: (OpenBao KV path).
+      # These values are NEVER forwarded to agent containers.
+      credentials:
+        SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+        BING_ENDPOINT:  "env:BING_SEARCH_ENDPOINT"
+
+      # Non-secret environment variables.
+      environment:
+        LOG_LEVEL: "info"
+        MAX_RESULTS: "20"
+
+      # Health check configuration. The orchestrator sends this MCP method
+      # to the server process on the configured interval. If the server fails
+      # to respond within timeout_seconds, it is marked Unhealthy and restarted.
+      health_check:
+        interval_seconds: 60
+        timeout_seconds: 5
+        method: "tools/list"    # standard MCP discovery method
+
+      # Resource caps on the server process (enforced via cgroups on Linux).
+      resource_limits:
+        cpu_millicores: 1000    # 1 CPU core
+        memory_mb: 512
+```
+
+Multiple servers are fully supported. Each entry is started as an independent process:
+
+```yaml
+mcp_servers:
+  - name: web-search
+    executable: "node"
+    args: ["/opt/aegis-tools/web-search/index.js"]
+    capabilities: [web.search, web.fetch]
+    credentials:
+      SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+
+  - name: gmail-tools
+    executable: "python"
+    args: ["-m", "aegis_gmail_server"]
+    capabilities: [email.send, email.read, email.search]
+    credentials:
+      GMAIL_OAUTH_TOKEN:   "vault:aegis-system/tools/gmail-oauth-token"
+      GMAIL_CLIENT_SECRET: "vault:aegis-system/tools/gmail-client-secret"
+    health_check:
+      interval_seconds: 120
+      timeout_seconds: 10
+      method: "tools/list"
+```
+
+For a full schema reference, see [`spec.mcp_servers`](/docs/reference/node-config#specmcp_servers) in the Node Configuration Reference.
+
+### Step 2 — Declare the tool in the agent manifest
+
+Once the server is registered on the node, agents opt in to it via `spec.tools` in their manifest:
+
+```yaml
+# agent.yaml
+spec:
+  tools:
+    # Simple format: grant access to all capabilities the server advertises.
+    - "mcp:web-search"
+
+    # Detailed format: grant access with per-tool constraints.
+    - name: search
+      server: "mcp:web-search"
+      config:
+        # Restrict search results to these domains.
+        allowed_domains:
+          - docs.python.org
+          - pypi.org
+          - stackoverflow.com
+        max_results_per_query: 10
+        max_calls_per_execution: 30
+```
+
+The `server` identifier (`"mcp:<name>"`) must match the `name` field in `mcp_servers`. If no entry with that name exists on the node, the agent manifest is rejected at execution start with a `ToolNotFound` error.
+
+For the full `spec.tools` schema, see [`spec.tools[]`](/docs/reference/agent-manifest#spectools) in the Agent Manifest Reference.
+
+### Credential resolution
+
+The orchestrator resolves `env:` and `vault:` references in `credentials` at daemon startup using the same credential chain as all other secrets:
+
+| Prefix | Resolution |
+|---|---|
+| `env:VAR_NAME` | Read from orchestrator process environment at startup |
+| `vault:path/to/secret` | Fetched from OpenBao KV engine at startup; cached with a 30-second TTL |
+| *(bare string)* | Treated as a literal value — avoid for secrets |
+
+Resolved values are injected as environment variables into the server process and are never written to any file, included in any log line, or forwarded to agent containers. See [Secrets Management](/docs/deployment/secrets) for OpenBao configuration.
+
+### Server lifecycle
+
+- **Startup** — All enabled `mcp_servers` entries are started when the daemon starts. Failed startup is logged but does not prevent the daemon from starting; the server is retried before the first tool call that needs it.
+- **Health checks** — The orchestrator sends the configured `health_check.method` MCP request to each server on the configured interval. A failed health check triggers an `MCPToolEvent::ServerUnhealthy` event.
+- **Restart on crash** — If the server process exits unexpectedly, the orchestrator restarts it before dispatching the next tool call routed to it.
+- **Graceful shutdown** — On daemon shutdown, server processes receive `SIGTERM` followed by `SIGKILL` after a 5-second grace period.
+
+---
+
+## Choosing between `cmd.run` and an MCP Tool Server
+
+| | `cmd.run` (`builtin:cmd`) | MCP Tool Server (`mcp:<name>`) |
+|---|---|---|
+| **Execution location** | Inside agent container | On orchestrator host |
+| **Access to agent filesystem** | Full access to mounted volumes | Only what the agent passes as arguments |
+| **Network access** | None (inherits container network isolation) | Full host network access |
+| **Credentials** | None injected | Injected from `env:` / `vault:` at startup |
+| **Process lifecycle** | One process per `cmd.run` call | Long-running; started at daemon startup |
+| **Typical use cases** | Compilers, test runners, linters, interpreters | Web APIs, email, databases, SaaS integrations |
+| **Policy mechanism** | `SubcommandAllowlist` | Domain allowlist, rate limits, capability patterns |
+
+---
+
+## Related Pages
+
+- [MCP Tool Routing](/docs/architecture/tool-routing) — how the three routing paths work internally
+- [Node Configuration Reference](/docs/reference/node-config) — full `mcp_servers` and `builtin_dispatchers` field schemas
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — full `spec.tools` field and config schemas
+- [Secrets Management](/docs/deployment/secrets) — configuring OpenBao for credential resolution

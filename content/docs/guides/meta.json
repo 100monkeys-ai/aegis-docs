@@ -2,6 +2,7 @@
     "title": "Guides",
     "pages": [
         "writing-agents",
+        "configuring-tools",
         "custom-runtime-agents",
         "deploying-agents",
         "building-workflows",
