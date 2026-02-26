@@ -5,7 +5,7 @@ description: How to spawn child agents, pass messages, use resource locks, and m
 
 # Building Multi-Agent Swarms
 
-This guide covers how to build agents that coordinate with other agents via the AEGIS swarm system. Swarms are built programmatically from within `bootstrap.py` using SMCP-secured MCP tool calls.
+This guide covers how to build agents that coordinate with other agents via the AEGIS swarm system. Parent agents can spawn children, await completion, exchange messages, and use resource locks via SMCP-secured MCP tool calls.
 
 ---
 
@@ -82,7 +82,7 @@ print(json.dumps({"processed": len(results), "results_path": "/workspace/analysi
 
 ## Passing Context to Children
 
-The child agent manifest's `bootstrap.py` receives what is passed via `task.input`. You can inject per-child context by embedding it in the manifest's `environment` section, or by having the child read from a shared volume that the parent writes first.
+The child execution receives what is passed via `task.input`. You can inject per-child context by embedding it in the manifest `env` section, or by having the child read from a shared volume that the parent writes first.
 
 ### Option A: Volume-Backed Context
 
@@ -129,7 +129,7 @@ spec:
 """
 ```
 
-The child reads `os.environ["TARGET_FILE"]` in its `bootstrap.py`.
+The child reads `TARGET_FILE` from its environment at runtime.
 
 ---
 

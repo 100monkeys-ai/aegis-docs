@@ -164,12 +164,7 @@ See [Docker Runtime](/docs/deployment/docker) and [Firecracker Runtime](/docs/de
 
 Agent manifests reference LLM models by **alias**, not by provider name. This decouples agent definitions from infrastructure choices.
 
-In the agent manifest, specify the model alias in the `spec` or within the `bootstrap.py` client initialization:
-
-```python
-from aegis import AegisClient
-client = AegisClient(model="default")  # resolves to whatever "default" maps to in node config
-```
+Specify the model alias in your manifest (for example in semantic validation settings), and let the node operator map aliases to providers in node configuration.
 
 In `aegis-config.yaml`, the node operator maps aliases to providers:
 

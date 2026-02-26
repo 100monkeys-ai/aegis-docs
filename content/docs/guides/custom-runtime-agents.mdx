@@ -1,0 +1,212 @@
+---
+title: Custom Runtime Agents (Advanced)
+description: Advanced guide for building a custom container image and bootstrap script when manifest-only agents are not enough.
+---
+
+# Custom Runtime Agents (Advanced)
+
+This guide covers the advanced path for agents that require a custom container image, non-standard dependencies, or a custom runtime script.
+
+For most use cases, use the manifest-first default guide: [Writing Your First Agent](/docs/guides/writing-agents).
+
+---
+
+## When to Use This Path
+
+Use a custom runtime only when you need one or more of the following:
+
+- OS-level packages or binaries not available in the default runtime
+- Language runtimes or libraries outside standard AEGIS defaults
+- A specialized bootstrap loop for tightly controlled execution behavior
+
+If you only need instruction, tools, security policies, and validation, stay manifest-only.
+
+---
+
+## Project Structure
+
+```
+my-agent/
+├── agent.yaml
+├── bootstrap.py
+├── Dockerfile
+└── output_schema.json
+```
+
+---
+
+## Step 1: Build the Container Image
+
+```dockerfile
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir aegis-sdk
+
+WORKDIR /agent
+COPY bootstrap.py .
+COPY output_schema.json .
+
+CMD ["python", "/agent/bootstrap.py"]
+```
+
+```bash
+docker build -t myregistry/my-agent:latest .
+docker push myregistry/my-agent:latest
+```
+
+---
+
+## Step 2: Implement `bootstrap.py`
+
+`bootstrap.py` is the in-container entrypoint. It interacts with the orchestrator and can invoke tools through the dispatch channel.
+
+```python
+import json
+from aegis import AegisClient, TaskInput
+
+
+def main() -> None:
+    client = AegisClient()
+
+    task: TaskInput = client.get_task()
+    user_request = task.input.get("task", "")
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a Python developer. Write code to solve the task. "
+                "Save your solution to /workspace/solution.py and write a JSON summary "
+                "to /workspace/result.json with fields solution_path and output."
+            ),
+        },
+        {"role": "user", "content": user_request},
+    ]
+
+    response = client.generate(messages=messages)
+    print(response.content)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## Step 3: Add Output Schema
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["solution_path", "output"],
+  "properties": {
+    "solution_path": {
+      "type": "string",
+      "pattern": "^/workspace/"
+    },
+    "output": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+---
+
+## Step 4: Configure `agent.yaml`
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: python-coder
+  version: "1.0.0"
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+    isolation: docker
+
+  task:
+    instruction: |
+      Solve the provided coding task and write output to /workspace/result.json.
+
+  execution:
+    mode: iterative
+    max_iterations: 10
+    validation:
+      system:
+        must_succeed: true
+      output:
+        format: json
+        schema:
+          type: object
+          required: ["solution_path", "output"]
+          properties:
+            solution_path:
+              type: string
+            output:
+              type: string
+
+  security:
+    network:
+      mode: allow
+      allowlist:
+        - pypi.org
+    filesystem:
+      read:
+        - /workspace
+        - /agent
+      write:
+        - /workspace
+    resources:
+      cpu: 1000
+      memory: "1Gi"
+      timeout: "300s"
+
+  volumes:
+    - name: workspace
+      storage_class: ephemeral
+      mount_point: /workspace
+      access_mode: read-write
+      ttl_hours: 1
+      size_limit_mb: 5000
+
+  tools:
+    - name: filesystem
+      server: "mcp:filesystem"
+      config:
+        allowed_paths: ["/workspace", "/agent"]
+        access_mode: read-write
+```
+
+---
+
+## Step 5: Deploy and Execute
+
+```bash
+aegis agent deploy ./my-agent/agent.yaml
+aegis task execute python-coder --input '{"task":"Write a prime checker"}' --follow
+```
+
+---
+
+## Common Issues
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Image pull failure | Registry auth/image tag issue | Verify image exists and node has registry credentials |
+| Startup error in container | Missing package or bad entrypoint | Validate Dockerfile and `CMD` |
+| Tool call rejected | Tool not declared in manifest | Add required tool to `spec.tools` |
+| Timeout during run | Heavy workload or slow dependency | Increase resource timeout or optimize bootstrap flow |
+
+---
+
+## Related Docs
+
+- [Writing Your First Agent](/docs/guides/writing-agents)
+- [Deploying Agents](/docs/guides/deploying-agents)
+- [Agent Manifest Reference](/docs/reference/agent-manifest)
