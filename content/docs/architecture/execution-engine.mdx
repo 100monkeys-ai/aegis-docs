@@ -235,7 +235,7 @@ Example schema entry for `fs.write`:
 }
 ```
 
-Tool availability is determined entirely by which tool servers are declared in `aegis-config.yaml` (see [MCP Tool Routing](/docs/architecture/tool-routing)). No tool configuration is required inside the agent container — `bootstrap.py` never sees or manages tool schemas.
+Tool schemas surface through two layers. The node operator declares which tool servers exist in `aegis-config.yaml` (see [MCP Tool Routing](/docs/architecture/tool-routing)) — this is the ceiling of what any agent on that node can ever invoke. Each agent manifest then declares a `spec.tools` block that selects the subset of those node-level tools the agent is permitted to use and applies per-tool policy constraints (path allowlists, domain allowlists, `SubcommandAllowlist`, rate limits, and so on). Only the tools named in `spec.tools` are included in the schema array sent to the LLM; tools registered on the node but absent from the manifest are invisible to the agent. `bootstrap.py` itself never sees or manages tool schemas — schema injection and policy enforcement happen entirely in the orchestrator before the `generate()` response is returned.
 
 ---
 
@@ -298,7 +298,7 @@ When an unknown `action` is received, bootstrap.py returns a `dispatch_result` w
 
 ### SubcommandAllowlist
 
-Every `cmd.run` invocation is validated against the `SubcommandAllowlist` in `aegis-config.yaml` before execution:
+Every `cmd.run` invocation is validated against the `SubcommandAllowlist` declared in the agent manifest's `spec.tools` block before execution. The node-level `builtin_dispatchers.cmd` section in `aegis-config.yaml` sets hard ceilings (max timeout, max output bytes, global env denylist) that the manifest cannot exceed, but the per-command allowlist itself lives in the manifest:
 
 ```yaml
 tools:
