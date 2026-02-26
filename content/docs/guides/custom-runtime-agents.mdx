@@ -285,8 +285,6 @@ CMD ["tail", "-f", "/dev/null"]
 
 The custom bootstrap must implement the dispatch protocol to communicate with the orchestrator via `AEGIS_ORCHESTRATOR_URL`.
 
-> **Implementation status:** `spec.advanced.bootstrap_path` is declared in the manifest schema and exposed in both the Python SDK (`ManifestBuilder.with_bootstrap_path()`) and TypeScript SDK (`ManifestBuilder.withBootstrapPath()`). The runtime wiring that actually uses this path at container execution time is tracked in the orchestrator backlog and is not yet active in the current release.
-
 ---
 
 ## Step 5: Deploy and Execute
