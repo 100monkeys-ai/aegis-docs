@@ -1,0 +1,133 @@
+---
+title: Validation
+description: How AEGIS uses gradient scoring, judge agents, and consensus to determine whether an iteration's output is acceptable.
+---
+
+# Validation
+
+AEGIS validates every iteration's output before deciding whether to accept it or start another attempt. Rather than a binary pass/fail, every validator produces a **`ValidationScore`** (0.0–1.0) and a **`Confidence`** (0.0–1.0). The execution loop compares scores against declared thresholds, choosing between three outcomes: accept the output, inject the failure reason and retry, or exhaust the iteration budget and fail permanently.
+
+---
+
+## Why Gradient Scoring?
+
+A binary validator can only tell the orchestrator *that* output failed. A gradient score tells it *how badly* — which the refinement prompt can use to modulate how much the agent needs to change.
+
+A score of `0.85` with the reasoning _"logic is correct but error handling is absent"_ produces a precise, targeted refinement prompt. A score of `0.15` with the reasoning _"completely wrong approach"_ produces a different one — prompting a rewrite rather than a small patch. The Cortex learning layer also uses these scores to weight which error-solution patterns are reliably successful.
+
+---
+
+## ValidationResults Structure
+
+At the end of every iteration, the orchestrator populates a `ValidationResults` record with one or more sub-results depending on which validators are configured in the agent manifest:
+
+```
+ValidationResults
+├── system       — exit code and stderr from the container process
+├── output       — deterministic structural checks (JSON schema, regex)
+├── semantic     — single LLM judge's gradient score
+├── gradient     — GradientResult from the judge execution
+└── consensus    — MultiJudgeConsensus when multiple judges are used
+```
+
+`semantic` stores the boolean outcome and score from a single judge. `gradient` holds the full `GradientResult` (score, confidence, reasoning, and optional `signals`). `consensus` stores the `MultiJudgeConsensus` record when a `multi_judge` validator runs — including each judge's individual score and the aggregation strategy used.
+
+---
+
+## How the Execution Loop Uses Scores
+
+The `ExecutionSupervisor` runs validators sequentially after the inner loop completes. The effective score for the iteration is the **lowest score across all configured validators**. If that minimum score is below any validator's `min_score`, the iteration transitions to `Refining` instead of `Success`.
+
+```
+     All validators pass      ┌──────────┐
+     (min score ≥ threshold)  │ Running  │
+  ┌──────────────────────────▶│          │
+  │                           └────┬─────┘
+  │                                │ inner loop completes
+  │                                ▼
+  │                          ┌──────────┐
+  │ score ≥ threshold        │Validating│
+  │ ─────────────────────────┤          ├────────────────────────▶ Success
+  │                          └────┬─────┘
+  │                               │ score < threshold
+  │                               │ AND iterations remaining
+  │                               ▼
+  │                          ┌──────────┐ inject error + reasoning
+  └──────────────────────────│ Refining │──────────────────────────▶ (next iteration)
+                             └────┬─────┘
+                                  │ iterations == max_iterations
+                                  ▼
+                               Failed
+```
+
+Validators are evaluated in the order they are declared. Expensive LLM judges are only reached if the cheaper deterministic validators (exit code, JSON schema, regex) pass first — making it cost-effective to chain them. See [Configuring Agent Validation](/docs/guides/validation) for ordering strategies.
+
+### Confidence Gating
+
+When a judge's self-reported `confidence` falls below the validator's `min_confidence` setting, the score is treated as if the threshold was not met — the same consequence as a low score. The iteration moves to `Refining`, and the low-confidence reasoning is injected as error context for the next attempt. The judge is not re-run within the same iteration.
+
+---
+
+## Judge Agents Are Child Executions
+
+When a `semantic` or `multi_judge` validator fires, the orchestrator does not call an internal function. It spawns the judge agent as a **child execution** — a full, isolated container run tracked in the same execution tree as the parent.
+
+Every execution carries an `ExecutionHierarchy`:
+
+| Field | Description |
+|---|---|
+| `parent_execution_id` | UUID of the execution that spawned this one. `null` for root executions. |
+| `depth` | Nesting depth. `0` = root, `1` = first-level child (e.g., a judge), `2` = second-level child. |
+| `path` | Ordered list of ancestor execution UUIDs from root to this execution. |
+
+This means judge executions are:
+
+- **Visible in the execution list** — child executions appear alongside worker executions in `aegis execution list`.
+- **Isolated** — the judge runs in its own container with its own security policy. It cannot read or write to the parent execution's workspace unless both share the same volume and the judge's manifest explicitly grants access.
+- **Audited** — every judge invocation generates the full set of execution events (`ExecutionStarted`, `IterationCompleted`, etc.), making the validation decision fully inspectable.
+
+To view the judge executions spawned by a parent:
+
+```bash
+aegis execution list --parent <execution-id>
+```
+
+---
+
+## Recursive Depth Limit
+
+Because judges are full executions, a judge agent could theoretically declare its own `multi_judge` validator — spawning further child executions. This is intentionally supported for composing specialized judges, but unbounded recursion is prevented by a hard cap:
+
+```
+MAX_RECURSIVE_DEPTH = 3
+```
+
+An execution at depth 3 cannot spawn child executions. Any validator that would do so fails with `MaxRecursiveDepthExceeded`, and the iteration is marked `Failed` without consuming another retry. Well-designed judge pipelines never come close to this limit: a root worker at depth 0 spawns a judge at depth 1; if that judge uses a `semantic` validator, its judge runs at depth 2 — leaving one level of headroom.
+
+---
+
+## Multi-Judge Consensus
+
+When multiple judges run (`multi_judge` validator or `ParallelAgents` workflow state), their individual `GradientResult` scores are aggregated into a `MultiJudgeConsensus` record:
+
+| Field | Description |
+|---|---|
+| `final_score` | Aggregated score from all judges (0.0–1.0). |
+| `consensus_confidence` | Agreement level among judges. High variance between judges produces a lower confidence. |
+| `individual_results` | Each judge's `AgentId` paired with their full `GradientResult`. |
+| `strategy` | The aggregation strategy used (`weighted_average`, `majority`, `unanimous`, `best_of_n`). |
+
+All four judges run in parallel. The orchestrator collects all results before computing consensus, so parallel judges do not add wall-clock time beyond the slowest judge.
+
+### Strategy Summary
+
+| Strategy | Algorithm | When to use |
+|---|---|---|
+| `weighted_average` | Weighted mean of scores; confidence penalised by inter-judge variance. | General-purpose gradient validation. |
+| `majority` | Binary vote (score ≥ threshold = pass). Simple majority wins. | Approve/reject decisions where nuance matters less than agreement. |
+| `unanimous` | All judges must score ≥ threshold. Uses minimum confidence across judges. | Security audits, production deployment gates. |
+| `best_of_n` | Rank by `score × confidence`; take top N; weighted average of those N. | Reduce impact of outlier or misbehaving judges. |
+
+For configuration details — validator YAML syntax, threshold fields, judge `mode: one-shot` requirements — see [Configuring Agent Validation](/docs/guides/validation).
+
+For using `ParallelAgents` states in workflows to run judges as part of a multi-stage pipeline, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).

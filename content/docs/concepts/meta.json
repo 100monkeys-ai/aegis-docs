@@ -3,6 +3,7 @@
     "pages": [
         "agents",
         "execution",
+        "validation",
         "workflows",
         "swarms",
         "security-model"

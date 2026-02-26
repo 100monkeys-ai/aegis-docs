@@ -117,7 +117,7 @@ Traditional validators return pass/fail. AEGIS validators return a score and con
 
 - **Threshold tuning**: Set `min_score: 0.6` for fast iteration during development; tighten to `0.9` for production agents.
 - **Multi-criteria ranking**: Compare two executions by their aggregate score to pick the better output.
-- **Confidence gating**: Set `min_confidence: 0.7` to reject verdicts from judges that are uncertain.
+- **Confidence gating**: Set `min_confidence: 0.7` to reject verdicts from judges that are uncertain. When a judge's self-reported confidence falls below `min_confidence`, the score is treated as failing the threshold — the iteration moves to `Refining` and the low-confidence reasoning is injected as error context for the next attempt. The judge is not re-run within the same iteration.
 
 ---
 
@@ -156,9 +156,11 @@ This avoids running the LLM judge (slow and costly) when the deterministic check
 The judge agent specified in `semantic` or `multi_judge` validators is a regular AEGIS agent defined with its own manifest. This means judges can:
 
 - Be updated independently of the agent they evaluate.
-- Run in an isolated container with their own resource limits.
-- Themselves be subject to the 100monkeys iteration loop for their own output quality.
+- Run in an isolated container with their own resource limits and security policy.
 - Be specialized for specific domains (e.g., a judge trained to evaluate security code reviews).
+- Run as **child executions** in the execution tree — viewable via `aegis execution list --parent <execution-id>`.
+
+Judges always use `execution.mode: one-shot`. Judgment is a single-shot decision by design; the judge does not retry its own verdict through the iteration loop.
 
 Example judge agent manifest:
 
@@ -211,6 +213,14 @@ spec:
 ```
 
 The judge runtime reads the code under review from the shared workspace, evaluates it, and writes the JSON verdict to `/workspace/verdict.json`.
+
+### Security Guidance for Judge Manifests
+
+Because judge outputs influence whether an iteration succeeds, a compromised judge is a high-value attack surface. A few practices reduce the risk:
+
+- **Disable network access when possible.** A judge evaluating code output rarely needs to make outbound calls. Use `security.network.mode: none` to prevent a prompt-injected payload from exfiltrating data or calling arbitrary APIs from inside the judge container. If the judge must call an LLM provider, use `mode: allow` and restrict `allowlist` to that provider's domain only (e.g., `api.openai.com`).
+- **Set a short timeout.** Judgment should be fast. Use `resources.timeout: "60s"` or tighter to prevent a misbehaving judge from blocking iteration indefinitely.
+- **Validate judge output strictly.** The `output.schema` in the judge manifest should require `score`, `confidence`, and `reasoning` as non-nullable fields. An invalid or missing verdict is treated as a failing score by the orchestrator.
 
 ---
 
