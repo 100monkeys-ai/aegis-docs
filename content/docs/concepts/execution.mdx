@@ -99,11 +99,35 @@ Within a single container run, `InnerLoopService` implements transparent LLM too
 
 ```json
 // Start an LLM inference pass
-{ "type": "generate", "messages": [...], "tools": [...] }
+{
+  "type": "generate",
+  "agent_id": "<agent-uuid>",
+  "execution_id": "<execution-uuid>",
+  "iteration_number": 1,
+  "prompt": "Write a function that reverses a string.",
+  "model_alias": "default",
+  "messages": []
+}
 
 // Return result of a dispatched subprocess
-{ "type": "dispatch_result", "dispatch_id": "<uuid>", "exit_code": 0, "stdout": "...", "stderr": "" }
+{
+  "type": "dispatch_result",
+  "dispatch_id": "<uuid>",
+  "exit_code": 0,
+  "stdout": "...",
+  "stderr": ""
+}
 ```
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | `"generate"` to start an LLM pass; `"dispatch_result"` to return a subprocess result. |
+| `agent_id` | yes | UUID of the agent. Injected by the orchestrator as `AEGIS_AGENT_ID`. |
+| `execution_id` | yes | UUID of the current execution. Injected as `AEGIS_EXECUTION_ID`. |
+| `iteration_number` | yes | 1-based iteration counter. Injected as `AEGIS_ITERATION`. |
+| `prompt` | yes | The fully-rendered task prompt. Passed to `bootstrap.py` as `argv[1]`. |
+| `model_alias` | no | LLM alias to route through. Defaults to `"default"` (the orchestrator's configured default provider). Maps from `spec.runtime.model` in the agent manifest. |
+| `messages` | no | Prior conversation turns to prepend. Empty array for a fresh iteration start. |
 
 **Orchestrator → Agent (`OrchestratorMessage`):**
 

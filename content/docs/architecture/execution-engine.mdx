@@ -139,17 +139,31 @@ Both sides use a discriminated-union message format.
 
 #### `AgentMessage` (bootstrap.py → orchestrator)
 
+To start an LLM inference pass:
+
 ```json
 {
   "type": "generate",
-  "messages": [
-    {"role": "system", "content": "..."},
-    {"role": "user",   "content": "..."}
-  ]
+  "agent_id": "<agent-uuid>",
+  "execution_id": "<execution-uuid>",
+  "iteration_number": 1,
+  "prompt": "Write a function that reverses a string.",
+  "model_alias": "default",
+  "messages": []
 }
 ```
 
-Or, after a command runs:
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | Always `"generate"` for an LLM inference request. |
+| `agent_id` | yes | UUID of the agent. Injected by the orchestrator as `AEGIS_AGENT_ID`. |
+| `execution_id` | yes | UUID of the current execution. Injected as `AEGIS_EXECUTION_ID`. |
+| `iteration_number` | yes | 1-based iteration counter. Injected as `AEGIS_ITERATION`. |
+| `prompt` | yes | The fully-rendered task prompt. Passed to `bootstrap.py` as `argv[1]`. |
+| `model_alias` | no | LLM alias to route through. Defaults to `"default"` (orchestrator's configured default). Maps from `spec.runtime.model` in the agent manifest. |
+| `messages` | no | Prior conversation turns to prepend. Empty array for a fresh iteration start. |
+
+To return the result of a dispatched subprocess:
 
 ```json
 {
@@ -184,13 +198,55 @@ When the model produced a final text response:
 }
 ```
 
+### Tool Schema Injection
+
+At the start of every `generate()` call, `InnerLoopService` fetches the full list of registered tools from `ToolInvocationService` and maps each one to an OpenAI-format function schema. This schema array is passed to the LLM provider API alongside the conversation history so the model knows which tools are available.
+
+```rust
+// InnerLoopService::generate() — step 1
+let available_tools = tool_invocation_service.get_available_tools().await?;
+let tool_schemas: Vec<Value> = available_tools.iter().map(|t| json!({
+    "type": "function",
+    "function": {
+        "name":        &t.name,
+        "description": &t.description,
+        "parameters":  &t.input_schema,
+    }
+})).collect();
+```
+
+Example schema entry for `fs.write`:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "fs.write",
+    "description": "Write content to a file inside the agent's workspace volume.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path":    { "type": "string", "description": "Absolute path inside /workspace" },
+        "content": { "type": "string", "description": "File content to write" }
+      },
+      "required": ["path", "content"]
+    }
+  }
+}
+```
+
+Tool availability is determined entirely by which tool servers are declared in `aegis-config.yaml` (see [MCP Tool Routing](/docs/architecture/tool-routing)). No tool configuration is required inside the agent container — `bootstrap.py` never sees or manages tool schemas.
+
+---
+
 ### Inner Loop Steps
 
 ```
 bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[...]}
                                 │
                          Orchestrator receives request
-                         Calls LLM provider API with full message history
+                         Fetches tool schemas from ToolInvocationService
+                         Calls LLM provider API with full message history + tool schemas
                          LLM returns response (may contain tool calls)
                                 │
             ┌───────────────────▼────────────────────────────────────────┐
