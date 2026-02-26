@@ -9,6 +9,35 @@ AEGIS executes agents in a two-loop architecture. The **outer loop** (`Execution
 
 ---
 
+## Why Iterative Execution?
+
+Standard autonomous agents operate on a single-shot basis: generate output, execute it, return the result. When the LLM hallucinates an API, makes an off-by-one error, or produces structurally valid but semantically wrong code, the task fails — with no recovery path.
+
+AEGIS treats LLM output as a **candidate solution** rather than a final product. Every iteration result is verified against declared success criteria before being accepted. This shifts the execution model from *probabilistic generation* to *verified correctness*: the orchestrator accepts an output only when it can demonstrate, deterministically, that the output meets the task requirements.
+
+The practical effect: agents that would succeed roughly 60% of the time on a single attempt routinely reach >95% success rates through iteration, because the specific failure reason is fed back to the model as compiler-style feedback for the next attempt.
+
+---
+
+## Execution Modes
+
+An agent's `spec.execution.mode` controls whether the orchestrator runs one attempt or the full iterative refinement loop.
+
+```yaml
+spec:
+  execution:
+    mode: iterative     # "iterative" (default) | "single"
+    max_iterations: 10  # 1–10; default: 10
+    iteration_timeout: "300s"  # per-iteration wall-clock limit; default: 300s
+```
+
+| Mode | Behaviour |
+|---|---|
+| `iterative` | Run up to `max_iterations` attempts. Inject failure context between attempts. Accept output only when all validators pass. |
+| `single` | Run exactly one attempt. Skip validation-driven retry logic. Useful for judge agents and short-lived classification tasks. |
+
+---
+
 ## The Outer Loop: ExecutionSupervisor
 
 The `ExecutionSupervisor` drives the 100monkeys iterative refinement strategy. When an execution is started, the supervisor:
@@ -70,11 +99,35 @@ Within a single container run, `InnerLoopService` implements transparent LLM too
 
 ```json
 // Start an LLM inference pass
-{ "type": "generate", "messages": [...], "tools": [...] }
+{
+  "type": "generate",
+  "agent_id": "<agent-uuid>",
+  "execution_id": "<execution-uuid>",
+  "iteration_number": 1,
+  "prompt": "Write a function that reverses a string.",
+  "model_alias": "default",
+  "messages": []
+}
 
 // Return result of a dispatched subprocess
-{ "type": "dispatch_result", "dispatch_id": "<uuid>", "exit_code": 0, "stdout": "...", "stderr": "" }
+{
+  "type": "dispatch_result",
+  "dispatch_id": "<uuid>",
+  "exit_code": 0,
+  "stdout": "...",
+  "stderr": ""
+}
 ```
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | `"generate"` to start an LLM pass; `"dispatch_result"` to return a subprocess result. |
+| `agent_id` | yes | UUID of the agent. Injected by the orchestrator as `AEGIS_AGENT_ID`. |
+| `execution_id` | yes | UUID of the current execution. Injected as `AEGIS_EXECUTION_ID`. |
+| `iteration_number` | yes | 1-based iteration counter. Injected as `AEGIS_ITERATION`. |
+| `prompt` | yes | The fully-rendered task prompt. Passed to `bootstrap.py` as `argv[1]`. |
+| `model_alias` | no | LLM alias to route through. Defaults to `"default"` (the orchestrator's configured default provider). Maps from `spec.runtime.model` in the agent manifest. |
+| `messages` | no | Prior conversation turns to prepend. Empty array for a fresh iteration start. |
 
 **Orchestrator → Agent (`OrchestratorMessage`):**
 
@@ -177,3 +230,18 @@ Validator types:
 - **`multi_judge`** — consensus across N judge agents.
 
 See [Configuring Agent Validation](/docs/guides/validation) for full configuration details.
+
+---
+
+## Timeout Hierarchy
+
+Four independent timeout boundaries apply to every execution. They nest from outermost to innermost:
+
+| Level | Config | Default | Enforced by |
+|---|---|---|---|
+| Overall execution | `spec.resources.timeout_seconds` | 1800 s (30 min) | `ExecutionSupervisor` outer `tokio::time::timeout` |
+| Per iteration | `spec.execution.iteration_timeout` | 300 s | `ExecutionSupervisor` per-iteration `tokio::time::timeout` |
+| LLM HTTP request | `AEGIS_LLM_TIMEOUT_SECONDS` env | 300 s | `bootstrap.py` socket timeout |
+| Inner loop tool calls | `MAX_INNER_LOOP_ITERATIONS` constant | 50 calls | `InnerLoopService` loop bail |
+
+The outer timeout is a hard wall: if the total execution time exceeds `timeout_seconds`, the orchestrator cancels the execution regardless of which iteration is in progress. The per-iteration timeout is reset for each new iteration, so a long-running first iteration does not consume the per-iteration budget of subsequent attempts.

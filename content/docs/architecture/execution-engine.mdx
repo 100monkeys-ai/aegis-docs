@@ -15,23 +15,50 @@ The AEGIS execution engine is the subsystem that runs an agent against a task an
 ## Domain Model
 
 ```rust
-struct Execution {
-    id: ExecutionId,
-    agent_id: AgentId,
-    status: ExecutionStatus,
-    iterations: Vec<Iteration>,
-    max_iterations: u8,           // default: 10
-    started_at: DateTime<Utc>,
-    ended_at: Option<DateTime<Utc>>,
+/// Maximum swarm nesting depth; enforced at spawn time.
+pub const MAX_RECURSIVE_DEPTH: u8 = 3;
+
+pub struct Execution {
+    pub id: ExecutionId,
+    pub agent_id: AgentId,
+    pub status: ExecutionStatus,
+    pub iterations: Vec<Iteration>,
+    pub max_iterations: u8,              // default: 10
+    pub input: ExecutionInput,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub error: Option<String>,
+    pub hierarchy: ExecutionHierarchy,   // depth tracking; max depth = MAX_RECURSIVE_DEPTH
+    pub container_uid: u32,              // default: 1000 — UID squashed onto all NFS file ops
+    pub container_gid: u32,              // default: 1000 — GID squashed onto all NFS file ops
 }
 
-struct Iteration {
-    number: u8,                   // 1-based
-    status: IterationStatus,
-    output: Option<String>,
-    error: Option<IterationError>,
-    started_at: DateTime<Utc>,
-    ended_at: Option<DateTime<Utc>>,
+pub struct ExecutionHierarchy {
+    pub parent_execution_id: Option<ExecutionId>,
+    pub depth: u8,  // 0 = root; increments with each swarm child level
+    pub path: Vec<ExecutionId>,  // breadcrumb from root to this execution
+}
+
+pub struct Iteration {
+    pub number: u8,                           // 1-based
+    pub status: IterationStatus,
+    pub action: String,
+    pub output: Option<String>,
+    pub validation_results: Option<ValidationResults>,
+    pub error: Option<IterationError>,
+    pub code_changes: Option<CodeDiff>,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub llm_interactions: Vec<LlmInteraction>, // full message history for this iteration
+}
+
+/// Collects the results of every validator that ran for an iteration.
+pub struct ValidationResults {
+    pub system:    Option<SystemValidationResult>,  // exit code / stdout text checks
+    pub output:    Option<OutputValidationResult>,  // regex / JSON schema
+    pub semantic:  Option<SemanticValidationResult>, // single LLM judge
+    pub gradient:  Option<GradientResult>,           // score: f64, confidence: f64
+    pub consensus: Option<MultiJudgeConsensus>,      // multi-judge aggregate
 }
 ```
 
@@ -112,17 +139,31 @@ Both sides use a discriminated-union message format.
 
 #### `AgentMessage` (bootstrap.py → orchestrator)
 
+To start an LLM inference pass:
+
 ```json
 {
   "type": "generate",
-  "messages": [
-    {"role": "system", "content": "..."},
-    {"role": "user",   "content": "..."}
-  ]
+  "agent_id": "<agent-uuid>",
+  "execution_id": "<execution-uuid>",
+  "iteration_number": 1,
+  "prompt": "Write a function that reverses a string.",
+  "model_alias": "default",
+  "messages": []
 }
 ```
 
-Or, after a command runs:
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | Always `"generate"` for an LLM inference request. |
+| `agent_id` | yes | UUID of the agent. Injected by the orchestrator as `AEGIS_AGENT_ID`. |
+| `execution_id` | yes | UUID of the current execution. Injected as `AEGIS_EXECUTION_ID`. |
+| `iteration_number` | yes | 1-based iteration counter. Injected as `AEGIS_ITERATION`. |
+| `prompt` | yes | The fully-rendered task prompt. Passed to `bootstrap.py` as `argv[1]`. |
+| `model_alias` | no | LLM alias to route through. Defaults to `"default"` (orchestrator's configured default). Maps from `spec.runtime.model` in the agent manifest. |
+| `messages` | no | Prior conversation turns to prepend. Empty array for a fresh iteration start. |
+
+To return the result of a dispatched subprocess:
 
 ```json
 {
@@ -157,13 +198,55 @@ When the model produced a final text response:
 }
 ```
 
+### Tool Schema Injection
+
+At the start of every `generate()` call, `InnerLoopService` fetches the full list of registered tools from `ToolInvocationService` and maps each one to an OpenAI-format function schema. This schema array is passed to the LLM provider API alongside the conversation history so the model knows which tools are available.
+
+```rust
+// InnerLoopService::generate() — step 1
+let available_tools = tool_invocation_service.get_available_tools().await?;
+let tool_schemas: Vec<Value> = available_tools.iter().map(|t| json!({
+    "type": "function",
+    "function": {
+        "name":        &t.name,
+        "description": &t.description,
+        "parameters":  &t.input_schema,
+    }
+})).collect();
+```
+
+Example schema entry for `fs.write`:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "fs.write",
+    "description": "Write content to a file inside the agent's workspace volume.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path":    { "type": "string", "description": "Absolute path inside /workspace" },
+        "content": { "type": "string", "description": "File content to write" }
+      },
+      "required": ["path", "content"]
+    }
+  }
+}
+```
+
+Tool availability is determined entirely by which tool servers are declared in `aegis-config.yaml` (see [MCP Tool Routing](/docs/architecture/tool-routing)). No tool configuration is required inside the agent container — `bootstrap.py` never sees or manages tool schemas.
+
+---
+
 ### Inner Loop Steps
 
 ```
 bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[...]}
                                 │
                          Orchestrator receives request
-                         Calls LLM provider API with full message history
+                         Fetches tool schemas from ToolInvocationService
+                         Calls LLM provider API with full message history + tool schemas
                          LLM returns response (may contain tool calls)
                                 │
             ┌───────────────────▼────────────────────────────────────────┐

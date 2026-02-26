@@ -170,3 +170,85 @@ volumes:
 ```
 
 The previous execution's output is now readable at `/previous` in the new agent container.
+
+---
+
+## Passing Volumes Between Agents in a Workflow
+
+In a workflow, the standard pattern is for a writer agent to populate a persistent volume and declare its `volume_id` on the blackboard, so that subsequent agents can mount it read-only.
+
+**Writer agent manifest** (first workflow state):
+
+```yaml
+spec:
+  volumes:
+    - name: output
+      mount_point: /output
+      access_mode: read-write
+      storage_class: persistent
+```
+
+After the writer completes, a system state in the workflow writes the volume ID to the blackboard:
+
+```yaml
+states:
+  - name: write-output-id
+    kind: system
+    action: blackboard.set
+    params:
+      key: output_volume_id
+      value: "{{executions.writer.volumes.output.id}}"
+```
+
+**Reader agent manifest** (subsequent workflow state):
+
+```yaml
+spec:
+  volumes:
+    - name: previous-output
+      mount_point: /input
+      access_mode: read-only
+      storage_class: persistent
+      source:
+        volume_id: "{{blackboard.output_volume_id}}"
+```
+
+The reader agent sees the writer's files at `/input`. Because it mounts `read-only`, it is compatible with the [single-writer constraint](#phase-1-constraints) and can run concurrently with other readers on the same volume.
+
+---
+
+## Troubleshooting
+
+### `Permission denied` (`EACCES`) on file operations
+
+The agent's code is attempting to read or write a path that is not covered by the manifest's `spec.security.filesystem` allowlists, or the path contains a `..` component.
+
+Check the `FilesystemPolicyViolation` or `PathTraversalBlocked` events in the execution log to identify the exact path. Then update the manifest's `read` or `write` allowlist to include it:
+
+```yaml
+spec:
+  security:
+    filesystem:
+      write:
+        - /workspace
+        - /tmp   # add paths your agent needs
+```
+
+### `No space left on device` (`ENOSPC`) during a write
+
+The volume's `size_limit_mb` quota has been reached. A `VolumeQuotaExceeded` event is emitted with the volume ID and the byte counts. Either increase `size_limit_mb` or clean up files before writing more data.
+
+Note that quota accounting tracks cumulative bytes written, not net storage used. Deleting files does not reduce the recorded quota usage in Phase 1.
+
+### `VolumeAlreadyMounted` at execution startup
+
+A persistent volume declared with `read-write` access is already mounted by another running execution. Persistent `read-write` volumes can only be held by one execution at a time.
+
+Options:
+- Wait for the existing execution to complete before starting a new one that needs write access.
+- Switch the new execution to `read-only` access if it only needs to read the volume.
+- Use the CLI to identify which execution holds the volume: `aegis volume get <volume-id>`.
+
+### Mount hangs or times out
+
+NFS mounts use `soft` mode with a 1-second timeout and 2 retries. If the orchestrator NFS server is unreachable, the mount fails with `ETIMEDOUT` rather than hanging indefinitely. Check that the AEGIS orchestrator process is healthy and that port 2049 is reachable from the agent container's network.
