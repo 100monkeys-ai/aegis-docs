@@ -108,6 +108,7 @@ spec:
     nfs_server_host: "env:AEGIS_NFS_HOST"
     nfs_port: 2049
     nfs_mountport: 2049
+    runtime_registry_path: "runtime-registry.yaml"  # default value
 
   # ─── Network ────────────────────────────────────────────────────────────────
   network:
@@ -426,6 +427,7 @@ Optional. Controls how agent containers are launched.
 | `nfs_server_host` | string | null | NFS server host as seen by the Docker daemon host OS. Supports `env:`. |
 | `nfs_port` | u16 | `2049` | NFS server port |
 | `nfs_mountport` | u16 | `2049` | NFS mountd port |
+| `runtime_registry_path` | string | `runtime-registry.yaml` | Path to the StandardRuntime registry YAML. Resolved relative to the daemon working directory. Hard-fails at startup if missing. |
 
 **`nfs_server_host` by environment:**
 
@@ -848,6 +850,7 @@ spec:
     docker_network_mode: "env:AEGIS_DOCKER_NETWORK"
     orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
     nfs_server_host: "env:AEGIS_NFS_HOST"
+    runtime_registry_path: "runtime-registry.yaml"
   storage:
     backend: seaweedfs
     fallback_to_local: true

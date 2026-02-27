@@ -110,6 +110,25 @@ The bootstrap script connects to `AEGIS_ORCHESTRATOR_URL` → `/v1/dispatch-gate
 
 ---
 
+## Daemon Configuration
+
+The orchestrator loads the registry from disk at startup via `spec.runtime.runtime_registry_path` in `aegis-config.yaml`. The default value is `"runtime-registry.yaml"` (relative to the daemon's working directory), which matches the file committed to the orchestrator repository root — no configuration is needed for the common case.
+
+```yaml
+# aegis-config.yaml
+spec:
+  runtime:
+    # Path to the StandardRuntime registry YAM.
+    # Default: "runtime-registry.yaml" (relative to daemon working directory)
+    runtime_registry_path: "runtime-registry.yaml"
+```
+
+**Startup behaviour:** If the file is missing or contains a parse error, the daemon **hard-fails at boot** with a descriptive error message. It does not fall back silently, because a missing registry makes every `StandardRuntime` agent execution impossible.
+
+**Custom path:** Set `runtime_registry_path` to an absolute path (e.g., `"/etc/aegis/runtime-registry.yaml"`) when running the daemon from a directory other than the repository root, or when deploying via container images where the working directory differs from the source tree.
+
+---
+
 ## Version Support Lifecycle
 
 Each language version in the registry follows a support lifecycle:
