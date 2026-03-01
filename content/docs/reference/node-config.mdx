@@ -123,7 +123,7 @@ spec:
 
   # ─── Storage ────────────────────────────────────────────────────────────────
   storage:
-    backend: seaweedfs               # seaweedfs | local | local_host | opendal
+    backend: seaweedfs               # seaweedfs | local_host | opendal
     fallback_to_local: true
     nfs_port: 2049
     seaweedfs:
@@ -133,11 +133,6 @@ spec:
       default_size_limit_mb: 1000
       max_size_limit_mb: 10000
       gc_interval_minutes: 60
-    local:
-      base_path: "/var/lib/aegis/local-volumes"
-      default_ttl_hours: 24
-      default_size_limit_mb: 1000
-      max_size_limit_mb: 10000
     local_host:
       mount_point: "/data/shared_llm_weights"
     opendal:
@@ -464,11 +459,11 @@ Optional. Configures ports and TLS.
 
 ### `spec.storage`
 
-Optional. Defaults to the `local` backend.
+Optional. Defaults to the `local_host` backend.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | enum | `local` | `seaweedfs` \| `local` \| `local_host` \| `opendal` |
+| `backend` | enum | `local_host` | `seaweedfs` \| `local_host` \| `opendal` |
 | `fallback_to_local` | bool | `true` | Gracefully fall back to local storage when SeaweedFS is unreachable |
 | `nfs_port` | u16 | `2049` | NFS Server Gateway listen port |
 | `seaweedfs.filer_url` | string | `http://localhost:8888` | SeaweedFS Filer endpoint |
@@ -479,11 +474,7 @@ Optional. Defaults to the `local` backend.
 | `seaweedfs.gc_interval_minutes` | u32 | `60` | Expired volume GC interval (minutes) |
 | `seaweedfs.s3_endpoint` | string | null | Optional SeaweedFS S3 gateway endpoint |
 | `seaweedfs.s3_region` | string | `us-east-1` | S3 gateway region |
-| `local.base_path` | string | `/var/lib/aegis/local-volumes` | Base directory for local volume storage |
-| `local.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
-| `local.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
-| `local.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
-| `local_host.mount_point` | string | null | Host filesystem mount point |
+| `local_host.mount_point` | string | `/var/lib/aegis/local-host-volumes` | Host filesystem mount point for local volumes |
 | `opendal.provider` | string | `memory` | OpenDAL scheme provider |
 | `opendal.options` | map | `{}` | OpenDAL provider options |
 
@@ -868,11 +859,6 @@ spec:
       default_size_limit_mb: 1000
       max_size_limit_mb: 10000
       gc_interval_minutes: 60
-    local:
-      base_path: "/var/lib/aegis/local-volumes"
-      default_ttl_hours: 24
-      default_size_limit_mb: 1000
-      max_size_limit_mb: 10000
   database:
     url: "env:AEGIS_DATABASE_URL"
     max_connections: 5
