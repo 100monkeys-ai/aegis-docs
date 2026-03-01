@@ -87,15 +87,15 @@ spec:
     - name: workspace
       type: seaweedfs          # Default backend; seaweedfs | opendal | hostPath | smcp
       storage_class: ephemeral   # ephemeral | persistent
-      mount_point: /workspace    # absolute path inside container
+      mount_path: /workspace     # absolute path inside container
       access_mode: read-write    # read-write | read-only
       ttl_hours: 1              # required for ephemeral; hours until auto-deletion
-      size_limit_mb: 5000       # maximum volume size in MiB
+      size_limit: "5Gi"         # maximum volume size (Kubernetes-style: "500Mi", "5Gi")
 
     - name: shared-data
       type: seaweedfs
       storage_class: persistent
-      mount_point: /data
+      mount_path: /data
       access_mode: read-only
       source:
         volume_id: "vol-a1b2c3d4-..."  # pin to existing volume
@@ -107,7 +107,7 @@ spec:
         bucket: my-ml-datasets
         endpoint: "https://s3.us-east-1.amazonaws.com"
       storage_class: persistent
-      mount_point: /datasets
+      mount_path: /datasets
       access_mode: read-only
 
   # Execution strategy and validation
@@ -261,10 +261,10 @@ Supports two mutually exclusive runtime modes:
 | `provider` | string | Required for `opendal` | | The specific cloud API (e.g. `s3`, `gcs`) or scheme. |
 | `config` | object | Required for non-`seaweedfs` types | | Configuration fields unique to the specific backend proxy mechanism. |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | | Lifetime of the volume. |
-| `mount_point` | string | ✓ | | Absolute path inside the container (e.g., `/workspace`). |
+| `mount_path` | string | ✓ | | Absolute path inside the container (e.g., `/workspace`). |
 | `access_mode` | `read-write` \| `read-only` | ✓ | | Access mode enforced by AegisFSAL. |
 | `ttl_hours` | integer | Required for ephemeral | | Hours until auto-deletion (e.g., `1`, `24`). |
-| `size_limit_mb` | integer | | no limit | Maximum volume size in mebibytes. Writes beyond this return `ENOSPC`. |
+| `size_limit` | string | | no limit | Maximum volume size as a Kubernetes resource string (e.g., `"500Mi"`, `"5Gi"`). Writes beyond this return `ENOSPC`. |
 | `source.volume_id` | string | Required for persistent | | UUID of an existing persistent volume. Supports Handlebars: `{{input.dataset_volume_id}}`. |
 
 ### `spec.execution`
@@ -689,10 +689,10 @@ spec:
   volumes:
     - name: workspace
       storage_class: ephemeral
-      mount_point: /workspace
+      mount_path: /workspace
       access_mode: read-write
       ttl_hours: 1
-      size_limit_mb: 1000
+      size_limit: "1Gi"
 
   execution:
     mode: iterative
@@ -733,10 +733,10 @@ spec:
   volumes:
     - name: workspace
       storage_class: ephemeral
-      mount_point: /workspace
+      mount_path: /workspace
       access_mode: read-write
       ttl_hours: 1
-      size_limit_mb: 500
+      size_limit: "500Mi"
 
   execution:
     mode: iterative

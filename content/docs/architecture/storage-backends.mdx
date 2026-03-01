@@ -29,7 +29,7 @@ volumes:
   - name: shared-data
     type: seaweedfs
     storage_class: persistent
-    mount_point: /data
+    mount_path: /data
     access_mode: read-write
 ```
 
@@ -58,7 +58,7 @@ volumes:
       access_key_id: "secret:aws/s3-reader/access-key" # Vault resolved
       secret_access_key: "secret:aws/s3-reader/secret-key"
     storage_class: persistent
-    mount_point: /workspace/datasets
+    mount_path: /workspace/datasets
     access_mode: read-only
 ```
 
@@ -71,7 +71,7 @@ Often, an orchestrator operates on hardware with fast local NVMe drives or pre-d
 ### Mechanism
 
 - **Provider**: `LocalHostStorageProvider`
-- **Security**: Bound by `AegisFSAL`'s strict `PathSanitizer`. Agent NFS operations cannot perform path traversal escapes (`../`) out of the defined `mount_point` directory on the host. 
+- **Security**: Bound by `AegisFSAL`'s strict `PathSanitizer`. Agent NFS operations cannot perform path traversal escapes (`../`) out of the defined `mount_path` directory on the host. 
 - **Use Case**: Ultra-fast LLM weight loading, NVMe caching directories, or shared model caches pre-downloaded to the physical machine.
 
 ### Agent Manifest Example
@@ -83,7 +83,7 @@ volumes:
     config:
       path: /mnt/fast-nvme/llama-weights
     storage_class: persistent
-    mount_point: /weights
+    mount_path: /weights
     access_mode: read-only
 ```
 
@@ -109,7 +109,7 @@ volumes:
       node_id: "node-b-uuid-1234"
       remote_volume_id: "vol-9876-abc"
     storage_class: persistent
-    mount_point: /pipeline/input
+    mount_path: /pipeline/input
     access_mode: read-only
 ```
 
@@ -120,6 +120,6 @@ volumes:
 No matter which backend an agent request is routed to, it **must** pass through `AegisFSAL` first. This guarantees:
 
 1. **UID/GID Squashing**: Cloud storage permissions and host root permissions do not leak into the Agent container. Ownership appears mapped to the Agent.
-2. **Quota Enforcement**: OpenDAL S3 or HostPath directories are still subject strictly to the AEGIS volume `size_limit_mb`, ensuring agents cannot fill up orchestrator host disks or bankrupt cloud accounts.
+2. **Quota Enforcement**: OpenDAL S3 or HostPath directories are still subject strictly to the AEGIS volume `size_limit`, ensuring agents cannot fill up orchestrator host disks or bankrupt cloud accounts.
 3. **Audit Trail**: Every request to every backend emits unified `StorageEvent` tracking for full observability.
 4. **No FUSE**: Agents never need `CAP_SYS_ADMIN` capability.

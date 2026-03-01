@@ -29,20 +29,20 @@ spec:
   volumes:
     # Ephemeral workspace scratch volume — deleted after 1 hour
     - name: workspace
-      mount_point: /workspace
+      mount_path: /workspace
       access_mode: read-write
       storage_class: ephemeral
       ttl_hours: 1
 
     # Persistent output volume — survives across executions
     - name: output-store
-      mount_point: /output
+      mount_path: /output
       access_mode: read-write
       storage_class: persistent
 
     # Read-only access to a shared reference dataset
     - name: reference-data
-      mount_point: /reference
+      mount_path: /reference
       access_mode: read-only
       storage_class: persistent
       source:
@@ -54,11 +54,11 @@ spec:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | ✓ | Local identifier used to reference this mount within the manifest. |
-| `mount_point` | string | ✓ | Absolute path inside the container where the volume appears. |
+| `mount_path` | string | ✓ | Absolute path inside the container where the volume appears. |
 | `access_mode` | `read-write` \| `read-only` | ✓ | Access mode enforced by the storage gateway (AegisFSAL). |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | Lifetime of the volume. |
 | `ttl_hours` | integer | Required for ephemeral | Hours until auto-deletion (e.g., `1`, `24`, `48`). |
-| `size_limit_mb` | integer | | Maximum allowed size in MiB. Writes that exceed this emit a `VolumeQuotaExceeded` event and return `ENOSPC`. |
+| `size_limit` | string | | Maximum volume size as a Kubernetes resource string (e.g., `"500Mi"`, `"5Gi"`). Writes that exceed this emit a `VolumeQuotaExceeded` event and return `ENOSPC`. |
 | `source.volume_id` | string | Required for persistent | Pin to a specific existing volume by UUID. Supports Handlebars: `{{input.volume_id}}`. |
 
 ---
@@ -92,7 +92,7 @@ The AEGIS storage gateway (`AegisFSAL`) intercepts every POSIX operation on the 
 - **Authorization**: Verifies the requesting execution holds the volume's `FileHandle` (encoding `execution_id + volume_id`).
 - **Path canonicalization**: All paths are normalized server-side. Any `..` component is rejected before reaching SeaweedFS.
 - **Filesystem policy enforcement**: Read/write path allowlists from `spec.security.filesystem` are enforced per-operation.
-- **Quota enforcement**: Writes that would exceed `size_limit_mb` are blocked and emit `VolumeQuotaExceeded`.
+- **Quota enforcement**: Writes that would exceed `size_limit` are blocked and emit `VolumeQuotaExceeded`.
 - **Audit logging**: Every operation (open, read, write, create, delete, readdir) is published as a `StorageEvent` domain event to the event bus.
 
 ---
@@ -104,11 +104,11 @@ Set a maximum volume size in bytes:
 ```yaml
 volumes:
   - name: workspace
-    mount_point: /workspace
+    mount_path: /workspace
     access_mode: read-write
     storage_class: ephemeral
     ttl_hours: 2
-    size_limit_mb: 5120   # 5 GiB
+    size_limit: "5Gi"
 ```
 
 If the agent writes data that would exceed the quota, the write fails with `ENOSPC` inside the container and a `VolumeQuotaExceeded` event is emitted.
@@ -193,7 +193,7 @@ In the next agent manifest:
 ```yaml
 volumes:
   - name: previous-output
-    mount_point: /previous
+    mount_path: /previous
     access_mode: read-only
     storage_class: persistent
     source:
@@ -214,7 +214,7 @@ In a workflow, the standard pattern is for a writer agent to populate a persiste
 spec:
   volumes:
     - name: output
-      mount_point: /output
+      mount_path: /output
       access_mode: read-write
       storage_class: persistent
 ```
@@ -237,7 +237,7 @@ states:
 spec:
   volumes:
     - name: previous-output
-      mount_point: /input
+      mount_path: /input
       access_mode: read-only
       storage_class: persistent
       source:
@@ -297,7 +297,7 @@ spec:
 
 ### `No space left on device` (`ENOSPC`) during a write
 
-The volume's `size_limit_mb` quota has been reached. A `VolumeQuotaExceeded` event is emitted with the volume ID and the byte counts. Either increase `size_limit_mb` or clean up files before writing more data.
+The volume's `size_limit` quota has been reached. A `VolumeQuotaExceeded` event is emitted with the volume ID and the byte counts. Either increase `size_limit` or clean up files before writing more data.
 
 Note that quota accounting tracks cumulative bytes written, not net storage used. Deleting files does not reduce the recorded quota usage in Phase 1.
 

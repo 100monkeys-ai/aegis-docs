@@ -63,7 +63,7 @@ spec:
         {{/if}}
       volumes:                     # optional volume mounts for this state
         - volume: "{{workflow.storage.workspace}}"
-          mount_point: /workspace
+          mount_path: /workspace
           access_mode: read-write
       transitions:
         - condition: always        # unconditional; first matching transition wins
@@ -222,7 +222,7 @@ spec:
 | `timeout` | string | | `300s` | Maximum time in this state. Human-readable: `"300s"`, `"5m"`, `"1h"`. |
 | `volumes` | `object[]` | | | Volume mounts for this state (`Agent` kind). |
 | `volumes[].volume` | string | ✓ | | Volume reference. Supports Handlebars: `{{workflow.storage.workspace}}`. |
-| `volumes[].mount_point` | string | ✓ | | Absolute path inside the container. |
+| `volumes[].mount_path` | string | ✓ | | Absolute path inside the container. |
 | `volumes[].access_mode` | `read-write` \| `read-only` | ✓ | | Access mode enforced by AegisFSAL. |
 | `transitions` | `object[]` | ✓ | | Ordered transition rules. Evaluated top-to-bottom; first match wins. |
 

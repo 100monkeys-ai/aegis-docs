@@ -128,10 +128,10 @@ If an agent attempts to write to `/agent/config.py` but only `/workspace` is in 
 
 ## Quota Enforcement
 
-When `size_limit_mb` is set in the volume declaration, `AegisFSAL` tracks cumulative bytes written to the volume. Before each `WRITE`:
+When `size_limit` is set in the volume declaration, `AegisFSAL` tracks cumulative bytes written to the volume. Before each `WRITE`:
 
 ```
-current_volume_size + write_size > size_limit_mb * 1024 * 1024?
+current_volume_size + write_size > parsed(size_limit)?
   → YES: fail with NFS3ERR_NOSPC, emit VolumeQuotaExceeded event
   → NO:  proceed with write
 ```
@@ -218,7 +218,7 @@ The agent container's NFS mount is configured to target the orchestrator host at
 ```
 addr=<orchestrator_host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock
 device: :/<tenant_id>/<volume_id>
-target: /workspace  (or mount_point from manifest)
+target: /workspace  (or mount_path from manifest)
 ```
 
 ---
@@ -238,7 +238,7 @@ Every file operation handled by `AegisFSAL` publishes a `StorageEvent` to the ev
 | `FileDeleted` | A file is removed |
 | `PathTraversalBlocked` | A `..` component was detected in the incoming path |
 | `FilesystemPolicyViolation` | An operation violated a manifest `read`/`write` allowlist |
-| `QuotaExceeded` | A write would exceed the volume's `size_limit_mb` |
+| `QuotaExceeded` | A write would exceed the volume's `size_limit` |
 | `UnauthorizedVolumeAccess` | The requesting execution does not own the volume |
 
 All events carry `execution_id`, `volume_id`, and a timestamp. File operation events additionally carry the canonicalized `path`, byte counts, and latency in milliseconds.

@@ -332,10 +332,10 @@ spec:
   volumes:
     - name: workspace
       storage_class: ephemeral
-      mount_point: /workspace
+      mount_path: /workspace
       access_mode: read-write
       ttl_hours: 1
-      size_limit_mb: 5000
+      size_limit: "5Gi"
 
   tools:
     - name: filesystem
