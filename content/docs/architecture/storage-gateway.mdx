@@ -43,9 +43,11 @@ AegisFSAL (File System Abstraction Layer)
   ├──► Enforce quota (size_limit_bytes)
   ├──► Publish StorageEvent to Event Bus
   ▼
-StorageProvider trait
+StorageProvider trait (via StorageRouter)
   ├── SeaweedFS POSIX API client (default)
-  └── (future) S3-compatible / local filesystem
+  ├── OpenDalStorageProvider (S3, GCS, Azure)
+  ├── LocalHostStorageProvider (NVMe, bind mounts)
+  └── SmcpStorageProvider (Remote Node execution coordination)
 ```
 
 ---
@@ -138,7 +140,10 @@ Quota accounting is maintained in-memory per execution and persisted to PostgreS
 
 ---
 
-## Transport Abstraction (AegisFSAL)
+## Storage Routing
+The `StorageRouter` acts as a proxy for the `AegisFSAL`, allowing operations on volumes using distinct backends (like OpenDAL or LocalHost). Every POSIX operation requests the `StorageRouter` to find the correct `StorageProvider` for the specified `volume_id` in the `FileHandle`.
+
+For more in-depth operational mechanisms regarding diverse storage modes, see [Storage Backends](/docs/architecture/storage-backends).
 
 `AegisFSAL` is designed as a transport-agnostic core. The NFSv3 server is the Phase 1 transport for Docker-based deployments. In Phase 2 (Firecracker), a `virtio-fs` frontend will use the same `AegisFSAL` security and authorization logic with zero code duplication:
 

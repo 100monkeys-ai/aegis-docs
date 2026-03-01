@@ -1,0 +1,125 @@
+---
+title: Storage Backends
+description: Comprehensive guide to the storage backends supported by AEGIS, including SeaweedFS, OpenDAL, Local Host mounts, and SMCP remote volumes.
+---
+
+# Storage Backends
+
+AEGIS orchestrators support mounting a diverse array of storage backends directly into Agent containers while maintaining strict Phase 1 zero-privilege security guarantees.
+
+This is achieved via the `AegisFSAL` (File System Abstraction Layer) which dynamically proxies NFS file operations (like `read`, `write`, `getattr`) to the appropriate underlying storage backend instance associated with the volume metadata.
+
+---
+
+## 1. SeaweedFS (Default)
+
+SeaweedFS is the standard, distributed storage backend for AEGIS. It provides high-performance, clustered POSIX-like storage.
+
+### Mechanism
+
+- **Provider**: `SeaweedFSAdapter`
+- **NFS Proxying**: Requests are translated by the orchestrator into HTTP operations hitting the SeaweedFS Filer API (usually port `8888`).
+- **Use Case**: General purpose ephemeral scratch space, and standard persistent volumes.
+
+### Agent Manifest Example
+
+By default, volumes use SeaweedFS. You can map them explicitly:
+```yaml
+volumes:
+  - name: shared-data
+    type: seaweedfs
+    storage_class: persistent
+    mount_point: /data
+    access_mode: read-write
+```
+
+---
+
+## 2. OpenDAL (Cloud APIs)
+
+OpenDAL allows agents to mount broad cloud storage APIs natively (such as S3, GCS, Azure Blob, WebDAV) as if they were local POSIX filesystems.
+
+### Mechanism
+
+- **Provider**: `OpenDalStorageProvider`
+- **Security**: The agent container requires **zero credentials**. The Orchestrator resolves credentials (via OpenBao integration) and instantiates the `opendal::Operator`. All API translation and authentication are handled transparently by the orchestrator host proxying I/O over the NFS interface.
+- **Use Case**: Direct loading of massive ML datasets from S3 without copying into SeaweedFS first; writing model checkpoints directly to cloud buckets.
+
+### Agent Manifest Example
+
+```yaml
+volumes:
+  - name: datasets
+    type: opendal
+    provider: s3
+    config:
+      bucket: my-ml-datasets
+      endpoint: "https://s3.us-east-1.amazonaws.com"
+      access_key_id: "secret:aws/s3-reader/access-key" # Vault resolved
+      secret_access_key: "secret:aws/s3-reader/secret-key"
+    storage_class: persistent
+    mount_point: /workspace/datasets
+    access_mode: read-only
+```
+
+---
+
+## 3. Local Host Mounts
+
+Often, an orchestrator operates on hardware with fast local NVMe drives or pre-downloaded shared weights. `LocalHost` proxies allow agents to mount a directory physically present on the orchestrator host.
+
+### Mechanism
+
+- **Provider**: `LocalHostStorageProvider`
+- **Security**: Bound by `AegisFSAL`'s strict `PathSanitizer`. Agent NFS operations cannot perform path traversal escapes (`../`) out of the defined `mount_point` directory on the host. 
+- **Use Case**: Ultra-fast LLM weight loading, NVMe caching directories, or shared model caches pre-downloaded to the physical machine.
+
+### Agent Manifest Example
+
+```yaml
+volumes:
+  - name: local-weights
+    type: hostPath
+    config:
+      path: /mnt/fast-nvme/llama-weights
+    storage_class: persistent
+    mount_point: /weights
+    access_mode: read-only
+```
+
+---
+
+## 4. SMCP Remote Volumes
+
+Secure Model Context Protocol (SMCP) provides secure, identity-verified node-to-node communication. For storage, it allows an agent running on Node A to interact with a volume physically managed by Node B.
+
+### Mechanism
+
+- **Provider**: `SmcpStorageProvider`
+- **Security**: POSIX operations (e.g., `read_at`) are wrapped into signed `SmcpEnvelope` API requests. The receiving orchestrator (Node B) verifies Node A's cryptographic Identity and Cedar policies before applying the read to its own local `AegisFSAL` layers.
+- **Use Case**: Swarm coordination, cross-node pipeline execution without relying on a centralized storage backbone.
+
+### Agent Manifest Example
+
+```yaml
+volumes:
+  - name: remote-pipeline-data
+    type: smcp
+    config:
+      node_id: "node-b-uuid-1234"
+      remote_volume_id: "vol-9876-abc"
+    storage_class: persistent
+    mount_point: /pipeline/input
+    access_mode: read-only
+```
+
+---
+
+## Security Model Overview
+
+No matter which backend an agent request is routed to, it **must** pass through `AegisFSAL` first. This guarantees:
+
+1. **UID/GID Squashing**: Cloud storage permissions and host root permissions do not leak into the Agent container. Ownership appears mapped to the Agent.
+2. **Quota Enforcement**: OpenDAL S3 or HostPath directories are still subject strictly to the AEGIS volume `size_limit_mb`, ensuring agents cannot fill up orchestrator host disks or bankrupt cloud accounts.
+3. **Audit Trail**: Every request to every backend emits unified `StorageEvent` tracking for full observability.
+4. **No FUSE**: Agents never need `CAP_SYS_ADMIN` capability.

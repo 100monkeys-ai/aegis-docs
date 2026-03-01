@@ -110,33 +110,142 @@ docker push myregistry/my-agent:latest
 
 ## Step 2: Implement `bootstrap.py`
 
-`bootstrap.py` is the in-container entrypoint. It interacts with the orchestrator and can invoke tools through the dispatch channel.
+`bootstrap.py` is the in-container entrypoint. It implements the **Aegis Dispatch Protocol** — a bidirectional loop over `POST /v1/dispatch-gateway` that the orchestrator uses to drive the LLM conversation and dispatch in-container commands.
+
+<Callout type="warn">
+Do **not** import `aegis-sdk` inside a custom bootstrap script. The SDK is a control-plane client for deploying agents from outside the runtime. A custom bootstrap must be **stdlib-only** (Python) or equivalent, to avoid a pip-install dependency before the container is ready. Use the `aegis.bootstrap` module types from the SDK only as a local reference during development — do not ship the import.
+</Callout>
+
+The protocol has three message types:
+
+| Message | Direction | Meaning |
+|---|---|---|
+| `AgentMessage {type:"generate"}` | bootstrap → orchestrator | Start / continue the inner loop |
+| `OrchestratorMessage {type:"dispatch"}` | orchestrator → bootstrap | Run a subprocess inside the container |
+| `OrchestratorMessage {type:"final"}` | orchestrator → bootstrap | Inner loop complete; print `content` and exit |
 
 ```python
+#!/usr/bin/env python3
+"""Custom bootstrap — implements Aegis Dispatch Protocol.
+
+This file runs inside the agent container. It is stdlib-only; no third-party
+packages are imported. The orchestrator fully renders the prompt and passes it
+as argv[1] before this script is executed.
+"""
 import json
-from aegis import AegisClient, TaskInput
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+ORCHESTRATOR_URL = os.environ.get("AEGIS_ORCHESTRATOR_URL", "http://host.docker.internal:8088")
+EXECUTION_ID = os.environ["AEGIS_EXECUTION_ID"]
+AGENT_ID = os.environ.get("AEGIS_AGENT_ID", "")
+ITERATION = int(os.environ.get("AEGIS_ITERATION", "1"))
+MODEL_ALIAS = os.environ["AEGIS_MODEL_ALIAS"]
 
 
-def main() -> None:
-    client = AegisClient()
+def post_json(payload: dict, timeout: int = 0) -> dict:
+    """POST to /v1/dispatch-gateway. timeout=0 disables socket timeout (long-poll)."""
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        f"{ORCHESTRATOR_URL}/v1/dispatch-gateway",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout or None) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
-    task: TaskInput = client.get_task()
-    user_request = task.input.get("task", "")
 
-    messages = [
+def run_dispatch(msg: dict) -> dict:
+    """Execute an action dispatched by the orchestrator and return the result."""
+    dispatch_id = msg["dispatch_id"]
+    action = msg.get("action")
+
+    if action == "exec":
+        command = [msg["command"]] + msg.get("args", [])
+        env = os.environ.copy()
+        env.update(msg.get("env_additions", {}))
+        timeout_secs = msg.get("timeout_secs", 60)
+        max_bytes = msg.get("max_output_bytes", 524288)
+        started = time.monotonic()
+        try:
+            result = subprocess.run(
+                command,
+                cwd=msg.get("cwd", "/workspace"),
+                env=env,
+                capture_output=True,
+                timeout=timeout_secs,
+            )
+            duration_ms = int((time.monotonic() - started) * 1000)
+            stdout = result.stdout.decode("utf-8", errors="replace")
+            stderr = result.stderr.decode("utf-8", errors="replace")
+            truncated = len((stdout + stderr).encode()) > max_bytes
+            if truncated:
+                half = max_bytes // 2
+                stdout, stderr = stdout[-half:], stderr[-half:]
+            return {
+                "type": "dispatch_result",
+                "execution_id": EXECUTION_ID,
+                "dispatch_id": dispatch_id,
+                "exit_code": result.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
+                "duration_ms": duration_ms,
+                "truncated": truncated,
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "type": "dispatch_result",
+                "execution_id": EXECUTION_ID,
+                "dispatch_id": dispatch_id,
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"[AEGIS] Command timed out after {timeout_secs}s",
+                "duration_ms": timeout_secs * 1000,
+                "truncated": False,
+            }
+    # Unknown action — report gracefully so the orchestrator can inject a tool error.
+    return {
+        "type": "dispatch_result",
+        "execution_id": EXECUTION_ID,
+        "dispatch_id": dispatch_id,
+        "exit_code": -1,
+        "stdout": "",
+        "stderr": f"unknown_action:{action}",
+        "duration_ms": 0,
+        "truncated": False,
+    }
+
+
+def main():
+    prompt = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()
+    if not prompt:
+        print("Error: no prompt provided", file=sys.stderr)
+        sys.exit(1)
+
+    # Send the initial generate request to start the inner loop.
+    msg = post_json(
         {
-            "role": "system",
-            "content": (
-                "You are a Python developer. Write code to solve the task. "
-                "Save your solution to /workspace/solution.py and write a JSON summary "
-                "to /workspace/result.json with fields solution_path and output."
-            ),
-        },
-        {"role": "user", "content": user_request},
-    ]
+            "type": "generate",
+            "agent_id": AGENT_ID,
+            "execution_id": EXECUTION_ID,
+            "iteration_number": ITERATION,
+            "model_alias": MODEL_ALIAS,
+            "prompt": prompt,
+            "messages": [],
+        }
+    )
 
-    response = client.generate(messages=messages)
-    print(response.content)
+    # Execute any dispatch commands until the orchestrator issues type="final".
+    while msg.get("type") == "dispatch":
+        msg = post_json(run_dispatch(msg))
+
+    # Print the final LLM response to stdout; the orchestrator captures it.
+    print(msg.get("content", ""))
 
 
 if __name__ == "__main__":

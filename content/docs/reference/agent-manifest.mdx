@@ -85,6 +85,7 @@ spec:
   # Volume mounts (ephemeral and persistent storage)
   volumes:
     - name: workspace
+      type: seaweedfs          # Default backend; seaweedfs | opendal | hostPath | smcp
       storage_class: ephemeral   # ephemeral | persistent
       mount_point: /workspace    # absolute path inside container
       access_mode: read-write    # read-write | read-only
@@ -92,11 +93,22 @@ spec:
       size_limit_mb: 5000       # maximum volume size in MiB
 
     - name: shared-data
+      type: seaweedfs
       storage_class: persistent
       mount_point: /data
       access_mode: read-only
       source:
         volume_id: "vol-a1b2c3d4-..."  # pin to existing volume
+
+    - name: cloud-datasets
+      type: opendal            # External Volume
+      provider: s3
+      config:
+        bucket: my-ml-datasets
+        endpoint: "https://s3.us-east-1.amazonaws.com"
+      storage_class: persistent
+      mount_point: /datasets
+      access_mode: read-only
 
   # Execution strategy and validation
   execution:
@@ -245,6 +257,9 @@ Supports two mutually exclusive runtime modes:
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | ✓ | | Local identifier. Must be unique within this manifest. |
+| `type` | `seaweedfs` \| `opendal` \| `hostPath` \| `smcp` | | `seaweedfs` | The storage backend mapping orchestrating this volume. |
+| `provider` | string | Required for `opendal` | | The specific cloud API (e.g. `s3`, `gcs`) or scheme. |
+| `config` | object | Required for non-`seaweedfs` types | | Configuration fields unique to the specific backend proxy mechanism. |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | | Lifetime of the volume. |
 | `mount_point` | string | ✓ | | Absolute path inside the container (e.g., `/workspace`). |
 | `access_mode` | `read-write` \| `read-only` | ✓ | | Access mode enforced by AegisFSAL. |

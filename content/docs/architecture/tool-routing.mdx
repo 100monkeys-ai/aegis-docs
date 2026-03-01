@@ -222,10 +222,13 @@ Orchestrator sends this as the HTTP response to the `POST /v1/dispatch-gateway` 
 ```json
 {
   "type": "dispatch_result",
+  "execution_id": "exec-3f4e29...",
   "dispatch_id": "c7a3f1e2-84b1-4a3c-9d7e-1f2a3b4c5d6e",
   "exit_code": 0,
   "stdout": "running 12 tests\ntest result: ok. 12 passed\n",
-  "stderr": ""
+  "stderr": "",
+  "duration_ms": 1834,
+  "truncated": false
 }
 ```
 

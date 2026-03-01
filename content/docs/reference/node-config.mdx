@@ -123,7 +123,7 @@ spec:
 
   # ─── Storage ────────────────────────────────────────────────────────────────
   storage:
-    backend: seaweedfs               # seaweedfs | local
+    backend: seaweedfs               # seaweedfs | local | local_host | opendal
     fallback_to_local: true
     nfs_port: 2049
     seaweedfs:
@@ -138,6 +138,10 @@ spec:
       default_ttl_hours: 24
       default_size_limit_mb: 1000
       max_size_limit_mb: 10000
+    local_host:
+      mount_point: "/data/shared_llm_weights"
+    opendal:
+      provider: "memory"
 
   # ─── MCP Tool Servers ───────────────────────────────────────────────────────
   mcp_servers:
@@ -464,7 +468,7 @@ Optional. Defaults to the `local` backend.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | enum | `local` | `seaweedfs` \| `local` |
+| `backend` | enum | `local` | `seaweedfs` \| `local` \| `local_host` \| `opendal` |
 | `fallback_to_local` | bool | `true` | Gracefully fall back to local storage when SeaweedFS is unreachable |
 | `nfs_port` | u16 | `2049` | NFS Server Gateway listen port |
 | `seaweedfs.filer_url` | string | `http://localhost:8888` | SeaweedFS Filer endpoint |
@@ -479,6 +483,9 @@ Optional. Defaults to the `local` backend.
 | `local.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
 | `local.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
 | `local.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
+| `local_host.mount_point` | string | null | Host filesystem mount point |
+| `opendal.provider` | string | `memory` | OpenDAL scheme provider |
+| `opendal.options` | map | `{}` | OpenDAL provider options |
 
 ---
 
