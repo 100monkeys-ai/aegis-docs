@@ -1,0 +1,127 @@
+---
+title: Built-in Tools
+description: Reference documentation for the built-in MCP tools provided by the AEGIS Orchestrator
+---
+
+The AEGIS Orchestrator provides a set of native, built-in tools out of the box. These tools are implemented internally for high performance, deep security integration, and specialized infrastructure abstraction. Built-in tools bypass the overhead of sidecar MCP servers.
+
+## Filesystem Abstraction Layer (FSAL) Tools
+
+The `fs.*` tools interact directly with the `AegisFSAL` (File System Abstraction Layer), meaning they work transparently across SeaweedFS, Local Host storage, and OpenDAL backends. They automatically respect the agent's volume ownership and `FilesystemPolicy`.
+
+### `fs.read`
+
+Reads the contents of a file.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the file to read.
+
+### `fs.write`
+
+Writes content to a file, creating it if it doesn't exist or overwriting it if it does.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the file to write to.
+- `content` (string, required): The string content to write.
+
+### `fs.list`
+
+Lists the contents of a directory.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the directory to list. Defaults to `/` if not provided.
+
+### `fs.create_dir`
+
+Creates a new directory along with any necessary parent directories.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the directory to create.
+
+### `fs.delete`
+
+Deletes a file or directory.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the file or directory to delete.
+- `recursive` (boolean, optional): Set to `true` to delete a directory and all its contents recursively. Default is `false`.
+
+### `fs.edit`
+
+Performs an exact string replacement in a file. The target content must match exactly one occurrence in the file.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the file to edit.
+- `target_content` (string, required): Exact string content to find and replace.
+- `replacement_content` (string, required): New string content to insert.
+
+### `fs.multi_edit`
+
+Performs multiple sequential string replacements in a file. Provides a more atomic way to apply several edits at once.
+
+**Parameters:**
+
+- `path` (string, required): Absolute or relative POSIX path of the file to edit.
+- `edits` (array of objects, required): Array of edits to apply sequentially. Each object must have:
+  - `target_content` (string, required)
+  - `replacement_content` (string, required)
+
+### `fs.grep`
+
+Recursively searches for a regex pattern within files in a given directory. Uses the `AegisFSAL` to traverse the directory structure.
+
+**Parameters:**
+
+- `pattern` (string, required): Regex pattern to search for.
+- `path` (string, required): Directory path to start the recursive search from.
+
+### `fs.glob`
+
+Recursively matches files against a glob pattern.
+
+**Parameters:**
+
+- `pattern` (string, required): Glob pattern to match files (e.g., `*.rs`, `src/**/*.ts`).
+- `path` (string, required): Directory path to start the recursive search from.
+
+## Web Tools
+
+The `web.*` tools provide native HTTP request and web search capabilities, including HTML scraping and content extraction.
+
+### `web.search`
+
+Performs an internet search query. Currently defaults to DuckDuckGo HTML scraping.
+
+**Parameters:**
+
+- `query` (string, required): The search query.
+- `max_results` (integer, optional): Maximum number of results to return. Default is `10`.
+
+### `web.fetch`
+
+Fetches content from a URL, optionally converting HTML pages into clean Markdown.
+
+**Parameters:**
+
+- `url` (string, required): URL to fetch content from. Must start with `http://` or `https://`.
+- `to_markdown` (boolean, optional): Convert HTML to markdown. Default is `true`.
+- `follow_redirects` (boolean, optional): Whether to follow HTTP redirects. Default is `true`.
+- `timeout_secs` (integer, optional): Request timeout in seconds. Default is `30`.
+
+## Dispatch Protocol Tools
+
+These tools map to the AEGIS Dispatch Protocol, meaning the orchestrator intercepts the tool call and fulfills it by injecting execution commands into the agent's isolation boundary (e.g., Docker container).
+
+### `cmd.run`
+
+Executes a shell command within the agent's containerized workspace. Subject to the agent's `SubcommandAllowlist` policy.
+
+**Parameters:**
+
+- `command` (string, required): The shell command and arguments to execute.

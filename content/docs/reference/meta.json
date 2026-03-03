@@ -6,6 +6,7 @@
         "workflow-manifest",
         "node-config",
         "cli",
-        "grpc-api"
+        "grpc-api",
+        "builtin-tools"
     ]
 }
