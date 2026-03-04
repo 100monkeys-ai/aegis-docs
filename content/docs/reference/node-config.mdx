@@ -144,7 +144,11 @@ spec:
       enabled: true
       executable: "node"
       args: ["/opt/aegis-tools/web-search/index.js"]
-      capabilities: [web.search, web.fetch]
+      capabilities:
+        - name: web.search
+          skip_judge: true   # read-only lookup — skip inner-loop judge overhead
+        - name: web.fetch
+          skip_judge: true   # read-only fetch — skip inner-loop judge overhead
       credentials:
         SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
       environment:
@@ -187,16 +191,34 @@ spec:
 
   # ─── Builtin Dispatchers ────────────────────────────────────────────────────
   builtin_dispatchers:
-    cmd:
+    - name: "cmd"
+      description: "Execute shell commands inside the agent container via Dispatch Protocol"
       enabled: true
-      default_timeout_secs: 60
-      max_timeout_ceiling_secs: 300
-      max_output_bytes: 524288
-      max_concurrent_per_execution: 1
-      global_env_denylist:
-        - AEGIS_TOKEN
-        - OPENAI_API_KEY
-        - ANTHROPIC_API_KEY
+      capabilities:
+        - name: cmd.run
+          skip_judge: false  # state-mutating — always validate
+    - name: "fs"
+      description: "Filesystem operations routed through AegisFSAL"
+      enabled: true
+      capabilities:
+        - name: fs.read
+          skip_judge: true   # read-only — skip inner-loop judge overhead
+        - name: fs.write
+          skip_judge: false  # state-mutating — always validate
+        - name: fs.list
+          skip_judge: true   # read-only — skip inner-loop judge overhead
+        - name: fs.grep
+          skip_judge: true   # read-only — skip inner-loop judge overhead
+        - name: fs.glob
+          skip_judge: true   # read-only — skip inner-loop judge overhead
+        - name: fs.edit
+          skip_judge: false  # state-mutating — always validate
+        - name: fs.multi_edit
+          skip_judge: false  # state-mutating — always validate
+        - name: fs.create_dir
+          skip_judge: false  # state-mutating — always validate
+        - name: fs.delete
+          skip_judge: false  # state-mutating — always validate
 
   # ─── IAM (Keycloak) ─────────────────────────────────────────────────────────
   keycloak:
@@ -490,7 +512,7 @@ Optional array. Each entry defines an external MCP Tool Server process.
 | `enabled` | bool | `true` | Whether to start this server |
 | `executable` | string | — | Executable path |
 | `args` | string[] | `[]` | Command-line arguments |
-| `capabilities` | string[] | `[]` | Tool names this server provides (used for routing) |
+| `capabilities` | CapabilityConfig[] | `[]` | Per-tool capability objects (see below) |
 | `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `env:` and `vault:`. |
 | `environment` | map | `{}` | Non-secret env vars for the server process |
 | `health_check.interval_seconds` | u64 | `60` | Health check interval |
@@ -498,6 +520,13 @@ Optional array. Each entry defines an external MCP Tool Server process.
 | `health_check.method` | string | `tools/list` | MCP method used to health-check the server |
 | `resource_limits.cpu_millicores` | u32 | `1000` | CPU limit (1000 = 1 core) |
 | `resource_limits.memory_mb` | u32 | `512` | Memory limit (MB) |
+
+Each `CapabilityConfig` entry:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `name` | string | — | Tool name exposed to agents (e.g. `"web.search"`, `"gmail.read"`) |
+| `skip_judge` | bool | `false` | When `true`, the inner-loop semantic judge is bypassed for this tool even if `spec.execution.tool_validation` is enabled in the agent manifest. Set `true` for read-only / idempotent tools to reduce latency. Set `false` for any state-mutating tool. |
 
 ---
 
@@ -544,16 +573,37 @@ Each `capabilities` entry (`CapabilityDefinition`):
 
 ### `spec.builtin_dispatchers`
 
-Optional. Configures the `cmd` Dispatch Protocol handler. This is an in-process handler — it is **not** an MCP server process.
+Optional array. Configures the built-in in-process tool handlers. These are **not** external MCP server processes — they are implemented directly inside the orchestrator binary and dispatched via the [Dispatch Protocol](/docs/architecture/dispatch-protocol).
+
+Each entry:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `cmd.enabled` | bool | `true` | Enable `cmd.run` dispatch |
-| `cmd.default_timeout_secs` | u64 | `60` | Default subprocess timeout |
-| `cmd.max_timeout_ceiling_secs` | u64 | `300` | Maximum timeout an agent manifest may request |
-| `cmd.max_output_bytes` | u64 | `524288` | Max stdout + stderr per subprocess (512 KB) |
-| `cmd.max_concurrent_per_execution` | u32 | `1` | Max concurrent subprocesses per execution |
-| `cmd.global_env_denylist` | string[] | *(see sample)* | Env vars that must never be forwarded to agent subprocesses |
+| `name` | string | — | Dispatcher identifier (e.g. `"cmd"`, `"fs"`) |
+| `description` | string | `""` | Human-readable description forwarded to the LLM tool schema |
+| `enabled` | bool | `true` | Activate or deactivate this dispatcher |
+| `capabilities` | CapabilityConfig[] | `[]` | Per-tool capability objects (same schema as `spec.mcp_servers[].capabilities`) |
+
+Each `CapabilityConfig` entry follows the same schema described under [`spec.mcp_servers`](#specmcp_servers) above.
+
+**`skip_judge` defaults by tool:**
+
+| Tool | Default `skip_judge` | Rationale |
+|------|---------------------|-----------|
+| `cmd.run` | `false` | State-mutating — subprocess output must always be validated |
+| `fs.read` | `true` | Read-only — file contents are deterministic |
+| `fs.write` | `false` | State-mutating — written content must be validated |
+| `fs.list` | `true` | Read-only — directory listings are deterministic |
+| `fs.grep` | `true` | Read-only — search results are deterministic |
+| `fs.glob` | `true` | Read-only — glob matches are deterministic |
+| `fs.edit` | `false` | State-mutating — edits must be validated |
+| `fs.multi_edit` | `false` | State-mutating — edits must be validated |
+| `fs.create_dir` | `false` | State-mutating |
+| `fs.delete` | `false` | State-mutating — destructive operation |
+| `web.search` | `true` | Read-only external lookup |
+| `web.fetch` | `true` | Read-only HTTP fetch |
+
+If `spec.builtin_dispatchers` is omitted the orchestrator uses the compiled-in defaults shown above. Explicit configuration is only needed when overriding those defaults.
 
 ---
 

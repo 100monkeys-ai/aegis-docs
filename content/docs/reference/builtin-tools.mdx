@@ -5,6 +5,33 @@ description: Reference documentation for the built-in MCP tools provided by the 
 
 The AEGIS Orchestrator provides a set of native, built-in tools out of the box. These tools are implemented internally for high performance, deep security integration, and specialized infrastructure abstraction. Built-in tools bypass the overhead of sidecar MCP servers.
 
+## Inner-Loop Judge Optimization (`skip_judge`)
+
+When an agent manifest enables `spec.execution.tool_validation`, the orchestrator runs a **semantic judge** after each tool call to validate its output before letting the agent proceed. This adds latency but catches unsafe or incorrect tool results early.
+
+For **read-only tools** the judge adds latency without safety benefit — the file contents or search results are deterministic and carry no write-side risk. Operators can set `skip_judge: true` on individual tools in `spec.builtin_dispatchers[].capabilities` or `spec.mcp_servers[].capabilities` in the [Node Configuration](/docs/reference/node-config#specbuiltin_dispatchers) to bypass the judge for those specific tools.
+
+**Compiled-in defaults:**
+
+| Tool | `skip_judge` default | Rationale |
+|------|---------------------|-----------|
+| `cmd.run` | `false` | State-mutating — subprocess output must be validated |
+| `fs.read` | `true` | Read-only |
+| `fs.write` | `false` | State-mutating |
+| `fs.list` | `true` | Read-only |
+| `fs.grep` | `true` | Read-only |
+| `fs.glob` | `true` | Read-only |
+| `fs.edit` | `false` | State-mutating |
+| `fs.multi_edit` | `false` | State-mutating |
+| `fs.create_dir` | `false` | State-mutating |
+| `fs.delete` | `false` | State-mutating — destructive |
+| `web.search` | `true` | Read-only external lookup |
+| `web.fetch` | `true` | Read-only HTTP fetch |
+
+These defaults can be overridden per-tool in the node configuration. `skip_judge` is an **operator-level** flag — agents cannot influence it.
+
+---
+
 ## Filesystem Abstraction Layer (FSAL) Tools
 
 The `fs.*` tools interact directly with the `AegisFSAL` (File System Abstraction Layer), meaning they work transparently across SeaweedFS, Local Host storage, and OpenDAL backends. They automatically respect the agent's volume ownership and `FilesystemPolicy`.
