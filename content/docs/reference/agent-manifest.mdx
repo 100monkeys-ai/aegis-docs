@@ -137,6 +137,11 @@ spec:
         threshold: 0.80          # confidence threshold (0.0–1.0)
         timeout_seconds: 30
         fallback_on_unavailable: skip  # skip | fail
+    tool_validation:
+      - type: semantic           # Pre-execution semantic judge for tool calls
+        judge_agent: "security-judge"
+        criteria: "Ensure the tool call is safe and aligns with the agent's goal."
+        min_score: 0.85
 
   # MCP tools the agent may invoke
   tools:
@@ -276,7 +281,8 @@ Supports two mutually exclusive runtime modes:
 | `iteration_timeout` | string | | `"300s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations. |
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
 | `llm_timeout_seconds` | integer | | `300` | HTTP socket timeout for bootstrap.py LLM proxy calls in seconds. Applies to network requests from agent to orchestrator. |
-| `validation` | object | | | Acceptance criteria (see below). |
+| `validation` | object | | | Outer-loop acceptance criteria (end of iteration). |
+| `tool_validation` | `object[]` | | | Inner-loop pre-execution semantic evaluation for tool calls. |
 
 ### `spec.execution.validation`
 

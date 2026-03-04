@@ -111,6 +111,28 @@ validation:
 
 ---
 
+## Inner-Loop Tool Validation (`tool_validation`)
+
+While the `validation` blocks above operate on the outer execution iteration (end of run), agents can also be checked *during* execution just before they invoke a tool. This prevents agents from calling potentially unsafe tools or wasting time on hallucinations.
+
+Unlike outer validators, the inner `tool_validation` acts synchronously:
+1. Agent decides to call a tool (e.g. `cmd.run`).
+2. Orchestrator intercepts the call and runs the `tool_validation` judge.
+3. If the judge returns confidence < `threshold`, the tool call is rejected, an error is appended to the inner-loop prompt, and the agent tries again *without* terminating the full iteration.
+
+```yaml
+execution:
+  tool_validation:
+    - type: semantic
+      judge_agent: security-judge
+      criteria: |
+        Determine if the tool call and arguments are safe and align with the agent's goal.
+      min_score: 0.85
+      min_confidence: 0.8
+```
+
+---
+
 ## Gradient Scoring vs. Binary Validation
 
 Traditional validators return pass/fail. AEGIS validators return a score and confidence, enabling:

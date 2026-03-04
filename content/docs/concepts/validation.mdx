@@ -68,6 +68,14 @@ When a judge's self-reported `confidence` falls below the validator's `min_confi
 
 ---
 
+## Inner-Loop Tool Validation
+
+While the outer-loop `validation` runs at the **end** of an iteration (evaluating the final output), AEGIS also supports **inner-loop** validation via the `tool_validation` field.
+
+This pre-execution semantic judge evaluates the agent's *intent* to use a specific tool. If an agent hallucinates a dangerous `cmd.run` payload, the Orchestrator pauses the execution, submits the proposed tool call to the semantic judge, and uses its gradient score to either permit the invocation or reject it synchronously. This fast-feedback mechanism prevents the agent from executing harmful actions and immediately provides reasoning to correct its course without failing the entire iteration.
+
+---
+
 ## Judge Agents Are Child Executions
 
 When a `semantic` or `multi_judge` validator fires, the orchestrator does not call an internal function. It spawns the judge agent as a **child execution** — a full, isolated container run tracked in the same execution tree as the parent.
