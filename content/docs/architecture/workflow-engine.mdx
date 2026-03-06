@@ -62,7 +62,11 @@ The AEGIS Workflow manifest maps to Temporal as follows:
 | `Workflow` | Temporal Workflow Definition |
 | `WorkflowExecution` | Temporal Workflow Run |
 | `WorkflowState` (Agent) | Temporal Activity |
+| `WorkflowState` (System) | Temporal Activity |
 | `WorkflowState` (Human) | Temporal Signal Handler |
+| `WorkflowState` (ParallelAgents) | Parallel Temporal Activities + aggregation |
+| `WorkflowState` (ContainerRun) | Temporal Activity (`executeContainerRunActivity`) |
+| `WorkflowState` (ParallelContainerRun) | Parallel Temporal Activities (`executeContainerRunActivity` × N) |
 | `Blackboard` | Temporal Workflow State (persisted in Temporal's event history) |
 | `TransitionRule` | Conditional logic within the Temporal workflow function |
 
@@ -124,6 +128,23 @@ enum StateKind {
         agents: Vec<ParallelAgentConfig>,       // concurrent agent configs
         consensus: ConsensusConfig,             // aggregation strategy
     },
+    ContainerRun {
+        name: Option<String>,                   // human-readable label for Synapse UI
+        image: String,                          // registry/repo:tag or standard runtime reference
+        image_pull_policy: ImagePullPolicy,     // Always | IfNotPresent | Never
+        command: Vec<String>,                   // exec-form command; joined under sh -c if shell=true
+        shell: bool,                            // wrap in /bin/sh -c
+        env: HashMap<String, String>,
+        workdir: Option<String>,
+        volumes: Vec<ContainerVolumeMount>,
+        resources: Option<ContainerResources>,  // cpu millicores, memory, timeout
+        registry_credentials: Option<String>,   // OpenBao path resolved by orchestrator
+        retry: Option<RetryConfig>,
+    },
+    ParallelContainerRun {
+        steps: Vec<ContainerRunConfig>,         // concurrent container steps
+        completion: ParallelCompletionStrategy, // AllSucceed | AnySucceed | BestEffort
+    },
 }
 
 struct TransitionRule {
@@ -162,6 +183,8 @@ The TypeScript worker never executes agent code directly. All compute-heavy work
 | `executeSystemCommandActivity` | `AegisRuntime.ExecuteSystemCommand` | unary | Runs a shell command on the orchestrator host. |
 | `validateOutputActivity` | `AegisRuntime.ValidateWithJudges` | unary | Runs gradient validation against configured judge agents; returns a score (0.0–1.0) and confidence. |
 | `executeParallelAgentsActivity` | `AegisRuntime.ExecuteAgent` × N, then `ValidateWithJudges` | parallel + unary | Fans out to N concurrent `ExecuteAgent` calls via `Promise.all`, then computes consensus. |
+| `executeContainerRunActivity` | `AegisRuntime.ExecuteContainerRun` | unary | Creates a container, mounts volumes via NFS gateway, runs the command, captures stdout/stderr/exit_code, destroys the container. No LLM, no bootstrap, no iteration loop. |
+| `executeParallelContainerRunActivity` | `AegisRuntime.ExecuteContainerRun` × N | `Promise.allSettled` + aggregation | Dispatches N concurrent `executeContainerRunActivity` calls; aggregates results per `ParallelCompletionStrategy`. |
 
 The gRPC server runs on port 50051 (configurable via `AEGIS_RUNTIME_GRPC_URL`). Security policy enforcement, SMCP attestation, and container lifecycle remain entirely in Rust — the TypeScript worker has no direct access to agent containers or the Docker socket.
 
@@ -187,7 +210,9 @@ The Rust orchestrator **never mutates the Blackboard during live execution** —
 
 ### State Output Conventions
 
-When a `WorkflowState.Agent` completes, the Temporal worker writes the execution result to the Blackboard under the state's name:
+When a state completes, the Temporal worker writes the execution result to the Blackboard under the state's name. The shape differs by state kind:
+
+**`Agent` state:**
 
 ```
 Blackboard["REQUIREMENTS"] = {
@@ -195,6 +220,27 @@ Blackboard["REQUIREMENTS"] = {
   "output": "...agent's final output text...",
   "score": 0.92,
   "iterations": 2
+}
+```
+
+**`ContainerRun` state:**
+
+```
+Blackboard["BUILD"] = {
+  "exit_code": 0,
+  "stdout": "Compiling my-crate v0.1.0\n   Finished release in 12.3s",
+  "stderr": "",
+  "duration_ms": 12350
+}
+```
+
+**`ParallelContainerRun` state** (keyed by step `name`):
+
+```
+Blackboard["TEST"] = {
+  "unit-tests":   { "exit_code": 0, "stdout": "...", "stderr": "",    "duration_ms": 4200 },
+  "lint":         { "exit_code": 0, "stdout": "",    "stderr": "",    "duration_ms": 870  },
+  "format-check": { "exit_code": 1, "stdout": "",    "stderr": "...", "duration_ms": 410  }
 }
 ```
 
@@ -222,8 +268,13 @@ Key variables:
 | Variable | Description |
 |---|---|
 | `{{STATE.output}}` | Final output text of an Agent state. |
-| `{{STATE.output.stdout}}` | stdout of a System state. |
-| `{{STATE.output.stderr}}` | stderr of a System state. |
+| `{{STATE.output.stdout}}` | stdout of a System or ContainerRun state. |
+| `{{STATE.output.stderr}}` | stderr of a System or ContainerRun state. |
+| `{{STATE.output.exit_code}}` | Exit code of a System or ContainerRun state. |
+| `{{STATE.output.duration_ms}}` | Wall-clock duration in ms (ContainerRun states). |
+| `{{STATE.output.STEPNAME.stdout}}` | Per-step stdout (ParallelContainerRun states). |
+| `{{STATE.output.STEPNAME.stderr}}` | Per-step stderr (ParallelContainerRun states). |
+| `{{STATE.output.STEPNAME.exit_code}}` | Per-step exit code (ParallelContainerRun states). |
 | `{{STATE.status}}` | `"success"` or `"failed"`. |
 | `{{STATE.score}}` | Validation score of an Agent state (0.0–1.0). |
 | `{{STATE.consensus.score}}` | Aggregated score of a ParallelAgents state. |
@@ -256,6 +307,51 @@ WorkflowExecution
 ```
 
 Human states respect `timeout_secs`. If no signal arrives within the timeout, the workflow evaluates its `transitionS`. Typically the last (unconditional) transition leads to a `failed` state.
+
+---
+
+## ContainerRun State
+
+When a `WorkflowState.ContainerRun` is entered, the Temporal worker calls `executeContainerRunActivity`. This activity calls the Rust orchestrator via `AegisRuntime.ExecuteContainerRun` gRPC — the orchestrator creates the container, mounts volumes through the NFS Server Gateway, runs the command, captures output, destroys the container, and returns the result. There is no LLM, no `bootstrap.py`, and no 100monkeys iteration loop.
+
+```
+Enter BUILD (ContainerRun)
+│
+├── executeContainerRunActivity(image, command, volumes, resources)
+│     │
+│     ├── gRPC AegisRuntime.ExecuteContainerRun
+│     │     ├── Pull image (respects image_pull_policy)
+│     │     ├── docker run --rm -v <NFS-mount>:/workspace --cpus 2 --memory 4g
+│     │     │     └── cargo build --release
+│     │     ├── Capture stdout + stderr (up to 1 MB each)
+│     │     └── Return { exit_code, stdout, stderr, duration_ms }
+│     │
+│     └── Blackboard["BUILD"] = { exit_code, stdout, stderr, duration_ms }
+│
+TransitionRules evaluated on exit_code → next state chosen
+```
+
+For `ParallelContainerRun`, the worker fans out with `Promise.allSettled` and aggregates per `ParallelCompletionStrategy`:
+
+```
+Enter TEST (ParallelContainerRun, completion: all_succeed)
+│
+├── executeContainerRunActivity(unit-tests, ...)
+├── executeContainerRunActivity(lint, ...)        (all three run simultaneously)
+└── executeContainerRunActivity(format-check, ...)
+         │
+         └── Promise.allSettled — wait for all three
+               │
+               completion: all_succeed
+                 → all exit_code == 0?  → on_success transition
+                 → any exit_code != 0?  → on_failure transition
+               │
+         Blackboard["TEST"] = {
+           "unit-tests":   { exit_code, stdout, stderr, duration_ms },
+           "lint":         { exit_code, stdout, stderr, duration_ms },
+           "format-check": { exit_code, stdout, stderr, duration_ms }
+         }
+```
 
 ---
 
