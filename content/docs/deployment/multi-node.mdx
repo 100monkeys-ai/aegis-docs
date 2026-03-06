@@ -1,0 +1,192 @@
+---
+title: Multi-Node Deployment
+description: Distribute AEGIS across multiple machines using orchestrator, edge, and hybrid node types.
+---
+
+# Multi-Node Deployment
+
+A single AEGIS deployment can span multiple machines. Each machine runs one `aegis daemon` process configured with a `spec.node.type` that determines its role in the cluster.
+
+---
+
+## Node Types
+
+| Type | Role |
+|------|------|
+| `orchestrator` | Hosts the management plane: API server, workflow engine, Temporal client, Cortex connection, secrets manager. Does **not** run agent containers locally. |
+| `edge` | Executes agent containers (Docker runtime). Does not expose the public API. Connects to an `orchestrator` node for task assignment. |
+| `hybrid` | Combines both roles on a single machine. The default for development and small deployments. |
+
+---
+
+## Typical Topologies
+
+### Development / Single Node
+
+```
+┌──────────────┐
+│   Hybrid     │  spec.node.type: hybrid
+│              │
+│  API Server  │  → receives gRPC + REST
+│  Scheduler   │  → assigns executions
+│  Docker      │  → runs agent containers
+└──────────────┘
+```
+
+Use `type: hybrid` for local development and small deployments. This is the default in `aegis-config.yaml`.
+
+---
+
+### Production — Separated Control / Data Plane
+
+```
+┌────────────────────┐
+│   Orchestrator     │  spec.node.type: orchestrator
+│   (1–3 instances)  │
+│                    │
+│  API → gRPC → REST │
+│  Workflow engine   │
+│  Temporal client   │
+│  Secrets (OpenBao) │
+└──────────┬─────────┘
+           │  (internal network)
+    ┌──────┴──────┐
+    │             │
+┌───▼───┐   ┌────▼──┐
+│ Edge  │   │ Edge  │   spec.node.type: edge
+│  #1   │   │  #2   │
+│Docker │   │Docker │   Each edge node runs
+│agents │   │agents │   agent containers
+└───────┘   └───────┘
+```
+
+Edge nodes handle the compute-intensive agent workloads. Adding more edge nodes scales execution throughput without affecting the orchestrator.
+
+---
+
+## Configuring Nodes
+
+### Orchestrator Node
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: NodeConfig
+metadata:
+  name: "orchestrator-primary"
+spec:
+  node:
+    id: "orch-node-1"
+    type: "orchestrator"
+    region: "us-west-2"
+    tags: ["primary"]
+
+  # Orchestrator nodes must specify all external dependencies
+  llm_providers: [...]
+  storage: { backend: "seaweedfs", ... }
+  # ...
+```
+
+### Edge Node
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: NodeConfig
+metadata:
+  name: "edge-worker-1"
+spec:
+  node:
+    id: "edge-node-1"
+    type: "edge"
+    region: "us-west-2"
+    tags: ["gpu", "large-memory"]
+    resources:
+      cpu_cores: 32
+      memory_gb: 128
+      disk_gb: 500
+      gpu: true
+
+  runtime:
+    # Point the edge node at the orchestrator for callbacks
+    orchestrator_url: "https://orchestrator.internal:8080"
+    docker_network_mode: "aegis-net"
+    nfs_server_host: "127.0.0.1"
+
+  # Edge nodes do not need llm_providers or storage config —
+  # they delegate those duties to the orchestrator
+```
+
+#### `spec.node.resources`
+
+Declare available hardware so the scheduler can make placement decisions:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cpu_cores` | integer | CPU cores available to agent containers |
+| `memory_gb` | integer | RAM in GB available to agent containers |
+| `disk_gb` | integer | Disk space in GB |
+| `gpu` | boolean | Whether a GPU is available |
+
+#### `spec.node.tags`
+
+Tags are used for execution target matching. An agent manifest can specify `spec.execution.target_tags` to pin executions to nodes with matching tags:
+
+```yaml
+# In agent manifest
+spec:
+  execution:
+    target_tags: ["gpu"]    # Only schedule on nodes tagged "gpu"
+```
+
+---
+
+## Node Registration
+
+Each node registers with the orchestrator on startup by posting its `NodeIdentity` (type, id, region, tags, resources). The orchestrator maintains a live registry and uses it for scheduling decisions.
+
+Edge nodes poll the orchestrator for assigned executions. When an execution is assigned, the edge node pulls the agent image and starts the container.
+
+---
+
+## Networking Requirements
+
+| Connection | Port | Direction | Notes |
+|------------|------|-----------|-------|
+| Edge → Orchestrator | `8080` (HTTP) | outbound | Execution polling and result submission |
+| Edge → Orchestrator | `50051` (gRPC) | outbound | Event streaming |
+| Client → Orchestrator | `8080` | inbound | REST API |
+| Client → Orchestrator | `50051` | inbound | gRPC API |
+| Orchestrator → Temporal | `7233` | outbound | Workflow engine |
+| Orchestrator → SeaweedFS | `8888` | outbound | Storage filer |
+| Edge → SeaweedFS | `8888` | outbound | Volume data access |
+| Edge agent containers → Edge daemon | `2049` (NFS) | internal | Volume mounts via NFS Gateway |
+
+---
+
+## High Availability
+
+Run two or three orchestrator instances behind a load balancer with a shared PostgreSQL database. Each orchestrator instance is stateless for the API and gRPC layers; persistent state lives in PostgreSQL and Temporal.
+
+```
+                      ┌─────────────────┐
+                      │  Load Balancer  │
+                      └────────┬────────┘
+                      ┌────────┴────────┐
+               ┌──────▼──────┐  ┌───────▼─────┐
+               │ Orchestrator│  │Orchestrator │
+               │     #1      │  │     #2      │
+               └──────┬──────┘  └──────┬──────┘
+                      └───────┬─────────┘
+                    ┌─────────▼──────────┐
+                    │    PostgreSQL       │
+                    │    (shared state)   │
+                    └────────────────────┘
+```
+
+---
+
+## See Also
+
+- [Configuration Reference](/docs/deployment/configuration) — full `NodeConfig` spec
+- [Docker Deployment](/docs/deployment/docker) — single-node Docker setup
+- [SeaweedFS Deployment](/docs/deployment/seaweedfs) — distributed storage for multi-node
+- [Temporal Deployment](/docs/deployment/temporal) — workflow engine for multi-node

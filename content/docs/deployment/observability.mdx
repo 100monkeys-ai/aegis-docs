@@ -1,0 +1,191 @@
+---
+title: Observability
+description: Structured logging, log levels, log format configuration, and tracing for AEGIS deployments.
+---
+
+# Observability
+
+AEGIS emits structured logs via the Rust `tracing` crate, configured through environment variables. All events are written to stdout; external log aggregators (Loki, Datadog, Splunk, etc.) can consume them via their standard Docker/container log collection mechanisms.
+
+---
+
+## Log Levels
+
+AEGIS uses Rust's `RUST_LOG` environment variable, which accepts a comma-separated list of level directives:
+
+| Level | Usage |
+|-------|-------|
+| `error` | Unrecoverable failures (operation panics, infrastructure unavailability) |
+| `warn` | Recoverable issues: missing optional config, NFS deregistration lag, LLM provider degraded |
+| `info` | Normal lifecycle events: server started, execution completed, volume cleaned up |
+| `debug` | Per-request details: tool routing decisions, SMCP validation, storage path resolution |
+| `trace` | Verbose internal state: usually too noisy for production |
+
+### Recommended Settings
+
+```bash
+# Production
+RUST_LOG=info
+
+# Debug a specific subsystem
+RUST_LOG=info,aegis_orchestrator_core::infrastructure::nfs=debug
+
+# Debug all tool routing
+RUST_LOG=info,aegis_orchestrator_core::infrastructure::tool_router=debug
+
+# Verbose SMCP audit
+RUST_LOG=info,aegis_orchestrator_core::infrastructure::smcp=debug
+
+# Development (everything)
+RUST_LOG=debug
+```
+
+Directive syntax: `[crate::path=]level[,...]`. Omitting the crate path sets a global minimum level.
+
+---
+
+## Log Formats
+
+AEGIS supports two output formats controlled at startup:
+
+### Pretty (default for development)
+
+Human-readable colored text. Suitable for local development and `docker logs`:
+
+```
+2026-01-15T10:23:45.123Z  INFO aegis_orchestrator: Starting gRPC server on 0.0.0.0:50051
+2026-01-15T10:23:46.200Z  INFO aegis_orchestrator: Connected to Cortex gRPC service url=http://cortex:50052
+2026-01-15T10:23:47.001Z  WARN aegis_orchestrator: Started with NO LLM providers configured. Agent execution will fail!
+```
+
+### JSON (production)
+
+Newline-delimited JSON; parseable by log aggregators:
+
+```json
+{"timestamp":"2026-01-15T10:23:45.123Z","level":"INFO","target":"aegis_orchestrator","message":"Starting gRPC server on 0.0.0.0:50051"}
+{"timestamp":"2026-01-15T10:23:46.200Z","level":"INFO","target":"aegis_orchestrator","fields":{"url":"http://cortex:50052"},"message":"Connected to Cortex gRPC service"}
+```
+
+Enable JSON format by setting the `AEGIS_LOG_FORMAT` environment variable:
+
+```bash
+AEGIS_LOG_FORMAT=json
+```
+
+If unset or set to any other value, the pretty format is used.
+
+---
+
+## Structured Fields
+
+Many log events include structured key-value fields alongside the message. These are available in both formats:
+
+| Field | Events | Description |
+|-------|--------|-------------|
+| `url` | Service connection events | Target URL being connected to |
+| `execution_id` | Execution lifecycle | UUID of the active execution |
+| `count` | Volume cleanup | Number of volumes deleted |
+| `err` | Error events | Error description |
+| `agent_id` | Agent lifecycle | UUID of the agent |
+
+When using JSON format, structured fields appear as keys in the JSON object under `"fields"`.
+
+---
+
+## Domain Events in Logs
+
+AEGIS publishes structured domain events to its internal event bus. These events also produce log entries. Key observable events:
+
+### Execution Events
+
+| Log Message Pattern | Level | Meaning |
+|--------------------|-------|---------|
+| `"Starting execution"` | INFO | Execution started |
+| `"Inner loop generation failed"` | ERROR | LLM generation failed for an iteration |
+| `"Could not find execution {} for LLM event"` | WARN | Race condition during execution lookup |
+
+### Volume Events
+
+| Log Message Pattern | Level | Meaning |
+|--------------------|-------|---------|
+| `"Volume cleanup: {} expired volumes deleted"` | INFO | Periodic TTL cleanup completed |
+| `"Volume cleanup failed"` | ERROR | Cleanup task failed |
+| `"NFS deregistration listener lagged"` | WARN | Event bus buffer full; some deregistrations may have been missed |
+
+### Service Lifecycle
+
+| Log Message Pattern | Level | Meaning |
+|--------------------|-------|---------|
+| `"Starting gRPC server on {}"` | INFO | gRPC server started |
+| `"Starting AEGIS gRPC server on {}"` | INFO | Internal gRPC server |
+| `"Connected to Cortex gRPC service"` | INFO | Cortex connection established |
+| `"Cortex gRPC URL not configured"` | INFO | Running in memoryless mode (expected when Cortex not deployed) |
+| `"Failed to connect to Temporal"` | ERROR | Temporal workflow engine unreachable |
+| `"Failed to start some MCP servers"` | ERROR | One or more MCP tool servers failed to start |
+
+### SMCP / Security Events
+
+SMCP policy violations always produce `WARN` log entries with structured fields including `execution_id`, `tool_name`, and the violation type. These are produced by `SmcpAudit`:
+
+```json
+{"level":"WARN","target":"aegis_orchestrator_core::infrastructure::smcp::audit","fields":{"execution_id":"a1b2...","tool_name":"fs.delete","violation":"ToolExplicitlyDenied"},"message":"SMCP tool call blocked"}
+```
+
+---
+
+## Docker / Container Deployments
+
+No special configuration is needed. The AEGIS daemon writes all logs to stdout and stderr. Use your container runtime's standard logging:
+
+```bash
+# Docker
+docker logs -f aegis-daemon
+
+# Docker Compose
+docker compose logs -f orchestrator
+
+# Kubernetes
+kubectl logs -f deployment/aegis-orchestrator
+```
+
+For log aggregation, configure your collector (Promtail, Fluentd, Datadog Agent) to read container stdout and set `AEGIS_LOG_FORMAT=json` so log lines are parseable.
+
+---
+
+## Health Check
+
+The REST API exposes a simple health endpoint:
+
+```bash
+curl http://localhost:8080/health
+# → {"status":"ok"}
+```
+
+Use this as the `healthcheck` target in Docker Compose or Kubernetes liveness/readiness probes:
+
+```yaml
+# Docker Compose
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Kubernetes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+---
+
+## See Also
+
+- [Configuration Reference](/docs/deployment/configuration) — `RUST_LOG` and `AEGIS_LOG_FORMAT` env vars
+- [Multi-Node Deployment](/docs/deployment/multi-node) — log aggregation across nodes
+- [Docker Deployment](/docs/deployment/docker) — container log setup
+- [REST API Reference](/docs/reference/rest-api) — `/health` endpoint

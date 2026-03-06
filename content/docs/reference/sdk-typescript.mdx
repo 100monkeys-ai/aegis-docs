@@ -1,0 +1,267 @@
+---
+title: TypeScript SDK
+description: AegisClient and ManifestBuilder for TypeScript and Node.js agent management.
+---
+
+# TypeScript SDK
+
+Install the AEGIS TypeScript SDK:
+
+```bash
+npm install @aegis/sdk
+# or
+pnpm add @aegis/sdk
+```
+
+---
+
+## `AegisClient`
+
+```typescript
+import { AegisClient } from '@aegis/sdk';
+
+const client = new AegisClient(
+  'https://your-aegis-node',
+  process.env.AEGIS_API_KEY,   // Optional; Keycloak Bearer JWT
+);
+```
+
+### Constructor
+
+```typescript
+new AegisClient(baseUrl: string, apiKey?: string)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `baseUrl` | `string` | Base URL of the AEGIS orchestrator (no trailing slash) |
+| `apiKey` | `string` | Optional Keycloak Bearer JWT. When omitted, requests are unauthenticated. |
+
+---
+
+### `deployAgent(manifest)`
+
+Deploy an agent to the orchestrator.
+
+```typescript
+import { AegisClient, AgentManifest } from '@aegis/sdk';
+
+const manifest: AgentManifest = {
+  apiVersion: '100monkeys.ai/v1',
+  kind: 'Agent',
+  metadata: { name: 'code-reviewer', version: '1.0.0' },
+  spec: {
+    runtime: { language: 'python', version: '3.11', isolation: 'docker' },
+    task: { instruction: 'Review pull requests and output structured feedback.' },
+    security: {
+      network: { mode: 'allow', allowlist: ['api.github.com'] },
+      filesystem: { read: ['/workspace'], write: ['/workspace'] },
+      resources: { cpu: 1000, memory: '1Gi', timeout: '300s' },
+    },
+  },
+};
+
+const { agentId } = await client.deployAgent(manifest);
+console.log(agentId); // "agt-uuid"
+```
+
+**Returns:** `Promise<DeploymentResponse>`
+
+```typescript
+interface DeploymentResponse {
+  agentId: string;
+}
+```
+
+---
+
+### `executeTask(agentId, input)`
+
+Start an agent execution and wait for the result.
+
+```typescript
+const output = await client.executeTask('agt-uuid', {
+  prompt: 'Write a primality check in TypeScript',
+  context: {},
+});
+console.log(output.result);
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `agentId` | `string` | UUID of a deployed agent |
+| `input` | `TaskInput` | Task input object |
+
+```typescript
+interface TaskInput {
+  prompt: string;
+  context?: Record<string, unknown>;
+}
+```
+
+**Returns:** `Promise<TaskOutput>`
+
+```typescript
+interface TaskOutput {
+  result: string;
+  logs: string[];
+}
+```
+
+---
+
+### `getAgentStatus(agentId)`
+
+```typescript
+const status = await client.getAgentStatus('agt-uuid');
+console.log(status.state); // "deployed" | "paused" | "archived"
+```
+
+**Returns:** `Promise<AgentStatus>`
+
+```typescript
+interface AgentStatus {
+  agentId: string;
+  state: 'deployed' | 'paused' | 'archived';
+  updatedAt: string; // ISO 8601
+}
+```
+
+---
+
+### `terminateAgent(agentId)`
+
+```typescript
+await client.terminateAgent('agt-uuid');
+```
+
+Terminates and archives the agent. Running executions are cancelled.
+
+---
+
+## `AgentManifest`
+
+The full agent manifest type mirrors the YAML manifest structure:
+
+```typescript
+import type { AgentManifest } from '@aegis/sdk';
+
+const manifest: AgentManifest = {
+  apiVersion: '100monkeys.ai/v1',
+  kind: 'Agent',
+  metadata: {
+    name: 'my-agent',
+    version: '1.0.0',
+    labels: { team: 'platform' },
+  },
+  spec: {
+    runtime: {
+      language: 'typescript',
+      version: '22',
+      isolation: 'docker',
+    },
+    task: {
+      instruction: 'Analyze TypeScript code for potential issues.',
+    },
+    security: {
+      network: {
+        mode: 'allow',
+        allowlist: ['api.github.com', 'registry.npmjs.org'],
+      },
+      filesystem: {
+        read: ['/workspace'],
+        write: ['/workspace/output'],
+      },
+      resources: {
+        cpu: 2000,
+        memory: '2Gi',
+        timeout: '180s',
+      },
+    },
+    execution: {
+      mode: 'iterative',
+      max_iterations: 5,
+    },
+    volumes: [
+      {
+        name: 'workspace',
+        storage_class: 'ephemeral',
+        mount_path: '/workspace',
+        access_mode: 'read-write',
+        ttl_hours: 1,
+      },
+    ],
+  },
+};
+```
+
+See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the complete field specification.
+
+---
+
+## Streaming Executions
+
+For long-running agents, use the REST SSE endpoint directly rather than `executeTask`:
+
+```typescript
+const response = await fetch(
+  `https://your-aegis-node/v1/executions/${executionId}/stream`,
+  { headers: { Authorization: `Bearer ${token}` } }
+);
+
+const reader = response.body!.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+
+  const text = decoder.decode(value);
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
+    const event = JSON.parse(line.slice(5).trim());
+
+    if (event.iteration_started) {
+      console.log(`Iteration ${event.iteration_started.iteration_number}`);
+    } else if (event.execution_completed) {
+      console.log('Output:', event.execution_completed.final_output);
+    } else if (event.execution_failed) {
+      console.error('Failed:', event.execution_failed.reason);
+    }
+  }
+}
+```
+
+See [SSE stream format](/docs/reference/rest-api#get-v1executionsidstream) for the full event schema.
+
+---
+
+## Error Handling
+
+All methods throw on non-2xx responses. Catch and inspect `axios.isAxiosError(err)` for HTTP-level errors:
+
+```typescript
+import axios from 'axios';
+import { AegisClient } from '@aegis/sdk';
+
+try {
+  const { agentId } = await client.deployAgent(manifest);
+} catch (err) {
+  if (axios.isAxiosError(err)) {
+    console.error(err.response?.status, err.response?.data);
+  } else {
+    throw err;
+  }
+}
+```
+
+---
+
+## See Also
+
+- [Python SDK Reference](/docs/reference/sdk-python)
+- [Agent Manifest Reference](/docs/reference/agent-manifest)
+- [REST API Reference](/docs/reference/rest-api)
+- [Custom Runtime Agents](/docs/guides/custom-runtime-agents)

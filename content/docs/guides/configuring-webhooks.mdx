@@ -1,0 +1,223 @@
+---
+title: Configuring Webhooks
+description: Connect external systems to AEGIS workflows using HMAC-authenticated webhooks and direct-route registration.
+---
+
+# Configuring Webhooks
+
+Webhooks let external systems — CI/CD pipelines, GitHub, Stripe, any HTTP-capable service — trigger AEGIS workflow executions without a Keycloak account. Authentication is handled by HMAC-SHA256 signature verification, not OAuth.
+
+---
+
+## How It Works
+
+Each webhook source has a secret shared between AEGIS and the sender. When a request arrives at `POST /v1/webhooks/{source}`, the orchestrator verifies the `X-Aegis-Signature` header before passing the payload to the routing pipeline.
+
+The `{source}` path segment is the source name — use a lowercase slug that identifies the system sending the event (e.g. `github`, `stripe`, `my-ci`).
+
+---
+
+## Step 1 — Set the HMAC Secret
+
+For each source, set an environment variable on the orchestrator:
+
+```bash
+# Pattern: AEGIS_WEBHOOK_SECRET_<UPPER_SOURCE>
+# Hyphens and dots are replaced with underscores
+
+export AEGIS_WEBHOOK_SECRET_GITHUB="your-shared-secret-here"
+export AEGIS_WEBHOOK_SECRET_STRIPE="another-secret"
+export AEGIS_WEBHOOK_SECRET_MY_CI="third-secret"
+```
+
+The mapping is:
+- Source `github` → `AEGIS_WEBHOOK_SECRET_GITHUB`
+- Source `my-ci` → `AEGIS_WEBHOOK_SECRET_MY_CI`
+- Source `my.service` → `AEGIS_WEBHOOK_SECRET_MY_SERVICE`
+
+If no environment variable is found for the requested source, the orchestrator returns `401 secret_not_found` and the request is rejected.
+
+---
+
+## Step 2 — Register a Direct Route
+
+Map the source to a workflow so routing is instant and deterministic:
+
+```bash
+aegis stimulus routes add \
+  --source github \
+  --workflow wf-uuid-here
+```
+
+List current routes:
+
+```bash
+aegis stimulus routes list
+```
+
+Remove a route:
+
+```bash
+aegis stimulus routes remove --source github
+```
+
+If no direct route is registered, the routing pipeline falls back to the configured `RouterAgent` for LLM-based classification (see [Stimulus-Response Routing](/docs/concepts/stimulus-response)).
+
+---
+
+## Step 3 — Sign Your Requests
+
+The sender must compute an HMAC-SHA256 signature of the raw request body using the shared secret, then include it in the `X-Aegis-Signature` header with the prefix `sha256=`.
+
+**Example — Node.js (any sender):**
+
+```javascript
+const crypto = require('crypto');
+
+function signPayload(body, secret) {
+  const sig = crypto
+    .createHmac('sha256', secret)
+    .update(body)                   // body must be the raw bytes/string
+    .digest('hex');
+  return `sha256=${sig}`;
+}
+
+const body = JSON.stringify({ event: 'push', ref: 'refs/heads/main' });
+const signature = signPayload(body, process.env.WEBHOOK_SECRET);
+
+fetch('https://your-aegis-node/v1/webhooks/github', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Aegis-Signature': signature,
+  },
+  body,
+});
+```
+
+**Example — Python:**
+
+```python
+import hashlib
+import hmac
+import json
+import requests
+
+def sign_payload(body: bytes, secret: str) -> str:
+    sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return f"sha256={sig}"
+
+payload = json.dumps({"event": "push", "ref": "refs/heads/main"}).encode()
+signature = sign_payload(payload, WEBHOOK_SECRET)
+
+requests.post(
+    "https://your-aegis-node/v1/webhooks/github",
+    data=payload,
+    headers={
+        "Content-Type": "application/json",
+        "X-Aegis-Signature": signature,
+    },
+)
+```
+
+**Important:** Compute the HMAC over the **raw request body bytes** before any parsing. Computing over a re-serialized object will produce a different signature.
+
+---
+
+## Step 4 — Test the Endpoint
+
+```bash
+# Generate a test signature
+SECRET="your-shared-secret-here"
+BODY='{"event":"push","ref":"refs/heads/main"}'
+SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+
+# Send the test webhook
+curl -X POST https://your-aegis-node/v1/webhooks/github \
+  -H "Content-Type: application/json" \
+  -H "X-Aegis-Signature: $SIG" \
+  -d "$BODY"
+```
+
+A successful response:
+
+```json
+{
+  "stimulus_id": "stim-uuid",
+  "workflow_execution_id": "wfex-uuid"
+}
+```
+
+---
+
+## Idempotency
+
+Prevent duplicate workflow executions from retried webhook deliveries by including an idempotency key. Most webhook providers supply one automatically:
+
+| Provider | Header to forward | 
+|----------|-------------------|
+| GitHub | `X-GitHub-Delivery` |
+| Stripe | `Stripe-Signature` (already unique per event) |
+| Custom | Any stable per-event UUID |
+
+Forward the provider's delivery ID as the `X-Idempotency-Key` header on the webhook request. The orchestrator deduplicates on `(source_name, idempotency_key)` with a 24-hour TTL. Duplicate deliveries return HTTP 409:
+
+```json
+{
+  "error": "idempotent_duplicate",
+  "original_stimulus_id": "stim-original-uuid"
+}
+```
+
+---
+
+## Forwarding Headers to the RouterAgent
+
+When Stage 2 LLM classification is used, the orchestrator forwards all request headers to the `RouterAgent` as part of the stimulus. This lets the router distinguish event types using provider-specific headers:
+
+```
+X-GitHub-Event: pull_request
+X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
+```
+
+A well-designed `RouterAgent` prompt can use `X-GitHub-Event` to route `push` events to a deployment workflow, `pull_request` events to a code-review workflow, and so on.
+
+---
+
+## Error Reference
+
+| HTTP | Code | Cause |
+|------|------|-------|
+| `401` | `missing_signature` | `X-Aegis-Signature` header absent |
+| `400` | `malformed_signature` | Header not in `sha256=<hex>` format |
+| `400` | `invalid_hex` | Hex portion contains non-hex characters |
+| `401` | `secret_not_found` | No `AEGIS_WEBHOOK_SECRET_<SOURCE>` configured |
+| `401` | `invalid_signature` | HMAC digest does not match |
+| `409` | `idempotent_duplicate` | Already processed within 24-hour window |
+| `422` | `classification_failed` | RouterAgent confidence below threshold |
+| `422` | `no_router_configured` | No direct route and no RouterAgent |
+
+---
+
+## `POST /v1/stimuli` — Keycloak-Authenticated Alternative
+
+Internal services with a Keycloak account can use the authenticated stimulus endpoint instead:
+
+```bash
+curl -X POST https://your-aegis-node/v1/stimuli \
+  -H "Authorization: Bearer $KEYCLOAK_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "http_api",
+    "content": "Deploy release v2.1.0",
+    "idempotency_key": "deploy-v2.1.0"
+  }'
+```
+
+---
+
+## See Also
+
+- [Stimulus-Response Routing](/docs/concepts/stimulus-response) — architecture of the routing pipeline
+- [Building Workflows](/docs/guides/building-workflows) — define workflows to handle incoming stimuli
+- [REST API — `POST /v1/webhooks/{source}`](/docs/reference/rest-api#post-v1webhookssource)

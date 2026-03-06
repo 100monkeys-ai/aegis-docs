@@ -1,0 +1,60 @@
+---
+title: Control Plane (UX)
+description: The human-friendly interfaces for managing the AEGIS orchestrator.
+---
+
+# Control Plane (UX)
+
+The **AEGIS Control Plane** (`aegis-control-plane`) is a Next.js-based web application providing the primary operational and developer interface for the system. It abstracts the raw declarative YAML manifests and gRPC APIs into a visual, intent-driven experience.
+
+---
+
+## Core Components
+
+The Control Plane is divided into three major functional areas designed to support the complete agent lifecycle, from conception to observation.
+
+### 1. The Architect
+
+The Architect is the entry point for creating new agent workloads. Instead of writing Kubernetes-style `AgentManifest` YAML manually, users provide a natural language **Intent** (e.g., *"Create an agent that monitors the staging database for slow queries and emails a report daily"*).
+
+The Architect parses this intent and automatically generates a complete manifest, configuring:
+- The appropriate standard or custom runtime.
+- A structurally sound `SecurityPolicy` (including precise network and filesystem allowlists).
+- The necessary `ResourceLimits` and role assignments.
+
+### 2. The Synapse
+
+The Synapse is the real-time execution visualizer. Once an agent execution begins, The Synapse connects to the orchestrator's event stream to render the 100monkeys iterative refinement loop (`Execute → Evaluate → Refine`) live.
+
+**Transparent Iteration** is the foundational UX principle of The Synapse. Unlike traditional chat interfaces that hide the intermediate reasoning steps and only present the final result, The Synapse exposes:
+- Every tool invocation and its resulting output (e.g., `cmd.run`, `fs.read`).
+- Validation scores and judge feedback for each iteration.
+- The precise code diffs or strategy changes applied during the `Refine` phase.
+- Policy violations blocked by the SMCP Gateway.
+
+This transparency allows operators to understand *how* an agent arrived at a solution and where it struggled.
+
+### 3. The Cortex Explorer
+
+The Cortex Explorer is a memory browser that visualizes the system's learned intelligence. While the orchestrator handles the mechanics of communicating with Cortex (or running in memoryless mode), the Explorer provides the human interface to:
+- Browse learned **Patterns** and the specific error signatures that trigger them.
+- Track the evolution of higher-level **Skills**.
+- View confidence metrics (`SuccessScore`) and memory decay status.
+
+---
+
+## Integration with the Orchestrator
+
+The Control Plane communicates with the AEGIS Orchestrator exclusively via the public gRPC and HTTP APIs. It does not have direct access to the orchestrator's internal state, databases, or the underlying container runtimes.
+
+```typescript
+// Conceptual API surface consumed by the Control Plane
+interface ControlPlaneAPI {
+  parseIntent(intent: UserIntent): Promise<ParsedIntent>;
+  generateManifest(intent: ParsedIntent): Promise<AgentManifest>;
+  deployAgent(manifest: AgentManifest): Promise<AgentId>;
+  streamExecution(executionId: ExecutionId): AsyncIterable<ExecutionEvent>;
+}
+```
+
+Authentication between the Control Plane and the Orchestrator is handled via OIDC tokens issued by the central IAM system (Keycloak), ensuring that operators only see and control the agents within their authorized tenant boundary.

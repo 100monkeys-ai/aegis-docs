@@ -10,6 +10,9 @@
         "configuring-storage",
         "llm-providers",
         "validation",
-        "local-testing"
+        "local-testing",
+        "configuring-webhooks",
+        "human-approvals",
+        "configuring-security-contexts"
     ]
 }

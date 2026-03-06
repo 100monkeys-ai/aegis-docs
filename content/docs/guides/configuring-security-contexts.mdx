@@ -1,0 +1,209 @@
+---
+title: Configuring Security Contexts
+description: Define named SecurityContext boundaries to control which MCP tools agents can invoke, with path, command, domain, and rate limit constraints.
+---
+
+# Configuring Security Contexts
+
+A **SecurityContext** is a named set of capability rules that controls exactly which MCP tools an agent may invoke — and with what arguments. Every agent execution runs within exactly one SecurityContext. If a tool call is not permitted by the context, it is blocked by the SMCP gateway before reaching any tool server.
+
+SecurityContexts are defined in your `aegis-config.yaml` under `spec.security_contexts` and referenced by name from your agent manifest.
+
+---
+
+## How Policy Evaluation Works
+
+Every tool call an agent makes is evaluated against its SecurityContext using this algorithm, in order:
+
+1. **Deny list** — If the tool name appears in `deny_list`, the call is rejected immediately. Deny list entries always override capabilities.
+2. **Capability scan** — Each `capabilities` entry is checked in order. The first capability whose `tool_pattern` matches and whose constraints (path, command, domain) are satisfied returns `Ok` and allows the call.
+3. **Default deny** — If no capability matches, the call is rejected.
+
+---
+
+## Defining a SecurityContext
+
+In `aegis-config.yaml`:
+
+```yaml
+spec:
+  security_contexts:
+    - name: "research-safe"
+      description: "Read-only web access. No shell, no writes."
+      capabilities:
+        - tool_pattern: "web.search"
+          domain_allowlist:
+            - "wikipedia.org"
+            - "arxiv.org"
+            - "github.com"
+        - tool_pattern: "fs.read"
+          path_allowlist:
+            - "/workspace"
+      deny_list:
+        - "fs.write"
+        - "fs.delete"
+        - "cmd.run"
+
+    - name: "coder-unrestricted"
+      description: "Full shell and filesystem access within /workspace."
+      capabilities:
+        - tool_pattern: "fs.*"
+          path_allowlist:
+            - "/workspace"
+        - tool_pattern: "cmd.run"
+          command_allowlist:
+            - "python"
+            - "node"
+            - "npm"
+            - "pip"
+            - "git"
+        - tool_pattern: "web.search"
+      deny_list: []
+```
+
+---
+
+## SecurityContext Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✓ | Unique identifier. Referenced in agent manifests as `spec.security_context`. |
+| `description` | string | ✓ | Human-readable purpose, shown in the Control Plane UI. |
+| `capabilities` | array | ✓ | Ordered list of permission entries. Evaluated sequentially; first match wins. |
+| `deny_list` | array | — | Tool names that are always rejected, regardless of capabilities. |
+
+---
+
+## Capability Fields
+
+Each entry in `capabilities` is one permission grant:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tool_pattern` | string | Tool name to match. Supports exact match (`"fs.read"`), prefix wildcard (`"fs.*"`), or any tool (`"*"`). |
+| `path_allowlist` | array of paths | For `fs.*` tools: the `path` argument must be under one of these prefixes. Omit to allow any path. |
+| `command_allowlist` | array of strings | For `cmd.run`: the base command (e.g., `python`, `git`) must be in this list. Omit to allow any command. |
+| `subcommand_allowlist` | array of strings | For `cmd.run`: the first positional argument must be in this list (e.g., `["install", "run"]` for `npm`). |
+| `domain_allowlist` | array of strings | For `web.*` tools: the target URL's domain suffix must match one of these entries. Omit to allow any domain. |
+| `rate_limit` | object | *(Phase 2)* `{ calls: N, per_seconds: N }`. Not yet enforced in Phase 1. |
+| `max_response_size` | integer | Maximum response body size in bytes. `null` means unlimited. |
+
+---
+
+## Pattern Matching
+
+`tool_pattern` supports three forms:
+
+| Pattern | Matches |
+|---------|---------|
+| `"fs.read"` | Exactly the `fs.read` tool |
+| `"fs.*"` | Any tool whose name starts with `"fs."` — e.g., `fs.read`, `fs.write`, `fs.list` |
+| `"*"` | Any tool (use with care; usually combined with an explicit `deny_list`) |
+
+---
+
+## Referencing a SecurityContext from an Agent Manifest
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: "my-research-agent"
+spec:
+  security_context: "research-safe"    # ← references the context by name
+  runtime:
+    language: python
+    version: "3.11"
+  prompt: |
+    You are a research assistant...
+```
+
+If `spec.security_context` is omitted, the agent gets the default context defined in your node config (typically the most restrictive context available).
+
+---
+
+## Example: Restricting `npm` to Safe Subcommands
+
+To allow `npm install` and `npm run` but not `npm publish`:
+
+```yaml
+capabilities:
+  - tool_pattern: "cmd.run"
+    command_allowlist:
+      - "npm"
+    subcommand_allowlist:
+      - "install"
+      - "run"
+      - "test"
+      - "build"
+```
+
+An agent attempting `npm publish` would receive a `SubcommandNotAllowed` violation.
+
+---
+
+## Example: Filesystem Access Scoped to `/workspace`
+
+```yaml
+capabilities:
+  - tool_pattern: "fs.*"
+    path_allowlist:
+      - "/workspace"
+```
+
+Path allowlist matching is prefix-based: `/workspace/src/main.py` is allowed; `/etc/passwd` is not. Path traversal (`../`) is always blocked by the server-side path canonicalization layer, regardless of SecurityContext settings.
+
+---
+
+## Example: Open Web Access with Deny List Exclusions
+
+To allow any web search except social media:
+
+```yaml
+capabilities:
+  - tool_pattern: "web.search"
+deny_list:
+  - "web.post"
+  - "web.submit"
+```
+
+Or to restrict the domains:
+
+```yaml
+capabilities:
+  - tool_pattern: "web.search"
+    domain_allowlist:
+      - "docs.python.org"
+      - "developer.mozilla.org"
+      - "stackoverflow.com"
+      - "github.com"
+```
+
+---
+
+## Policy Violations
+
+When a call is blocked, AEGIS:
+
+1. Returns a `PolicyViolation` error to the agent's inner loop.
+2. Produces a `WARN` log entry with structured fields: `execution_id`, `tool_name`, violation type.
+3. Publishes a `PolicyViolationBlocked` domain event to the event bus (visible in audit trail).
+
+The agent's LLM receives the violation error message and may attempt a different approach within its iteration budget.
+
+---
+
+## Swarm Security Context Ceiling
+
+When an agent spawns child agents in a swarm, the child's security context must be **equal to or more restrictive** than the parent's. Attempting to spawn a child with greater permissions fails immediately with a `SpawnError`.
+
+For example: a parent running under `"coder-unrestricted"` may spawn children using `"research-safe"`, but not vice versa.
+
+---
+
+## See Also
+
+- [Security Model](/docs/concepts/security-model) — security architecture overview
+- [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.security_context` field
+- [SMCP Architecture](/docs/architecture/smcp) — full protocol specification
+- [Node Configuration Reference](/docs/reference/node-config) — `spec.security_contexts` schema

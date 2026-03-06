@@ -1,0 +1,214 @@
+---
+title: Human Approvals
+description: Pause workflow execution for human review, approval, or rejection using the built-in approval gate.
+---
+
+# Human Approvals
+
+Workflows can pause at any point to wait for a human decision before proceeding. The orchestrator holds the workflow execution open, notifies via the approval API, and resumes or terminates based on the response — all with configurable timeouts.
+
+---
+
+## Defining an Approval Gate
+
+Add a `kind: Human` state to your workflow manifest:
+
+```yaml
+states:
+  - name: GENERATE_DRAFT
+    kind: Agent
+    agent_id: draft-agent-uuid
+    transitions:
+      - target: AWAIT_APPROVAL
+        condition: "always"
+
+  - name: AWAIT_APPROVAL
+    kind: Human
+    prompt: "Review the draft in {{GENERATE_DRAFT.output}}. Approve to publish, reject to discard."
+    timeout_seconds: 86400      # 24 hours — reject on timeout if omitted means 3600s default
+    reject_on_timeout: false    # if true, workflow transitions to on_reject on timeout
+    transitions:
+      - target: PUBLISH
+        condition: "approved"
+      - target: DISCARD
+        condition: "rejected"
+
+  - name: PUBLISH
+    kind: Agent
+    agent_id: publish-agent-uuid
+
+  - name: DISCARD
+    kind: System
+    command: "echo 'Draft discarded'"
+```
+
+### `kind: Human` Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `prompt` | string | — | Text displayed to the reviewer. Supports Blackboard template syntax. |
+| `timeout_seconds` | integer | `3600` | How long to wait before the request expires. |
+| `reject_on_timeout` | boolean | `false` | If `true`, a timeout transitions to the `rejected` condition. If `false`, the workflow fails. |
+
+The `approved` and `rejected` transition conditions are reserved keywords for `kind: Human` states.
+
+---
+
+## Listing Pending Approval Requests
+
+Poll the approval queue from any HTTP client:
+
+```bash
+curl https://your-aegis-node/v1/human-approvals \
+  -H "Authorization: Bearer $KEYCLOAK_JWT"
+```
+
+Response:
+
+```json
+{
+  "pending_requests": [
+    {
+      "id": "req-uuid",
+      "execution_id": "exec-uuid",
+      "prompt": "Review the draft in <draft content>. Approve to publish, reject to discard.",
+      "created_at": "2026-03-05T14:00:00Z",
+      "timeout_seconds": 86400
+    }
+  ]
+}
+```
+
+Fetch a specific request:
+
+```bash
+curl https://your-aegis-node/v1/human-approvals/req-uuid \
+  -H "Authorization: Bearer $KEYCLOAK_JWT"
+```
+
+---
+
+## Approving a Request
+
+```bash
+curl -X POST https://your-aegis-node/v1/human-approvals/req-uuid/approve \
+  -H "Authorization: Bearer $KEYCLOAK_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "feedback": "Looks good, approved for production.",
+    "approved_by": "alice@example.com"
+  }'
+```
+
+Both fields are optional. Response:
+
+```json
+{ "status": "approved" }
+```
+
+The workflow immediately resumes from the `AWAIT_APPROVAL` state and transitions to the `approved` target state (`PUBLISH` in the example above).
+
+---
+
+## Rejecting a Request
+
+```bash
+curl -X POST https://your-aegis-node/v1/human-approvals/req-uuid/reject \
+  -H "Authorization: Bearer $KEYCLOAK_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Draft needs more citations before publishing.",
+    "rejected_by": "bob@example.com"
+  }'
+```
+
+`reason` is required. Response:
+
+```json
+{ "status": "rejected" }
+```
+
+The workflow transitions to the `rejected` target state (`DISCARD` in the example).
+
+---
+
+## Timeout Behaviour
+
+When `timeout_seconds` expires without a response:
+
+- **`reject_on_timeout: false` (default):** The workflow execution is marked `failed` with reason `human_input_timeout`. No transition occurs.
+- **`reject_on_timeout: true`:** The orchestrator treats the timeout as a rejection and transitions to the `rejected` target state. Useful when a missing response should be treated as a "no".
+
+---
+
+## Building an Approval UI
+
+A minimal polling loop for a custom approval interface:
+
+```typescript
+const ORCHESTRATOR = 'https://your-aegis-node';
+const TOKEN = process.env.KEYCLOAK_JWT;
+
+async function pollApprovals() {
+  const res = await fetch(`${ORCHESTRATOR}/v1/human-approvals`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  });
+  const { pending_requests } = await res.json();
+
+  for (const req of pending_requests) {
+    console.log(`[${req.id}] ${req.prompt}`);
+    console.log(`  Created: ${req.created_at}  Timeout: ${req.timeout_seconds}s`);
+  }
+}
+
+async function approve(requestId: string, feedback?: string) {
+  await fetch(`${ORCHESTRATOR}/v1/human-approvals/${requestId}/approve`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ feedback, approved_by: 'current-user@example.com' }),
+  });
+}
+
+async function reject(requestId: string, reason: string) {
+  await fetch(`${ORCHESTRATOR}/v1/human-approvals/${requestId}/reject`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason, rejected_by: 'current-user@example.com' }),
+  });
+}
+```
+
+---
+
+## Template Variables in Prompts
+
+The `prompt` field in a `kind: Human` state supports Blackboard template syntax, giving reviewers access to outputs from earlier workflow states:
+
+```yaml
+- name: AWAIT_APPROVAL
+  kind: Human
+  prompt: |
+    Agent produced the following output:
+    
+    {{GENERATE_DRAFT.output}}
+    
+    Score from quality check: {{QUALITY_CHECK.output.score}}
+    
+    Please approve or reject.
+```
+
+See the [Template Syntax Reference](/docs/reference/template-syntax) for the full variable namespace.
+
+---
+
+## See Also
+
+- [Building Workflows](/docs/guides/building-workflows) — full workflow authoring guide
+- [Workflow Manifest Reference](/docs/reference/workflow-manifest) — complete `kind: Human` field spec
+- [REST API — Human Approvals](/docs/reference/rest-api#human-approvals)

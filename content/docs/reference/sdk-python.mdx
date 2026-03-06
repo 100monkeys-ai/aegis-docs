@@ -1,0 +1,274 @@
+---
+title: Python SDK
+description: AegisClient, ManifestBuilder, and the bootstrap.py Dispatch Protocol types for Python agent authors.
+---
+
+# Python SDK
+
+Install the AEGIS Python SDK:
+
+```bash
+pip install aegis-sdk
+```
+
+The SDK consists of two distinct layers:
+
+- **`AegisClient`** — management plane: deploy agents, start executions, query status (runs on your machine or in CI)
+- **`bootstrap.py` / Dispatch Protocol types** — agent-side: the wire format exchanged between a custom bootstrap script and the orchestrator's `/v1/dispatch-gateway`
+
+---
+
+## `AegisClient`
+
+```python
+from aegis import AegisClient
+
+client = AegisClient(
+    base_url="https://your-aegis-node",
+    api_key="your-keycloak-jwt",     # Optional; alternatively set AEGIS_API_KEY env var
+)
+```
+
+### Methods
+
+#### `deploy_agent(manifest)`
+
+Deploy an agent to the orchestrator.
+
+```python
+from aegis import AegisClient, AgentManifest
+
+async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
+    response = await client.deploy_agent(manifest)
+    print(response.agent_id)   # "agt-uuid"
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `manifest` | `AgentManifest` | Validated agent manifest object |
+
+**Returns:** `DeploymentResponse` with `agent_id: str`.
+
+---
+
+#### `execute_task(agent_id, task_input)`
+
+Start an agent execution.
+
+```python
+from aegis.types import TaskInput
+
+output = await client.execute_task(
+    agent_id="agt-uuid",
+    task_input=TaskInput(prompt="Write a primality check in Python"),
+)
+print(output.result)
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `agent_id` | `str` | UUID of a deployed agent |
+| `task_input` | `TaskInput` | Task input including prompt and optional context |
+
+**Returns:** `TaskOutput` with `result: str` and `logs: list[str]`.
+
+---
+
+#### `get_agent_status(agent_id)`
+
+```python
+status = await client.get_agent_status("agt-uuid")
+print(status.state)   # "deployed" | "paused" | "archived"
+```
+
+**Returns:** `AgentStatus` with `state: str`, `agent_id: str`, `updated_at: str`.
+
+---
+
+#### `terminate_agent(agent_id)`
+
+```python
+await client.terminate_agent("agt-uuid")
+```
+
+Terminates and archives the agent. Running executions are cancelled.
+
+---
+
+## `AgentManifest`
+
+Construct an agent manifest programmatically:
+
+```python
+from aegis import AgentManifest
+
+manifest = AgentManifest(
+    name="code-reviewer",
+    version="1.0.0",
+    runtime={
+        "language": "python",
+        "version": "3.11",
+        "isolation": "docker",
+    },
+    task={
+        "instruction": "Review pull requests and output structured feedback.",
+    },
+    security={
+        "network": {
+            "mode": "allow",
+            "allowlist": ["api.github.com"],
+        },
+        "filesystem": {
+            "read": ["/workspace"],
+            "write": ["/workspace"],
+        },
+        "resources": {
+            "cpu": 1000,
+            "memory": "1Gi",
+            "timeout": "300s",
+        },
+    },
+)
+```
+
+Alternatively, load from a YAML file:
+
+```python
+import yaml
+from aegis import AgentManifest
+
+with open("agent.yaml") as f:
+    manifest = AgentManifest.model_validate(yaml.safe_load(f))
+```
+
+---
+
+## Dispatch Protocol Types
+
+When writing a **custom bootstrap script** (`spec.advanced.bootstrap_path` in the agent manifest), import these types to build and parse the protocol payloads in a type-safe way.
+
+The default bootstrap script injected by the orchestrator does **not** import this module — it implements the same wire format using stdlib only. These classes are for custom bootstrap authors.
+
+### `GenerateMessage`
+
+Sent by bootstrap to start an inner-loop iteration:
+
+```python
+from aegis.bootstrap import GenerateMessage
+
+msg = GenerateMessage(
+    execution_id="exec-uuid",
+    iteration_number=1,
+    model_alias="default",
+    prompt="Task: Write a primality check\n\nInput: in Python",
+    messages=[],
+)
+
+import json, httpx
+response = httpx.post(
+    f"{orchestrator_url}/v1/dispatch-gateway",
+    content=msg.model_dump_json(),
+    headers={"Content-Type": "application/json"},
+)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `execution_id` | `str` | UUID from `AEGIS_EXECUTION_ID` env var |
+| `iteration_number` | `int` | 1-indexed iteration counter |
+| `model_alias` | `str` | LLM alias from `AEGIS_MODEL_ALIAS` env var |
+| `prompt` | `str` | Fully-rendered prompt for this iteration |
+| `messages` | `list[dict]` | Prior conversation history for continuation |
+| `agent_id` | `str` | Optional — from `AEGIS_AGENT_ID` env var |
+
+---
+
+### `DispatchResultMessage`
+
+Sent by bootstrap after executing a dispatched command:
+
+```python
+from aegis.bootstrap import DispatchResultMessage
+
+result = DispatchResultMessage(
+    execution_id="exec-uuid",
+    dispatch_id="dispatch-uuid",    # echo from DispatchMessage
+    exit_code=0,
+    stdout="All tests passed.\n",
+    stderr="",
+    duration_ms=1243,
+    truncated=False,
+)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `execution_id` | `str` | Same as the originating `GenerateMessage` |
+| `dispatch_id` | `str` | UUID echoed from the `DispatchMessage` |
+| `exit_code` | `int` | Process exit code. `-1` for bootstrap-level errors. |
+| `stdout` | `str` | Captured stdout, tail-trimmed if `truncated=True` |
+| `stderr` | `str` | Captured stderr |
+| `duration_ms` | `int` | Wall-clock execution time |
+| `truncated` | `bool` | `True` when combined output exceeded `max_output_bytes` |
+
+---
+
+### `FinalMessage` (parse from orchestrator response)
+
+The orchestrator responds with a `FinalMessage` when the inner loop completes:
+
+```python
+from aegis.bootstrap import FinalMessage
+import json, httpx
+
+response = httpx.post(orchestrator_url + "/v1/dispatch-gateway", ...)
+data = response.json()
+
+if data["type"] == "final":
+    final = FinalMessage.model_validate(data)
+    print(final.content)                 # LLM's final text output
+    print(final.tool_calls_executed)     # Number of tools invoked
+```
+
+---
+
+### `DispatchMessage` (parse from orchestrator response)
+
+The orchestrator responds with a `DispatchMessage` when it wants bootstrap to run a command:
+
+```python
+from aegis.bootstrap import DispatchMessage
+
+if data["type"] == "dispatch":
+    cmd = DispatchMessage.model_validate(data)
+    # cmd.action == "exec"
+    # cmd.command == "python"
+    # cmd.args == ["-m", "pytest", "test_prime.py"]
+    # cmd.cwd == "/workspace"
+    # cmd.timeout_secs == 60
+```
+
+---
+
+## Environment Variables (inside agent containers)
+
+The orchestrator injects these into every agent container:
+
+| Variable | Description |
+|----------|-------------|
+| `AEGIS_AGENT_ID` | UUID of the deployed agent |
+| `AEGIS_EXECUTION_ID` | UUID of this execution instance |
+| `AEGIS_MODEL_ALIAS` | LLM alias to use (e.g. `"default"`, `"fast"`) |
+| `AEGIS_ORCHESTRATOR_URL` | Internal URL for `bootstrap.py` callbacks |
+
+---
+
+## See Also
+
+- [TypeScript SDK Reference](/docs/reference/sdk-typescript)
+- [Custom Runtime Agents](/docs/guides/custom-runtime-agents) — using a custom `bootstrap.py`
+- [REST API Reference](/docs/reference/rest-api) — raw HTTP endpoints

@@ -1,0 +1,151 @@
+---
+title: Stimulus-Response Routing
+description: How external events trigger workflow executions through the two-stage routing pipeline.
+---
+
+# Stimulus-Response Routing
+
+A **Stimulus** is any external or internal event that should trigger a workflow execution. The orchestrator listens for stimuli from multiple sources, routes each one to the appropriate workflow, and starts an execution — without any additional integration code beyond the initial configuration.
+
+---
+
+## Stimulus Sources
+
+| Source | Transport | Authentication |
+|--------|-----------|----------------|
+| `Webhook` | `POST /v1/webhooks/{source}` | HMAC-SHA256 signature (`X-Aegis-Signature`) |
+| `HttpApi` | `POST /v1/stimuli` | Keycloak Bearer JWT |
+| `Stdin` | Always-on `SensorService` loop | N/A (internal) |
+| `TemporalSignal` | Forwarded by TypeScript worker over gRPC | Temporal workflow identity |
+
+The `source_name` on a `Webhook` stimulus is the `{source}` path segment — for example `POST /v1/webhooks/github` produces a stimulus with `source_name = "github"`. This same string is the key used for direct-route lookups.
+
+---
+
+## Two-Stage Routing Pipeline
+
+Every ingested stimulus passes through a hybrid pipeline before a workflow is started:
+
+```
+Stimulus received
+      │
+      ▼
+[Idempotency check]
+ ├─ Duplicate → 409 + cached stimulus_id
+ └─ Fresh → continue
+      │
+      ▼
+[Stage 1: Direct-route lookup]
+ WorkflowRegistry.lookup(source_name)
+ ├─ Hit  → RoutingMode::Deterministic, confidence = 1.0 → start workflow
+ └─ Miss → continue to Stage 2
+      │
+      ▼
+[Stage 2: RouterAgent LLM classification]
+ RouterAgent executes → parses JSON output
+ ├─ confidence ≥ threshold → RoutingMode::LlmClassified → start workflow
+ └─ confidence < threshold → 422 classification_failed
+```
+
+**Stage 1 is always attempted first.** If a direct route is registered for the source, no LLM is invoked, making routing instantaneous and deterministic.
+
+**Stage 2** is only reached when no direct route matches. The orchestrator runs a configured `RouterAgent` that receives the stimulus content and headers and returns a JSON object containing the `workflow_id` and `confidence` it selected.
+
+---
+
+## Direct Routes
+
+A direct route is a static mapping from a `source_name` to a `WorkflowId`. Register one via the CLI or management API:
+
+```bash
+# Register a direct route
+aegis stimulus routes add \
+  --source github \
+  --workflow wf-uuid-here
+
+# List all registered routes
+aegis stimulus routes list
+
+# Remove a route
+aegis stimulus routes remove --source github
+```
+
+Routes are stored in-memory on the orchestrator instance. Multi-node deployments in `orchestrator` or `hybrid` mode share routes via the database.
+
+---
+
+## RouterAgent Configuration
+
+When no direct route matches, the orchestrator runs a `RouterAgent`. Configure one in `spec.stimulus` in your `NodeConfig`:
+
+```yaml
+spec:
+  stimulus:
+    router_agent_id: "agt-router-uuid"
+    classification_confidence_threshold: 0.75
+    classification_timeout_secs: 30
+```
+
+The `RouterAgent` receives the stimulus content and headers injected into its task input. It must return a JSON object with this structure:
+
+```json
+{
+  "workflow_id": "wf-uuid-here",
+  "confidence": 0.92,
+  "reasoning": "CI failure event detected from GitHub Actions header"
+}
+```
+
+If `confidence` is below `classification_confidence_threshold`, the stimulus is rejected with HTTP 422 and a `classification_failed` error code.
+
+---
+
+## Idempotency
+
+Duplicate stimuli are detected using an `(source_name, idempotency_key)` pair with a 24-hour TTL. Send an `X-Idempotency-Key` header on webhook requests or include `idempotency_key` in the `POST /v1/stimuli` body to enable this.
+
+If the same key is received within the TTL window, the orchestrator returns HTTP 409 with the `original_stimulus_id` from the first successful ingestion — no new workflow execution is created.
+
+---
+
+## Routing Decision
+
+The routing pipeline produces a `RoutingDecision` regardless of which stage resolved it:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workflow_id` | UUID | The workflow that will handle this stimulus |
+| `confidence` | `f64` | `1.0` for deterministic routes; `[0.7, 1.0]` for LLM routes |
+| `mode` | enum | `Deterministic` or `LlmClassified` |
+
+---
+
+## Rejection Reasons
+
+| Code | HTTP | Cause |
+|------|------|-------|
+| `classification_failed` | 422 | RouterAgent confidence below threshold |
+| `no_router_configured` | 422 | No direct route and no RouterAgent configured |
+| `idempotent_duplicate` | 409 | Stimulus already processed within TTL window |
+| `missing_signature` | 401 | Webhook missing `X-Aegis-Signature` header |
+| `invalid_signature` | 401 | HMAC-SHA256 verification failed |
+
+---
+
+## Sensors
+
+The **SensorService** manages always-on polling loops that generate stimuli autonomously without an inbound HTTP request. The built-in `StdinSensor` reads from standard input — useful for local development and pipe-based integrations:
+
+```bash
+echo '{"event": "deploy", "ref": "main"}' | aegis daemon
+```
+
+Custom sensors are not yet supported in Phase 1. Use webhook ingestion for external event sources.
+
+---
+
+## See Also
+
+- [Configuring Webhooks](/docs/guides/configuring-webhooks) — step-by-step HMAC setup and route registration
+- [Building Workflows](/docs/guides/building-workflows) — define the workflows that handle stimuli
+- [REST API Reference](/docs/reference/rest-api#post-v1stimuli) — full request/response schemas

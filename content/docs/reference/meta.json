@@ -7,6 +7,10 @@
         "node-config",
         "cli",
         "grpc-api",
-        "builtin-tools"
+        "builtin-tools",
+        "rest-api",
+        "sdk-python",
+        "sdk-typescript",
+        "template-syntax"
     ]
 }

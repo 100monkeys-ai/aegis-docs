@@ -6,6 +6,10 @@
         "validation",
         "workflows",
         "swarms",
-        "security-model"
+        "security-model",
+        "stimulus-response",
+        "cortex-integration",
+        "control-plane",
+        "zaru"
     ]
 }

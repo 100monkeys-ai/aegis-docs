@@ -1,0 +1,44 @@
+---
+title: Zaru Integration
+description: How the Zaru consumer product interfaces with the AEGIS orchestrator.
+---
+
+# Zaru Integration
+
+**Zaru** (`myzaru.com`) is the consumer-facing product built atop the AEGIS orchestrator. It integrates the LibreChat frontend with AEGIS's execution semantics via the Secure Model Context Protocol (SMCP), providing users access to the Glass Laboratory UX and intelligent agent swarm orchestration.
+
+## Identity Bridging
+
+Zaru authenticates consumer users via an Identity Provider (e.g., OAuth 2.0 or Enterprise SAML). To bridge this web-layer identity to the AEGIS execution engine securely, the orchestrator employs the `ZaruAuthMiddleware`.
+
+1. **Token Validation**: Zaru passes a JSON Web Token (JWT) representing the user session (`MyzaruJWT`) to the Orchestrator via HTTP headers.
+2. **Attestation**: The middleware validates the JWT against the identity provider's JWKS and extracts the user identity (`LibreChatUserId`) and their subscription layer (`ZaruTierClaim`).
+3. **Security Token Issuance**: AEGIS translates this verified identity into an SMCP `SecurityToken`, granting the user's agent executions authorized access to a specific `SecurityContext`.
+
+> **Note:** The `MyzaruJWT` is treated as a highly sensitive credential and is wrapped in a redacted display type; it is never logged or stored in plain text by the orchestrator.
+
+## Session and Swarm Management
+
+In Zaru, a **session** (a single chat conversation) maps directly to a **root `ExecutionId`**. 
+
+- **Single Active Root**: A user cannot launch two independent top-level agent tasks concurrently within the same session.
+- **Swarm Subordination**: If the primary agent decides to parallelize work, it can spawn child agents (forming a Swarm). Every child execution is subordinate to the root `ExecutionId` representing the Zaru session.
+- **Cascade Cancellation**: If the user cancels the session via the Zaru UI, the root execution is cancelled, and this cancellation cascades downwards to terminate all active child executions in the swarm.
+
+## Tier Routing
+
+A user's `ZaruTier` determines their allocated resources and tool capabilities. The `ZaruAuthMiddleware` intercepts the tier claim from the JWT and automatically maps it to a pre-configured SMCP `SecurityContext`.
+
+For example:
+- **Free Tier (`ZaruTier::Free`)**: Maps to a `"zaru-free"` SecurityContext. It may enforce stricter rate limits and is structurally prohibited from mounting persistent, stateful `Volume`s.
+- **Enterprise Tier**: Maps to custom SecurityContexts with elevated resource limits and access to specialized internal APIs.
+
+Because the system enforces a strict "ceiling rule" during Swarm creation, a child agent can never be spawned with a broader `SecurityContext` than its parent, ensuring tier restrictions apply collectively across the entire agent swarm.
+
+## Glass Laboratory UX
+
+Zaru provides a specialized frontend experience known as the Glass Laboratory. This includes:
+
+- **Transparent Iteration Panel**: Subscribes to the orchestrator's event stream (via gRPC) to render the inner loop (`Execute → Evaluate → Refine`) in real time, making the agent's reasoning, tool use, and judge validations visible within the chat thread.
+- **Nested Iteration Sub-Panels**: Visually separates child agent executions in a Swarm under the parent agent.
+- **Zaru Conversation Modes**: Conversations adapt based on the user's intent. For example, `ZaruConversationMode::WorkflowBuilder` transitions the interface into a specialized state for interactively defining AEGIS workflow manifests.

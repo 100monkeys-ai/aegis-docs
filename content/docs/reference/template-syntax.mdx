@@ -1,0 +1,194 @@
+---
+title: Template Syntax
+description: Handlebars template variables and helpers available in agent prompt templates and workflow Blackboard templates.
+---
+
+# Template Syntax
+
+AEGIS uses [Handlebars](https://handlebarsjs.com/) for template rendering in two places:
+
+1. **Agent prompt templates** — `spec.task.prompt_template` in an agent manifest
+2. **Workflow Blackboard templates** — `input_template` fields in workflow state definitions
+
+Both use `{{variable}}` syntax, but the available variable namespaces differ.
+
+---
+
+## Agent Prompt Templates
+
+The `spec.task.prompt_template` field in an agent manifest is rendered once per iteration before the prompt is sent to the LLM.
+
+### Available Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `{{instruction}}` | string | The agent's `spec.task.instruction` field |
+| `{{input}}` | string | The execution input provided by the caller |
+| `{{iteration_number}}` | integer | Current iteration count (1-indexed) |
+| `{{previous_error}}` | string | Error message from the previous iteration, if any |
+| `{{agentskills}}` | string | Concatenated Cortex skill content injected by the orchestrator |
+| `{{context}}` | string | Concatenated context attachment strings |
+
+Variables that are `null` or not populated render as an empty string by default (strict mode is disabled). Referencing an undefined variable does not cause an error.
+
+### Example
+
+```yaml
+spec:
+  task:
+    instruction: "Summarise the provided email thread as bullet points."
+    prompt_template: |
+      {{#if instruction}}Task: {{instruction}}
+
+      {{/if}}{{#if iteration_number}}[Iteration {{iteration_number}}]
+      {{/if}}{{#if previous_error}}Previous attempt failed: {{previous_error}}
+      Please try a different approach.
+
+      {{/if}}{{#if input}}Input:
+      {{input}}{{/if}}
+```
+
+#### Notes
+
+- **HTML escaping is disabled.** Backticks, quotes, `<`, `>` in `{{input}}` and `{{instruction}}` are passed verbatim to the LLM. You do not need to escape them.
+- If `prompt_template` is omitted, the orchestrator uses a built-in default:
+
+  ```
+  {{#if instruction}}Task: {{instruction}}
+
+  {{/if}}{{#if input}}Input: {{input}}{{/if}}
+  ```
+
+---
+
+## Workflow Blackboard Templates (`input_template`)
+
+Workflow state `input_template` fields let you compose an agent's input from outputs of earlier states and values stored on the Blackboard.
+
+### Available Variables
+
+#### State Output Variables
+
+Reference the output of any completed state by its name:
+
+```
+{{STATE_NAME.output}}
+```
+
+If the state produced structured JSON output, access nested fields with dot notation:
+
+```
+{{STATE_NAME.output.field_name}}
+{{STATE_NAME.output.nested.key}}
+```
+
+**Example:**
+
+```yaml
+states:
+  - name: WRITE_DRAFT
+    kind: Agent
+    agent_id: draft-agent-uuid
+
+  - name: REVIEW_DRAFT
+    kind: Agent
+    agent_id: review-agent-uuid
+    input_template: |
+      Review the following draft and suggest three improvements:
+
+      {{WRITE_DRAFT.output}}
+```
+
+#### Workflow Context / Blackboard Variables
+
+Access values stored in the Blackboard — the shared mutable context for the workflow execution — using:
+
+```
+{{workflow.context.KEY}}
+```
+
+The Blackboard is populated from the workflow's initial `input` object and updated by `System` states that write context variables.
+
+**Example:**
+
+```yaml
+input_template: |
+  Task: {{workflow.context.task_description}}
+  Target language: {{workflow.context.language}}
+  Prior analysis: {{ANALYSE.output}}
+```
+
+#### Input Variables
+
+The workflow's initial execution input is available as:
+
+```
+{{input.FIELD_NAME}}
+```
+
+**Example:**
+
+```yaml
+# Workflow started with: { "repo_url": "https://github.com/...", "pr_number": 42 }
+input_template: |
+  Review pull request #{{input.pr_number}} in repo {{input.repo_url}}.
+  
+  Diff:
+  {{FETCH_DIFF.output}}
+```
+
+---
+
+## Conditionals
+
+Use `{{#if}}` to render sections only when a variable is non-empty:
+
+```handlebars
+{{#if previous_error}}
+A previous attempt failed with: {{previous_error}}
+Please take a different approach.
+{{/if}}
+
+{{#if workflow.context.additional_instructions}}
+Additional instructions: {{workflow.context.additional_instructions}}
+{{/if}}
+```
+
+---
+
+## Iteration Over Arrays
+
+Use `{{#each}}` to iterate over array values in structured state output:
+
+```handlebars
+The following issues were identified:
+{{#each ANALYSE.output.issues}}
+- {{this.severity}}: {{this.description}} (line {{this.line}})
+{{/each}}
+```
+
+---
+
+## Missing Variables
+
+- **Undefined variables** render as an empty string. Use `{{#if}}` guards to avoid blank lines in prompts.
+- **Nested access on null** — if `WRITE_DRAFT.output` is null and you write `{{WRITE_DRAFT.output.title}}`, the entire expression renders as empty rather than erroring.
+
+---
+
+## Escaping
+
+To render a literal `{{` in template output, use `\{{`:
+
+```
+The variable syntax looks like \{{variable_name}}.
+```
+
+---
+
+## See Also
+
+- [Agent Manifest Reference — `spec.task.prompt_template`](/docs/reference/agent-manifest#spectask)
+- [Workflow Manifest Reference — `input_template`](/docs/reference/workflow-manifest)
+- [Building Workflows](/docs/guides/building-workflows)
+- [Human Approvals — template in prompts](/docs/guides/human-approvals#template-variables-in-prompts)

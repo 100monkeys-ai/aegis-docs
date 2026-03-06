@@ -1,0 +1,395 @@
+---
+title: REST API Reference
+description: Full HTTP API surface of the AEGIS Orchestrator — all routes, request/response schemas, and authentication.
+---
+
+# REST API Reference
+
+The AEGIS Orchestrator exposes an HTTP API on port `8080` (default). All request and response bodies are JSON unless otherwise noted.
+
+---
+
+## Authentication
+
+| Route group | Mechanism |
+|-------------|-----------|
+| Most endpoints | Keycloak Bearer JWT: `Authorization: Bearer <token>` |
+| `POST /v1/webhooks/{source}` | HMAC-SHA256 signature: `X-Aegis-Signature: sha256=<hex>` |
+| `POST /v1/dispatch-gateway` | Internal — no external auth (agent containers only) |
+| `GET /health` | None |
+
+---
+
+## Executions
+
+### `POST /v1/executions`
+
+Start an agent execution. Returns immediately with the `execution_id`; use the SSE stream to follow progress.
+
+**Request:**
+
+```json
+{
+  "agent_id": "agt-uuid",
+  "input": "Write a function that checks if a number is prime."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent_id` | string (UUID) | ✓ | ID of a deployed agent |
+| `input` | string | ✓ | Task input passed to the agent |
+
+**Response `200`:**
+
+```json
+{
+  "execution_id": "exec-uuid"
+}
+```
+
+**Errors:**
+
+| HTTP | Body | Cause |
+|------|------|-------|
+| `400` | `{"error": "Invalid agent ID"}` | `agent_id` is not a valid UUID |
+| `500` | `{"error": "<message>"}` | Execution failed to start |
+
+---
+
+### `GET /v1/executions/{id}/stream`
+
+Stream execution events as [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events). Returns `Content-Type: text/event-stream`.
+
+Each `data:` line is a JSON-encoded `ExecutionEvent` object. Events match the types defined in the [gRPC API reference](/docs/reference/grpc-api).
+
+**Example stream:**
+
+```
+data: {"execution_started":{"execution_id":"exec-uuid","agent_id":"agt-uuid","started_at":"2026-03-05T14:00:00Z"}}
+
+data: {"iteration_started":{"execution_id":"exec-uuid","iteration_number":1,"action":"Write a primality check","started_at":"2026-03-05T14:00:01Z"}}
+
+data: {"iteration_completed":{"execution_id":"exec-uuid","iteration_number":1,"output":"def is_prime(n): ...","completed_at":"2026-03-05T14:00:15Z"}}
+
+data: {"execution_completed":{"execution_id":"exec-uuid","final_output":"def is_prime(n): ...","total_iterations":1,"completed_at":"2026-03-05T14:00:15Z"}}
+```
+
+**Example (JavaScript EventSource):**
+
+```javascript
+const es = new EventSource(
+  `https://your-aegis-node/v1/executions/${executionId}/stream`,
+  { headers: { Authorization: `Bearer ${token}` } }
+);
+
+es.onmessage = (e) => {
+  const event = JSON.parse(e.data);
+  if (event.execution_completed) {
+    console.log('Output:', event.execution_completed.final_output);
+    es.close();
+  }
+};
+```
+
+---
+
+## Human Approvals
+
+### `GET /v1/human-approvals`
+
+List all pending human approval requests.
+
+**Response `200`:**
+
+```json
+{
+  "pending_requests": [
+    {
+      "id": "req-uuid",
+      "execution_id": "exec-uuid",
+      "prompt": "Review the draft and approve or reject.",
+      "created_at": "2026-03-05T14:00:00Z",
+      "timeout_seconds": 86400
+    }
+  ]
+}
+```
+
+---
+
+### `GET /v1/human-approvals/{id}`
+
+Get a specific pending approval request.
+
+**Response `200`:**
+
+```json
+{
+  "request": {
+    "id": "req-uuid",
+    "execution_id": "exec-uuid",
+    "prompt": "Review the draft and approve or reject.",
+    "created_at": "2026-03-05T14:00:00Z",
+    "timeout_seconds": 86400
+  }
+}
+```
+
+**Errors:**
+
+| HTTP | Body | Cause |
+|------|------|-------|
+| `400` | `{"error": "Invalid request ID"}` | Not a valid UUID |
+| `200` | `{"error": "Request not found or already completed"}` | Request expired or already resolved |
+
+---
+
+### `POST /v1/human-approvals/{id}/approve`
+
+Approve a pending request and resume the workflow.
+
+**Request:**
+
+```json
+{
+  "feedback": "Looks good, approved for production.",
+  "approved_by": "alice@example.com"
+}
+```
+
+Both fields are optional.
+
+**Response `200`:**
+
+```json
+{ "status": "approved" }
+```
+
+---
+
+### `POST /v1/human-approvals/{id}/reject`
+
+Reject a pending request and transition the workflow to the rejection path.
+
+**Request:**
+
+```json
+{
+  "reason": "Needs more citations.",
+  "rejected_by": "bob@example.com"
+}
+```
+
+`reason` is required. `rejected_by` is optional.
+
+**Response `200`:**
+
+```json
+{ "status": "rejected" }
+```
+
+---
+
+## SMCP Endpoints
+
+### `POST /v1/smcp/attest`
+
+Attestation handshake — used by `bootstrap.py` at the start of each agent execution to establish an SMCP session.
+
+**Request:**
+
+```json
+{
+  "agent_id": "agt-uuid",
+  "execution_id": "exec-uuid",
+  "container_id": "container-hash",
+  "agent_public_key": "<base64-encoded Ed25519 public key>"
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "security_token": "<JWT>",
+  "session_id": "session-uuid",
+  "expires_at": "2026-03-05T15:00:00Z"
+}
+```
+
+See [SMCP Architecture](/docs/architecture/smcp) for the full attestation flow.
+
+---
+
+### `POST /v1/smcp/invoke`
+
+SMCP-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is an `SmcpEnvelope` containing a signed MCP tool call.
+
+See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths and wire format.
+
+---
+
+## Dispatch Gateway
+
+### `POST /v1/dispatch-gateway`
+
+The inner-loop communication endpoint between `bootstrap.py` and the orchestrator. Handles the full LLM → tool call → LLM cycle.
+
+**This endpoint is called by `bootstrap.py` inside agent containers.** It is bound to the internal Docker network and is not exposed externally.
+
+**Request — initial generate:**
+
+```json
+{
+  "type": "generate",
+  "agent_id": "agt-uuid",
+  "execution_id": "exec-uuid",
+  "iteration_number": 1,
+  "model_alias": "default",
+  "prompt": "Task: Write a primality check\n\nInput: in Python",
+  "messages": []
+}
+```
+
+**Request — dispatch result:**
+
+```json
+{
+  "type": "dispatch_result",
+  "execution_id": "exec-uuid",
+  "dispatch_id": "dispatch-uuid",
+  "exit_code": 0,
+  "stdout": "All tests passed.\n",
+  "stderr": "",
+  "duration_ms": 1243,
+  "truncated": false
+}
+```
+
+**Response — final:**
+
+```json
+{
+  "type": "final",
+  "content": "def is_prime(n): ...",
+  "tool_calls_executed": 2,
+  "conversation": [...]
+}
+```
+
+**Response — dispatch a command:**
+
+```json
+{
+  "type": "dispatch",
+  "dispatch_id": "dispatch-uuid",
+  "action": "exec",
+  "command": "python",
+  "args": ["-m", "pytest", "test_prime.py"],
+  "cwd": "/workspace",
+  "env_additions": {},
+  "timeout_secs": 60,
+  "max_output_bytes": 524288
+}
+```
+
+---
+
+## Stimulus Ingestion
+
+### `POST /v1/stimuli`
+
+Ingest a stimulus from an internal service or operator. Authenticated by Keycloak Bearer JWT.
+
+**Request:**
+
+```json
+{
+  "source": "http_api",
+  "content": "Deploy release v2.1.0 to production.",
+  "idempotency_key": "deploy-v2.1.0"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | ✓ | Source identifier. Use `"http_api"` or a custom source name. |
+| `content` | string | ✓ | Stimulus payload — natural language or JSON string. |
+| `idempotency_key` | string | — | Deduplication key. Scoped to `(source, key)` with 24-hour TTL. |
+
+**Response `200`:**
+
+```json
+{
+  "stimulus_id": "stim-uuid",
+  "workflow_execution_id": "wfex-uuid"
+}
+```
+
+**Errors:**
+
+| HTTP | Code | Cause |
+|------|------|-------|
+| `409` | `idempotent_duplicate` | Already processed within TTL window |
+| `422` | `classification_failed` | RouterAgent confidence below threshold |
+| `422` | `no_router_configured` | No direct route and no RouterAgent |
+| `500` | `workflow_error` | Workflow execution failed to start |
+
+---
+
+### `POST /v1/webhooks/{source}`
+
+Ingest a webhook from an external system. Authenticated by HMAC-SHA256.
+
+**Required headers:**
+
+| Header | Format | Description |
+|--------|--------|-------------|
+| `X-Aegis-Signature` | `sha256=<hex>` | HMAC-SHA256 of the raw body using the source's shared secret |
+| `X-Idempotency-Key` | any string | Optional — enables duplicate delivery detection |
+
+**Body:** Any content type. The raw body bytes are used for HMAC verification and forwarded as the stimulus `content`.
+
+**Response `200`:**
+
+```json
+{
+  "stimulus_id": "stim-uuid",
+  "workflow_execution_id": "wfex-uuid"
+}
+```
+
+**Errors:**
+
+| HTTP | Code | Cause |
+|------|------|-------|
+| `401` | `missing_signature` | `X-Aegis-Signature` header absent |
+| `401` | `invalid_signature` | HMAC digest mismatch |
+| `401` | `secret_not_found` | `AEGIS_WEBHOOK_SECRET_<SOURCE>` not set |
+| `400` | `malformed_signature` | Header not in `sha256=<hex>` format |
+| `409` | `idempotent_duplicate` | Same delivery already processed |
+| `422` | `classification_failed` | RouterAgent confidence below threshold |
+
+---
+
+## Health
+
+### `GET /health`
+
+Liveness probe. Returns `200 OK` when the orchestrator is running.
+
+**Response `200`:**
+
+```json
+{ "status": "ok" }
+```
+
+---
+
+## See Also
+
+- [gRPC API Reference](/docs/reference/grpc-api) — Temporal-worker-facing streaming transport
+- [Configuring Webhooks](/docs/guides/configuring-webhooks) — setting up HMAC secrets and routes
+- [Human Approvals](/docs/guides/human-approvals) — using the approval gate in workflows
+- [SMCP Architecture](/docs/architecture/smcp) — signed tool invocation protocol

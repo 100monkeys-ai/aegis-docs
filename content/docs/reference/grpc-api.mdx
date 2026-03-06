@@ -283,21 +283,54 @@ message StoreCortexPatternResponse {
 
 ## `AttestAgent`
 
-Issue an SMCP SecurityToken to an agent container after verifying its identity. See the [SMCP reference](/docs/architecture/smcp) for the full attestation flow.
+Issue an SMCP SecurityToken to an agent container after verifying its identity. This is the first call an agent makes before any tool invocations are possible. See the [SMCP reference](/docs/architecture/smcp) for the full attestation flow.
 
 ```protobuf
 rpc AttestAgent(AttestAgentRequest) returns (AttestAgentResponse);
+
+message AttestAgentRequest {
+  string agent_id      = 1; // UUID of the agent making the request
+  string execution_id  = 2; // UUID of the active execution
+  string container_id  = 3; // Docker container ID (runtime identity proof)
+  string public_key_pem = 4; // Ephemeral Ed25519 public key (PEM-encoded)
+}
+
+message AttestAgentResponse {
+  string security_token = 1; // Signed JWT SecurityToken for subsequent InvokeTool calls
+}
 ```
+
+**Notes:**
+- The agent generates an ephemeral Ed25519 keypair in memory at startup. The private key never leaves the container.
+- The `security_token` is a short-lived JWT valid for the duration of the execution. Include it in every `InvokeToolRequest.security_token`.
+- Also available over REST at `POST /v1/smcp/attest`.
 
 ---
 
 ## `InvokeTool`
 
-Invoke a tool on behalf of an agent via orchestrator mediation (SMCP path). Agents do not call MCP servers directly. See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths.
+Invoke a tool on behalf of an agent via orchestrator mediation. Agents do not call MCP servers directly — all tool calls are routed through the orchestrator, which verifies the SMCP envelope before forwarding. See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths.
 
 ```protobuf
 rpc InvokeTool(InvokeToolRequest) returns (InvokeToolResponse);
+
+message InvokeToolRequest {
+  string security_token = 1; // JWT from AttestAgentResponse
+  string signature      = 2; // Ed25519 signature of inner_mcp bytes (base64)
+  bytes  inner_mcp      = 3; // JSON-RPC payload for the MCP tool call
+}
+
+message InvokeToolResponse {
+  bytes result_json = 1; // Success or failure JSON result
+}
 ```
+
+**Notes:**
+- `inner_mcp` is a standard MCP JSON-RPC `call_tool` request serialized to bytes.
+- `signature` must be the Ed25519 signature over `inner_mcp`, produced with the ephemeral private key registered during `AttestAgent`.
+- The orchestrator verifies the signature, checks the `security_token`, evaluates the SecurityContext policy, then routes the call to the appropriate tool server.
+- Also available over REST at `POST /v1/smcp/invoke`.
+- Returns `PERMISSION_DENIED` if the SecurityContext denies the tool call.
 
 
 ---

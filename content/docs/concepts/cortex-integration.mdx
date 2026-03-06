@@ -1,0 +1,61 @@
+---
+title: Cortex (Learning & Memory) Integration
+description: How the AEGIS orchestrator connects to the central Cortex memory graph and operates in memoryless mode.
+---
+
+# Cortex (Learning & Memory) Integration
+
+The **Cortex** is the system-wide memory and learning layer for the cyber-biological architecture. Rather than treating each execution in isolation, the orchestrator leverages Cortex to transform individual agent errors into shared, system-wide capabilities.
+
+> **Note:** Cortex is a centralized, proprietary service hosted and managed exclusively by 100monkeys. The AEGIS orchestrator connects to Cortex via public APIs.
+
+---
+
+## The Role of Cortex
+
+When an agent encounters an error or requires refinement during the 100monkeys iterative loop, the orchestrator indexes these events. Cortex analyzes the execution history to extract **Patterns** (error-solution pairs) and organizes them into higher-level **Skills**.
+
+By connecting to Cortex, your orchestrator can:
+- **Retrieve known solutions:** Automatically provide agents with proven fixes for specific error signatures before they attempt to solve them from scratch.
+- **Contribute to collective intelligence:** Send successful refinement trajectories back to the central graph, improving the system for all connected nodes.
+- **Enable holographic memory:** Access a weighted graph of solutions that dynamically updates based on the continuous success and decay of patterns.
+
+---
+
+## Connecting to Cortex
+
+The orchestrator communicates with Cortex over gRPC and HTTP interfaces defined in the shared API contracts. You configure the connection in your `aegis-config.yaml` file.
+
+```yaml
+# aegis-config.yaml
+cortex:
+  enabled: true
+  endpoint: "grpc://cortex.100monkeys.ai:443"
+  api_key: "vault:aegis-system/cortex/api-key"
+  timeout_ms: 2000
+```
+
+### Authentication and Credentials
+
+Access to the central Cortex requires an API key provided by 100monkeys. To maintain the Keymaster Pattern security guarantee, this key should be stored securely in OpenBao (or injected via environment variables) and NEVER placed directly in plain text in the configuration file or exposed to agent runtime environments.
+
+---
+
+## Memoryless Mode
+
+If you do not have a Cortex API key, or if you prefer to run the orchestrator in an entirely isolated, air-gapped environment, AEGIS will operate in **Memoryless Mode**.
+
+```yaml
+# aegis-config.yaml
+cortex:
+  enabled: false
+```
+
+### Behavior in Memoryless Mode
+
+When Cortex is disabled:
+- **No Pattern Retrieval:** Agents will rely entirely on their intrinsic foundational model intelligence and whatever context is provided in their base prompts. They will not receive injected "hints" or known solutions from previous runs.
+- **No Telemetry Export:** The orchestrator will not transmit any execution trajectories, error signatures, or successful code diffs externally.
+- **Standard Iteration:** The 100monkeys loop (`Execute → Evaluate → Refine`) functions normally, but the loop starts from a blank slate on every execution.
+
+Memoryless mode is fully supported for local development, highly sensitive enterprise deployments, and open-source hobbyists.

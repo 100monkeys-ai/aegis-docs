@@ -9,6 +9,8 @@
         "temporal",
         "seaweedfs",
         "firecracker",
-        "container-registry"
+        "container-registry",
+        "multi-node",
+        "observability"
     ]
 }
