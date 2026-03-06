@@ -255,7 +255,7 @@ DEPLOY:
       docker push \
         {{blackboard.registry}}/{{blackboard.app_name}}:{{blackboard.version}}
   shell: true
-  registry_credentials: "vault:cicd/docker-registry"
+  registry_credentials: "secret:cicd/docker-registry"
   env:
     DOCKER_HOST: "tcp://dockerd:2375"
   volumes:
@@ -466,7 +466,7 @@ spec:
       volumes:
         - name: workspace
           mount_path: /workspace
-      registry_credentials: "vault:cicd/docker-registry"
+      registry_credentials: "secret:cicd/docker-registry"
       resources:
         timeout: "15m"
       transitions:
@@ -500,7 +500,7 @@ BUILD:
   name: "Custom Build Image"
   image: "ghcr.io/myorg/builder:v2"
   image_pull_policy: Always              # Always | IfNotPresent | Never
-  registry_credentials: "vault:cicd/ghcr-token"
+  registry_credentials: "secret:cicd/ghcr-token"
   command: ["make", "release"]
   workdir: "/workspace"
   volumes:
@@ -513,7 +513,7 @@ BUILD:
       target: FAILED
 ```
 
-Store the registry credential in the secrets vault and reference it with the `vault:` prefix. The orchestrator resolves the credential at runtime and never exposes it to the container process environment or logs.
+Store the registry credential in the secrets vault and reference it with the `secret:` prefix. The orchestrator resolves the credential at runtime and never exposes it to the container process environment or logs.
 
 ---
 

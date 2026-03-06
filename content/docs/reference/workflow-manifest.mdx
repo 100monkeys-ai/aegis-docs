@@ -359,7 +359,7 @@ Executes a single command in an isolated container without an LLM or iteration l
 | `resources.cpu` | integer | | | CPU millicores (e.g. `2000` = 2 vCPU). |
 | `resources.memory` | string | | | Memory limit (e.g. `"2Gi"`, `"512Mi"`). |
 | `resources.timeout` | string | | `5m` | Hard timeout for the container. Human-readable: `"5m"`, `"1h"`. Activity-level timeout in Temporal. |
-| `registry_credentials` | string | | | Secrets vault path for private registry auth (e.g. `"vault:cicd/docker-registry"`). Resolved by the orchestrator; never exposed to the container. |
+| `registry_credentials` | string | | | Secrets vault path for private registry auth (e.g. `"secret:cicd/docker-registry"`). Resolved by the orchestrator; never exposed to the container. |
 | `retry` | object | | | Retry configuration for transient failures. |
 | `retry.max_attempts` | integer | | `1` | Total attempts including the first. `3` = one initial attempt plus two retries. |
 | `retry.backoff` | string | | `"0s"` | Initial delay between retries. Subsequent retries double the backoff (exponential). |
@@ -997,7 +997,7 @@ spec:
           docker build -t {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}} /workspace
           docker push {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}}
       shell: true
-      registry_credentials: "vault:cicd/docker-registry"
+      registry_credentials: "secret:cicd/docker-registry"
       volumes:
         - name: workspace
           mount_path: /workspace

@@ -252,6 +252,6 @@ Running executions continue using the provider that was active when they started
 
 ## Credential Security
 
-API keys configured as `env:VAR_NAME` are read from the daemon's environment at startup. They are stored in memory and never written to disk or logs. When OpenBao secrets management is configured (see [Secrets Management](/docs/deployment/secrets)), credentials can also be sourced from OpenBao with the `vault:path/to/secret` syntax.
+API keys configured as `env:VAR_NAME` are read from the daemon's environment at startup. They are stored in memory and never written to disk or logs. When OpenBao secrets management is configured (see [Secrets Management](/docs/deployment/secrets)), credentials can also be sourced from OpenBao with the `secret:path/to/secret` syntax.
 
 Agents never receive API keys. All LLM API calls are made by the orchestrator host process using the resolved credential.

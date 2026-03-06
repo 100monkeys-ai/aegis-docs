@@ -1,11 +1,11 @@
 ---
 title: IAM & Identity Federation
-description: Keycloak realms, AegisRole claims, M2M service accounts, SAML federation, JWKS cache, and KeycloakAuthInterceptor.
+description: Keycloak realms, AegisRole claims, M2M service accounts, SAML federation, JWKS cache, and GrpcIamAuthInterceptor.
 ---
 
 # IAM & Identity Federation
 
-AEGIS uses **Keycloak** as its OIDC identity provider. Keycloak issues JWTs for all human operators and machine-to-machine (M2M) clients. The orchestrator validates these JWTs on every API request via the `KeycloakAuthInterceptor`.
+AEGIS uses **Keycloak** as its OIDC identity provider. Keycloak issues JWTs for all human operators and machine-to-machine (M2M) clients. The orchestrator validates these JWTs on every API request via the `GrpcIamAuthInterceptor`.
 
 ---
 
@@ -70,11 +70,18 @@ Add a roles protocol mapper to include client roles in the JWT:
 ### 5. Configure AEGIS
 
 ```yaml
-iam:
-  keycloak:
-    url: "https://keycloak.example.com"
-    realm: aegis-system
-    jwks_cache_ttl: 300s
+spec:
+  iam:
+    realms:
+      - slug: "aegis-system"
+        issuer_url: "https://keycloak.example.com/realms/aegis-system"
+        jwks_uri: "https://keycloak.example.com/realms/aegis-system/protocol/openid-connect/certs"
+        audience: "aegis-orchestrator"
+        kind: system
+    jwks_cache_ttl_seconds: 300
+    claims:
+      zaru_tier: "zaru_tier"
+      aegis_role: "aegis_role"
 ```
 
 ---
@@ -129,9 +136,9 @@ AEGIS then validates tokens from both `aegis-system` (operators) and `tenant-{sl
 
 ## JWKS Cache
 
-The `KeycloakAuthInterceptor` maintains a per-realm JWKS cache (fetched from `https://{keycloak}/realms/{realm}/protocol/openid-connect/certs`).
+The `GrpcIamAuthInterceptor` maintains a per-realm JWKS cache (fetched from `https://{keycloak}/realms/{realm}/protocol/openid-connect/certs`).
 
-Default cache TTL is 300 seconds (configurable via `iam.keycloak.jwks_cache_ttl`). When Keycloak rotates signing keys, the cache is refreshed automatically on the next TTL expiry. Key rotation completes without any AEGIS downtime.
+Default cache TTL is 300 seconds (configurable via `spec.iam.jwks_cache_ttl_seconds`). When Keycloak rotates signing keys, the cache is refreshed automatically on the next TTL expiry. Key rotation completes without any AEGIS downtime.
 
 If you rotate keys manually and need the cache cleared immediately, restart the daemon:
 
@@ -149,7 +156,7 @@ Client sends request:
   Authorization: Bearer <keycloak-issued-jwt>
          │
          ▼
-KeycloakAuthInterceptor
+GrpcIamAuthInterceptor
   1. Extract Bearer token from Authorization header
   2. Fetch JWKS from cache (or refresh if stale)
   3. Verify JWT signature

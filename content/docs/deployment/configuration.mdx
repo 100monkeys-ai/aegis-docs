@@ -32,10 +32,10 @@ Any string value in the config file can use a credential prefix instead of a lit
 | Prefix | Resolution |
 |--------|------------|
 | `env:VAR_NAME` | Read from the daemon process environment at startup. |
-| `vault:path/to/secret` | Resolved from OpenBao at runtime (requires `spec.secrets.openbao` configured). |
+| `secret:path/to/secret` | Resolved from OpenBao at runtime (requires `spec.secrets.backend` configured). |
 | *(literal)* | Plaintext. Avoid for secrets. |
 
-The recommended production pattern is `vault:` references for all API keys and credentials. Use `env:` as a fallback when OpenBao is not available.
+The recommended production pattern is `secret:` references for all API keys and credentials. Use `env:` as a fallback when OpenBao is not available.
 
 ---
 
@@ -93,7 +93,7 @@ llm_providers:
   - name: openai-primary           # Unique provider name on this node. Required.
     type: openai                   # openai | anthropic | ollama | openai-compatible. Required.
     endpoint: "https://api.openai.com/v1"  # API endpoint URL. Required.
-    api_key: "env:OPENAI_API_KEY"  # Supports env: and vault: prefixes.
+    api_key: "env:OPENAI_API_KEY"  # Supports env: and secret: prefixes.
     enabled: true                  # Default: true
     models:                        # Must have at least one entry. Required.
       - alias: default             # Alias referenced in agent manifests. Required.
@@ -113,7 +113,7 @@ llm_providers:
   - name: anthropic-primary
     type: anthropic
     endpoint: "https://api.anthropic.com"
-    api_key: "vault:aegis-system/llm/anthropic-api-key"
+    api_key: "secret:aegis-system/llm/anthropic-api-key"
     enabled: true
     models:
       - alias: smart
@@ -262,10 +262,10 @@ mcp_servers:
     capabilities:
       - web.search
       - web.fetch
-    # API keys and tokens — resolved via env: or vault: prefixes.
+    # API keys and tokens — resolved via env: or secret: prefixes.
     # Values are injected as environment variables into the server process.
     credentials:
-      SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+      SEARCH_API_KEY: "secret:aegis-system/tools/search-api-key"
     # Non-secret environment variables for the server process. Default: {}
     environment:
       LOG_LEVEL: "info"
@@ -296,7 +296,7 @@ smcp:
 
 # ─── Security Contexts ────────────────────────────────────────────────────────
 # Named permission boundaries controlling what tools agents may invoke.
-# Referenced by name in agent manifests and in spec.keycloak ZaruTier mappings.
+# Referenced by name in agent manifests and in spec.iam ZaruTier mappings.
 security_contexts:
   - name: coder-default
     description: "Standard coder context — filesystem + commands + safe package registries"
@@ -383,11 +383,11 @@ builtin_dispatchers:
       - AWS_SECRET_ACCESS_KEY
       - GOOGLE_API_KEY
 
-# ─── IAM (Keycloak) ───────────────────────────────────────────────────────────
+# ─── IAM (OIDC) ───────────────────────────────────────────────────────────────
 # Optional. Omit to disable JWT validation (dev only; never in production).
 # Configures Keycloak as the trusted OIDC issuer for all
 # human and service-account identities.
-keycloak:
+iam:
   # Array of Keycloak realms trusted by this node.
   realms:
     - slug: "aegis-system"         # Realm name matching Keycloak config. Required.
@@ -409,8 +409,8 @@ keycloak:
     aegis_role: "aegis_role"       # Claim carrying AegisRole in aegis-system realm
 
 # ─── gRPC Auth ────────────────────────────────────────────────────────────────
-# Optional. Controls Keycloak JWT enforcement on the gRPC endpoint.
-# Requires spec.keycloak to be configured.
+# Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint.
+# Requires spec.iam to be configured.
 grpc_auth:
   # Enable JWT validation on all gRPC methods. Default: true
   enabled: true
@@ -422,11 +422,9 @@ grpc_auth:
 # ─── Secrets (OpenBao) ────────────────────────────────────────────────────────
 # Optional. Omit to rely solely on env: references.
 # Follows the Keymaster Pattern: only the orchestrator accesses
-# OpenBao — agents never receive vault credentials directly.
+# OpenBao — agents never receive secret backend credentials directly.
 secrets:
-  # Secrets backend. Options: openbao | environment. Default: environment
-  backend: "openbao"
-  openbao:
+  backend:
     # OpenBao server address.
     address: "https://openbao.internal:8200"
     # Authentication method. Currently only approle is supported.
@@ -444,22 +442,11 @@ secrets:
       ca_cert: "/etc/aegis/openbao-ca.pem"
       client_cert: null            # Optional mTLS client cert
       client_key: null             # Optional mTLS client key
-    # Background token renewal settings.
-    token_renewal:
-      # Renewal check interval in seconds. Default: 1800 (30 min)
-      interval_seconds: 1800
-      # Renew when this many seconds remain before expiry. Default: 300
-      renew_before_expiry_seconds: 300
-    # In-memory secret cache.
-    cache:
-      enabled: true
-      ttl_seconds: 30
-      max_entries: 1000
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 # Optional. If omitted the daemon uses InMemory repositories (dev only).
 database:
-  # PostgreSQL connection URL. Supports env: and vault: prefixes.
+  # PostgreSQL connection URL. Supports env: and secret: prefixes.
   url: "env:AEGIS_DATABASE_URL"
   # Maximum connections in the pool. Default: 5
   max_connections: 10
@@ -540,7 +527,7 @@ Required array. At least one entry with at least one model is required.
 | `name` | string | ✅ | — | Unique provider name |
 | `type` | enum | ✅ | — | `openai` \| `anthropic` \| `ollama` \| `openai-compatible` |
 | `endpoint` | string | ✅ | — | API endpoint URL |
-| `api_key` | string | ❌ | null | API key. Supports `env:` and `vault:`. |
+| `api_key` | string | ❌ | null | API key. Supports `env:` and `secret:`. |
 | `enabled` | bool | ❌ | `true` | Whether this provider is active |
 | `models[].alias` | string | ✅ | — | Alias referenced in agent manifests |
 | `models[].model` | string | ✅ | — | Provider-side model identifier |
@@ -643,7 +630,7 @@ Optional array. Each entry defines an external MCP Tool Server process.
 | `executable` | string | — | Executable path |
 | `args` | string[] | `[]` | Command-line arguments |
 | `capabilities` | string[] | `[]` | Tool names this server provides (used for routing) |
-| `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `vault:`. |
+| `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `secret:`. |
 | `environment` | map | `{}` | Non-secret env vars for the server process |
 | `health_check.interval_seconds` | u64 | `60` | Health check interval |
 | `health_check.timeout_seconds` | u64 | `5` | Health check timeout |
@@ -709,9 +696,9 @@ Optional. Configures the `cmd` Dispatch Protocol handler. This is an in-process 
 
 ---
 
-### `spec.keycloak`
+### `spec.iam`
 
-Optional. Configures Keycloak as the trusted OIDC issuer. Omit to disable JWT validation (dev only; never in production).
+Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT validation (dev only; never in production).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -728,7 +715,7 @@ Optional. Configures Keycloak as the trusted OIDC issuer. Omit to disable JWT va
 
 ### `spec.grpc_auth`
 
-Optional. Controls Keycloak JWT enforcement on the gRPC endpoint. Requires `spec.keycloak` to be configured.
+Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint. Requires `spec.iam` to be configured.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -743,20 +730,14 @@ Optional. Configures OpenBao as the secrets backend. Follows the Keymaster Patte
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | enum | `environment` | `openbao` \| `environment` |
-| `openbao.address` | string | — | OpenBao server URL |
-| `openbao.auth_method` | string | `approle` | Authentication method. Only `approle` is currently supported. |
-| `openbao.approle.role_id` | string | — | AppRole Role ID (public; safe to commit) |
-| `openbao.approle.secret_id_env_var` | string | — | Name of the environment variable containing the AppRole Secret ID. Never commit the actual Secret ID. |
-| `openbao.namespace` | string | — | OpenBao namespace (maps 1:1 to a Keycloak realm) |
-| `openbao.tls.ca_cert` | string | null | CA certificate path |
-| `openbao.tls.client_cert` | string | null | mTLS client certificate path |
-| `openbao.tls.client_key` | string | null | mTLS client key path |
-| `openbao.token_renewal.interval_seconds` | u64 | `1800` | Token renewal check interval |
-| `openbao.token_renewal.renew_before_expiry_seconds` | u64 | `300` | Renew when this many seconds remain before expiry |
-| `openbao.cache.enabled` | bool | `true` | Enable in-memory secret cache |
-| `openbao.cache.ttl_seconds` | u64 | `30` | Cache entry TTL |
-| `openbao.cache.max_entries` | u64 | `1000` | Maximum cache entries |
+| `backend.address` | string | — | OpenBao server URL |
+| `backend.auth_method` | string | `approle` | Authentication method. Only `approle` is currently supported. |
+| `backend.approle.role_id` | string | — | AppRole Role ID (public; safe to commit) |
+| `backend.approle.secret_id_env_var` | string | `OPENBAO_SECRET_ID` | Name of the environment variable containing the AppRole Secret ID. Never commit the actual Secret ID. |
+| `backend.namespace` | string | — | OpenBao namespace (maps 1:1 to an IAM realm) |
+| `backend.tls.ca_cert` | string | null | CA certificate path |
+| `backend.tls.client_cert` | string | null | mTLS client certificate path |
+| `backend.tls.client_key` | string | null | mTLS client key path |
 
 ---
 
@@ -766,7 +747,7 @@ Optional. PostgreSQL connection for persistent state (executions, patterns, work
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `url` | string | — | PostgreSQL connection URL. Supports `env:` and `vault:`. |
+| `url` | string | — | PostgreSQL connection URL. Supports `env:` and `secret:`. |
 | `max_connections` | u32 | `5` | Maximum connections in the pool |
 | `connect_timeout_seconds` | u64 | `5` | Connection timeout |
 
@@ -780,7 +761,7 @@ Optional. Temporal workflow engine configuration for durable workflow execution.
 |-----|------|---------|-------------|
 | `address` | string | `temporal:7233` | Temporal gRPC server address |
 | `worker_http_endpoint` | string | `http://localhost:3000` | HTTP endpoint for Temporal worker callbacks. Supports `env:`. |
-| `worker_secret` | string | null | Shared secret for authenticating worker callbacks. Supports `env:` and `vault:`. |
+| `worker_secret` | string | null | Shared secret for authenticating worker callbacks. Supports `env:` and `secret:`. |
 | `namespace` | string | `default` | Temporal namespace |
 | `task_queue` | string | `aegis-agents` | Temporal task queue name |
 

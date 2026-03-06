@@ -149,10 +149,10 @@ spec:
         - web.fetch
 
       # API credentials injected as environment variables when the process starts.
-      # Values support env: (host env var) and vault: (OpenBao KV path).
+      # Values support env: (host env var) and secret: (OpenBao KV path).
       # These values are NEVER forwarded to agent containers.
       credentials:
-        SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+        SEARCH_API_KEY: "secret:aegis-system/tools/search-api-key"
         BING_ENDPOINT:  "env:BING_SEARCH_ENDPOINT"
 
       # Non-secret environment variables.
@@ -183,15 +183,15 @@ mcp_servers:
     args: ["/opt/aegis-tools/web-search/index.js"]
     capabilities: [web.search, web.fetch]
     credentials:
-      SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+      SEARCH_API_KEY: "secret:aegis-system/tools/search-api-key"
 
   - name: gmail-tools
     executable: "python"
     args: ["-m", "aegis_gmail_server"]
     capabilities: [email.send, email.read, email.search]
     credentials:
-      GMAIL_OAUTH_TOKEN:   "vault:aegis-system/tools/gmail-oauth-token"
-      GMAIL_CLIENT_SECRET: "vault:aegis-system/tools/gmail-client-secret"
+      GMAIL_OAUTH_TOKEN:   "secret:aegis-system/tools/gmail-oauth-token"
+      GMAIL_CLIENT_SECRET: "secret:aegis-system/tools/gmail-client-secret"
     health_check:
       interval_seconds: 120
       timeout_seconds: 10
@@ -230,12 +230,12 @@ For the full `spec.tools` schema, see [`spec.tools[]`](/docs/reference/agent-man
 
 ### Credential resolution
 
-The orchestrator resolves `env:` and `vault:` references in `credentials` at daemon startup using the same credential chain as all other secrets:
+The orchestrator resolves `env:` and `secret:` references in `credentials` at daemon startup using the same credential chain as all other secrets:
 
 | Prefix | Resolution |
 |---|---|
 | `env:VAR_NAME` | Read from orchestrator process environment at startup |
-| `vault:path/to/secret` | Fetched from OpenBao KV engine at startup; cached with a 30-second TTL |
+| `secret:path/to/secret` | Fetched from OpenBao KV engine at startup; cached with a 30-second TTL |
 | *(bare string)* | Treated as a literal value — avoid for secrets |
 
 Resolved values are injected as environment variables into the server process and are never written to any file, included in any log line, or forwarded to agent containers. See [Secrets Management](/docs/deployment/secrets) for OpenBao configuration.
@@ -256,7 +256,7 @@ Resolved values are injected as environment variables into the server process an
 | **Execution location** | Inside agent container | On orchestrator host |
 | **Access to agent filesystem** | Full access to mounted volumes | Only what the agent passes as arguments |
 | **Network access** | None (inherits container network isolation) | Full host network access |
-| **Credentials** | None injected | Injected from `env:` / `vault:` at startup |
+| **Credentials** | None injected | Injected from `env:` / `secret:` at startup |
 | **Process lifecycle** | One process per `cmd.run` call | Long-running; started at daemon startup |
 | **Typical use cases** | Compilers, test runners, linters, interpreters | Web APIs, email, databases, SaaS integrations |
 | **Policy mechanism** | `SubcommandAllowlist` | Domain allowlist, rate limits, capability patterns |

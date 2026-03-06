@@ -103,7 +103,7 @@ Client
   │  POST /v1/executions (HTTP) or ExecuteAgent (gRPC)
   ▼
 Presentation Layer
-  │  KeycloakAuthInterceptor validates Bearer JWT
+  │  GrpcIamAuthInterceptor validates Bearer JWT
   ▼
 Application Layer: StartExecutionUseCase
   │  1. Resolves Agent by ID from AgentRepository

@@ -236,7 +236,7 @@ DEPLOY:
       docker build -t {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}} /workspace
       docker push {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}}
   shell: true
-  registry_credentials: "vault:cicd/docker-registry"
+  registry_credentials: "secret:cicd/docker-registry"
   volumes:
     - name: workspace
       mount_path: /workspace

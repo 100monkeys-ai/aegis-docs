@@ -163,7 +163,7 @@ ToolRouter
          │
          ▼
 Tool Server process (host, JSON-RPC stdio)
-  · Credentials resolved at server startup from env: or vault: references
+  · Credentials resolved at server startup from env: or secret: references
   · Makes HTTP request to api.github.com using GITHUB_TOKEN
   · Returns JSON-RPC response
          │
@@ -174,7 +174,7 @@ Publish MCPToolEvent::InvocationCompleted to event bus
 
 ### Credential isolation
 
-Credentials are declared in `aegis-config.yaml` under `mcp_servers[].credentials` using `env:` or `vault:` prefixes. The orchestrator resolves these values from the host environment or OpenBao at server startup time and passes them to the server process as environment variables. The values are never written to disk, never logged, and never sent to the agent container.
+Credentials are declared in `aegis-config.yaml` under `mcp_servers[].credentials` using `env:` or `secret:` prefixes. The orchestrator resolves these values from the host environment or OpenBao at server startup time and passes them to the server process as environment variables. The values are never written to disk, never logged, and never sent to the agent container.
 
 ```yaml
 mcp_servers:
@@ -183,7 +183,7 @@ mcp_servers:
     args: ["/opt/aegis-tools/web-search/index.js"]
     capabilities: [web.search, web.fetch]
     credentials:
-      SEARCH_API_KEY: "vault:aegis-system/tools/search-api-key"
+      SEARCH_API_KEY: "secret:aegis-system/tools/search-api-key"
     health_check:
       interval_seconds: 60
       method: "tools/list"
