@@ -1,13 +1,13 @@
 ---
 title: Workflow Manifest Reference
-description: Complete specification for the WorkflowManifest YAML format (v1.0) — schema, field definitions, all four state kinds, consensus strategies, and complete examples.
+description: Complete specification for the WorkflowManifest YAML format — schema, field definitions, all six state kinds including ContainerRun for CI/CD steps, consensus strategies, and complete examples.
 ---
 
 # Workflow Manifest Reference
 
 **API Version:** `100monkeys.ai/v1` | **Kind:** `Workflow` | **Status:** Canonical
 
-A **Workflow Manifest** is a declarative YAML document defining a finite state machine (FSM) that coordinates agent executions, system commands, and human approval gates into a durable, restartable sequence. It uses the same Kubernetes-style `apiVersion`/`kind`/`metadata`/`spec` format as the [Agent Manifest](/docs/reference/agent-manifest).
+A **Workflow Manifest** is a declarative YAML document defining a finite state machine (FSM) that coordinates agent executions, container-based CI/CD steps, system commands, and human approval gates into a durable, restartable sequence. It uses the same Kubernetes-style `apiVersion`/`kind`/`metadata`/`spec` format as the [Agent Manifest](/docs/reference/agent-manifest).
 
 ---
 
@@ -51,7 +51,7 @@ spec:
   states:
 
     GENERATE:
-      kind: Agent                  # StateKind: Agent | System | Human | ParallelAgents
+      kind: Agent                  # StateKind: Agent | System | Human | ParallelAgents | ContainerRun | ParallelContainerRun
       agent: coder-v1              # required for Agent kind; deployed agent name or UUID
       input: |                     # Handlebars template rendered as the agent's task input
         {{#if blackboard.iteration_number}}
@@ -218,7 +218,7 @@ spec:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` |
+| `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` \| `ContainerRun` \| `ParallelContainerRun` |
 | `timeout` | string | | `300s` | Maximum time in this state. Human-readable: `"300s"`, `"5m"`, `"1h"`. |
 | `volumes` | `object[]` | | | Volume mounts for this state (`Agent` kind). |
 | `volumes[].volume` | string | ✓ | | Volume reference. Supports Handlebars: `{{workflow.storage.workspace}}`. |
@@ -338,6 +338,77 @@ State output structure:
 
 Use `{{STATE.consensus.score}}`, `{{STATE.consensus.confidence}}`, and `{{STATE.agents.N.output}}` in downstream transitions and templates.
 
+### `kind: ContainerRun`
+
+Executes a single command in an isolated container without an LLM or iteration loop. Use `ContainerRun` for deterministic CI/CD steps: compiling, running tests, building images, and deploying artifacts.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | | | Human-readable label displayed in the Synapse UI and event log. |
+| `image` | string | ✓ | | Container image reference. Accepts any Docker image (e.g. `"rust:1.75-alpine"`, `"docker:24-cli"`) or a private registry image (e.g. `"ghcr.io/myorg/builder:v2"`). |
+| `image_pull_policy` | string | | `IfNotPresent` | `Always` \| `IfNotPresent` \| `Never`. |
+| `command` | `string[]` | ✓ | | Command and arguments to execute (entrypoint override). Handlebars templates supported in each element. |
+| `shell` | boolean | | `false` | If `true`, join all `command` elements and pass them to `sh -c`. Use for multi-line scripts. |
+| `env` | `map[string]string` | | | Environment variables. Values support Handlebars. |
+| `workdir` | string | | `/workspace` | Working directory inside the container. |
+| `volumes` | `object[]` | | | Volume mounts. Same volumes declared at workflow level or per-state. |
+| `volumes[].name` | string | ✓ | | Volume name that matches a workflow-level volume. |
+| `volumes[].mount_path` | string | ✓ | | Absolute path inside the container. |
+| `volumes[].read_only` | boolean | | `false` | Mount as read-only. |
+| `resources` | object | | | CPU, memory, and timeout limits. |
+| `resources.cpu` | integer | | | CPU millicores (e.g. `2000` = 2 vCPU). |
+| `resources.memory` | string | | | Memory limit (e.g. `"2Gi"`, `"512Mi"`). |
+| `resources.timeout` | string | | `5m` | Hard timeout for the container. Human-readable: `"5m"`, `"1h"`. Activity-level timeout in Temporal. |
+| `registry_credentials` | string | | | Secrets vault path for private registry auth (e.g. `"vault:cicd/docker-registry"`). Resolved by the orchestrator; never exposed to the container. |
+| `retry` | object | | | Retry configuration for transient failures. |
+| `retry.max_attempts` | integer | | `1` | Total attempts including the first. `3` = one initial attempt plus two retries. |
+| `retry.backoff` | string | | `"0s"` | Initial delay between retries. Subsequent retries double the backoff (exponential). |
+
+After the container exits, the Blackboard is updated under the state name:
+
+```json
+{
+  "exit_code": 0,
+  "stdout": "<captured stdout, up to 1 MB>",
+  "stderr": "<captured stderr, up to 1 MB>",
+  "duration_ms": 4321
+}
+```
+
+Use `{{STATE.output.exit_code}}`, `{{STATE.output.stdout}}`, and `{{STATE.output.stderr}}` in downstream states.
+
+Transitions on `ContainerRun` states use `exit_code_zero`, `exit_code_non_zero`, `exit_code`, `on_success`, `on_failure`, and `custom`. See [Condition Types](#condition-types) below.
+
+### `kind: ParallelContainerRun`
+
+Runs multiple container commands concurrently within a single workflow state. All steps start simultaneously; the state waits until they all finish before evaluating transitions. Use it for parallel test suites, multi-language builds, or concurrent quality gates.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `steps` | `object[]` | ✓ | | List of container steps to run in parallel. Each step has the same fields as `kind: ContainerRun` (except `retry`), plus a required `name`. |
+| `steps[].name` | string | ✓ | | Unique label for this step. Used as the Blackboard output key. |
+| `completion` | string | | `all_succeed` | `all_succeed` \| `any_succeed` \| `best_effort`. See below. |
+
+#### `completion` Strategies
+
+| Strategy | Behaviour | Best For |
+|---|---|---|
+| `all_succeed` | State succeeds only if every step exits with code 0. | CI gates where all checks must pass. |
+| `any_succeed` | State succeeds if at least one step exits with code 0. | Multi-platform builds where one target is sufficient. |
+| `best_effort` | State always transitions with `on_success`; per-step results are available for inspection. | Information-gathering steps where failure is non-blocking. |
+
+After all steps complete, the Blackboard is updated under the state name with per-step keys:
+
+```json
+{
+  "unit-tests": { "exit_code": 0, "stdout": "...", "stderr": "", "duration_ms": 12300 },
+  "lint":       { "exit_code": 1, "stdout": "", "stderr": "error[E0...]", "duration_ms": 870 },
+  "format-check": { "exit_code": 0, "stdout": "", "stderr": "", "duration_ms": 410 }
+}
+```
+
+Access per-step output as `{{STATE.output.STEPNAME.stdout}}`, `{{STATE.output.STEPNAME.stderr}}`, and `{{STATE.output.STEPNAME.exit_code}}`.
+
 ### `spec.states[*].transitions[]`
 
 | Field | Type | Required | Description |
@@ -357,11 +428,11 @@ Use `{{STATE.consensus.score}}`, `{{STATE.consensus.confidence}}`, and `{{STATE.
 |---|---|---|
 | *(absent)* | All | Unconditional fallback. Always matches. Place last. |
 | `always` | All | Explicit unconditional. Equivalent to absent condition. |
-| `on_success` | Agent, System | State succeeded (exit code 0 or agent returned success). |
-| `on_failure` | Agent, System | State failed. |
-| `exit_code_zero` | System | Exit code was 0. |
-| `exit_code_non_zero` | System | Exit code was non-zero. |
-| `exit_code` | System | Exit code equals `value`. |
+| `on_success` | Agent, System, ContainerRun, ParallelContainerRun | State succeeded (exit code 0 or agent returned success). |
+| `on_failure` | Agent, System, ContainerRun, ParallelContainerRun | State failed. |
+| `exit_code_zero` | System, ContainerRun | Exit code was 0. |
+| `exit_code_non_zero` | System, ContainerRun | Exit code was non-zero. |
+| `exit_code` | System, ContainerRun | Exit code equals `value`. |
 | `score_above` | Agent | Agent validation score > `threshold`. |
 | `score_below` | Agent | Agent validation score < `threshold`. |
 | `score_between` | Agent | Score between `min` and `max` (inclusive). |
@@ -408,9 +479,13 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 | `{{workflow.storage.workspace}}` | `volumes[].volume` | Reference to the shared workspace volume. |
 | `{{workflow.storage.shared_volumes.NAME}}` | `volumes[].volume` | Reference to a named shared volume. |
 | `{{STATE.output}}` | States after STATE | Final output text of an Agent state. |
-| `{{STATE.output.stdout}}` | States after STATE | stdout of a System state. |
-| `{{STATE.output.stderr}}` | States after STATE | stderr of a System state. |
-| `{{STATE.output.exit_code}}` | States after STATE | Exit code of a System state. |
+| `{{STATE.output.stdout}}` | States after STATE | stdout of a System or ContainerRun state. |
+| `{{STATE.output.stderr}}` | States after STATE | stderr of a System or ContainerRun state. |
+| `{{STATE.output.exit_code}}` | States after STATE | Exit code of a System or ContainerRun state. |
+| `{{STATE.output.duration_ms}}` | States after STATE | Wall-clock duration in milliseconds (ContainerRun states). |
+| `{{STATE.output.STEPNAME.stdout}}` | States after STATE | Per-step stdout (ParallelContainerRun states). |
+| `{{STATE.output.STEPNAME.stderr}}` | States after STATE | Per-step stderr (ParallelContainerRun states). |
+| `{{STATE.output.STEPNAME.exit_code}}` | States after STATE | Per-step exit code (ParallelContainerRun states). |
 | `{{STATE.status}}` | States after STATE | `"success"` or `"failed"`. |
 | `{{STATE.score}}` | States after STATE | Validation score (Agent states, 0.0–1.0). |
 | `{{STATE.consensus.score}}` | States after STATE | Consensus score (ParallelAgents states). |
@@ -749,6 +824,204 @@ spec:
       transitions: []
 ```
 
+### Agent-Augmented CI/CD Pipeline
+
+An agent generates code, a `ContainerRun` compiles it, a `ParallelContainerRun` runs quality checks concurrently, multi-agent review validates the result, and a final `ContainerRun` deploys the artifact.
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+
+metadata:
+  name: agent-cicd-pipeline
+  version: "1.0.0"
+  description: "AI-augmented delivery pipeline"
+  labels:
+    pattern: cicd
+
+spec:
+  initial_state: GENERATE
+
+  volumes:
+    - name: workspace
+      persistent: true
+
+  states:
+    GENERATE:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        {{workflow.task}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: FAILED
+
+    BUILD:
+      kind: ContainerRun
+      name: "Compile"
+      image: "rust:1.75-alpine"
+      command: ["cargo", "build", "--release"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        cpu: 2000
+        memory: "4Gi"
+        timeout: "10m"
+      transitions:
+        - condition: exit_code_zero
+          target: TEST
+        - condition: exit_code_non_zero
+          target: FIX_BUILD
+          feedback: "{{BUILD.output.stderr}}"
+
+    FIX_BUILD:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Build failed — fix the errors:
+        {{state.feedback}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: FAILED
+
+    TEST:
+      kind: ParallelContainerRun
+      steps:
+        - name: unit-tests
+          image: "rust:1.75-alpine"
+          command: ["cargo", "test", "--workspace"]
+          workdir: "/workspace"
+          volumes:
+            - name: workspace
+              mount_path: /workspace
+          resources:
+            timeout: "5m"
+        - name: lint
+          image: "rust:1.75-alpine"
+          command: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]
+          workdir: "/workspace"
+          volumes:
+            - name: workspace
+              mount_path: /workspace
+        - name: format-check
+          image: "rust:1.75-alpine"
+          command: ["cargo", "fmt", "--check"]
+          workdir: "/workspace"
+          volumes:
+            - name: workspace
+              mount_path: /workspace
+      completion: all_succeed
+      transitions:
+        - condition: on_success
+          target: REVIEW
+        - condition: on_failure
+          target: FIX_TESTS
+
+    FIX_TESTS:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Tests/lint failed:
+        Unit: {{TEST.output.unit-tests.stderr}}
+        Lint: {{TEST.output.lint.stderr}}
+        Format: {{TEST.output.format-check.stderr}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: FAILED
+
+    REVIEW:
+      kind: ParallelAgents
+      agents:
+        - agent: security-auditor
+          input: "Security audit: /workspace"
+          weight: 1.5
+          timeout_seconds: 300
+        - agent: architecture-reviewer
+          input: "Architecture review: /workspace"
+          weight: 1.0
+          timeout_seconds: 180
+      consensus:
+        strategy: weighted_average
+        threshold: 0.8
+        min_judges_required: 2
+      transitions:
+        - condition: consensus
+          threshold: 0.8
+          agreement: 0.75
+          target: DEPLOY
+        - condition: score_below
+          threshold: 0.8
+          target: FIX_REVIEW
+          feedback: "{{REVIEW.consensus.score}} — {{REVIEW.agents.0.output}}"
+
+    FIX_REVIEW:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Review feedback:
+        {{state.feedback}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: FAILED
+
+    DEPLOY:
+      kind: ContainerRun
+      name: "Push to Registry"
+      image: "docker:24-cli"
+      command:
+        - sh
+        - -c
+        - |
+          docker build -t {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}} /workspace
+          docker push {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}}
+      shell: true
+      registry_credentials: "vault:cicd/docker-registry"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        timeout: "15m"
+      transitions:
+        - condition: exit_code_zero
+          target: DONE
+        - condition: exit_code_non_zero
+          target: FAILED
+
+    DONE:
+      kind: System
+      command: "echo done"
+      transitions: []
+
+    FAILED:
+      kind: System
+      command: "echo failed"
+      transitions: []
+```
+
+---
+
 ### Security Gate (Unanimous)
 
 All judges must independently approve before promotion to production. A single dissenter blocks the gate.
@@ -787,6 +1060,7 @@ SECURITY_GATE:
 |---|---|
 | Writing judge agents for `ParallelAgents` states | [Agent Manifest Reference](/docs/reference/agent-manifest) |
 | Step-by-step workflow construction guide | [Building Workflows](/docs/guides/building-workflows) |
+| Building CI/CD pipelines with `ContainerRun` | [Building CI/CD Pipelines](/docs/guides/cicd-pipelines) |
 | Conceptual FSM overview and state kinds | [Workflows](/docs/concepts/workflows) |
 | Gradient scoring and validation confidence | [Validation Guide](/docs/guides/validation) |
 | Storage volumes and AegisFSAL | [Storage Gateway](/docs/architecture/storage-gateway) |
@@ -798,3 +1072,4 @@ SECURITY_GATE:
 | Version | Date | Notes |
 |---|---|---|
 | **v1.0** | 2026-02-16 | Initial canonical format. All four state kinds (`Agent`, `System`, `Human`, `ParallelAgents`). Named-condition transitions. Handlebars templates. Four consensus strategies. |
+| **v1.1** | 2026-03-05 | Added `ContainerRun` and `ParallelContainerRun` state kinds for CI/CD pipeline steps. Added `completion` strategies (`all_succeed`, `any_succeed`, `best_effort`). Extended condition types and Handlebars variables for exit-code-based routing. |

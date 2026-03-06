@@ -1,6 +1,6 @@
 ---
 title: Workflows
-description: Declarative finite state machine workflows backed by Temporal. State types, Blackboard context, transition rules, and the Forge reference pattern.
+description: Declarative finite state machine workflows backed by Temporal. State types including ContainerRun for CI/CD steps, Blackboard context, transition rules, and the Forge reference pattern.
 ---
 
 # Workflows
@@ -192,6 +192,112 @@ PARALLEL_REVIEW:
 
 Individual results are available as `{{STATENAME.agents.N.output}}` (0-indexed). The aggregated score is `{{STATENAME.consensus.score}}`.
 
+### `ContainerRun`
+
+Executes a deterministic command inside an isolated container — no LLM, no iteration loop. Use `ContainerRun` for CI/CD steps such as building binaries, running test suites, linting, or pushing deployment artifacts. The container is created, the command runs to completion, and the container is destroyed.
+
+```yaml
+BUILD:
+  kind: ContainerRun
+  name: "Compile and Build"          # human-readable label for the Synapse UI
+  image: "rust:1.75-alpine"          # any Docker image or standard runtime reference
+  command: ["cargo", "build", "--release"]
+  workdir: "/workspace"
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+  resources:
+    cpu: 2000                        # millicores (2000 = 2 CPU cores)
+    memory: "4Gi"
+    timeout: "10m"
+  env:
+    CARGO_HOME: "/workspace/.cargo"
+  transitions:
+    - condition: exit_code_zero
+      target: TEST
+    - condition: exit_code_non_zero
+      target: FIX_BUILD_ERRORS
+      feedback: "Build stderr: {{BUILD.output.stderr}}"
+```
+
+The step's output is stored on the Blackboard under the state name. Access it with `{{BUILD.output.exit_code}}`, `{{BUILD.output.stdout}}`, and `{{BUILD.output.stderr}}`.
+
+You can also write multi-line scripts using `shell: true`:
+
+```yaml
+DEPLOY:
+  kind: ContainerRun
+  name: "Push to Registry"
+  image: "docker:24-cli"
+  command:
+    - sh
+    - -c
+    - |
+      docker build -t {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}} /workspace
+      docker push {{blackboard.registry}}/{{blackboard.app}}:{{blackboard.version}}
+  shell: true
+  registry_credentials: "vault:cicd/docker-registry"
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+  resources:
+    timeout: "15m"
+  transitions:
+    - condition: exit_code_zero
+      target: DONE
+    - condition: exit_code_non_zero
+      target: NOTIFY_FAILURE
+```
+
+### `ParallelContainerRun`
+
+Runs multiple container commands concurrently within a single workflow state. All steps share the same volume mounts and complete before transitions are evaluated. Use it for running a test matrix, running lint + unit tests + format checks simultaneously, or building multiple build targets.
+
+```yaml
+TEST:
+  kind: ParallelContainerRun
+  steps:
+    - name: unit-tests
+      image: "rust:1.75-alpine"
+      command: ["cargo", "test", "--workspace"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        timeout: "5m"
+    - name: lint
+      image: "rust:1.75-alpine"
+      command: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+    - name: format-check
+      image: "rust:1.75-alpine"
+      command: ["cargo", "fmt", "--check"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+  completion: all_succeed             # all_succeed | any_succeed | best_effort
+  transitions:
+    - condition: on_success
+      target: REVIEW
+    - condition: on_failure
+      target: FIX_TEST_ERRORS
+```
+
+Per-step output is accessible by name: `{{TEST.output.unit-tests.stdout}}`, `{{TEST.output.lint.stderr}}`, etc.
+
+The three `completion` strategies control how individual step outcomes are aggregated:
+
+| Strategy | Behaviour |
+|---|---|
+| `all_succeed` | State succeeds only if every step exits with code 0. |
+| `any_succeed` | State succeeds if at least one step exits with code 0. |
+| `best_effort` | State always transitions with `on_success`; per-step results are available on the Blackboard regardless. |
+
 ---
 
 ## The Blackboard
@@ -228,8 +334,12 @@ Available template variables:
 | `{{workflow.task}}` | `task` key from the workflow start `--input` payload. |
 | `{{workflow.context.KEY}}` | Value from `spec.context`. |
 | `{{STATE.output}}` | Final text output of an Agent state. |
-| `{{STATE.output.stdout}}` | stdout of a System state. |
-| `{{STATE.output.exit_code}}` | Exit code of a System state. |
+| `{{STATE.output.stdout}}` | stdout of a System or ContainerRun state. |
+| `{{STATE.output.stderr}}` | stderr of a System or ContainerRun state. |
+| `{{STATE.output.exit_code}}` | Exit code of a System or ContainerRun state. |
+| `{{STATE.output.STEPNAME.stdout}}` | Per-step stdout of a ParallelContainerRun state. |
+| `{{STATE.output.STEPNAME.stderr}}` | Per-step stderr of a ParallelContainerRun state. |
+| `{{STATE.output.STEPNAME.exit_code}}` | Per-step exit code of a ParallelContainerRun state. |
 | `{{STATE.status}}` | Status: `success`, `failed`, or `timeout`. |
 | `{{STATE.score}}` | Validation score of an Agent state (0.0–1.0). |
 | `{{STATE.consensus.score}}` | Aggregated score of a ParallelAgents state. |

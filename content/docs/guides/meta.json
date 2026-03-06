@@ -6,6 +6,7 @@
         "custom-runtime-agents",
         "deploying-agents",
         "building-workflows",
+        "cicd-pipelines",
         "building-swarms",
         "configuring-storage",
         "llm-providers",

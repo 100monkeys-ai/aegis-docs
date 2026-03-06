@@ -1,0 +1,629 @@
+---
+title: Building CI/CD Pipelines
+description: Mix agent steps and container-based CI/CD steps — build, test, lint, and deploy — in a single unified AEGIS workflow.
+---
+
+# Building CI/CD Pipelines
+
+AEGIS workflows support two container-based state kinds — `ContainerRun` and `ParallelContainerRun` — that let you execute any Docker image as a deterministic, isolated step inside your workflow. This means you can mix AI agent steps and traditional CI/CD steps (compile, test, lint, push) in a single workflow manifest, sharing the same workspace volumes, transition logic, and observability.
+
+---
+
+## Prerequisites
+
+- AEGIS daemon running (see [Getting Started](/docs/getting-started))
+- Docker available on the node running the Temporal worker
+- At least one agent deployed if you want to mix agent and CI/CD steps
+
+---
+
+## Core Concepts
+
+### ContainerRun vs Agent
+
+| | `ContainerRun` | `Agent` |
+|---|---|---|
+| **Runs an LLM?** | No | Yes |
+| **Iteration loop?** | No | Yes (up to `max_iterations`) |
+| **Deterministic?** | Yes | No |
+| **Transitions on** | Exit code | Validation score |
+| **Best for** | Build, test, lint, deploy | Code generation, review, analysis |
+
+### Volumes Are Shared
+
+All states in a workflow share the same volumes. An agent writes code to `/workspace`; a `ContainerRun` step reads and compiles it from `/workspace`. This is the key primitive that makes unified pipelines possible.
+
+### Blackboard Integration
+
+Container step outputs land on the [Blackboard](/docs/concepts/workflows#the-blackboard) under the state name, accessible by subsequent states:
+
+```
+{{BUILD.output.exit_code}}    # 0 on success
+{{BUILD.output.stdout}}       # captured stdout (up to 1 MB)
+{{BUILD.output.stderr}}       # captured stderr (up to 1 MB)
+```
+
+For `ParallelContainerRun`, each step is keyed by its `name`:
+
+```
+{{TEST.output.unit-tests.stdout}}
+{{TEST.output.lint.stderr}}
+```
+
+---
+
+## Step 1: A Minimal Build Pipeline
+
+The simplest pipeline takes agent-generated code and compiles it. Create `build-pipeline.yaml`:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: build-pipeline
+  version: "1.0.0"
+  description: "Generate code with an agent, then compile it"
+spec:
+  initial_state: GENERATE
+
+  volumes:
+    - name: workspace
+      persistent: false
+
+  states:
+
+    GENERATE:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        {{workflow.task}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: FAILED
+
+    BUILD:
+      kind: ContainerRun
+      name: "Compile"
+      image: "rust:1.75-alpine"
+      command: ["cargo", "build", "--release"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        cpu: 2000
+        memory: "4Gi"
+        timeout: "10m"
+      transitions:
+        - condition: exit_code_zero
+          target: DONE
+        - condition: exit_code_non_zero
+          target: FIX_ERRORS
+          feedback: "{{BUILD.output.stderr}}"
+
+    FIX_ERRORS:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        The build failed:
+        {{state.feedback}}
+
+        Fix the code in /workspace.
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: FAILED
+
+    DONE:
+      kind: System
+      command: "echo 'Build complete'"
+      transitions: []
+
+    FAILED:
+      kind: System
+      command: "echo 'Pipeline failed'"
+      transitions: []
+```
+
+Deploy and run it:
+
+```bash
+aegis workflow deploy ./build-pipeline.yaml
+aegis workflow start build-pipeline --input '{"task": "Write a Rust CLI tool that counts lines in a file"}'
+```
+
+When `BUILD` fails, the exit code triggers the `FIX_ERRORS` state. The agent receives the compiler errors via `{{state.feedback}}` and re-edits the files in `/workspace`. The workflow loops back to `BUILD` automatically.
+
+---
+
+## Step 2: Parallel Testing
+
+Running multiple quality checks in parallel reduces total pipeline duration. Use `ParallelContainerRun` to fan out:
+
+```yaml
+TEST:
+  kind: ParallelContainerRun
+  steps:
+    - name: unit-tests
+      image: "rust:1.75-alpine"
+      command: ["cargo", "test", "--workspace"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        timeout: "5m"
+
+    - name: lint
+      image: "rust:1.75-alpine"
+      command: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        timeout: "3m"
+
+    - name: format-check
+      image: "rust:1.75-alpine"
+      command: ["cargo", "fmt", "--check"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        timeout: "2m"
+
+  completion: all_succeed
+  transitions:
+    - condition: on_success
+      target: REVIEW
+    - condition: on_failure
+      target: FIX_TEST_ERRORS
+```
+
+When any step fails, the agent in `FIX_TEST_ERRORS` can inspect exactly which check failed:
+
+```yaml
+FIX_TEST_ERRORS:
+  kind: Agent
+  agent: coder-v2
+  input: |
+    One or more quality checks failed. Diagnose and fix the issues.
+
+    Unit test output:
+    {{TEST.output.unit-tests.stdout}}
+    {{TEST.output.unit-tests.stderr}}
+
+    Lint output:
+    {{TEST.output.lint.stderr}}
+
+    Format check output:
+    {{TEST.output.format-check.stderr}}
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+  transitions:
+    - condition: on_success
+      target: BUILD
+    - condition: on_failure
+      target: FAILED
+```
+
+### Completion Strategies
+
+Choose `completion` based on how strict you want the gate to be:
+
+```yaml
+# All steps must pass (default for CI gates)
+completion: all_succeed
+
+# Continue if any step passes (e.g. multi-language build, one succeeds)
+completion: any_succeed
+
+# Always proceed; inspect per-step results downstream
+completion: best_effort
+```
+
+---
+
+## Step 3: Deploying Artifacts
+
+Container steps can authenticate to private registries using credentials stored in the secrets vault. Reference them with `registry_credentials`:
+
+```yaml
+DEPLOY:
+  kind: ContainerRun
+  name: "Build and Push Image"
+  image: "docker:24-cli"
+  command:
+    - sh
+    - -c
+    - |
+      docker build \
+        -t {{blackboard.registry}}/{{blackboard.app_name}}:{{blackboard.version}} \
+        /workspace
+      docker push \
+        {{blackboard.registry}}/{{blackboard.app_name}}:{{blackboard.version}}
+  shell: true
+  registry_credentials: "vault:cicd/docker-registry"
+  env:
+    DOCKER_HOST: "tcp://dockerd:2375"
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+  resources:
+    timeout: "15m"
+  transitions:
+    - condition: exit_code_zero
+      target: NOTIFY_SUCCESS
+    - condition: exit_code_non_zero
+      target: NOTIFY_FAILURE
+```
+
+`registry_credentials` is a path in the secrets vault. The orchestrator resolves the credentials at execution time and injects them into the container environment — your workflow manifest never contains raw secrets.
+
+---
+
+## Step 4: Full Delivery Pipeline
+
+Putting it all together — a pipeline where an agent generates code, CI/CD steps compile and test it, AI agents review it, and a final step deploys it:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: full-delivery-pipeline
+  version: "1.0.0"
+  description: "Agent-augmented CI/CD: generate → build → test → review → deploy"
+  labels:
+    purpose: cicd
+
+spec:
+  initial_state: GENERATE_CODE
+
+  volumes:
+    - name: workspace
+      persistent: true
+
+  states:
+
+    # ── Stage 1: AI code generation ──────────────────────────────────────────
+
+    GENERATE_CODE:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Implement: {{workflow.task}}
+        Requirements: {{blackboard.requirements}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: NOTIFY_FAILURE
+
+    # ── Stage 2: Compile ──────────────────────────────────────────────────────
+
+    BUILD:
+      kind: ContainerRun
+      name: "Compile"
+      image: "rust:1.75-alpine"
+      command: ["cargo", "build", "--release"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      resources:
+        cpu: 2000
+        memory: "4Gi"
+        timeout: "10m"
+      transitions:
+        - condition: exit_code_zero
+          target: TEST
+        - condition: exit_code_non_zero
+          target: FIX_BUILD_ERRORS
+          feedback: "Build failed:\n{{BUILD.output.stderr}}"
+
+    FIX_BUILD_ERRORS:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Build failed. Fix the compilation errors:
+        {{state.feedback}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: NOTIFY_FAILURE
+
+    # ── Stage 3: Test + lint in parallel ────────────────────────────────────
+
+    TEST:
+      kind: ParallelContainerRun
+      steps:
+        - name: unit-tests
+          image: "rust:1.75-alpine"
+          command: ["cargo", "test", "--workspace"]
+          workdir: "/workspace"
+          volumes:
+            - name: workspace
+              mount_path: /workspace
+          resources:
+            timeout: "5m"
+        - name: lint
+          image: "rust:1.75-alpine"
+          command: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]
+          workdir: "/workspace"
+          volumes:
+            - name: workspace
+              mount_path: /workspace
+          resources:
+            timeout: "3m"
+        - name: format-check
+          image: "rust:1.75-alpine"
+          command: ["cargo", "fmt", "--check"]
+          workdir: "/workspace"
+          volumes:
+            - name: workspace
+              mount_path: /workspace
+      completion: all_succeed
+      transitions:
+        - condition: on_success
+          target: REVIEW
+        - condition: on_failure
+          target: FIX_TEST_ERRORS
+
+    FIX_TEST_ERRORS:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Tests or linting failed. Fix all issues.
+        Unit tests: {{TEST.output.unit-tests.stderr}}
+        Lint:        {{TEST.output.lint.stderr}}
+        Format:      {{TEST.output.format-check.stderr}}
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: NOTIFY_FAILURE
+
+    # ── Stage 4: Multi-agent review ──────────────────────────────────────────
+
+    REVIEW:
+      kind: ParallelAgents
+      agents:
+        - agent: security-auditor
+          input: "Security audit the code in /workspace."
+          weight: 1.5
+          timeout_seconds: 300
+        - agent: architecture-reviewer
+          input: "Review the architecture and SOLID compliance."
+          weight: 1.0
+          timeout_seconds: 180
+      consensus:
+        strategy: weighted_average
+        threshold: 0.8
+        min_judges_required: 2
+      transitions:
+        - condition: consensus
+          threshold: 0.8
+          agreement: 0.75
+          target: DEPLOY
+        - condition: score_below
+          threshold: 0.8
+          target: FIX_REVIEW_ISSUES
+          feedback: "Review score: {{REVIEW.consensus.score}}\n{{REVIEW.agents.0.output}}"
+
+    FIX_REVIEW_ISSUES:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Review feedback:
+        {{state.feedback}}
+        Address all identified issues.
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: on_success
+          target: BUILD
+        - condition: on_failure
+          target: NOTIFY_FAILURE
+
+    # ── Stage 5: Deploy ──────────────────────────────────────────────────────
+
+    DEPLOY:
+      kind: ContainerRun
+      name: "Push to Registry"
+      image: "docker:24-cli"
+      command:
+        - sh
+        - -c
+        - |
+          docker build -t {{blackboard.registry}}/{{blackboard.app_name}}:{{blackboard.version}} /workspace
+          docker push {{blackboard.registry}}/{{blackboard.app_name}}:{{blackboard.version}}
+      shell: true
+      env:
+        DOCKER_HOST: "tcp://dockerd:2375"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      registry_credentials: "vault:cicd/docker-registry"
+      resources:
+        timeout: "15m"
+      transitions:
+        - condition: exit_code_zero
+          target: NOTIFY_SUCCESS
+        - condition: exit_code_non_zero
+          target: NOTIFY_FAILURE
+
+    # ── Terminal states ───────────────────────────────────────────────────────
+
+    NOTIFY_SUCCESS:
+      kind: System
+      command: "echo 'Pipeline completed successfully'"
+      transitions: []
+
+    NOTIFY_FAILURE:
+      kind: System
+      command: "echo 'Pipeline failed'"
+      transitions: []
+```
+
+---
+
+## Using Private Registry Images
+
+If your CI/CD steps use images from a private registry (e.g. `ghcr.io/myorg/builder:v2`), set `image_pull_policy` and provide `registry_credentials`:
+
+```yaml
+BUILD:
+  kind: ContainerRun
+  name: "Custom Build Image"
+  image: "ghcr.io/myorg/builder:v2"
+  image_pull_policy: Always              # Always | IfNotPresent | Never
+  registry_credentials: "vault:cicd/ghcr-token"
+  command: ["make", "release"]
+  workdir: "/workspace"
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+  transitions:
+    - condition: exit_code_zero
+      target: DONE
+    - condition: exit_code_non_zero
+      target: FAILED
+```
+
+Store the registry credential in the secrets vault and reference it with the `vault:` prefix. The orchestrator resolves the credential at runtime and never exposes it to the container process environment or logs.
+
+---
+
+## Retrying Flaky Steps
+
+Container steps support retry configuration independent of the workflow FSM. This is useful for steps like pushing to a remote registry where transient network errors are expected:
+
+```yaml
+PUSH_ARTIFACT:
+  kind: ContainerRun
+  name: "Push Artifact"
+  image: "amazon/aws-cli"
+  command: ["s3", "cp", "/workspace/dist/app.tar.gz", "s3://my-bucket/releases/"]
+  workdir: "/workspace"
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+  retry:
+    max_attempts: 3
+    backoff: "10s"
+  transitions:
+    - condition: exit_code_zero
+      target: DONE
+    - condition: exit_code_non_zero
+      target: FAILED
+```
+
+`max_attempts` is the total number of attempts (including the first). `backoff` is the delay before the first retry; subsequent retries double the backoff (exponential).
+
+---
+
+## Inspecting Pipeline Output
+
+### Synapse UI
+
+The Synapse real-time execution viewer renders each `ContainerRun` step the same way it renders agent iterations — you can see the container image, command, exit code, stdout, and stderr as they stream in.
+
+### CLI
+
+```bash
+# Watch pipeline status
+aegis workflow status <execution-id>
+
+# Get the Blackboard snapshot (includes all state outputs)
+aegis workflow blackboard <execution-id>
+
+# Follow the event stream
+aegis workflow logs <execution-id> --follow
+```
+
+---
+
+## Common Images for CI/CD Steps
+
+| Use Case | Image |
+|---|---|
+| Rust compilation | `rust:1.75-alpine` |
+| Node.js build / test | `node:20-alpine` |
+| Python test | `python:3.11-slim` |
+| Docker build + push | `docker:24-cli` |
+| AWS CLI deploy | `amazon/aws-cli` |
+| kubectl deploy | `bitnami/kubectl:latest` |
+| Helm chart deploy | `alpine/helm:3.14` |
+| Terraform apply | `hashicorp/terraform:1.7` |
+| Generic shell scripts | `alpine:3.19` |
+
+Any image accessible from the orchestrator node's Docker daemon (or from a registry the node can pull from) works.
+
+---
+
+## Troubleshooting
+
+### Step times out before completion
+
+Increase `resources.timeout`. The default is `5m`. Long builds may need `30m` or more:
+
+```yaml
+resources:
+  timeout: "30m"
+```
+
+### Large build outputs are truncated
+
+`stdout` and `stderr` are capped at 1 MB per step. For large outputs, write results to a volume file and read them from a later state:
+
+```yaml
+BUILD:
+  kind: ContainerRun
+  command:
+    - sh
+    - -c
+    - "cargo build --release 2>&1 | tee /workspace/build.log; exit ${PIPESTATUS[0]}"
+  shell: true
+  volumes:
+    - name: workspace
+      mount_path: /workspace
+```
+
+A later agent state can then read `/workspace/build.log`.
+
+### Image pull fails
+
+Verify `registry_credentials` resolves to a valid credential in the vault and that the secret path is correct. Check the Synapse event stream for `ContainerRunFailed` events with `reason: ImagePullFailed`.
+
+---
+
+## Next Steps
+
+- [Workflow Manifest Reference](/docs/reference/workflow-manifest) — Complete `ContainerRun` and `ParallelContainerRun` field specification
+- [Configuring Storage](/docs/guides/configuring-storage) — Volume types, lifecycle, and access modes
+- [Writing Agents](/docs/guides/writing-agents) — Build the agent steps that feed into your CI/CD pipeline
+- [Human Approvals](/docs/guides/human-approvals) — Add operator approval gates between pipeline stages
+- [Building Swarms](/docs/guides/building-swarms) — Spawn child agents from within a running workflow
