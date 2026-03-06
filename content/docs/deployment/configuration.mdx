@@ -205,9 +205,9 @@ network:
     ca_path: null    # Optional CA certificate path
 
 # ─── Storage ──────────────────────────────────────────────────────────────────
-# Optional. Defaults to local backend.
+# Optional. Defaults to local_host backend.
 storage:
-  # Storage backend. Options: seaweedfs | local. Default: local
+  # Storage backend. Options: seaweedfs | local_host. Default: local_host
   backend: seaweedfs
   # Gracefully fall back to local storage when SeaweedFS is unreachable.
   # Default: true
@@ -236,8 +236,8 @@ storage:
     # S3 gateway region. Default: us-east-1
     s3_region: "us-east-1"
 
-  # Local storage config. Used when backend: local, or as the fallback target.
-  local:
+  # Local storage config. Used when backend: local_host, or as the fallback target.
+  local_host:
     # Base directory for local volume storage.
     # Default: /var/lib/aegis/local-volumes
     base_path: "/var/lib/aegis/local-volumes"
@@ -597,11 +597,11 @@ Optional. Configures ports and TLS.
 
 ### `spec.storage`
 
-Optional. Defaults to the `local` backend.
+Optional. Defaults to the `local_host` backend.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | enum | `local` | `seaweedfs` \| `local` |
+| `backend` | enum | `local_host` | `seaweedfs` \| `local_host` |
 | `fallback_to_local` | bool | `true` | Gracefully fall back to local storage when SeaweedFS is unreachable |
 | `nfs_port` | u16 | `2049` | NFS Server Gateway listen port |
 | `seaweedfs.filer_url` | string | `http://localhost:8888` | SeaweedFS Filer endpoint |
@@ -612,10 +612,10 @@ Optional. Defaults to the `local` backend.
 | `seaweedfs.gc_interval_minutes` | u32 | `60` | Expired volume GC interval (minutes) |
 | `seaweedfs.s3_endpoint` | string | null | Optional SeaweedFS S3 gateway endpoint |
 | `seaweedfs.s3_region` | string | `us-east-1` | S3 gateway region |
-| `local.base_path` | string | `/var/lib/aegis/local-volumes` | Base directory for local volume storage |
-| `local.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
-| `local.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
-| `local.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
+| `local_host.base_path` | string | `/var/lib/aegis/local-volumes` | Base directory for local volume storage |
+| `local_host.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
+| `local_host.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
+| `local_host.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
 
 ---
 
