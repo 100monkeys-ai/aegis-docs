@@ -70,6 +70,114 @@ aegis daemon uninstall
 
 ---
 
+## Stack Lifecycle Commands
+
+Manage local stack setup, start/stop, restart, upgrade, and full uninstall.
+
+### `aegis init`
+
+Interactive setup wizard for first-time installation. Downloads stack files, configures node settings, starts Docker Compose services, verifies health, and optionally deploys example agents.
+
+```bash
+aegis init
+aegis init --yes
+aegis init --dir ~/.aegis --host 127.0.0.1 --port 8088
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--yes` | `false` | Accept defaults and skip interactive prompts. |
+| `--manual` | `false` | Do not auto-install prerequisites; print manual instructions instead. |
+| `--dir <path>` | `~/.aegis` | Working directory for stack files. |
+| `--host <host>` | `127.0.0.1` | Host used for post-start health checks. |
+| `--port <port>` | `8088` | Port used for post-start health checks. |
+
+### `aegis up`
+
+Start the local stack. If no stack exists in the target directory, this runs `aegis init` automatically first.
+
+```bash
+aegis up
+aegis up --yes
+aegis up --dir ~/.aegis --host 127.0.0.1 --port 8088
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dir <path>` | `~/.aegis` | Stack working directory. |
+| `--host <host>` | `127.0.0.1` | API host shown after startup / used by init fallback. |
+| `--port <port>` | `8088` | API port shown after startup / used by init fallback. |
+| `--yes` | `false` | Non-interactive defaults when `aegis init` is triggered automatically. |
+
+### `aegis down`
+
+Stop the local Docker Compose stack.
+
+```bash
+aegis down
+aegis down --volumes
+aegis down --dir ~/.aegis
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dir <path>` | `~/.aegis` | Stack working directory. |
+| `--volumes` | `false` | Also remove named volumes (destructive: removes persisted data). |
+
+### `aegis restart`
+
+Restart local Docker Compose services.
+
+```bash
+aegis restart
+aegis restart --profile temporal
+aegis restart --dir ~/.aegis
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dir <path>` | `~/.aegis` | Stack working directory. |
+| `--profile <name>` | (all services) | Restart only services in the specified compose profile. |
+
+### `aegis update`
+
+Upgrade the stack by pulling latest images, restarting services, and running DB migrations.
+
+```bash
+aegis update
+aegis update --dry-run
+aegis update --skip-pull --skip-restart
+aegis update --skip-migrations
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dir <path>` | `~/.aegis` | Stack working directory. |
+| `--skip-pull` | `false` | Skip `docker compose pull`. |
+| `--skip-restart` | `false` | Skip stack restart (`docker compose up -d --wait`). |
+| `--skip-migrations` | `false` | Skip database migrations. |
+| `--dry-run` | `false` | Show planned actions without making changes. |
+
+### `aegis uninstall`
+
+Stop containers, remove volumes, and delete the AEGIS working directory.
+
+```bash
+aegis uninstall
+aegis uninstall --yes
+aegis uninstall --dir ~/.aegis
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dir <path>` | `~/.aegis` | AEGIS working directory to remove. |
+| `--yes`, `-y` | `false` | Skip confirmation prompt. |
+
+`aegis uninstall` removes local stack data.  
+`aegis daemon uninstall` only removes the system service registration.
+
+---
+
 ## `aegis agent`
 
 Manage agent definitions.
@@ -127,6 +235,27 @@ aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --verbose
 | `--follow` | `false` | Tail log output. |
 | `--errors` | `false` | Show error-level events only. |
 | `--verbose` | `false` | Include LLM prompt and response content. |
+
+### `aegis agent generate <input>`
+
+Generate and deploy an agent from a natural-language prompt.  
+This command executes the `agent-creator-agent` generator agent. If that agent is not yet deployed, the CLI auto-deploys it from the built-in template first.
+The CLI also auto-deploys generation judges (`agent-generator-judge`, `workflow-generator-judge`) so generation runs with semantic validation in the iterative 100monkeys loop.
+Bundled templates are materialized to disk automatically:
+- default path: `~/.aegis/templates/agents/*.yaml`
+- custom config path: `<config-dir>/templates/agents/*.yaml`
+Generated manifests are also written to disk for inspection/versioning:
+- default path: `~/.aegis/generated/agents/<agent-name>/<version>.yaml`
+- if daemon uses a custom config path, files are written under that config directory's `generated/` tree.
+
+```bash
+aegis agent generate "Create an agent that reviews pull requests for security issues."
+aegis agent generate "Create a SQL migration reviewer agent" --follow
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--follow` | `false` | Stream generation execution logs until completion. |
 
 ---
 
@@ -309,6 +438,32 @@ aegis workflow delete dev-pipeline --yes
 |---|---|---|
 | `--yes` | `false` | Skip the confirmation prompt. |
 
+### `aegis workflow generate <input>`
+
+Generate and register a workflow from a natural-language prompt.  
+This command runs the built-in `builtin-workflow-generator` workflow:
+1. Discovers currently deployed agents.
+2. Generates missing agents through the `agent-creator-agent` when needed.
+3. Generates and registers the final workflow through `workflow-creator-validator-agent`.
+
+Generator agents/workflow are auto-deployed from built-in templates if missing.
+The CLI also auto-deploys generation judges (`agent-generator-judge`, `workflow-generator-judge`) so planner and workflow authoring states run with semantic validation in the iterative 100monkeys loop.
+Bundled templates are materialized to disk automatically:
+- default paths: `~/.aegis/templates/agents/*.yaml` and `~/.aegis/templates/workflows/*.yaml`
+- custom config path: `<config-dir>/templates/...`
+Generated workflow manifests are also written to disk for inspection/versioning:
+- default path: `~/.aegis/generated/workflows/<workflow-name>/<version>.yaml`
+- if daemon uses a custom config path, files are written under that config directory's `generated/` tree.
+
+```bash
+aegis workflow generate "Create a CI/CD workflow: build, test, and deploy a Rust service."
+aegis workflow generate "Create a human-approval gated release workflow" --follow
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--follow` | `false` | Stream generation execution logs until completion. |
+
 ---
 
 ---
@@ -353,17 +508,6 @@ aegis config generate --examples
 |---|---|---|
 | `--output <path>` | `./aegis-config.yaml` | Output file path. |
 | `--examples` | `false` | Include inline comments and example values. |
-
----
-
-## `aegis update`
-
-Apply pending database schema migrations. Run this after upgrading the `aegis` binary.
-
-```bash
-aegis update
-aegis update --config /etc/aegis/config.yaml
-```
 
 ---
 
