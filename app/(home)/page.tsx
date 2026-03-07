@@ -74,22 +74,13 @@ export default function HomePage() {
             <span>bash</span>
           </div>
           <pre className="p-4 overflow-x-auto leading-relaxed text-foreground/90">
-            <code>{`# 1. Install the AEGIS binary
-curl -fsSL https://github.com/100monkeys-ai/aegis-orchestrator/releases/latest/download/aegis-linux-x86_64.tar.gz \\
-  | tar -xz -C /usr/local/bin
+            <code>{`# 1. Install AEGIS
+curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-examples/main/install.sh | bash
 
-# 2. Clone aegis-examples for the Docker Compose stack and demo agents
-git clone https://github.com/100monkeys-ai/aegis-examples.git && cd aegis-examples
+# 2. Initialize local stack and config
+aegis init
 
-# 3. Start backing services (Postgres, SeaweedFS, Temporal, Ollama, ...)
-cp deploy/.env.example deploy/.env
-docker compose -f deploy/docker-compose.yml up -d
-
-# 4. Pull the default model for ollama
-docker compose -f deploy/docker-compose.yml exec ollama ollama pull phi3:mini
-
-# 5. Deploy the hello-world agent and run it
-aegis agent deploy ./agents/hello-world/agent.yaml
+# 3. Execute hello-world (if deployed during init)
 aegis task execute hello-world \\
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \\
   --follow

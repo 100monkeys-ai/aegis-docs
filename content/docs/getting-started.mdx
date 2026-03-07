@@ -11,16 +11,13 @@ This guide walks you through installing AEGIS, starting the local stack, and run
 
 ---
 
-## Install the AEGIS Binary
-
-Download the latest release for your platform from the [GitHub Releases page](https://github.com/100monkeys-ai/aegis-orchestrator/releases).
+## Install AEGIS CLI
 
 ```bash
-curl -fsSL https://github.com/100monkeys-ai/aegis-orchestrator/releases/latest/download/aegis-linux-x86_64.tar.gz \
-  | tar -xz -C /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-examples/main/install.sh | bash
 ```
 
-The release archive contains a single `aegis` binary that will be extracted to `/usr/local/bin`. Verify the installation:
+Verify the installation:
 
 ```bash
 aegis --version
@@ -28,62 +25,29 @@ aegis --version
 
 ---
 
-## Clone aegis-examples
+## Initialize the Local Stack
 
-The `aegis-examples` repository contains the Docker Compose stack for all backing services (PostgreSQL, SeaweedFS, Temporal, Keycloak, Ollama, Cortex) and pre-built demo agent manifests.
-
-```bash
-git clone https://github.com/100monkeys-ai/aegis-examples.git && cd aegis-examples
-```
-
----
-
-## Start the Local Stack
-
-Copy the environment file and start all backing services:
+Run the guided setup:
 
 ```bash
-cp deploy/.env.example deploy/.env
-docker compose -f deploy/docker-compose.yml up -d
+aegis init
 ```
 
-This starts PostgreSQL, SeaweedFS, Temporal, Keycloak, Ollama, and the Cortex services. Wait ~30 seconds for Temporal to finish initializing. You can check the status with:
-
-```bash
-docker compose -f deploy/docker-compose.yml ps
-```
-
-All services should show `running` (healthy).
-
----
-
-## Pull the Default Model
-
-Pull the default Ollama model that the example agents use:
-
-```bash
-docker compose -f deploy/docker-compose.yml exec ollama ollama pull phi3:mini
-```
-
-This downloads the `phi3:mini` model into the Ollama container. The example agents are configured to use this model by default.
+`aegis init` configures the local stack, writes config files, starts services, and can optionally deploy the hello-world example agent as a smoke test.
 
 ---
 
 ## Deploy and Run the hello-world Agent
 
-Deploy the hello-world agent:
-
-```bash
-aegis agent deploy ./agents/hello-world/agent.yaml
-```
-
-Execute the agent with a task:
+If you accepted the smoke-test prompt during `aegis init`, execute it with:
 
 ```bash
 aegis task execute hello-world \
   --input '{"task": "Write a Python function that returns the Fibonacci sequence up to n."}' \
   --follow
 ```
+
+If you skipped example deployment in `aegis init`, run `aegis init` again and enable the hello-world smoke test.
 
 The `--follow` flag streams iteration events to the terminal as they happen. You'll see output similar to:
 

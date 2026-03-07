@@ -89,20 +89,20 @@ Scale AEGIS Orchestrator nodes horizontally to increase concurrent execution cap
 
 ## Local Development Stack
 
-AEGIS provides a Docker Compose stack for local development in the [aegis-examples](https://github.com/100monkeys-ai/aegis-examples) repository:
+Install and initialize AEGIS locally:
 
 ```bash
-# Clone the examples repo and start all services
-git clone https://github.com/100monkeys-ai/aegis-examples.git
-cd aegis-examples
-cp deploy/.env.example deploy/.env
-docker compose -f deploy/docker-compose.yml up -d
+# Install AEGIS
+curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-examples/main/install.sh | bash
+
+# Initialize local stack
+aegis init
 
 # Check service status
-docker compose -f deploy/docker-compose.yml ps
+docker compose -f ~/.aegis/docker-compose.yml ps
 
 # View logs
-docker compose -f deploy/docker-compose.yml logs -f
+docker compose -f ~/.aegis/docker-compose.yml logs -f
 ```
 
 ### Dev Stack Services
