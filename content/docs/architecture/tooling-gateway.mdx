@@ -43,8 +43,9 @@ The ADR-033 model assumes MCP tool servers are long-running processes per tool p
 │  │ Control Plane API     │    │ Auth & Policy Engine     │  │
 │  │ POST /v1/specs        │    │ SmcpMiddleware           │  │
 │  │ POST /v1/workflows    │    │ SecurityContext eval      │  │
-│  │ POST /v1/cli-tools    │    │ OpenBao JIT  (Path A)    │  │
-│  │ GET  /v1/tools        │    │ Keycloak exchange (Path B)│  │
+  │  │ POST /v1/cli-tools    │    │ OpenBao JIT  (Path A)    │  │
+  │  │ POST /v1/security-... │    │ Session capability eval  │  │
+  │  │ GET  /v1/tools        │    │ Keycloak exchange (Path B)│  │
 │  └───────────────────────┘    └─────────────┬────────────┘  │
 │                                             │               │
 │  ┌──────────────────────────────────────────▼────────────┐  │
@@ -129,6 +130,11 @@ allowed_subcommands:
   - show
 require_semantic_judge: true
 default_timeout_seconds: 120
+registry_credential_path:
+  Auto:
+    system_jit_openbao_engine_path: "docker/creds"
+    system_jit_role: "puller"
+    target_service: "ghcr.io"
 ```
 
 `allowed_subcommands` provides a static lexical allowlist. If `require_semantic_judge` is `true`, the parsed command intent is also submitted to a Semantic Judge (see below) before the container is created.
@@ -147,7 +153,7 @@ default_timeout_seconds: 120
 
 ### Path 2 — API Explorer (Workflow Authoring Mode)
 
-The API Explorer is not exposed to agents in production runs. It is activated in a dedicated `workflow-authoring` session for engineers or agents building new `ToolWorkflow` manifests.
+The API Explorer is not exposed to agents in production runs. It is activated in a dedicated `workflow-authoring` session for engineers or agents building new `ToolWorkflow` manifests. In the current implementation, explorer endpoints require **operator auth** on both HTTP and gRPC control-plane surfaces.
 
 The agent provides a `fields` array of JSONPath selectors. The gateway executes the requested API call, filters the response to include only the requested fields (**Response Slicing**), and optionally injects `_hints` metadata (next page URL, related operations) to guide exploration without returning verbose raw responses.
 
@@ -194,12 +200,13 @@ Return result to orchestrator
 
 ## Credential Resolution
 
-The gateway never holds static credentials. All credentials are resolved at invocation time based on the `CredentialResolutionPath` configured per `ApiSpec` or `EphemeralCliTool`.
+The gateway never holds static credentials. All credentials are resolved at invocation time based on the `CredentialResolutionPath` configured per `ApiSpec` or `EphemeralCliTool` (`registry_credential_path` for CLI image pulls).
 
 | Path | When used | Mechanism |
 |---|---|---|
 | **SystemJit** | Background agents, autonomous executions | JIT dynamic secret from OpenBao. Short-lived credential issued per execution. |
 | **HumanDelegated** | Zaru sessions acting on behalf of a user | Keycloak token exchange: agent's SMCP token → human user's OAuth token for the target service. Upstream API sees the real user's identity and enforces their RBAC. |
+| **Auto** | Mixed system/user contexts | Selects `HumanDelegated` when a Zaru user token is present; otherwise falls back to `SystemJit`. |
 | **StaticRef** | Integrations without OAuth (e.g., self-hosted tooling) | Static secret fetched from OpenBao KV, wrapped in `SensitiveString` (never logged). |
 
 **Human-Delegated Auth** is the key differentiator for Zaru users. When you ask a Zaru agent to create a pull request on your behalf, GitHub sees the request as coming from your account with your permissions — not from a generic service account. If you don't have permission to push to a repo, neither does the agent.
@@ -229,11 +236,25 @@ POST   /v1/cli-tools          Register an EphemeralCliTool
 GET    /v1/cli-tools          List CLI tools
 DELETE /v1/cli-tools/{name}   Remove a CLI tool registration
 
+# SecurityContext management
+POST   /v1/security-contexts        Create or update a SecurityContext
+GET    /v1/security-contexts        List SecurityContexts
+GET    /v1/security-contexts/{name} Retrieve one SecurityContext
+
 # Agent-facing discovery
 GET    /v1/tools              List all tools visible to agents (name + description only)
 ```
 
 `GET /v1/tools` is the endpoint that AEGIS Orchestrator calls to populate the tool schema list it injects into the LLM prompt. It returns only names and descriptions — never raw OpenAPI schemas — keeping the LLM's tool list compact regardless of how many workflows are registered.
+
+### Built-in Web UI (Optional, Enabled by Default)
+
+The gateway ships with a built-in operator web UI:
+
+- `GET /` — dashboard shell
+- `GET /ui/app.js` and `GET /ui/styles.css` — bundled assets
+
+Use `SMCP_GATEWAY_UI_ENABLED=false` to disable all UI routes.
 
 ---
 
@@ -258,12 +279,11 @@ The gateway is a standalone binary following the same deployment pattern as `aeg
 ```yaml
 # aegis-config.yaml — orchestrator node config
 spec:
-  tools:
-    smcp_gateway_url: "http://smcp-gateway:8080"   # gateway REST endpoint
-    smcp_gateway_grpc: "smcp-gateway:50055"         # gateway gRPC port
+  smcp_gateway:
+    url: "http://aegis-smcp-gateway:50055"          # gateway gRPC endpoint
 ```
 
-When `smcp_gateway_url` is configured, the orchestrator routes SMCP envelopes for registered external tool names to the gateway. When it is absent, the orchestrator's internal tool router handles all tools (built-in only — no workflows or ephemeral CLI tools).
+When `spec.smcp_gateway.url` is configured, the orchestrator routes SMCP envelopes for registered external tool names to the gateway over gRPC. When it is absent, the orchestrator's internal tool router handles all tools (built-in only — no workflows or ephemeral CLI tools).
 
 The gateway can also be deployed independently of AEGIS Orchestrator for organizations using standard MCP.
 
