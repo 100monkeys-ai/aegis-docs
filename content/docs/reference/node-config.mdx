@@ -269,6 +269,11 @@ spec:
   cortex:
     grpc_url: "http://cortex:50052"
 
+  # ─── External SMCP Tooling Gateway ───────────────────────────────
+  smcp_gateway:
+    # gRPC endpoint URL for aegis-smcp-gateway
+    url: "http://aegis-smcp-gateway:50055"
+
   # ─── Observability ──────────────────────────────────────────────────────────
   observability:
     logging:
@@ -704,6 +709,18 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 cortex:
   grpc_url: "http://cortex:50052"
 ```
+
+---
+
+### `spec.smcp_gateway`
+
+Optional. Configures forwarding of external tool invocations to the standalone SMCP tooling gateway.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `url` | string | null | gRPC endpoint URL of `aegis-smcp-gateway` (example: `http://aegis-smcp-gateway:50055`). |
+
+If omitted, orchestrator does not forward unknown/external tools to the gateway and continues with built-in routing only.
 
 ---
 

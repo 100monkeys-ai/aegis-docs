@@ -23,7 +23,7 @@ Multi-step API interactions require state management — extracting a resource I
 
 ### Long-Running CLI Overhead
 
-The ADR-033 model assumes MCP tool servers are long-running processes per tool per tenant. For CLI tools (Terraform, AWS CLI, FFmpeg), this means maintaining idle container instances for every registered tool at all times. The gateway replaces this with **ephemeral container execution**: a container is spawned per invocation, executes the command, and is immediately destroyed.
+The model assumes MCP tool servers are long-running processes per tool per tenant. For CLI tools (Terraform, AWS CLI, FFmpeg), this means maintaining idle container instances for every registered tool at all times. The gateway replaces this with **ephemeral container execution**: a container is spawned per invocation, executes the command, and is immediately destroyed.
 
 ---
 
@@ -103,7 +103,7 @@ Each step's `body_template` is a Handlebars template that can reference `{{input
 
 The LLM provides `repo_name`, `org`, and `team_slugs`. The gateway runs the sequence, threads extracted values, and returns the final result. The LLM never sees the intermediate HTTP calls.
 
-> **ToolWorkflow vs ContainerRun:** `ToolWorkflow` is a synchronous, sub-second REST macro-tool. It is completely separate from `ContainerRun` / `ParallelContainerRun` (ADR-050), which are long-running Temporal-backed CI/CD pipeline primitives. Do not conflate them.
+> **ToolWorkflow vs ContainerRun:** `ToolWorkflow` is a synchronous, sub-second REST macro-tool. It is completely separate from `ContainerRun` / `ParallelContainerRun`, which are long-running Temporal-backed CI/CD pipeline primitives. Do not conflate them.
 
 ### ApiSpec
 
@@ -194,7 +194,7 @@ Docker: destroy container immediately
 Return result to orchestrator
 ```
 
-**Semantic Judging:** The gateway integrates with the Semantic Judge mechanism from [Advanced Judge Capabilities (ADR-049)](/docs/architecture/smcp) to catch semantically dangerous commands that pass the static allowlist. For example, `terraform apply -destroy` passes a lexical check for `apply` but a Semantic Judge configured for a read-only `SecurityContext` will reject it before any container is created. A `CliToolSemanticRejected` event is emitted for audit purposes.
+**Semantic Judging:** The gateway integrates with the Semantic Judge mechanism from [Advanced Judge Capabilities](/docs/architecture/smcp) to catch semantically dangerous commands that pass the static allowlist. For example, `terraform apply -destroy` passes a lexical check for `apply` but a Semantic Judge configured for a read-only `SecurityContext` will reject it before any container is created. A `CliToolSemanticRejected` event is emitted for audit purposes.
 
 ---
 
@@ -262,13 +262,13 @@ Use `SMCP_GATEWAY_UI_ENABLED=false` to disable all UI routes.
 
 | Component | Integration |
 |---|---|
-| **SMCP (ADR-035)** | Full `SmcpEnvelope` verification on every invocation. Gateway is a full SMCP participant — not a bypass. |
-| **AegisFSAL / Storage Gateway (ADR-032, ADR-036)** | Ephemeral CLI containers mount agent volumes via the same FSAL security boundary used by all other file operations. No direct bind mounts — no authorization bypass. |
-| **OpenBao (ADR-034)** | Keymaster Pattern preserved. JIT dynamic secrets for system identities. Image registry credentials fetched per-invocation from OpenBao KV. |
-| **Keycloak (ADR-041)** | Token exchange for human-delegated auth. Control plane endpoint authentication via `aegis-system` realm JWTs. |
-| **Cortex (ADR-049)** | `WorkflowInvocationCompleted` and `CliToolInvocationCompleted` events contribute to Trajectory Patterns — successful macro-tool sequences become learnable patterns. |
-| **Semantic Judge (ADR-049)** | Pre-invocation CLI validation. Plugs into the same Semantic Judge mechanism used for inner-loop tool validation. |
-| **ADR-033 tool routing** | The gateway is **additive**, not a replacement. Built-in tools (`fs.*`, `web.*`, `cmd.run`) continue to route through Path 1/2/3 in the orchestrator. The gateway handles third-party REST integrations and unmanaged CLI tools. |
+| **SMCP** | Full `SmcpEnvelope` verification on every invocation. Gateway is a full SMCP participant — not a bypass. |
+| **AegisFSAL / Storage Gateway** | Ephemeral CLI containers mount agent volumes via the same FSAL security boundary used by all other file operations. No direct bind mounts — no authorization bypass. |
+| **OpenBao** | Keymaster Pattern preserved. JIT dynamic secrets for system identities. Image registry credentials fetched per-invocation from OpenBao KV. |
+| **Keycloak** | Token exchange for human-delegated auth. Control plane endpoint authentication via `aegis-system` realm JWTs. |
+| **Cortex** | `WorkflowInvocationCompleted` and `CliToolInvocationCompleted` events contribute to Trajectory Patterns — successful macro-tool sequences become learnable patterns. |
+| **Semantic Judge** | Pre-invocation CLI validation. Plugs into the same Semantic Judge mechanism used for inner-loop tool validation. |
+| **Tool routing** | The gateway is **additive**, not a replacement. Built-in tools (`fs.*`, `web.*`, `cmd.run`) continue to route through Path 1/2/3 in the orchestrator. The gateway handles third-party REST integrations and unmanaged CLI tools. |
 
 ---
 
@@ -296,7 +296,7 @@ The gateway can also be deployed independently of AEGIS Orchestrator for organiz
 | Prompt injection via workflow authoring | Control plane requires `AegisRole::Operator` JWT. Standard agents cannot register workflows. |
 | CLI semantic escalation (e.g., `terraform apply -destroy`) | Two-layer defense: static `allowed_subcommands` + Semantic Judge. Container never created on rejection. |
 | Credential leakage | `SensitiveString` wrapper on all resolved credentials. Credentials never appear in `GatewayEvent` payloads or logs. |
-| Volume path traversal | AegisFSAL enforces `PathCanonicalization` server-side (ADR-036). No host mounts outside agent volume. |
+| Volume path traversal | AegisFSAL enforces `PathCanonicalization` server-side. No host mounts outside agent volume. |
 | Container escape | Containers run `no-new-privileges`, `cap_drop: ALL`, read-only root filesystem. No `CAP_SYS_ADMIN`. |
-| Token spoofing / replay | Full ADR-035 SMCP protocol: Ed25519 signature verification, `SecurityToken` JWT expiry, `SmcpSession` status check. |
+| Token spoofing / replay | Full SMCP protocol: Ed25519 signature verification, `SecurityToken` JWT expiry, `SmcpSession` status check. |
 | Upstream privilege escalation | Human-delegated token exchange via Keycloak scopes the token to exactly what the human user possesses. |
