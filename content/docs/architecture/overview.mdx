@@ -72,7 +72,7 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 
 ## Bounded Contexts
 
-AEGIS is divided into 13 bounded contexts. Each owns its domain model and exposes well-defined service traits:
+AEGIS is divided into 14 bounded contexts. Each owns its domain model and exposes well-defined service traits:
 
 | # | Context | Language | Primary Responsibility |
 |---|---|---|---|
@@ -89,6 +89,7 @@ AEGIS is divided into 13 bounded contexts. Each owns its domain model and expose
 | 11 | Secrets & Identity | Rust | OpenBao, credential resolution |
 | 12 | Zaru Consumer Product | TypeScript / Rust | Consumer surface (separate deployment) |
 | 13 | IAM & Identity Federation | Rust | Keycloak OIDC, JWT validation |
+| 14 | SMCP Tooling Gateway | Rust | Macro-tool workflows, ephemeral CLI execution, credential proxy (standalone binary) |
 
 Contexts communicate via service traits and domain events. No cross-context direct database access.
 
@@ -170,3 +171,4 @@ Each layer only depends on layers below it. The domain layer has no external dep
 | MCP tool routing paths | [Tool Routing](/docs/architecture/tool-routing) |
 | AegisFSAL and NFS storage gateway | [Storage Gateway](/docs/architecture/storage-gateway) |
 | Event bus and domain events | [Event Bus](/docs/architecture/event-bus) |
+| SMCP Tooling Gateway — macro-tool workflows, ephemeral CLI, credential proxy | [Tooling Gateway](/docs/architecture/tooling-gateway) |

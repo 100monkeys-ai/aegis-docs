@@ -6,6 +6,7 @@
         "workflow-engine",
         "smcp",
         "tool-routing",
+        "tooling-gateway",
         "storage-gateway",
         "storage-backends",
         "event-bus",

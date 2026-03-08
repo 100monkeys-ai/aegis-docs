@@ -1,0 +1,282 @@
+---
+title: SMCP Tooling Gateway
+description: Standalone Rust gateway that compresses REST APIs and CLI tools into semantic macro-tools for agents, with SMCP security and dynamic credential injection.
+---
+
+# SMCP Tooling Gateway
+
+The SMCP Tooling Gateway (`aegis-smcp-gateway`) is a standalone, AGPL-licensed Rust binary that provides the tool orchestration layer for AEGIS agents and for the broader MCP ecosystem. It sits between the orchestrator's inner loop and the external world — REST APIs, SaaS platforms, and CLI tools — enforcing SMCP security on every invocation while hiding API complexity from the LLM's context window.
+
+---
+
+## The Problem It Solves
+
+### Context Window Exhaustion
+
+Mapping a SaaS platform 1-to-1 to MCP tools (one tool per REST endpoint) floods the LLM with hundreds of JSON schemas. GitHub alone has 150+ endpoints. An LLM operating over that many tool schemas hallucinates names, confuses parameters, and makes poor decisions.
+
+The gateway solves this with **semantic compression**: developers register a `ToolWorkflow` manifests named `create_repository_with_teams` that internally executes four REST calls in sequence. The LLM sees one tool with four fields. The gateway executes the four HTTP calls, threading extracted values between them.
+
+### Stateful API Choreography
+
+Multi-step API interactions require state management — extracting a resource ID from a `POST` response to use as a path parameter in the subsequent `PUT`, paginating through results while accumulating values. LLMs perform this class of deterministic mechanical work poorly. The gateway's **REST Workflow Engine** handles it correctly every time.
+
+### Long-Running CLI Overhead
+
+The ADR-033 model assumes MCP tool servers are long-running processes per tool per tenant. For CLI tools (Terraform, AWS CLI, FFmpeg), this means maintaining idle container instances for every registered tool at all times. The gateway replaces this with **ephemeral container execution**: a container is spawned per invocation, executes the command, and is immediately destroyed.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  AEGIS Orchestrator (Inner Loop)                            │
+│  Wraps LLM tool calls in SmcpEnvelope                       │
+└────────────────────────────┬────────────────────────────────┘
+                             │ SMCP (signed + verified)
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SMCP Tooling Gateway  (aegis-smcp-gateway)                 │
+│                                                             │
+│  ┌───────────────────────┐    ┌──────────────────────────┐  │
+│  │ Control Plane API     │    │ Auth & Policy Engine     │  │
+│  │ POST /v1/specs        │    │ SmcpMiddleware           │  │
+│  │ POST /v1/workflows    │    │ SecurityContext eval      │  │
+│  │ POST /v1/cli-tools    │    │ OpenBao JIT  (Path A)    │  │
+│  │ GET  /v1/tools        │    │ Keycloak exchange (Path B)│  │
+│  └───────────────────────┘    └─────────────┬────────────┘  │
+│                                             │               │
+│  ┌──────────────────────────────────────────▼────────────┐  │
+│  │              Tool Router                              │  │
+│  └────┬────────────────────────┬──────────────────────┬──┘  │
+│       │                        │                      │     │
+│       ▼                        ▼                      ▼     │
+│ ┌────────────┐          ┌─────────────┐        ┌──────────┐ │
+│ │ REST       │          │ API Explorer│        │Ephemeral │ │
+│ │ Workflow   │          │ (Slicing)   │        │CLI Engine│ │
+│ │ Engine     │          │             │        └────┬─────┘ │
+│ └─────┬──────┘          └──────┬──────┘             │       │
+└───────┼────────────────────────┼────────────────────┼───────┘
+        │                        │         1. Semantic Judge
+        ▼                        ▼         2. Container spawn
+  External REST APIs       External REST        ▼
+  (GitHub, AWS, Jira)        APIs          Docker Daemon
+                                                │
+                                         3. FSAL mount
+                                                ▼
+                                        Agent SeaweedFS Volume
+```
+
+---
+
+## Core Concepts
+
+### ToolWorkflow
+
+A `ToolWorkflow` is a named macro-tool manifest that maps a single compressed input schema to a sequence of REST calls. Developers author workflows in YAML or JSON and register them via the control plane API. Once registered, the workflow appears in `GET /v1/tools` as a single tool entry with a name and description.
+
+```yaml
+name: create_repository_with_teams
+description: "Create a GitHub repo and configure team access in one operation"
+api_spec_id: "github-v3"
+input_schema:
+  type: object
+  properties:
+    repo_name: { type: string }
+    org: { type: string }
+    team_slugs: { type: array, items: { type: string } }
+steps:
+  - name: create_repo
+    operation_id: repos/create-in-org
+    body_template: '{"name": "{{input.repo_name}}", "private": true}'
+    extractors:
+      repo_id: "$.id"
+      full_name: "$.full_name"
+  - name: add_teams
+    operation_id: teams/add-or-update-repo-permissions-in-org
+    body_template: '{"permission": "push"}'
+```
+
+Each step's `body_template` is a Handlebars template that can reference `{{input.*}}` (the original call inputs) and `{{steps.<name>.*}}` (extracted values from earlier steps).
+
+The LLM provides `repo_name`, `org`, and `team_slugs`. The gateway runs the sequence, threads extracted values, and returns the final result. The LLM never sees the intermediate HTTP calls.
+
+> **ToolWorkflow vs ContainerRun:** `ToolWorkflow` is a synchronous, sub-second REST macro-tool. It is completely separate from `ContainerRun` / `ParallelContainerRun` (ADR-050), which are long-running Temporal-backed CI/CD pipeline primitives. Do not conflate them.
+
+### ApiSpec
+
+An `ApiSpec` is a registered OpenAPI 3.x document. The gateway resolves `operation_id` values in `WorkflowStep` entries against the registered spec at invocation time. Specs are registered via `POST /v1/specs` and can be fetched from a URL or submitted inline.
+
+```
+POST /v1/specs
+{
+  "name": "github-v3",
+  "source_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json"
+}
+```
+
+### EphemeralCliTool
+
+An `EphemeralCliTool` registers a CLI tool backed by a Docker image. When an agent invokes it, the gateway spawns an ephemeral container from the image, mounts the agent's NFS volume at `/workspace` via AegisFSAL, executes the command, streams output, and immediately destroys the container.
+
+```yaml
+name: terraform
+docker_image: "hashicorp/terraform:1.9"
+allowed_subcommands:
+  - plan
+  - output
+  - show
+require_semantic_judge: true
+default_timeout_seconds: 120
+```
+
+`allowed_subcommands` provides a static lexical allowlist. If `require_semantic_judge` is `true`, the parsed command intent is also submitted to a Semantic Judge (see below) before the container is created.
+
+---
+
+## Execution Paths
+
+### Path 1 — REST Workflow Engine
+
+1. Agent invokes a registered `ToolWorkflow` via SMCP-wrapped JSON-RPC.
+2. Gateway verifies the `SmcpEnvelope`, loads the `SecurityContext`, checks the workflow name against `Capability` constraints.
+3. Gateway resolves credentials (see [Credential Resolution](#credential-resolution)).
+4. Gateway executes steps sequentially — renders Handlebars templates, calls the upstream API, applies JSONPath extractors to pass state to the next step.
+5. Returns the final step's output to the orchestrator.
+
+### Path 2 — API Explorer (Workflow Authoring Mode)
+
+The API Explorer is not exposed to agents in production runs. It is activated in a dedicated `workflow-authoring` session for engineers or agents building new `ToolWorkflow` manifests.
+
+The agent provides a `fields` array of JSONPath selectors. The gateway executes the requested API call, filters the response to include only the requested fields (**Response Slicing**), and optionally injects `_hints` metadata (next page URL, related operations) to guide exploration without returning verbose raw responses.
+
+Once the agent has mapped the API's shape through a series of sliced calls, it uses `POST /v1/workflows` to author a permanent workflow. The Explorer is then not needed again.
+
+### Path 3 — Ephemeral CLI Engine
+
+```
+Agent calls "terraform" tool
+        │
+        ▼
+Gateway: static allowlist check
+  "plan" ∈ allowed_subcommands? ✅
+        │
+        ▼
+Gateway: Semantic Judge (if require_semantic_judge = true)
+  Intent safe for agent's SecurityContext? ✅
+        │
+        ▼
+Gateway: resolve image registry credentials from OpenBao
+        │
+        ▼
+Docker: spawn ephemeral container from "hashicorp/terraform:1.9"
+        │
+        ▼
+FSAL: mount agent's NFS volume → /workspace (AegisFSAL enforces access mode)
+        │
+        ▼
+Container: terraform plan (working directory /workspace)
+        │
+        ▼
+Gateway: collect stdout/stderr (capped at 1 MB)
+        │
+        ▼
+Docker: destroy container immediately
+        │
+        ▼
+Return result to orchestrator
+```
+
+**Semantic Judging:** The gateway integrates with the Semantic Judge mechanism from [Advanced Judge Capabilities (ADR-049)](/docs/architecture/smcp) to catch semantically dangerous commands that pass the static allowlist. For example, `terraform apply -destroy` passes a lexical check for `apply` but a Semantic Judge configured for a read-only `SecurityContext` will reject it before any container is created. A `CliToolSemanticRejected` event is emitted for audit purposes.
+
+---
+
+## Credential Resolution
+
+The gateway never holds static credentials. All credentials are resolved at invocation time based on the `CredentialResolutionPath` configured per `ApiSpec` or `EphemeralCliTool`.
+
+| Path | When used | Mechanism |
+|---|---|---|
+| **SystemJit** | Background agents, autonomous executions | JIT dynamic secret from OpenBao. Short-lived credential issued per execution. |
+| **HumanDelegated** | Zaru sessions acting on behalf of a user | Keycloak token exchange: agent's SMCP token → human user's OAuth token for the target service. Upstream API sees the real user's identity and enforces their RBAC. |
+| **StaticRef** | Integrations without OAuth (e.g., self-hosted tooling) | Static secret fetched from OpenBao KV, wrapped in `SensitiveString` (never logged). |
+
+**Human-Delegated Auth** is the key differentiator for Zaru users. When you ask a Zaru agent to create a pull request on your behalf, GitHub sees the request as coming from your account with your permissions — not from a generic service account. If you don't have permission to push to a repo, neither does the agent.
+
+---
+
+## Control Plane API
+
+The control plane is authenticated via Bearer JWT (Keycloak `aegis-system` realm, `AegisRole::Operator` or higher). Agents use their `SecurityToken`; human operators use their Keycloak JWT.
+
+```
+# Spec management
+POST   /v1/specs              Register an OpenAPI spec
+GET    /v1/specs              List registered specs
+GET    /v1/specs/{id}         Retrieve a spec
+DELETE /v1/specs/{id}         Remove a spec
+
+# Workflow management
+POST   /v1/workflows          Author and register a ToolWorkflow
+GET    /v1/workflows          List workflows (name + description only)
+GET    /v1/workflows/{id}     Retrieve full workflow definition
+PUT    /v1/workflows/{id}     Update a workflow
+DELETE /v1/workflows/{id}     Remove a workflow
+
+# CLI tool management
+POST   /v1/cli-tools          Register an EphemeralCliTool
+GET    /v1/cli-tools          List CLI tools
+DELETE /v1/cli-tools/{name}   Remove a CLI tool registration
+
+# Agent-facing discovery
+GET    /v1/tools              List all tools visible to agents (name + description only)
+```
+
+`GET /v1/tools` is the endpoint that AEGIS Orchestrator calls to populate the tool schema list it injects into the LLM prompt. It returns only names and descriptions — never raw OpenAPI schemas — keeping the LLM's tool list compact regardless of how many workflows are registered.
+
+---
+
+## Integration with the AEGIS Ecosystem
+
+| Component | Integration |
+|---|---|
+| **SMCP (ADR-035)** | Full `SmcpEnvelope` verification on every invocation. Gateway is a full SMCP participant — not a bypass. |
+| **AegisFSAL / Storage Gateway (ADR-032, ADR-036)** | Ephemeral CLI containers mount agent volumes via the same FSAL security boundary used by all other file operations. No direct bind mounts — no authorization bypass. |
+| **OpenBao (ADR-034)** | Keymaster Pattern preserved. JIT dynamic secrets for system identities. Image registry credentials fetched per-invocation from OpenBao KV. |
+| **Keycloak (ADR-041)** | Token exchange for human-delegated auth. Control plane endpoint authentication via `aegis-system` realm JWTs. |
+| **Cortex (ADR-049)** | `WorkflowInvocationCompleted` and `CliToolInvocationCompleted` events contribute to Trajectory Patterns — successful macro-tool sequences become learnable patterns. |
+| **Semantic Judge (ADR-049)** | Pre-invocation CLI validation. Plugs into the same Semantic Judge mechanism used for inner-loop tool validation. |
+| **ADR-033 tool routing** | The gateway is **additive**, not a replacement. Built-in tools (`fs.*`, `web.*`, `cmd.run`) continue to route through Path 1/2/3 in the orchestrator. The gateway handles third-party REST integrations and unmanaged CLI tools. |
+
+---
+
+## Deployment
+
+The gateway is a standalone binary following the same deployment pattern as `aegis-cortex`, `aegis-embedding-service`, and `aegis-temporal-worker`.
+
+```yaml
+# aegis-config.yaml — orchestrator node config
+spec:
+  tools:
+    smcp_gateway_url: "http://smcp-gateway:8080"   # gateway REST endpoint
+    smcp_gateway_grpc: "smcp-gateway:50055"         # gateway gRPC port
+```
+
+When `smcp_gateway_url` is configured, the orchestrator routes SMCP envelopes for registered external tool names to the gateway. When it is absent, the orchestrator's internal tool router handles all tools (built-in only — no workflows or ephemeral CLI tools).
+
+The gateway can also be deployed independently of AEGIS Orchestrator for organizations using standard MCP.
+
+---
+
+## Security Summary
+
+| Threat | Mitigation |
+|---|---|
+| Prompt injection via workflow authoring | Control plane requires `AegisRole::Operator` JWT. Standard agents cannot register workflows. |
+| CLI semantic escalation (e.g., `terraform apply -destroy`) | Two-layer defense: static `allowed_subcommands` + Semantic Judge. Container never created on rejection. |
+| Credential leakage | `SensitiveString` wrapper on all resolved credentials. Credentials never appear in `GatewayEvent` payloads or logs. |
+| Volume path traversal | AegisFSAL enforces `PathCanonicalization` server-side (ADR-036). No host mounts outside agent volume. |
+| Container escape | Containers run `no-new-privileges`, `cap_drop: ALL`, read-only root filesystem. No `CAP_SYS_ADMIN`. |
+| Token spoofing / replay | Full ADR-035 SMCP protocol: Ed25519 signature verification, `SecurityToken` JWT expiry, `SmcpSession` status check. |
+| Upstream privilege escalation | Human-delegated token exchange via Keycloak scopes the token to exactly what the human user possesses. |
