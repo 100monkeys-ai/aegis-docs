@@ -131,7 +131,7 @@ Every volume has an owner that determines its lifetime and access rules:
 |---|---|---|
 | **Execution** | Orchestrator at execution start (one per `spec.volumes` entry) | Ephemeral volumes are deleted when the execution ends; persistent volumes survive and require manual deletion |
 | **WorkflowExecution** | Orchestrator at workflow start (one per `spec.storage` entry) | Ephemeral volumes are deleted when the workflow execution completes; persistent volumes survive |
-| **Persistent** | CLI or API | No automatic cleanup; must be explicitly deleted via `aegis volume delete` |
+| **Persistent** | API | No automatic cleanup; must be explicitly deleted via volume management APIs |
 
 When a volume is owned by an execution, only that execution can perform write operations through `AegisFSAL`. Other executions may mount the same persistent volume `read-only` by referencing it via `source.volume_id` — this does not change ownership.
 
@@ -154,24 +154,10 @@ Cleanup is a two-phase soft-delete: the orchestrator transitions the volume to `
 
 ---
 
-## Managing Volumes via CLI
+## Managing Volumes
 
-```bash
-# List all volumes on the node
-aegis volume list
-
-# Filter by storage class
-aegis volume list --storage-class persistent
-
-# Inspect a specific volume
-aegis volume get vol-a1b2c3d4-...
-
-# Delete a volume (persistent volumes only; ephemeral volumes auto-delete)
-aegis volume delete vol-a1b2c3d4-...
-
-# Force-delete (skips confirmation)
-aegis volume delete vol-a1b2c3d4-... --yes
-```
+Volume lifecycle is managed by orchestrator APIs and execution/workflow manifests in the current release.
+Dedicated `aegis volume ...` CLI commands are not exposed yet.
 
 Volumes used by an active execution cannot be deleted. The delete command returns an error if the volume is currently mounted.
 
@@ -182,10 +168,9 @@ Volumes used by an active execution cannot be deleted. The delete command return
 To pass data between executions via a persistent volume:
 
 ```bash
-# Get the volume ID created by a previous execution
-VOL_ID=$(aegis volume list --output json | jq -r '[.[] | select(.name=="output-store")][0].id')
-echo $VOL_ID
-# vol-a1b2c3d4-...
+# Get execution metadata and copy the referenced volume ID
+EXEC_ID=<execution-id>
+curl http://localhost:8088/v1/executions/${EXEC_ID}
 ```
 
 In the next agent manifest:
@@ -263,7 +248,7 @@ Using the AWS CLI:
 ```bash
 # Retrieve the volume ID from a previous execution
 TENANT_ID="00000000-0000-0000-0000-000000000001"  # default single-tenant ID
-VOL_ID=$(aegis volume list --output json | jq -r '[.[] | select(.name=="output")][0].id')
+VOL_ID="<volume-id-from-execution-metadata>"
 
 # List files in the volume
 aws s3 ls s3://${TENANT_ID}/${VOL_ID}/ \
@@ -308,8 +293,10 @@ A persistent volume declared with `read-write` access is already mounted by anot
 Options:
 - Wait for the existing execution to complete before starting a new one that needs write access.
 - Switch the new execution to `read-only` access if it only needs to read the volume.
-- Use the CLI to identify which execution holds the volume: `aegis volume get <volume-id>`.
+- Use execution/workflow metadata APIs to identify which execution currently owns the volume.
 
 ### Mount hangs or times out
 
 NFS mounts use `soft` mode with a 1-second timeout and 2 retries. If the orchestrator NFS server is unreachable, the mount fails with `ETIMEDOUT` rather than hanging indefinitely. Check that the AEGIS orchestrator process is healthy and that port 2049 is reachable from the agent container's network.
+
+For current CLI vs API storage operation coverage, see the [CLI Capability Matrix](/docs/reference/cli-capability-matrix).

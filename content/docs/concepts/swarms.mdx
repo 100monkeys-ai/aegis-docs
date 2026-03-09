@@ -130,13 +130,10 @@ To avoid deadlocks:
 ## Cascade Cancellation
 
 Cancelling a swarm propagates cancellation to all live child executions.
+Swarm control is not exposed as dedicated CLI commands in the current release.
 
-```bash
-# Cancel by swarm ID (cancels all children)
-aegis swarm cancel <swarm-id>
-
-# Cancel the root execution (also cancels all children)
-aegis execution cancel <root-execution-id>
+```http
+POST /v1/executions/{execution_id}/cancel
 ```
 
 The cancellation reason is recorded in `ChildCancelled` domain events for the audit trail. Possible reasons:
@@ -144,7 +141,7 @@ The cancellation reason is recorded in `ChildCancelled` domain events for the au
 | Reason | Description |
 |---|---|
 | `ParentCancelled` | Parent execution was explicitly cancelled. |
-| `Manual` | Operator called `aegis swarm cancel` directly. |
+| `Manual` | Operator issued a manual cancellation through orchestration controls. |
 | `AllChildrenComplete` | Swarm dissolved naturally after all children finished. |
 | `SecurityViolation` | A security policy violation triggered swarm termination. |
 
@@ -161,7 +158,7 @@ Created ──▶ Active ──▶ Dissolving ──▶ Dissolved
 
 A swarm enters `Dissolving` when:
 - All child executions have completed/failed, or
-- `aegis swarm cancel` is called.
+- a manual cancellation request is issued.
 
 It transitions to `Dissolved` once all in-flight child state is cleaned up (locks released, messages drained).
 
@@ -169,15 +166,7 @@ It transitions to `Dissolved` once all in-flight child state is cleaned up (lock
 
 ## Monitoring Swarms
 
-```bash
-# List all swarms for a root execution
-aegis swarm list --execution <root-execution-id>
-
-# Get swarm details (children, status, locks)
-aegis swarm get <swarm-id>
-
-# List child executions in a swarm
-aegis swarm children <swarm-id>
-```
+Swarm lifecycle and child execution state are observable through execution events and the streaming APIs.
 
 Swarm lifecycle events (`SwarmCreated`, `ChildAgentSpawned`, `ChildAgentCompleted`, `SwarmDissolved`, etc.) are published to the event bus and can be consumed by external systems via the gRPC streaming API.
+See [CLI Capability Matrix](/docs/reference/cli-capability-matrix) for current CLI command coverage.

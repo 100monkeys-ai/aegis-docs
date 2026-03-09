@@ -144,10 +144,10 @@ Open `http://localhost:8233`. Navigate to **Workers** → task queue `aegis-agen
 aegis workflow deploy ./aegis-examples/agents/workflows/echo-workflow.yaml
 
 # Start an execution
-aegis workflow start echo-workflow --input '{"message": "hello"}'
+aegis workflow run echo-workflow --input '{"message": "hello"}'
 
-# Watch status
-aegis workflow status <execution-id>
+# Watch logs
+aegis workflow logs <execution-id> --follow
 ```
 
 The execution should appear in the Temporal UI under **Workflows** with status `Running` and then `Completed`.
@@ -169,7 +169,7 @@ curl http://localhost:3000/workflows/<workflow-id>
 curl -X DELETE http://localhost:3000/workflows/<workflow-id>
 ```
 
-When `aegis workflow deploy` is run, the Rust orchestrator POSTs the serialised FSM definition to `POST /register-workflow` on this service and simultaneously saves the `Workflow` domain aggregate to PostgreSQL.
+When `aegis workflow deploy` is run, the Rust orchestrator registers the serialized FSM via its workflow registration API and simultaneously saves the `Workflow` domain aggregate to PostgreSQL.
 
 ---
 

@@ -90,15 +90,11 @@ Every execution carries an `ExecutionHierarchy`:
 
 This means judge executions are:
 
-- **Visible in the execution list** — child executions appear alongside worker executions in `aegis execution list`.
+- **Visible in execution history** — child executions appear in execution APIs and event streams alongside worker executions.
 - **Isolated** — the judge runs in its own container with its own security policy. It cannot read or write to the parent execution's workspace unless both share the same volume and the judge's manifest explicitly grants access.
 - **Audited** — every judge invocation generates the full set of execution events (`ExecutionStarted`, `IterationCompleted`, etc.), making the validation decision fully inspectable.
 
-To view the judge executions spawned by a parent:
-
-```bash
-aegis execution list --parent <execution-id>
-```
+Use execution APIs and logs to inspect judge executions spawned by a parent.
 
 ---
 

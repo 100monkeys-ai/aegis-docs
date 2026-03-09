@@ -167,10 +167,10 @@ On success, the agent is registered with `status: deployed` and assigned a UUID.
 Deployed agent "python-coder" (id: a1b2c3d4-0000-0000-0000-000000000001)
 ```
 
-To deploy and immediately print the full agent record as JSON:
+To deploy and validate only (without persisting):
 
 ```bash
-aegis agent deploy ./my-agent/agent.yaml --output json
+aegis agent deploy ./my-agent/agent.yaml --validate-only
 ```
 
 ### List Agents
@@ -178,9 +178,6 @@ aegis agent deploy ./my-agent/agent.yaml --output json
 ```bash
 # Table format (default)
 aegis agent list
-
-# JSON format — useful for scripting
-aegis agent list --output json
 ```
 
 Example table output:
@@ -192,12 +189,7 @@ b2c3d4e5-0000-...                     code-reviewer  paused     docker
 c3d4e5f6-0000-...                     security-scan  deployed   docker   team=security
 ```
 
-Filter by status:
-
-```bash
-aegis agent list --status deployed
-aegis agent list --status paused
-```
+Filter-by-status output is not yet exposed as a CLI flag; filter the table output in your shell if needed.
 
 ### Inspect an Agent
 

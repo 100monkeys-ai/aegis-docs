@@ -220,7 +220,8 @@ To change which model backs a given alias:
 
 2. Restart the AEGIS daemon:
    ```bash
-   aegis daemon restart --config aegis-config.yaml
+   aegis daemon stop
+   aegis daemon start --config aegis-config.yaml
    ```
 
 Running executions continue using the provider that was active when they started. New executions use the updated alias mapping.

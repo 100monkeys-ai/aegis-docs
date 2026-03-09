@@ -180,7 +180,7 @@ The judge agent specified in `semantic` or `multi_judge` validators is a regular
 - Be updated independently of the agent they evaluate.
 - Run in an isolated container with their own resource limits and security policy.
 - Be specialized for specific domains (e.g., a judge trained to evaluate security code reviews).
-- Run as **child executions** in the execution tree — viewable via `aegis execution list --parent <execution-id>`.
+- Run as **child executions** in the execution tree — visible in execution APIs and event streams for the parent execution.
 
 Judges always use `execution.mode: one-shot`. Judgment is a single-shot decision by design; the judge does not retry its own verdict through the iteration loop.
 

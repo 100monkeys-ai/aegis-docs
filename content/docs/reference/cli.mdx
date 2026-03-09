@@ -249,8 +249,8 @@ Generated manifests are also written to disk for inspection/versioning:
 - if daemon uses a custom config path, files are written under that config directory's `generated/` tree.
 
 ```bash
-aegis agent generate "Create an agent that reviews pull requests for security issues."
-aegis agent generate "Create a SQL migration reviewer agent" --follow
+aegis agent generate --input "Create an agent that reviews pull requests for security issues."
+aegis agent generate --input "Create a SQL migration reviewer agent" --follow
 ```
 
 | Flag | Default | Description |
@@ -456,8 +456,8 @@ Generated workflow manifests are also written to disk for inspection/versioning:
 - if daemon uses a custom config path, files are written under that config directory's `generated/` tree.
 
 ```bash
-aegis workflow generate "Create a CI/CD workflow: build, test, and deploy a Rust service."
-aegis workflow generate "Create a human-approval gated release workflow" --follow
+aegis workflow generate --input "Create a CI/CD workflow: build, test, and deploy a Rust service."
+aegis workflow generate --input "Create a human-approval gated release workflow" --follow
 ```
 
 | Flag | Default | Description |

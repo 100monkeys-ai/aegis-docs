@@ -147,10 +147,15 @@ APPROVAL_GATE:
       feedback: "{{human.feedback}}"
 ```
 
-To resume a suspended workflow from the CLI:
+To resume a suspended workflow, send a signal through the workflow execution API:
 
-```bash
-aegis workflow signal <execution-id> --state APPROVAL_GATE --decision approved
+```http
+POST /v1/workflows/executions/{execution_id}/signal
+Content-Type: application/json
+
+{
+  "response": "approved"
+}
 ```
 
 ### `ParallelAgents`
@@ -426,7 +431,7 @@ Prerequite: Clone the [aegis-examples](https://github.com/100monkeys-ai/aegis-ex
 
 ```bash
 aegis workflow deploy ./agents/workflows/the-forge.yaml
-aegis workflow start the-forge --input '{"task": "Build a REST API for user authentication", "repo_url": "https://github.com/org/repo"}'
+aegis workflow run the-forge --input '{"task": "Build a REST API for user authentication", "repo_url": "https://github.com/org/repo"}'
 ```
 
 ---
@@ -441,16 +446,18 @@ aegis workflow deploy ./my-workflow.yaml
 aegis workflow list
 
 # Start a workflow execution
-aegis workflow start <workflow-name> --input '{"key": "value"}'
+aegis workflow run <workflow-name> --input '{"key": "value"}'
 
-# Check execution status
-aegis workflow status <execution-id>
+# Follow workflow logs
+aegis workflow logs <execution-id> --follow
+```
 
-# Signal a Human state
-aegis workflow signal <execution-id> --state <state-name> --decision <value>
+For execution status and Human-state signaling, use the REST API:
 
-# Cancel a running workflow
-aegis workflow cancel <execution-id>
+```http
+GET /v1/workflows/executions/{execution_id}
+POST /v1/workflows/executions/{execution_id}/signal
 ```
 
 See the [Workflow Manifest Reference](/docs/reference/workflow-manifest) for the complete field specification.
+See [CLI Capability Matrix](/docs/reference/cli-capability-matrix) for currently CLI-exposed workflow operations.

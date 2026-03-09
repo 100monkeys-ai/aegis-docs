@@ -138,7 +138,7 @@ Deploy and run it:
 
 ```bash
 aegis workflow deploy ./build-pipeline.yaml
-aegis workflow start build-pipeline --input '{"task": "Write a Rust CLI tool that counts lines in a file"}'
+aegis workflow run build-pipeline --input '{"task": "Write a Rust CLI tool that counts lines in a file"}'
 ```
 
 When `BUILD` fails, the exit code triggers the `FIX_ERRORS` state. The agent receives the compiler errors via `{{state.feedback}}` and re-edits the files in `/workspace`. The workflow loops back to `BUILD` automatically.
@@ -554,14 +554,14 @@ The Synapse real-time execution viewer renders each `ContainerRun` step the same
 ### CLI
 
 ```bash
-# Watch pipeline status
-aegis workflow status <execution-id>
-
-# Get the Blackboard snapshot (includes all state outputs)
-aegis workflow blackboard <execution-id>
-
 # Follow the event stream
 aegis workflow logs <execution-id> --follow
+```
+
+For point-in-time execution status, use:
+
+```http
+GET /v1/workflows/executions/{execution_id}
 ```
 
 ---

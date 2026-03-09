@@ -185,7 +185,7 @@ Any non-terminal state ──► Failed
 
 `Available → Attached` occurs when the container starts and the NFS mount is confirmed active. `Attached → Detached` occurs when the container stops or is killed. Ephemeral volumes with no active execution proceed immediately from `Detached` to `Deleting`. Persistent volumes remain in `Detached` until explicitly deleted via the CLI or API.
 
-`Failed` volumes are surfaced in `aegis volume list` output and may be retried with `aegis volume delete <id> --force`.
+`Failed` volumes are surfaced through volume management APIs and can be retried by reissuing the delete request through the orchestrator API.
 
 ---
 

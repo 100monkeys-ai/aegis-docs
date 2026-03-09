@@ -267,14 +267,13 @@ Use `condition: exit_code_zero`, `condition: exit_code_non_zero`, or `condition:
 | `timeout` | string | | Duration to wait before following timeout transitions. Omit to wait indefinitely. |
 | `default_response` | string | | Signal value automatically applied when `timeout` elapses. |
 
-The workflow suspends until signalled via CLI:
+The workflow suspends until signalled via the workflow execution API:
 
-```bash
-# Approve
-aegis workflow signal <execution-id> --state <state-name> --decision approved
+```http
+POST /v1/workflows/executions/{execution_id}/signal
+Content-Type: application/json
 
-# Reject with feedback
-aegis workflow signal <execution-id> --state <state-name> --decision rejected --feedback "Needs tests"
+{ "response": "approved" }
 ```
 
 The signal payload is available as `{{human.feedback}}` in transition `feedback` strings and downstream `input` templates.

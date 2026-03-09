@@ -110,13 +110,11 @@ curl -X POST https://keycloak.example.com/realms/aegis-system/protocol/openid-co
   -d client_secret=$CLIENT_SECRET
 ```
 
-Use the returned `access_token` as a Bearer token on all AEGIS API requests:
+Use the returned `access_token` as a Bearer token on AEGIS API requests:
 
 ```bash
-aegis agent list --token $ACCESS_TOKEN
-# or set in environment:
-export AEGIS_TOKEN=$ACCESS_TOKEN
-aegis agent list
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+  http://localhost:8088/v1/agents
 ```
 
 ---
@@ -143,7 +141,8 @@ Default cache TTL is 300 seconds (configurable via `spec.iam.jwks_cache_ttl_seco
 If you rotate keys manually and need the cache cleared immediately, restart the daemon:
 
 ```bash
-aegis daemon reload --config aegis-config.yaml
+aegis daemon stop
+aegis daemon start --config aegis-config.yaml
 ```
 
 ---

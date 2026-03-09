@@ -150,7 +150,7 @@ aegis workflow list
 ## Step 4: Start a Workflow Execution
 
 ```bash
-aegis workflow start dev-pipeline \
+aegis workflow run dev-pipeline \
   --input '{"task": "Write a REST API for a simple to-do list with CRUD operations."}'
 ```
 
@@ -160,10 +160,10 @@ Expected output:
 Workflow execution started: wfx-a1b2c3d4-1111-...
 ```
 
-Watch the execution progress:
+Watch execution logs:
 
 ```bash
-aegis workflow status wfx-a1b2c3d4-1111-...
+aegis workflow logs wfx-a1b2c3d4-1111-... --follow
 ```
 
 Example output:
@@ -183,21 +183,27 @@ State History:
 
 ## Step 5: Signal a Human State
 
-The workflow is suspended at `APPROVE_REQUIREMENTS`. To approve:
+The workflow is suspended at `APPROVE_REQUIREMENTS`. Signal it through the workflow execution API.
+To approve:
 
-```bash
-aegis workflow signal wfx-a1b2c3d4-1111-... \
-  --state APPROVE_REQUIREMENTS \
-  --decision approved
+```http
+POST /v1/workflows/executions/wfx-a1b2c3d4-1111-.../signal
+Content-Type: application/json
+
+{
+  "response": "approved"
+}
 ```
 
 To reject with feedback:
 
-```bash
-aegis workflow signal wfx-a1b2c3d4-1111-... \
-  --state APPROVE_REQUIREMENTS \
-  --decision rejected \
-  --feedback "Requirements need more detail on error handling"
+```http
+POST /v1/workflows/executions/wfx-a1b2c3d4-1111-.../signal
+Content-Type: application/json
+
+{
+  "response": "rejected: Requirements need more detail on error handling"
+}
 ```
 
 After approval, the workflow continues to the `IMPLEMENT` state automatically.
@@ -207,11 +213,8 @@ After approval, the workflow continues to the `IMPLEMENT` state automatically.
 ## Step 6: Monitor to Completion
 
 ```bash
-# Continue watching status
-aegis workflow status wfx-a1b2c3d4-1111-...
-
-# Or watch agent executions spawned by the workflow
-aegis execution list --output json | jq '[.[] | select(.workflow_execution_id=="wfx-a1b2c3d4-1111-...")]'
+# Continue watching logs
+aegis workflow logs wfx-a1b2c3d4-1111-... --follow
 ```
 
 ---
@@ -278,3 +281,4 @@ This is the authoritative view for debugging stuck or failed workflow executions
 ## Workflow Manifest Reference
 
 For the complete field specification including all `StateKind` options, `TransitionRule` operators, and Blackboard template variables, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).
+For current CLI vs API workflow operation coverage, see the [CLI Capability Matrix](/docs/reference/cli-capability-matrix).

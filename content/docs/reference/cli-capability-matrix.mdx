@@ -1,0 +1,29 @@
+---
+title: CLI Capability Matrix
+description: Current CLI command coverage and API-only surfaces in the AEGIS orchestrator.
+---
+
+# CLI Capability Matrix
+
+This page reflects the currently implemented `aegis` command surface.
+
+## Implemented Top-Level Commands
+
+| Command | Subcommands / Shape |
+|---|---|
+| `aegis daemon` | `start`, `stop`, `status`, `install`, `uninstall` |
+| `aegis agent` | `deploy`, `list`, `show`, `remove`, `logs`, `generate --input ...` |
+| `aegis task` | `execute`, `status`, `logs`, `cancel`, `remove`, `list` |
+| `aegis workflow` | `validate`, `deploy`, `run`, `list`, `describe`, `logs`, `delete`, `generate --input ...` |
+| `aegis config` | `show`, `validate`, `generate` |
+| stack lifecycle | `init`, `up`, `down`, `restart`, `update`, `uninstall` |
+
+## API-Only (No Dedicated CLI Subcommand Yet)
+
+| Capability | API Path |
+|---|---|
+| Workflow execution status | `GET /v1/workflows/executions/{execution_id}` |
+| Human-state signal | `POST /v1/workflows/executions/{execution_id}/signal` |
+| Stimulus ingestion | `POST /v1/stimuli`, `POST /v1/webhooks/{source}` |
+| Swarm-specific lifecycle operations | Use execution/event APIs and orchestration services |
+| Volume-specific listing/deletion operations | Use storage/volume management APIs |

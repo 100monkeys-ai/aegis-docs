@@ -296,10 +296,10 @@ WorkflowExecution
   status = WAITING_FOR_SIGNAL
          │
          │  Signal arrives via:
-         │    aegis workflow signal <exec-id> --state approve_requirements --decision approved
+         │    POST /v1/workflows/executions/{id}/signal
+         │    {"response": "approved"}
          │  or via HTTP API:
-         │    POST /v1/workflow-executions/{id}/signal
-         │    {"state": "approve_requirements", "payload": {"decision": "approved"}}
+         │    POST /v1/human-approvals/{id}/approve
          ▼
   Temporal signal received → Blackboard["approve_requirements"]["decision"] = "approved"
   TransitionRule evaluates → target = "implement"

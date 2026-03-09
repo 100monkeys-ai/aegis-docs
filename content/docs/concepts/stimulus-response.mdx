@@ -55,20 +55,8 @@ Stimulus received
 
 ## Direct Routes
 
-A direct route is a static mapping from a `source_name` to a `WorkflowId`. Register one via the CLI or management API:
-
-```bash
-# Register a direct route
-aegis stimulus routes add \
-  --source github \
-  --workflow wf-uuid-here
-
-# List all registered routes
-aegis stimulus routes list
-
-# Remove a route
-aegis stimulus routes remove --source github
-```
+A direct route is a static mapping from a `source_name` to a `WorkflowId`.
+In the current release, route management is configured through node/workflow configuration surfaces and internal services rather than a dedicated `aegis stimulus routes` CLI command.
 
 Routes are stored in-memory on the orchestrator instance. Multi-node deployments in `orchestrator` or `hybrid` mode share routes via the database.
 
@@ -137,7 +125,9 @@ The routing pipeline produces a `RoutingDecision` regardless of which stage reso
 The **SensorService** manages always-on polling loops that generate stimuli autonomously without an inbound HTTP request. The built-in `StdinSensor` reads from standard input — useful for local development and pipe-based integrations:
 
 ```bash
-echo '{"event": "deploy", "ref": "main"}' | aegis daemon
+curl -X POST http://localhost:8088/v1/stimuli \
+  -H "Content-Type: application/json" \
+  -d '{"source":"http_api","content":"{\"event\":\"deploy\",\"ref\":\"main\"}"}'
 ```
 
 Custom sensors are not yet supported in Phase 1. Use webhook ingestion for external event sources.
@@ -148,4 +138,5 @@ Custom sensors are not yet supported in Phase 1. Use webhook ingestion for exter
 
 - [Configuring Webhooks](/docs/guides/configuring-webhooks) — step-by-step HMAC setup and route registration
 - [Building Workflows](/docs/guides/building-workflows) — define the workflows that handle stimuli
+- [CLI Capability Matrix](/docs/reference/cli-capability-matrix) — current CLI vs API routing operations
 - [REST API Reference](/docs/reference/rest-api#post-v1stimuli) — full request/response schemas

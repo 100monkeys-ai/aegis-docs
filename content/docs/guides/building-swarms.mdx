@@ -211,18 +211,7 @@ Design your decomposition to stay within this limit. If you need deeper hierarch
 
 ## Monitoring Swarms
 
-```bash
-# List all swarms
-aegis swarm list
-
-# Get details about a specific swarm
-aegis swarm get <swarm-id>
-
-# List all child executions in a swarm
-aegis swarm children <swarm-id>
-
-# Cancel all agents in a swarm
-aegis swarm cancel <swarm-id>
-```
+Swarm-specific listing and cancellation are not exposed as dedicated CLI commands in the current release.
+Use execution logs/streams for observability and `POST /v1/executions/{execution_id}/cancel` for cancellation.
 
 Swarm events (child spawned, child completed, locks acquired/released, cascade cancellation) are published to the event bus and available via gRPC streaming.

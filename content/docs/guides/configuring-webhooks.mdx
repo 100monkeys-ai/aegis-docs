@@ -43,23 +43,7 @@ If no environment variable is found for the requested source, the orchestrator r
 
 Map the source to a workflow so routing is instant and deterministic:
 
-```bash
-aegis stimulus routes add \
-  --source github \
-  --workflow wf-uuid-here
-```
-
-List current routes:
-
-```bash
-aegis stimulus routes list
-```
-
-Remove a route:
-
-```bash
-aegis stimulus routes remove --source github
-```
+Direct-route management is configured via orchestrator workflow routing configuration in the current release (there is no `aegis stimulus routes` CLI command yet).
 
 If no direct route is registered, the routing pipeline falls back to the configured `RouterAgent` for LLM-based classification (see [Stimulus-Response Routing](/docs/concepts/stimulus-response)).
 
