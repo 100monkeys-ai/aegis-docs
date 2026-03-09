@@ -119,7 +119,7 @@ POST /v1/specs
 
 ### EphemeralCliTool
 
-An `EphemeralCliTool` registers a CLI tool backed by a Docker image. When an agent invokes it, the gateway spawns an ephemeral container from the image, mounts the agent's NFS volume at `/workspace` via AegisFSAL, executes the command, streams output, and immediately destroys the container.
+An `EphemeralCliTool` registers a CLI tool backed by a Docker image. When an agent invokes it, the gateway spawns an ephemeral container from the image, mounts all execution volumes at their canonical `/workspace...` paths via AegisFSAL, executes the command, streams output, and immediately destroys the container.
 
 ```yaml
 name: terraform
@@ -179,7 +179,7 @@ Gateway: resolve image registry credentials from OpenBao
 Docker: spawn ephemeral container from "hashicorp/terraform:1.9"
         │
         ▼
-FSAL: mount agent's NFS volume → /workspace (AegisFSAL enforces access mode)
+FSAL: mount all execution volumes → /workspace... (AegisFSAL enforces access mode)
         │
         ▼
 Container: terraform plan (working directory /workspace)
@@ -195,6 +195,8 @@ Return result to orchestrator
 ```
 
 **Semantic Judging:** The gateway integrates with the Semantic Judge mechanism from [Advanced Judge Capabilities](/docs/architecture/smcp) to catch semantically dangerous commands that pass the static allowlist. For example, `terraform apply -destroy` passes a lexical check for `apply` but a Semantic Judge configured for a read-only `SecurityContext` will reject it before any container is created. A `CliToolSemanticRejected` event is emitted for audit purposes.
+
+When invoking CLI tools internally, the orchestrator passes the full mount set as `fsal_mounts[]` (`volume_id`, `mount_path`, `read_only`), not a single volume identifier.
 
 ---
 

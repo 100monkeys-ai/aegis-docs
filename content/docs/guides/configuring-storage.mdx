@@ -7,6 +7,8 @@ description: Declaring ephemeral and persistent volumes, volume mounts, access m
 
 AEGIS provides agents with filesystem storage via **Volumes**. Volumes are first-class domain entities managed by the orchestrator and backed by SeaweedFS. Agents access their volumes as a standard POSIX filesystem — the NFS mount is transparent to agent code.
 
+All agent volume mount paths must be rooted at `/workspace`. Valid examples: `/workspace`, `/workspace/datasets`, `/workspace/cache`.
+
 ---
 
 ## Volume Types
@@ -36,13 +38,13 @@ spec:
 
     # Persistent output volume — survives across executions
     - name: output-store
-      mount_path: /output
+      mount_path: /workspace/output
       access_mode: read-write
       storage_class: persistent
 
     # Read-only access to a shared reference dataset
     - name: reference-data
-      mount_path: /reference
+      mount_path: /workspace/reference
       access_mode: read-only
       storage_class: persistent
       source:
@@ -54,12 +56,14 @@ spec:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | ✓ | Local identifier used to reference this mount within the manifest. |
-| `mount_path` | string | ✓ | Absolute path inside the container where the volume appears. |
+| `mount_path` | string | ✓ | Absolute path inside the container, rooted at `/workspace`. |
 | `access_mode` | `read-write` \| `read-only` | ✓ | Access mode enforced by the storage gateway (AegisFSAL). |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | Lifetime of the volume. |
 | `ttl_hours` | integer | Required for ephemeral | Hours until auto-deletion (e.g., `1`, `24`, `48`). |
 | `size_limit` | string | | Maximum volume size as a Kubernetes resource string (e.g., `"500Mi"`, `"5Gi"`). Writes that exceed this emit a `VolumeQuotaExceeded` event and return `ENOSPC`. |
 | `source.volume_id` | string | Required for persistent | Pin to a specific existing volume by UUID. Supports Handlebars: `{{input.volume_id}}`. |
+
+`mount_path` values must be unique and non-overlapping except for the canonical root `/workspace` (for example, `/workspace` plus `/workspace/datasets` is valid).
 
 ---
 
@@ -177,15 +181,15 @@ In the next agent manifest:
 
 ```yaml
 volumes:
-  - name: previous-output
-    mount_path: /previous
-    access_mode: read-only
-    storage_class: persistent
+    - name: previous-output
+      mount_path: /workspace/previous
+      access_mode: read-only
+      storage_class: persistent
     source:
       volume_id: "vol-a1b2c3d4-..."
 ```
 
-The previous execution's output is now readable at `/previous` in the new agent container.
+The previous execution's output is now readable at `/workspace/previous` in the new agent container.
 
 ---
 
@@ -199,7 +203,7 @@ In a workflow, the standard pattern is for a writer agent to populate a persiste
 spec:
   volumes:
     - name: output
-      mount_path: /output
+      mount_path: /workspace/output
       access_mode: read-write
       storage_class: persistent
 ```
@@ -222,14 +226,14 @@ states:
 spec:
   volumes:
     - name: previous-output
-      mount_path: /input
+      mount_path: /workspace/input
       access_mode: read-only
       storage_class: persistent
       source:
         volume_id: "{{blackboard.output_volume_id}}"
 ```
 
-The reader agent sees the writer's files at `/input`. Because it mounts `read-only`, it is compatible with the [single-writer constraint](#phase-1-constraints) and can run concurrently with other readers on the same volume.
+The reader agent sees the writer's files at `/workspace/input`. Because it mounts `read-only`, it is compatible with the [single-writer constraint](#phase-1-constraints) and can run concurrently with other readers on the same volume.
 
 ---
 

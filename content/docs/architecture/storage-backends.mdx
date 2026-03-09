@@ -29,7 +29,7 @@ volumes:
   - name: shared-data
     type: seaweedfs
     storage_class: persistent
-    mount_path: /data
+    mount_path: /workspace/shared-data
     access_mode: read-write
 ```
 
@@ -71,7 +71,7 @@ Often, an orchestrator operates on hardware with fast local NVMe drives or pre-d
 ### Mechanism
 
 - **Provider**: `LocalHostStorageProvider`
-- **Security**: Bound by `AegisFSAL`'s strict `PathSanitizer`. Agent NFS operations cannot perform path traversal escapes (`../`) out of the defined `mount_path` directory on the host. 
+- **Security**: Bound by `AegisFSAL`'s strict `PathSanitizer`. Agent NFS operations cannot perform path traversal escapes (`../`) out of the defined `mount_path` directory on the host.
 - **Use Case**: Ultra-fast LLM weight loading, NVMe caching directories, or shared model caches pre-downloaded to the physical machine.
 
 ### Agent Manifest Example
@@ -83,7 +83,7 @@ volumes:
     config:
       path: /mnt/fast-nvme/llama-weights
     storage_class: persistent
-    mount_path: /weights
+    mount_path: /workspace/weights
     access_mode: read-only
 ```
 
@@ -109,9 +109,11 @@ volumes:
       node_id: "node-b-uuid-1234"
       remote_volume_id: "vol-9876-abc"
     storage_class: persistent
-    mount_path: /pipeline/input
+    mount_path: /workspace/pipeline/input
     access_mode: read-only
 ```
+
+All mount paths must be rooted at `/workspace`.
 
 ---
 

@@ -95,7 +95,7 @@ spec:
     - name: shared-data
       type: seaweedfs
       storage_class: persistent
-      mount_path: /data
+      mount_path: /workspace/shared-data
       access_mode: read-only
       source:
         volume_id: "vol-a1b2c3d4-..."  # pin to existing volume
@@ -107,7 +107,7 @@ spec:
         bucket: my-ml-datasets
         endpoint: "https://s3.us-east-1.amazonaws.com"
       storage_class: persistent
-      mount_path: /datasets
+      mount_path: /workspace/datasets
       access_mode: read-only
 
   # Execution strategy and validation
@@ -266,7 +266,7 @@ Supports two mutually exclusive runtime modes:
 | `provider` | string | Required for `opendal` | | The specific cloud API (e.g. `s3`, `gcs`) or scheme. |
 | `config` | object | Required for non-`seaweedfs` types | | Configuration fields unique to the specific backend proxy mechanism. |
 | `storage_class` | `ephemeral` \| `persistent` | ✓ | | Lifetime of the volume. |
-| `mount_path` | string | ✓ | | Absolute path inside the container (e.g., `/workspace`). |
+| `mount_path` | string | ✓ | | Absolute path inside the container, rooted at `/workspace` (e.g., `/workspace`, `/workspace/datasets`). |
 | `access_mode` | `read-write` \| `read-only` | ✓ | | Access mode enforced by AegisFSAL. |
 | `ttl_hours` | integer | Required for ephemeral | | Hours until auto-deletion (e.g., `1`, `24`). |
 | `size_limit` | string | | no limit | Maximum volume size as a Kubernetes resource string (e.g., `"500Mi"`, `"5Gi"`). Writes beyond this return `ENOSPC`. |
@@ -529,6 +529,8 @@ Storage volumes are mounted into the agent container via the **NFS Server Gatewa
 | `persistent` | None; explicit delete | Shared datasets, long-lived output |
 
 `access_mode: read-write` is exclusive — only one execution may hold write access to a persistent volume at a time. `read-only` volumes may be read by multiple agents simultaneously.
+
+All `spec.volumes[].mount_path` values must be rooted at `/workspace`.
 
 ### `spec.execution`
 

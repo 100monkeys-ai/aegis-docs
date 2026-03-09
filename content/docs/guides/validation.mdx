@@ -181,6 +181,7 @@ The judge agent specified in `semantic` or `multi_judge` validators is a regular
 - Run in an isolated container with their own resource limits and security policy.
 - Be specialized for specific domains (e.g., a judge trained to evaluate security code reviews).
 - Run as **child executions** in the execution tree — visible in execution APIs and event streams for the parent execution.
+- Inherit the worker execution's mounted volumes as read-only views at the same `/workspace...` mount paths, so file-based checks run against the exact worker artifacts.
 
 Judges always use `execution.mode: one-shot`. Judgment is a single-shot decision by design; the judge does not retry its own verdict through the iteration loop.
 
@@ -234,7 +235,9 @@ spec:
               type: string
 ```
 
-The judge runtime reads the code under review from the shared workspace, evaluates it, and writes the JSON verdict to `/workspace/verdict.json`.
+The judge runtime reads the code under review from the inherited `/workspace...` mounts, evaluates it, and writes the JSON verdict to `/workspace/verdict.json`.
+
+Judge input payloads expose mounted filesystem context through `worker_mounts` (array of inherited mount paths). Treat this as the source of truth for artifact discovery.
 
 ### Security Guidance for Judge Manifests
 
