@@ -21,7 +21,8 @@ kind: Agent               # required; must be exactly "Agent"
 
 metadata:
   name: python-coder              # required; unique DNS-label name (lowercase, alphanumeric, hyphens)
-  version: "1.0.0"               # required; semantic version of this manifest
+  version: "1.0.0"               # required; semantic version. (name + version) must be unique.
+                                 # Overwriting an existing version requires the `force` parameter in management tools.
   description: "Writes Python solutions to programming tasks."  # optional
   labels:                         # optional; key-value pairs for filtering and discovery
     role: worker

@@ -1,0 +1,134 @@
+---
+title: Management Tools
+description: Built-in tools for managing AEGIS agents, workflows, and schemas via MCP.
+---
+
+AEGIS provides a suite of built-in management tools under the `aegis.*` namespace. These tools enable agents and external clients to perform full CRUD (Create, Read, Update, Delete) operations on agent and workflow definitions directly through the Model Context Protocol (MCP).
+
+Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact directly with the Orchestrator's internal registry and services.
+
+## Versioning and Safety
+
+All creation and update tools in the management suite respect AEGIS's strict versioning policy. By default, attempting to overwrite an existing name and version pair will be rejected.
+
+- **`force` parameter**: Most mutating tools include an optional `force` boolean. Set this to `true` to explicitly overwrite an existing definition.
+- **Recommendations**: It is generally recommended to increment the `version` in the manifest rather than using `force`, ensuring a clear audit trail.
+
+---
+
+## Agent Management Tools
+
+### `aegis.agent.create`
+
+Deploys a new agent to the orchestrator registry.
+
+**Parameters:**
+
+- `manifest_yaml` (string, required): The full Agent manifest in YAML format.
+- `force` (boolean, optional): Overwrite an existing agent if the name and version already exist. Default is `false`.
+
+**Returns:** A JSON object confirming deployment, including the assigned `agent_id`.
+
+### `aegis.agent.update`
+
+Updates an existing agent's definition.
+
+**Parameters:**
+
+- `manifest_yaml` (string, required): The updated Agent manifest YAML.
+- `force` (boolean, optional): Overwrite an existing version if the version in the manifest hasn't been incremented. Default is `false`.
+
+**Returns:** Confirmation of the update and the `agent_id`.
+
+### `aegis.agent.export`
+
+Retrieves the raw YAML manifest of a deployed agent.
+
+**Parameters:**
+
+- `name` (string, required): The name of the agent or its UUID.
+
+**Returns:** The `manifest_yaml` string and metadata.
+
+### `aegis.agent.list`
+
+Lists all currently deployed agents in the registry.
+
+**Parameters:** None.
+
+**Returns:** A list of agent summaries including name, version, status, and labels.
+
+---
+
+## Workflow Management Tools
+
+### `aegis.workflow.create`
+
+Performs strict deterministic and semantic validation on a workflow before registering it. This is the preferred way to deploy complex workflows.
+
+**Parameters:**
+
+- `manifest_yaml` (string, required): The full Workflow manifest YAML.
+- `force` (boolean, optional): Overwrite an existing workflow version if it exists. Default is `false`.
+- `task_context` (string, optional): Context provided to semantic judges to aid validation.
+- `judge_agents` (array of strings, optional): Names of judge agents to use for semantic validation. Defaults to `["code-quality-judge"]`.
+- `min_score` (number, optional): Minimum required semantic score (0.0-1.0). Default is `0.8`.
+- `min_confidence` (number, optional): Minimum required consensus confidence (0.0-1.0). Default is `0.7`.
+
+**Returns:** Detailed validation results from each judge and the final registration status.
+
+### `aegis.workflow.update`
+
+Updates an existing workflow definition.
+
+**Parameters:**
+
+- `manifest_yaml` (string, required): The updated Workflow manifest YAML.
+- `force` (boolean, optional): Overwrite an existing version if it already exists. Default is `false`.
+
+**Returns:** Confirmation of the update and the `workflow_id`.
+
+### `aegis.workflow.export`
+
+Retrieves the raw YAML manifest of a registered workflow.
+
+**Parameters:**
+
+- `name` (string, required): The name of the workflow or its UUID.
+
+**Returns:** The `manifest_yaml` string and metadata.
+
+### `aegis.workflow.list`
+
+Lists all currently registered workflows.
+
+**Parameters:** None.
+
+**Returns:** A list of workflow summaries.
+
+---
+
+## Schema Tools
+
+These tools provide access to the canonical JSON Schemas used by AEGIS for manifest validation.
+
+### `aegis.schema.get`
+
+Retrieves the JSON Schema for a specific manifest type.
+
+**Parameters:**
+
+- `key` (string, required): The schema key to retrieve. Supported: `"agent/manifest/v1"`, `"workflow/manifest/v1"`.
+
+**Returns:** The full JSON Schema object.
+
+### `aegis.schema.validate`
+
+Validates a manifest YAML string against its canonical schema without deploying it.
+
+**Parameters:**
+
+- `kind` (string, required): The manifest kind (`"agent"` or `"workflow"`).
+- `manifest_yaml` (string, required): The manifest YAML text to validate.
+
+**Returns:** A boolean `valid` and an optional list of `errors`.

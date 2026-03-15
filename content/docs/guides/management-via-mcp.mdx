@@ -1,0 +1,117 @@
+---
+title: Management via MCP
+description: How to use built-in management tools to automate agent and workflow lifecycles.
+---
+
+AEGIS is designed for high degrees of autonomy. While the CLI is excellent for human operators, AI agents can manage the platform themselves using the built-in **Management MCP Tools**.
+
+This enables powerful patterns like:
+- **Agent Factories**: Agents that create specialized "child" agents on demand.
+- **Self-Optimizing Workflows**: Workflows that analyze their own performance and update their definitions.
+- **Generative Authoring**: Generating complete agent/workflow manifests from natural language and deploying them immediately.
+
+---
+
+## The Management Toolset
+
+All management tools are prefixed with `aegis.` and are built directly into the Orchestrator. They do not require external MCP servers.
+
+| Capability | Tools |
+|---|---|
+| **Agent Lifecycle** | `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.list` |
+| **Workflow Lifecycle** | `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.list` |
+| **Schema & Validation** | `aegis.schema.get`, `aegis.schema.validate` |
+
+For a complete parameter reference, see the [Management Tools](/docs/reference/management-tools) documentation.
+
+---
+
+## Pattern: The Agent Factory
+
+An "Agent Factory" is an agent specialized in authoring other agents. It typically follows a structured loop to ensure safety and correctness.
+
+### Step 1: Discover Existing Capabilities
+The factory should first check what agents already exist to avoid duplication.
+
+```json
+// Tool Call: aegis.agent.list
+{}
+```
+
+### Step 2: Retrieve the Schema
+To write a valid manifest, the agent retrieves the current canonical schema.
+
+```json
+// Tool Call: aegis.schema.get
+{ "key": "agent/manifest/v1" }
+```
+
+### Step 3: Author and Validate
+After composing the YAML, the agent validates it before attempting deployment.
+
+```json
+// Tool Call: aegis.schema.validate
+{
+  "kind": "agent",
+  "manifest_yaml": "apiVersion: aegis.ai/v1\nkind: Agent\n..."
+}
+```
+
+### Step 4: Deploy or Update
+Finally, the agent deploys the new manifest. If updating an existing agent, it should ensure the version is incremented or use `force: true`.
+
+```json
+// Tool Call: aegis.agent.create
+{
+  "manifest_yaml": "..."
+}
+```
+
+---
+
+## Pattern: Safe Workflow Updates
+
+Updating a workflow requires care to ensure the new definition is sound. The `aegis.workflow.create` tool provides a high-assurance path by running both deterministic checks and semantic judge evaluations.
+
+### The Recommended Update Flow:
+
+1.  **Export Current**: Call `aegis.workflow.export` to get the current source.
+2.  **Modify**: Apply changes to the YAML (increment version).
+3.  **Validate & Register**: Call `aegis.workflow.create` with a `task_context` explaining the change.
+
+```json
+// Tool Call: aegis.workflow.create
+{
+  "manifest_yaml": "...",
+  "task_context": "Updating the data-science-pipeline to include a new CSV-parsing stage.",
+  "judge_agents": ["workflow-generator-judge"],
+  "min_score": 0.85
+}
+```
+
+If the semantic judge score is below the threshold, the tool returns the judge's feedback, allowing the authoring agent to refine the manifest and try again.
+
+---
+
+## Security and Permissions
+
+Managing agents and workflows is a highly privileged operation. Access to these tools is governed by the agent's `SecurityContext`.
+
+By default, standard "worker" agents do **not** have access to `aegis.*` tools. You must explicitly grant these capabilities in the Security Context assigned to your authoring agents.
+
+```yaml
+# In node-config.yaml or via SecurityContext management
+name: "agent-authoring-context"
+capabilities:
+  - name: "aegis.agent.*"
+  - name: "aegis.workflow.*"
+  - name: "aegis.schema.*"
+```
+
+---
+
+## Next Steps
+
+- Explore the [Management Tools Reference](/docs/reference/management-tools) for technical details.
+- Learn about [Security Contexts](/docs/guides/configuring-security-contexts) to secure your authoring agents.
+- See [Generative Authoring](/docs/guides/cicd-pipelines) for CI/CD integration examples.

@@ -19,7 +19,8 @@ kind: Workflow                     # required; must be exactly "Workflow"
 
 metadata:
   name: dev-pipeline               # required; unique DNS-label name (lowercase, alphanumeric, hyphens)
-  version: "1.0.0"                 # optional; semantic version of this manifest
+  version: "1.0.0"                 # required; semantic version. (name + version) must be unique.
+                                   # Overwriting an existing version requires the `force` parameter in management tools.
   description: "Iterative code generation with multi-judge validation."  # optional
   labels:                          # optional; key-value pairs for filtering and discovery
     category: development

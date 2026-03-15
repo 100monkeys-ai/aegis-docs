@@ -5,6 +5,7 @@
         "configuring-tools",
         "custom-runtime-agents",
         "deploying-agents",
+        "management-via-mcp",
         "building-workflows",
         "cicd-pipelines",
         "building-swarms",

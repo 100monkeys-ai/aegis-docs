@@ -5,6 +5,11 @@ description: Reference documentation for the built-in MCP tools provided by the 
 
 The AEGIS Orchestrator provides a set of native, built-in tools out of the box. These tools are implemented internally for high performance, deep security integration, and specialized infrastructure abstraction. Built-in tools bypass the overhead of sidecar MCP servers.
 
+Built-in tools are divided into two main categories:
+
+1.  **Execution Tools**: Tools like `fs.*`, `web.*`, and `cmd.run` that agents use to perform their tasks. (Documented on this page)
+2.  **Management Tools**: Tools like `aegis.agent.*` and `aegis.workflow.*` used for platform administration and generative authoring. See the [Management Tools](/docs/reference/management-tools) reference for more details.
+
 ## Inner-Loop Judge Optimization (`skip_judge`)
 
 When an agent manifest enables `spec.execution.tool_validation`, the orchestrator runs a **semantic judge** after each tool call to validate its output before letting the agent proceed. This adds latency but catches unsafe or incorrect tool results early.
@@ -27,6 +32,16 @@ For **read-only tools** the judge adds latency without safety benefit — the fi
 | `fs.delete` | `false` | State-mutating — destructive |
 | `web.search` | `true` | Read-only external lookup |
 | `web.fetch` | `true` | Read-only HTTP fetch |
+| `aegis.agent.list` | `true` | Read-only registry lookup |
+| `aegis.workflow.list` | `true` | Read-only registry lookup |
+| `aegis.schema.get` | `true` | Read-only schema lookup |
+| `aegis.schema.validate` | `true` | Read-only validation |
+| `aegis.agent.export` | `true` | Read-only manifest lookup |
+| `aegis.workflow.export` | `true` | Read-only manifest lookup |
+| `aegis.agent.create` | `false` | Mutation — judge evaluates manifest quality |
+| `aegis.agent.update` | `false` | Mutation — judge evaluates manifest quality |
+| `aegis.workflow.create` | `false` | Mutation — internally semantically validated |
+| `aegis.workflow.update` | `false` | Mutation — judge evaluates manifest quality |
 
 These defaults can be overridden per-tool in the node configuration. `skip_judge` is an **operator-level** flag — agents cannot influence it.
 

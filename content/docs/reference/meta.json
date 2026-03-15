@@ -9,6 +9,7 @@
     "cli-capability-matrix",
     "grpc-api",
         "builtin-tools",
+        "management-tools",
         "rest-api",
         "sdk-python",
         "sdk-typescript",
