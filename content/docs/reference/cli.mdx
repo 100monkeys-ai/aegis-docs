@@ -141,13 +141,13 @@ aegis restart --dir ~/.aegis
 
 ### `aegis update`
 
-Upgrade the stack by pulling latest images, restarting services, and running DB migrations.
+Upgrade the stack by pulling latest images, restarting services, running DB migrations, and re-deploying built-in templates (agents/workflows).
 
 ```bash
 aegis update
 aegis update --dry-run
 aegis update --skip-pull --skip-restart
-aegis update --skip-migrations
+aegis update --skip-migrations --skip-builtins
 ```
 
 | Flag | Default | Description |
@@ -156,6 +156,7 @@ aegis update --skip-migrations
 | `--skip-pull` | `false` | Skip `docker compose pull`. |
 | `--skip-restart` | `false` | Skip stack restart (`docker compose up -d --wait`). |
 | `--skip-migrations` | `false` | Skip database migrations. |
+| `--skip-builtins` | `false` | Skip re-deploying built-in templates (judges, generators, etc). |
 | `--dry-run` | `false` | Show planned actions without making changes. |
 
 ### `aegis uninstall`
