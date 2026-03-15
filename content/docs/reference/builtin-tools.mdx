@@ -12,6 +12,14 @@ Built-in tools are divided into two main categories:
 
 ## Inner-Loop Judge Optimization (`skip_judge`)
 
+<Callout type="info">
+  `skip_judge` applies **only to agents executing inside the 100monkeys inner loop** (i.e. calls
+  routed through `bootstrap.py` via the Dispatch Protocol, ADR-040). External agents calling
+  `/v1/smcp/invoke` directly are subject to SMCP authentication, policy, and argument validation
+  (see [Argument Validation](#argument-validation) below) but are **never** sent to the semantic
+  judge.
+</Callout>
+
 When an agent manifest enables `spec.execution.tool_validation`, the orchestrator runs a **semantic judge** after each tool call to validate its output before letting the agent proceed. This adds latency but catches unsafe or incorrect tool results early.
 
 For **read-only tools** the judge adds latency without safety benefit — the file contents or search results are deterministic and carry no write-side risk. Operators can set `skip_judge: true` on individual tools in `spec.builtin_dispatchers[].capabilities` or `spec.mcp_servers[].capabilities` in the [Node Configuration](/docs/reference/node-config#specbuiltin_dispatchers) to bypass the judge for those specific tools.
@@ -40,10 +48,78 @@ For **read-only tools** the judge adds latency without safety benefit — the fi
 | `aegis.workflow.export` | `true` | Read-only manifest lookup |
 | `aegis.agent.create` | `false` | Mutation — judge evaluates manifest quality |
 | `aegis.agent.update` | `false` | Mutation — judge evaluates manifest quality |
+| `aegis.agent.delete` | `false` | Destructive — removes agent from registry |
+| `aegis.agent.generate` | `false` | Creates new agent via inner authoring loop |
 | `aegis.workflow.create` | `false` | Mutation — internally semantically validated |
 | `aegis.workflow.update` | `false` | Mutation — judge evaluates manifest quality |
+| `aegis.workflow.delete` | `false` | Destructive — removes workflow from registry |
+| `aegis.workflow.run` | `false` | Execution trigger — spawns a workflow run |
+| `aegis.workflow.generate` | `false` | Creates new workflow via inner authoring loop |
+| `aegis.task.execute` | `false` | Execution trigger — spawns an agent execution |
+| `aegis.task.status` | `true` | Read-only execution status query |
+| `aegis.task.list` | `true` | Read-only execution listing |
+| `aegis.workflow.logs` | `true` | Read-only execution log query |
+| `aegis.task.cancel` | `false` | State-mutating — terminates a running execution |
+| `aegis.task.remove` | `false` | Destructive — deletes an execution record |
+| `aegis.system.info` | `true` | Read-only node status query |
+| `aegis.system.config` | `true` | Read-only configuration access |
 
 These defaults can be overridden per-tool in the node configuration. `skip_judge` is an **operator-level** flag — agents cannot influence it.
+
+---
+
+## Argument Validation
+
+Before any tool call is dispatched — on **both** the inner-loop path and the external SMCP path — the orchestrator validates that all required parameters are present and non-null.  If validation fails the call is rejected immediately with an `InvalidArguments` error; no execution target is allocated and no judge is invoked.
+
+**External SMCP callers** (`POST /v1/smcp/invoke`) receive a standard MCP JSON-RPC error response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32602,
+    "message": "Invalid tool arguments: required field 'manifest_yaml' is missing or null for tool 'aegis.agent.create'",
+    "data": null
+  }
+}
+```
+
+The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
+
+| Condition | HTTP status | JSON-RPC code |
+|-----------|-------------|---------------|
+| Missing / null required argument | `422 Unprocessable Entity` | `-32602` |
+| Malformed envelope / missing tool name | `400 Bad Request` | `-32600` |
+| Session expired or bad signature | `401 Unauthorized` | `-32000` |
+| Policy violation or inactive session | `403 Forbidden` | `-32000` |
+| Judge timeout or internal error | `500 Internal Server Error` | `-32603` |
+
+**Required parameters by tool:**
+
+| Tool | Required parameters |
+|------|---------------------|
+| `aegis.execute` | `prompt` |
+| `aegis.agent.create`, `aegis.agent.update` | `manifest_yaml` |
+| `aegis.agent.export` | `name` |
+| `aegis.agent.delete`, `aegis.task.execute` | `agent_id` |
+| `aegis.agent.generate`, `aegis.workflow.generate` | `input` |
+| `aegis.workflow.create`, `aegis.workflow.update` | `manifest_yaml` |
+| `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run` | `name` |
+| `aegis.workflow.logs` | `execution_id` |
+| `aegis.task.status`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
+| `aegis.schema.get` | `key` |
+| `aegis.schema.validate` | `kind`, `manifest_yaml` |
+| `cmd.run` | `command` (must be a non-empty string) |
+| `fs.read`, `fs.list`, `fs.create_dir`, `fs.delete` | `path` |
+| `fs.write` | `path`, `content` |
+| `fs.edit` | `path`, `target_content`, `replacement_content` |
+| `fs.multi_edit` | `path`, `edits` |
+| `fs.grep`, `fs.glob` | `pattern`, `path` |
+| `web.search` | `query` |
+| `web.fetch` | `url` |
+
+Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.system.info`) accept any object including `{}`.
 
 ---
 

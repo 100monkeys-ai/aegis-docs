@@ -50,6 +50,26 @@ Retrieves the raw YAML manifest of a deployed agent.
 
 **Returns:** The `manifest_yaml` string and metadata.
 
+### `aegis.agent.delete`
+
+Permanently removes an agent from the registry. Cannot be undone.
+
+**Parameters:**
+
+- `agent_id` (string, required): UUID of the agent to remove.
+
+**Returns:** A JSON object confirming deletion with the `agent_id`.
+
+### `aegis.agent.generate`
+
+Launches a natural language authoring loop that produces and deploys a new agent manifest from a plain-English description.
+
+**Parameters:**
+
+- `input` (string, required): Natural-language intent for the agent to create.
+
+**Returns:** An object containing `execution_id` and `status: "started"`. Stream the execution for real-time manifest generation output.
+
 ### `aegis.agent.list`
 
 Lists all currently deployed agents in the registry.
@@ -98,6 +118,88 @@ Retrieves the raw YAML manifest of a registered workflow.
 
 **Returns:** The `manifest_yaml` string and metadata.
 
+### `aegis.workflow.delete`
+
+Permanently removes a workflow from the registry. Cannot be undone.
+
+**Parameters:**
+
+- `name` (string, required): The name of the workflow to remove.
+
+**Returns:** A JSON object confirming deletion with the `workflow_id`.
+
+### `aegis.workflow.run`
+
+Executes a registered workflow by name, passing an optional input payload to the initial blackboard state.
+
+**Parameters:**
+
+- `name` (string, required): The name of the workflow to execute.
+- `input` (object, optional): Key-value input passed to the workflow's initial blackboard state.
+
+**Returns:** An object containing `execution_id` and `status: "started"`.
+
+### `aegis.workflow.generate`
+
+Launches a natural language authoring loop that produces and deploys a new workflow manifest from a plain-English objective.
+
+**Parameters:**
+
+- `input` (string, required): Natural-language objective describing the workflow to create.
+
+**Returns:** An object containing `execution_id` and `status: "started"`. Stream the execution to observe the iterative manifest generation loop.
+
+### `aegis.workflow.logs`
+
+Retrieves the execution event log for a workflow run, returning state transitions, iteration results, and lifecycle events in chronological order. This is a **read-only** query — `skip_judge` defaults to `true`.
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the workflow execution to retrieve logs for. |
+| `limit` | `number` | ❌ | `50` | Maximum number of events to return (max 200). |
+| `offset` | `number` | ❌ | `0` | Number of events to skip — use for pagination. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.workflow.logs",
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "status": "completed",
+  "events": [
+    {
+      "sequence": 1,
+      "event_type": "WorkflowExecutionStarted",
+      "state_name": null,
+      "iteration_number": null,
+      "payload": { "workflow_id": "my-workflow", "started_at": "2026-03-14T10:00:00Z" },
+      "recorded_at": "2026-03-14T10:00:00Z"
+    },
+    {
+      "sequence": 2,
+      "event_type": "WorkflowStateEntered",
+      "state_name": "analyze",
+      "iteration_number": null,
+      "payload": { "entered_at": "2026-03-14T10:00:01Z" },
+      "recorded_at": "2026-03-14T10:00:01Z"
+    }
+  ],
+  "total": 2,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**CLI equivalent:**
+
+```bash
+aegis workflow logs <execution_id>
+aegis workflow logs <execution_id> --follow        # stream events live
+aegis workflow logs <execution_id> --transitions   # state entries/exits only
+```
+
 ### `aegis.workflow.list`
 
 Lists all currently registered workflows.
@@ -105,6 +207,86 @@ Lists all currently registered workflows.
 **Parameters:** None.
 
 **Returns:** A list of workflow summaries.
+
+---
+
+## Task Management Tools
+
+Task management tools provide direct control over agent execution lifecycle — launching, monitoring, and terminating individual runs.
+
+### `aegis.task.execute`
+
+Executes a deployed agent by ID, optionally passing an input payload.
+
+**Parameters:**
+
+- `agent_id` (string, required): UUID of the agent to execute.
+- `input` (object, optional): Key-value payload passed to the agent's execution context.
+
+**Returns:** An object containing `execution_id` and `status: "started"`.
+
+### `aegis.task.status`
+
+Checks the current status and progress of a running or completed execution.
+
+**Parameters:**
+
+- `execution_id` (string, required): UUID of the execution to query.
+
+**Returns:** A detailed status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
+
+### `aegis.task.list`
+
+Lists recent task executions, optionally filtered by agent.
+
+**Parameters:**
+
+- `agent_id` (string, optional): Filter results to executions of a specific agent UUID.
+- `limit` (integer, optional): Maximum number of results to return. Default is `20`.
+
+**Returns:** A paginated list of execution summaries including `id`, `agent_id`, `status`, and `started_at`.
+
+### `aegis.task.cancel`
+
+Gracefully stops a running execution.
+
+**Parameters:**
+
+- `execution_id` (string, required): UUID of the execution to cancel.
+
+**Returns:** A JSON object confirming cancellation with the `execution_id`.
+
+### `aegis.task.remove`
+
+Deletes an execution record from the registry. The execution must be in a terminal state (`completed`, `failed`, or `cancelled`).
+
+**Parameters:**
+
+- `execution_id` (string, required): UUID of the execution record to remove.
+
+**Returns:** A JSON object confirming removal with the `execution_id`.
+
+---
+
+## System Management Tools
+
+System tools provide read-only introspection into the AEGIS node's status and active configuration.
+
+### `aegis.system.info`
+
+Returns AEGIS node metadata, health status, software version, and the list of available capabilities and enabled built-in tools.
+
+**Parameters:** None.
+
+**Returns:** A JSON object containing `version`, `status` (`healthy | unhealthy`), and `capabilities` (array of enabled tool names).
+
+### `aegis.system.config`
+
+Returns the full contents of the active `node-config.yaml`, including LLM provider settings, runtime configuration, and tool/MCP server registrations as read at daemon startup.
+
+**Parameters:** None.
+
+**Returns:** A JSON object containing `config_path` (absolute path to the loaded config file) and `content_yaml` (the raw YAML string).
 
 ---
 
