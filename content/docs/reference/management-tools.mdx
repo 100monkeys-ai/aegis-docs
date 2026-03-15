@@ -22,21 +22,21 @@ All creation and update tools in the management suite respect AEGIS's strict ver
 
 Deploys a new agent to the orchestrator registry.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | ✅ | — | The full Agent manifest in YAML format. |
+| `force` | `boolean` | ❌ | `false` | Overwrite an existing agent if the name and version already exist. |
 
-- `manifest_yaml` (string, required): The full Agent manifest in YAML format.
-- `force` (boolean, optional): Overwrite an existing agent if the name and version already exist. Default is `false`.
-
-**Returns:** A JSON object confirming deployment, including the assigned `agent_id`.
+**Returns:** A JSON object confirming deployment, including the assigned `agent_id` and `deployed: true`.
 
 ### `aegis.agent.update`
 
 Updates an existing agent's definition.
 
-**Parameters:**
-
-- `manifest_yaml` (string, required): The updated Agent manifest YAML.
-- `force` (boolean, optional): Overwrite an existing version if the version in the manifest hasn't been incremented. Default is `false`.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | ✅ | — | The updated Agent manifest YAML. |
+| `force` | `boolean` | ❌ | `false` | Overwrite an existing version if the manifest version hasn't been incremented. |
 
 **Returns:** Confirmation of the update and the `agent_id`.
 
@@ -44,29 +44,29 @@ Updates an existing agent's definition.
 
 Retrieves the raw YAML manifest of a deployed agent.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | ✅ | — | The name of the agent or its UUID. |
 
-- `name` (string, required): The name of the agent or its UUID.
-
-**Returns:** The `manifest_yaml` string and metadata.
+**Returns:** A JSON object containing `manifest_yaml` (string) and agent metadata.
 
 ### `aegis.agent.delete`
 
 Permanently removes an agent from the registry. Cannot be undone.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `agent_id` | `string` | ✅ | — | UUID of the agent to remove. |
 
-- `agent_id` (string, required): UUID of the agent to remove.
-
-**Returns:** A JSON object confirming deletion with the `agent_id`.
+**Returns:** A JSON object confirming deletion with `agent_id` and `deleted: true`.
 
 ### `aegis.agent.generate`
 
 Launches a natural language authoring loop that produces and deploys a new agent manifest from a plain-English description.
 
-**Parameters:**
-
-- `input` (string, required): Natural-language intent for the agent to create.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `input` | `string` | ✅ | — | Natural-language intent describing the agent to create. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`. Stream the execution for real-time manifest generation output.
 
@@ -76,7 +76,7 @@ Lists all currently deployed agents in the registry.
 
 **Parameters:** None.
 
-**Returns:** A list of agent summaries including name, version, status, and labels.
+**Returns:** A list of agent summaries including `id`, `name`, `version`, `status`, and `labels`.
 
 ---
 
@@ -86,25 +86,25 @@ Lists all currently deployed agents in the registry.
 
 Performs strict deterministic and semantic validation on a workflow before registering it. This is the preferred way to deploy complex workflows.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | ✅ | — | The full Workflow manifest YAML. |
+| `force` | `boolean` | ❌ | `false` | Overwrite an existing workflow version if it exists. |
+| `task_context` | `string` | ❌ | — | Context provided to semantic judges to aid validation. |
+| `judge_agents` | `string[]` | ❌ | `["code-quality-judge"]` | Names of judge agents to use for semantic validation. |
+| `min_score` | `number` | ❌ | `0.8` | Minimum required semantic score (0.0–1.0). |
+| `min_confidence` | `number` | ❌ | `0.7` | Minimum required consensus confidence (0.0–1.0). |
 
-- `manifest_yaml` (string, required): The full Workflow manifest YAML.
-- `force` (boolean, optional): Overwrite an existing workflow version if it exists. Default is `false`.
-- `task_context` (string, optional): Context provided to semantic judges to aid validation.
-- `judge_agents` (array of strings, optional): Names of judge agents to use for semantic validation. Defaults to `["code-quality-judge"]`.
-- `min_score` (number, optional): Minimum required semantic score (0.0-1.0). Default is `0.8`.
-- `min_confidence` (number, optional): Minimum required consensus confidence (0.0-1.0). Default is `0.7`.
-
-**Returns:** Detailed validation results from each judge and the final registration status.
+**Returns:** Detailed validation results from each judge and the final registration status, including `workflow_id` and `deployed: true`.
 
 ### `aegis.workflow.update`
 
 Updates an existing workflow definition.
 
-**Parameters:**
-
-- `manifest_yaml` (string, required): The updated Workflow manifest YAML.
-- `force` (boolean, optional): Overwrite an existing version if it already exists. Default is `false`.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | ✅ | — | The updated Workflow manifest YAML. |
+| `force` | `boolean` | ❌ | `false` | Overwrite an existing version if it already exists. |
 
 **Returns:** Confirmation of the update and the `workflow_id`.
 
@@ -112,30 +112,30 @@ Updates an existing workflow definition.
 
 Retrieves the raw YAML manifest of a registered workflow.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | ✅ | — | The name of the workflow or its UUID. |
 
-- `name` (string, required): The name of the workflow or its UUID.
-
-**Returns:** The `manifest_yaml` string and metadata.
+**Returns:** A JSON object containing `manifest_yaml` (string) and workflow metadata.
 
 ### `aegis.workflow.delete`
 
 Permanently removes a workflow from the registry. Cannot be undone.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | ✅ | — | The name of the workflow to remove. |
 
-- `name` (string, required): The name of the workflow to remove.
-
-**Returns:** A JSON object confirming deletion with the `workflow_id`.
+**Returns:** A JSON object confirming deletion with `workflow_id` and `deleted: true`.
 
 ### `aegis.workflow.run`
 
 Executes a registered workflow by name, passing an optional input payload to the initial blackboard state.
 
-**Parameters:**
-
-- `name` (string, required): The name of the workflow to execute.
-- `input` (object, optional): Key-value input passed to the workflow's initial blackboard state.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | ✅ | — | The name of the workflow to execute. |
+| `input` | `object` | ❌ | `{}` | Key-value input passed to the workflow's initial blackboard state. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`.
 
@@ -143,9 +143,9 @@ Executes a registered workflow by name, passing an optional input payload to the
 
 Launches a natural language authoring loop that produces and deploys a new workflow manifest from a plain-English objective.
 
-**Parameters:**
-
-- `input` (string, required): Natural-language objective describing the workflow to create.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `input` | `string` | ✅ | — | Natural-language objective describing the workflow to create. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`. Stream the execution to observe the iterative manifest generation loop.
 
@@ -206,7 +206,7 @@ Lists all currently registered workflows.
 
 **Parameters:** None.
 
-**Returns:** A list of workflow summaries.
+**Returns:** A list of workflow summaries including `id`, `name`, `version`, and `initial_state`.
 
 ---
 
@@ -218,10 +218,10 @@ Task management tools provide direct control over agent execution lifecycle — 
 
 Executes a deployed agent by ID, optionally passing an input payload.
 
-**Parameters:**
-
-- `agent_id` (string, required): UUID of the agent to execute.
-- `input` (object, optional): Key-value payload passed to the agent's execution context.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `agent_id` | `string` | ✅ | — | UUID of the agent to execute. |
+| `input` | `object` | ❌ | `{}` | Key-value payload passed to the agent's execution context. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`.
 
@@ -229,42 +229,42 @@ Executes a deployed agent by ID, optionally passing an input payload.
 
 Checks the current status and progress of a running or completed execution.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the execution to query. |
 
-- `execution_id` (string, required): UUID of the execution to query.
-
-**Returns:** A detailed status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
+**Returns:** A status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
 
 ### `aegis.task.list`
 
 Lists recent task executions, optionally filtered by agent.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `agent_id` | `string` | ❌ | — | Filter results to executions of a specific agent UUID. |
+| `limit` | `integer` | ❌ | `20` | Maximum number of results to return. |
 
-- `agent_id` (string, optional): Filter results to executions of a specific agent UUID.
-- `limit` (integer, optional): Maximum number of results to return. Default is `20`.
-
-**Returns:** A paginated list of execution summaries including `id`, `agent_id`, `status`, and `started_at`.
+**Returns:** A list of execution summaries including `id`, `agent_id`, `status`, and `started_at`.
 
 ### `aegis.task.cancel`
 
 Gracefully stops a running execution.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the execution to cancel. |
 
-- `execution_id` (string, required): UUID of the execution to cancel.
-
-**Returns:** A JSON object confirming cancellation with the `execution_id`.
+**Returns:** A JSON object confirming cancellation with `execution_id` and `cancelled: true`.
 
 ### `aegis.task.remove`
 
 Deletes an execution record from the registry. The execution must be in a terminal state (`completed`, `failed`, or `cancelled`).
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the execution record to remove. |
 
-- `execution_id` (string, required): UUID of the execution record to remove.
-
-**Returns:** A JSON object confirming removal with the `execution_id`.
+**Returns:** A JSON object confirming removal with `execution_id` and `removed: true`.
 
 ---
 
@@ -298,19 +298,19 @@ These tools provide access to the canonical JSON Schemas used by AEGIS for manif
 
 Retrieves the JSON Schema for a specific manifest type.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | `string` | ✅ | — | The schema key to retrieve. Supported values: `"agent/manifest/v1"`, `"workflow/manifest/v1"`. |
 
-- `key` (string, required): The schema key to retrieve. Supported: `"agent/manifest/v1"`, `"workflow/manifest/v1"`.
-
-**Returns:** The full JSON Schema object.
+**Returns:** The full JSON Schema object for the requested manifest type.
 
 ### `aegis.schema.validate`
 
 Validates a manifest YAML string against its canonical schema without deploying it.
 
-**Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `kind` | `string` | ✅ | — | The manifest kind to validate against: `"agent"` or `"workflow"`. |
+| `manifest_yaml` | `string` | ✅ | — | The manifest YAML text to validate. |
 
-- `kind` (string, required): The manifest kind (`"agent"` or `"workflow"`).
-- `manifest_yaml` (string, required): The manifest YAML text to validate.
-
-**Returns:** A boolean `valid` and an optional list of `errors`.
+**Returns:** A JSON object with `valid` (boolean) and an optional `errors` array listing any validation failures.

@@ -1,11 +1,11 @@
 ---
 title: CLI Capability Matrix
-description: Current CLI command coverage and API-only surfaces in the AEGIS orchestrator.
+description: Current CLI command coverage, MCP tool equivalents, and API-only surfaces in the AEGIS orchestrator.
 ---
 
 # CLI Capability Matrix
 
-This page reflects the currently implemented `aegis` command surface.
+This page reflects the currently implemented `aegis` command surface and its mapping to the built-in MCP tool equivalents defined in [ADR-055](/adrs/055-comprehensive-platform-control-mcp).
 
 ## Implemented Top-Level Commands
 
@@ -18,11 +18,48 @@ This page reflects the currently implemented `aegis` command surface.
 | `aegis config` | `show`, `validate`, `generate` |
 | stack lifecycle | `init`, `up`, `down`, `restart`, `update`, `uninstall` |
 
+---
+
+## CLI ↔ MCP Tool Mapping
+
+Every CLI management operation has a corresponding built-in MCP tool. Agents and external automation may use either surface; both target the same Application Services.
+
+| CLI Command | MCP Tool | Purpose |
+|---|---|---|
+| **Agent Management** | | |
+| `aegis agent list` | `aegis.agent.list` | List all deployed agents |
+| `aegis agent deploy` | `aegis.agent.create` | Deploy a new agent |
+| `aegis agent deploy --force` | `aegis.agent.update` | Update an existing agent |
+| `aegis agent show <name>` | `aegis.agent.export` | Export agent manifest as YAML |
+| `aegis agent remove <id>` | `aegis.agent.delete` | Permanently remove an agent |
+| `aegis agent generate --input ...` | `aegis.agent.generate` | Natural language agent authoring loop |
+| **Workflow Management** | | |
+| `aegis workflow list` | `aegis.workflow.list` | List all registered workflows |
+| `aegis workflow deploy` | `aegis.workflow.create` | Validate and register a workflow |
+| `aegis workflow deploy --force` | `aegis.workflow.update` | Update an existing workflow |
+| `aegis workflow describe <name>` | `aegis.workflow.export` | Export workflow manifest as YAML |
+| `aegis workflow delete <name>` | `aegis.workflow.delete` | Remove a workflow from registry |
+| `aegis workflow run <name>` | `aegis.workflow.run` | Execute a registered workflow |
+| `aegis workflow generate --input ...` | `aegis.workflow.generate` | Natural language workflow authoring loop |
+| `aegis workflow logs <execution_id>` | `aegis.workflow.logs` | Retrieve workflow execution event log |
+| **Task Management** | | |
+| `aegis task execute <agent_id>` | `aegis.task.execute` | Execute an agent task |
+| `aegis task status <execution_id>` | `aegis.task.status` | Check execution progress and outcome |
+| `aegis task list` | `aegis.task.list` | List recent task executions |
+| `aegis task cancel <execution_id>` | `aegis.task.cancel` | Stop a running execution |
+| `aegis task remove <execution_id>` | `aegis.task.remove` | Delete an execution record |
+| **System Management** | | |
+| `aegis daemon status` | `aegis.system.info` | Get node metadata, status, and capabilities |
+| `aegis config show` | `aegis.system.config` | View active node configuration |
+
+---
+
 ## API-Only (No Dedicated CLI Subcommand Yet)
 
 | Capability | API Path |
 |---|---|
 | Workflow execution status | `GET /v1/workflows/executions/{execution_id}` |
+| Workflow execution event log (stream) | `GET /v1/workflows/executions/{execution_id}/logs/stream` |
 | Human-state signal | `POST /v1/workflows/executions/{execution_id}/signal` |
 | Stimulus ingestion | `POST /v1/stimuli`, `POST /v1/webhooks/{source}` |
 | Swarm-specific lifecycle operations | Use execution/event APIs and orchestration services |

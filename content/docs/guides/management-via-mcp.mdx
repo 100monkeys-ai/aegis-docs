@@ -14,12 +14,14 @@ This enables powerful patterns like:
 
 ## The Management Toolset
 
-All management tools are prefixed with `aegis.` and are built directly into the Orchestrator. They do not require external MCP servers.
+All `aegis.*` tools are built directly into the Orchestrator as first-class built-in tools (per [ADR-055](/adrs/055-comprehensive-platform-control-mcp)). They require no external MCP servers and are available to any agent whose `SecurityContext` has the appropriate `capabilities`.
 
 | Capability | Tools |
 |---|---|
-| **Agent Lifecycle** | `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.list` |
-| **Workflow Lifecycle** | `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.list` |
+| **Agent Lifecycle** | `aegis.agent.list`, `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.delete`, `aegis.agent.generate` |
+| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.generate`, `aegis.workflow.logs` |
+| **Task Execution** | `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.cancel`, `aegis.task.remove` |
+| **System Introspection** | `aegis.system.info`, `aegis.system.config` |
 | **Schema & Validation** | `aegis.schema.get`, `aegis.schema.validate` |
 
 For a complete parameter reference, see the [Management Tools](/docs/reference/management-tools) documentation.
@@ -90,6 +92,80 @@ Updating a workflow requires care to ensure the new definition is sound. The `ae
 ```
 
 If the semantic judge score is below the threshold, the tool returns the judge's feedback, allowing the authoring agent to refine the manifest and try again.
+
+---
+
+## Pattern: Monitor and Manage Running Tasks
+
+Management tools give agents complete control over the task execution lifecycle. This is particularly useful for orchestrator agents that launch, monitor, and clean up child tasks.
+
+### Step 1: Launch a Task
+
+```json
+// Tool Call: aegis.task.execute
+{
+  "agent_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "input": { "target_url": "https://example.com/api" }
+}
+```
+
+Returns `{ "execution_id": "6ba7b810-...", "status": "started" }`.
+
+### Step 2: Poll for Completion
+
+```json
+// Tool Call: aegis.task.status
+{ "execution_id": "6ba7b810-..." }
+```
+
+Returns `{ "status": "running", "iteration_count": 3, "last_output": "...", ... }`.
+
+### Step 3: Stream Workflow Logs
+
+For workflow executions, retrieve a chronological event log:
+
+```json
+// Tool Call: aegis.workflow.logs
+{ "execution_id": "6ba7b810-...", "limit": 50 }
+```
+
+Use `offset` to paginate through long-running workflow event histories.
+
+### Step 4: Cancel if Needed
+
+```json
+// Tool Call: aegis.task.cancel
+{ "execution_id": "6ba7b810-..." }
+```
+
+### Step 5: Clean Up
+
+After a task concludes, remove the execution record from the registry:
+
+```json
+// Tool Call: aegis.task.remove
+{ "execution_id": "6ba7b810-..." }
+```
+
+---
+
+## Pattern: System Introspection
+
+Before executing complex operations, a management agent should confirm the node is healthy and verify which tools and capabilities are available.
+
+```json
+// Tool Call: aegis.system.info
+{}
+```
+
+Returns the node version, health status (`healthy | unhealthy`), and the full list of enabled tool capabilities. Use this to gate decisions on feature availability.
+
+```json
+// Tool Call: aegis.system.config
+{}
+```
+
+Returns the full `node-config.yaml` as a string — useful for agents performing self-diagnostic checks or configuration audits.
 
 ---
 
