@@ -302,7 +302,7 @@ spec:
       #   ca_cert_path: null                          # custom CA cert for self-signed backends
     metrics:
       enabled: true
-      port: 9090
+      port: 9091
       path: "/metrics"
     tracing:
       enabled: false
@@ -782,7 +782,7 @@ Optional.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `metrics.enabled` | bool | `true` | Enable Prometheus metrics |
-| `metrics.port` | u16 | `9090` | Metrics exposition port |
+| `metrics.port` | u16 | `9091` | Prometheus metrics exposition port |
 | `metrics.path` | string | `/metrics` | HTTP path for scraping |
 
 #### `tracing`

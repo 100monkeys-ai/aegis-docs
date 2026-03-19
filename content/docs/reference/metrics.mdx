@@ -1,0 +1,126 @@
+---
+title: Metrics Reference
+description: Complete catalog of Prometheus metrics exposed by the AEGIS orchestrator, including names, types, labels, and descriptions.
+---
+
+# Metrics Reference
+
+AEGIS exposes operational metrics in the Prometheus text format. This page lists all canonical metrics provided by the orchestrator and its subsystems.
+
+All metric names are prefixed with `aegis_`.
+
+---
+
+## Agent Lifecycle (BC-1)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_agents_total` | Gauge | `status` | Number of agents by status (`deployed`, `paused`, `archived`). |
+
+---
+
+## Execution Context (BC-2)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_executions_total` | Counter | `status` | Cumulative executions by terminal status (`completed`, `failed`, `cancelled`). |
+| `aegis_executions_active` | Gauge | — | Number of executions currently in the `running` state. |
+| `aegis_execution_duration_seconds` | Histogram | `status` | Wall-clock duration from start to terminal event. |
+| `aegis_iteration_count` | Histogram | `final_status` | Number of iterations performed per execution. |
+| `aegis_iterations_total` | Counter | `status` | Cumulative iterations by outcome (`success`, `failed`, `refining`). |
+
+---
+
+## Workflow Orchestration (BC-3)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_workflow_executions_total` | Counter | `status` | Cumulative workflow executions by terminal status. |
+| `aegis_workflow_executions_active` | Gauge | — | Number of workflow executions currently in progress. |
+| `aegis_workflow_state_transitions_total` | Counter | `from_kind`, `to_kind` | Cumulative state transitions between state types. |
+
+---
+
+## Security & SMCP (BC-4)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_smcp_attestations_total` | Counter | `result` | Cumulative attestation attempts (`success`, `failure`). |
+| `aegis_smcp_sessions_active` | Gauge | — | Number of active SMCP sessions. |
+| `aegis_smcp_policy_violations_total` | Counter | `violation_type` | Cumulative policy violations by type. |
+| `aegis_smcp_token_refreshes_total` | Counter | `result` | Cumulative SecurityToken refresh attempts. |
+| `aegis_smcp_signature_failures_total` | Counter | — | Cumulative SmcpEnvelope signature verification failures. |
+
+---
+
+## Swarm Coordination (BC-6)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_swarms_active` | Gauge | — | Number of swarms currently active. |
+| `aegis_swarm_child_spawns_total` | Counter | `result` | Cumulative child spawn attempts. |
+| `aegis_swarm_cascade_cancellations_total` | Counter | — | Cumulative swarms dissolved via cascade cancellation. |
+| `aegis_swarm_lock_contentions_total` | Counter | — | Cumulative lock requests that were blocked. |
+| `aegis_swarm_lock_expirations_total` | Counter | — | Cumulative resource locks that expired via TTL. |
+
+---
+
+## Storage Gateway & NFS (BC-7)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_nfs_operations_total` | Counter | `operation`, `result` | Cumulative NFS FSAL operations (lookup, read, write, etc). |
+| `aegis_nfs_operation_duration_seconds` | Histogram | `operation` | Latency of NFS operations. |
+| `aegis_nfs_bytes_read_total` | Counter | — | Cumulative bytes read via NFS. |
+| `aegis_nfs_bytes_written_total` | Counter | — | Cumulative bytes written via NFS. |
+| `aegis_nfs_path_traversal_blocked_total` | Counter | — | Blocked directory traversal attempts. |
+| `aegis_nfs_policy_violations_total` | Counter | — | Filesystem policy violations. |
+| `aegis_volumes_active` | Gauge | `storage_class` | Number of active volumes (`ephemeral`, `persistent`). |
+
+---
+
+## Stimulus-Response (BC-8)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_stimuli_ingested_total` | Counter | `source`, `routing_mode` | Cumulative stimuli ingested by source and mode. |
+| `aegis_stimuli_rejected_total` | Counter | `reason` | Cumulative stimuli rejected by the gateway. |
+| `aegis_stimulus_routing_duration_seconds` | Histogram | `routing_mode` | Time taken to route a stimulus to a workflow. |
+
+---
+
+## Event Bus
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_event_bus_published_total` | Counter | `event_type` | Total events published to the in-process bus. |
+| `aegis_event_bus_dropped_total` | Counter | `subscriber` | Events dropped due to full subscriber buffers. |
+| `aegis_event_bus_subscriber_lag` | Gauge | `subscriber` | Current number of unprocessed events per subscriber. |
+
+---
+
+## HTTP API
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_http_requests_total` | Counter | `method`, `path_template`, `status_code` | Total HTTP requests handled. |
+| `aegis_http_request_duration_seconds` | Histogram | `method`, `path_template` | HTTP request latency. |
+| `aegis_http_requests_in_flight` | Gauge | — | Number of HTTP requests currently being processed. |
+
+---
+
+## gRPC API
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_grpc_requests_total` | Counter | `method`, `code` | Total gRPC calls by method and status code. |
+| `aegis_grpc_request_duration_seconds` | Histogram | `method` | gRPC method latency. |
+
+---
+
+## System
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_node_info` | Gauge | `node_id`, `name`, `region`, `version` | Static node identification (value is always 1). |
+| `aegis_node_uptime_seconds` | Gauge | — | Seconds since the daemon started. |

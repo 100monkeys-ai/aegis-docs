@@ -516,8 +516,8 @@ observability:
   metrics:
     # Enable Prometheus metrics exposition. Default: true
     enabled: true
-    # Metrics port. Default: 9090
-    port: 9090
+    # Prometheus metrics exposition port. Default: 9091
+    port: 9091
     # HTTP path for scraping. Default: /metrics
     path: "/metrics"
   tracing:
@@ -855,7 +855,7 @@ Optional.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `metrics.enabled` | bool | `true` | Enable Prometheus metrics |
-| `metrics.port` | u16 | `9090` | Metrics exposition port |
+| `metrics.port` | u16 | `9091` | Prometheus metrics exposition port |
 | `metrics.path` | string | `/metrics` | HTTP path for scraping |
 
 #### `tracing`

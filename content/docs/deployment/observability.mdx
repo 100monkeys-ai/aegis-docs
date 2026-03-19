@@ -352,6 +352,61 @@ All OTLP settings can be supplied (or overridden) at runtime via environment var
 
 ---
 
+## Metrics (Prometheus)
+
+AEGIS exposes real-time operational metrics via a Prometheus-compatible endpoint. This allows you to monitor system health, execution performance, and security events using tools like Prometheus and Grafana.
+
+The metrics endpoint is served over a dedicated HTTP listener, separate from the main API and gRPC ports.
+
+### Quick Start
+
+By default, Prometheus metrics are enabled on port `9091`. You can configure this in your node configuration:
+
+```yaml
+spec:
+  observability:
+    metrics:
+      enabled: true
+      port: 9091
+      path: "/metrics"
+```
+
+Or via environment variables:
+
+```bash
+export AEGIS_METRICS_ENABLED=true
+export AEGIS_METRICS_PORT=9091
+```
+
+### Scraping with Prometheus
+
+Add the AEGIS node to your `prometheus.yml` scrape configuration:
+
+```yaml
+scrape_configs:
+  - job_name: 'aegis-orchestrator'
+    static_configs:
+      - targets: ['localhost:9091']
+```
+
+### Key Observable Metrics
+
+AEGIS provides a wide range of metrics across different subsystems:
+
+- **Executions**: Active execution count, total completions/failures, and duration histograms.
+- **SMCP Security**: Policy violations, attestation success/failure rates, and session counts.
+- **Storage (NFS)**: File operation counts, latencies, and total bytes read/written.
+- **Workflows**: Active workflow executions and state transition counters.
+- **System**: Node uptime and static version/identity information.
+
+For a complete list of available metrics, labels, and descriptions, see the [Metrics Reference](/docs/reference/metrics).
+
+### Security Note
+
+The metrics endpoint is **unauthenticated** by design, following standard Prometheus patterns. Ensure that the metrics port (`9091` by default) is protected by your network firewall or Kubernetes `NetworkPolicy` and is not exposed to the public internet.
+
+---
+
 ## See Also
 
 - [Node Configuration Reference](/docs/reference/node-config#specobservability) — full `spec.observability` schema with all OTLP fields
