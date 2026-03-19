@@ -398,6 +398,23 @@ aegis workflow list --label team=platform
 | `--long` | `false` | Show detailed information (states, labels). |
 | `--label <key=value>` | — | Filter by label. May be repeated. |
 
+### `aegis workflow executions list`
+
+List recent workflow executions.
+
+```bash
+aegis workflow executions list
+aegis workflow executions list --workflow-id a1b2c3d4-0000-0000-0000-000000000001
+aegis workflow executions list --limit 50
+aegis workflow executions list --long
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--workflow-id <uuid>` | (all workflows) | Filter executions by workflow UUID. |
+| `--limit <n>` | `20` | Maximum number of results to return. |
+| `--long` | `false` | Show detailed information (current state, timestamps). |
+
 ### `aegis workflow describe <name>`
 
 Show the full YAML definition of a deployed workflow.
