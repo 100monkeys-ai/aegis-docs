@@ -32,7 +32,7 @@ AEGIS only communicates with the Filer. The Master and Volume Servers are intern
 Use `aegis init` to generate the local stack, then start the SeaweedFS services from that stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-examples/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-orchestrator/main/install.sh | bash
 aegis init
 docker compose -f ~/.aegis/docker-compose.yml up -d seaweedfs-master seaweedfs-volume seaweedfs-filer
 ```

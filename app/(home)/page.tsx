@@ -75,8 +75,7 @@ export default function HomePage() {
           </div>
           <pre className="p-4 overflow-x-auto leading-relaxed text-foreground/90">
             <code>{`# 1. Install AEGIS
-curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-examples/main/install.sh | bash
-
+            curl -fsSL https://raw.githubusercontent.com/100monkeys-ai/aegis-orchestrator/main/install.sh | bash
 # 2. Initialize local stack and config
 aegis init
 
