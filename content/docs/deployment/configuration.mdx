@@ -495,6 +495,24 @@ observability:
     format: json
     # Log file path. Omit to write to stdout.
     file: null
+    # ── OTLP Log Export ──────────────────────────────────────────────
+    # Set to ship logs to Grafana Cloud, Datadog, or a self-hosted OTEL Collector.
+    # Omit (or null) to disable. Override with AEGIS_OTLP_ENDPOINT.
+    # otlp_endpoint: "http://otel-collector:4317"    # gRPC
+    # otlp_endpoint: "https://otlp-gateway.grafana.net/v1/logs"  # HTTP
+    # otlp_protocol: grpc   # grpc (default) | http. Override: AEGIS_OTLP_PROTOCOL
+    # otlp_headers:         # auth headers; values support env: / secret:
+    #   Authorization: "env:OTLP_AUTH_TOKEN"
+    # otlp_min_level: info  # min level exported. Override: AEGIS_OTLP_LOG_LEVEL
+    # otlp_service_name: aegis-orchestrator  # service.name attr. Override: AEGIS_OTLP_SERVICE_NAME
+    # batch:
+    #   max_queue_size: 2048
+    #   scheduled_delay_ms: 5000
+    #   max_export_batch_size: 512
+    #   export_timeout_ms: 10000
+    # tls:
+    #   verify: true
+    #   ca_cert_path: null
   metrics:
     # Enable Prometheus metrics exposition. Default: true
     enabled: true
@@ -505,8 +523,6 @@ observability:
   tracing:
     # Enable distributed tracing via OpenTelemetry. Default: false
     enabled: false
-    # OTLP collector endpoint.
-    otlp_endpoint: "http://otel-collector:4318"
 ```
 
 ---
@@ -815,13 +831,35 @@ If omitted, orchestrator does not forward unknown/external tools to the gateway 
 
 Optional.
 
+#### `logging`
+
+| Key | Type | Default | Env Override | Description |
+|-----|------|---------|----------|-------------|
+| `logging.level` | enum | `info` | `RUST_LOG` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
+| `logging.format` | enum | `json` | `AEGIS_LOG_FORMAT` | `json` \| `text` |
+| `logging.file` | string | null | — | Log file path. Omit to write to stdout. |
+| `logging.otlp_endpoint` | string | null | `AEGIS_OTLP_ENDPOINT` | OTLP collector endpoint. Setting this enables OTLP log export. |
+| `logging.otlp_protocol` | enum | `grpc` | `AEGIS_OTLP_PROTOCOL` | `grpc` \| `http` |
+| `logging.otlp_headers` | map | `{}` | `AEGIS_OTLP_HEADERS` | Key-value headers sent with every OTLP export RPC. Values support `env:` and `secret:` prefixes. Env var uses comma-separated `key=value` pairs. |
+| `logging.otlp_min_level` | string | `info` | `AEGIS_OTLP_LOG_LEVEL` | Minimum log level forwarded to OTLP (does not affect stdout). |
+| `logging.otlp_service_name` | string | `aegis-orchestrator` | `AEGIS_OTLP_SERVICE_NAME` | `service.name` resource attribute |
+| `logging.otlp_batch.max_queue_size` | u32 | `2048` | — | Maximum buffered records before export |
+| `logging.otlp_batch.scheduled_delay_ms` | u64 | `5000` | — | Batch flush interval (ms) |
+| `logging.otlp_batch.max_export_batch_size` | u32 | `512` | — | Records per export RPC |
+| `logging.otlp_batch.export_timeout_ms` | u64 | `10000` | — | Per-call timeout (ms) |
+| `logging.otlp_tls.verify` | bool | `true` | — | Verify OTLP endpoint TLS certificate |
+| `logging.otlp_tls.ca_cert_path` | string | null | — | Custom CA certificate for self-signed backends |
+
+#### `metrics`
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `logging.level` | enum | `info` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
-| `logging.format` | enum | `json` | `json` \| `text` |
-| `logging.file` | string | null | Log file path. Omit to write to stdout. |
 | `metrics.enabled` | bool | `true` | Enable Prometheus metrics |
 | `metrics.port` | u16 | `9090` | Metrics exposition port |
 | `metrics.path` | string | `/metrics` | HTTP path for scraping |
+
+#### `tracing`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
 | `tracing.enabled` | bool | `false` | Enable distributed tracing via OpenTelemetry |
-| `tracing.otlp_endpoint` | string | null | OTLP collector endpoint (e.g., `http://otel-collector:4318`) |

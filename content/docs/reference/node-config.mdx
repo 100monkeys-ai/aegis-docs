@@ -282,13 +282,30 @@ spec:
     logging:
       level: info
       format: json
+      # ── OTLP Log Export (ADR-057) ─────────────────────────────────────────
+      # Set otlp_endpoint to start shipping logs to any OpenTelemetry-compatible
+      # backend (Grafana Cloud, Datadog, self-hosted OTEL Collector, etc.).
+      # otlp_endpoint: "http://otel-collector:4317"   # grpc (default)
+      # otlp_endpoint: "https://otlp-gateway.grafana.net/v1/logs"  # Grafana Cloud
+      # otlp_protocol: grpc                           # grpc (default) | http
+      # otlp_headers:                                 # API keys / auth headers
+      #   Authorization: "env:OTLP_AUTH_TOKEN"
+      # otlp_min_level: info                          # min log level exported (default: info)
+      # otlp_service_name: aegis-orchestrator         # service.name resource attr
+      # batch:
+      #   max_queue_size: 2048
+      #   scheduled_delay_ms: 5000
+      #   max_export_batch_size: 512
+      #   export_timeout_ms: 10000
+      # tls:
+      #   verify: true                                # set false to skip cert verify (dev only)
+      #   ca_cert_path: null                          # custom CA cert for self-signed backends
     metrics:
       enabled: true
       port: 9090
       path: "/metrics"
     tracing:
       enabled: false
-      otlp_endpoint: "http://otel-collector:4318"
 ```
 
 ---
@@ -741,16 +758,38 @@ If omitted, orchestrator does not forward unknown/external tools to the gateway 
 
 Optional.
 
+#### `logging`
+
+| Key | Type | Default | Env Override | Description |
+|-----|------|---------|----------|-------------|
+| `logging.level` | enum | `info` | `RUST_LOG` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
+| `logging.format` | enum | `json` | `AEGIS_LOG_FORMAT` | `json` \| `text` |
+| `logging.file` | string | null | — | Log file path. Omit to write to stdout. |
+| `logging.otlp_endpoint` | string | null | `AEGIS_OTLP_ENDPOINT` | OTLP collector endpoint. Setting this value enables OTLP log export (ADR-057). Omit or `null` to disable. |
+| `logging.otlp_protocol` | enum | `grpc` | `AEGIS_OTLP_PROTOCOL` | `grpc` \| `http`. `grpc` uses port 4317 (default); `http` uses port 4318 with Protobuf over HTTP/1.1. |
+| `logging.otlp_headers` | map | `{}` | `AEGIS_OTLP_HEADERS` | Key-value HTTP/gRPC metadata headers sent on every export RPC (e.g. `Authorization`, `api-key`). Values support `env:` prefixes. When set via env var, use comma-separated `key=value` pairs: `Authorization=Bearer token,x-scope-orgid=12345`. |
+| `logging.otlp_min_level` | string | `info` | `AEGIS_OTLP_LOG_LEVEL` | Minimum log level forwarded to OTLP. Does not affect stdout output. |
+| `logging.otlp_service_name` | string | `aegis-orchestrator` | `AEGIS_OTLP_SERVICE_NAME` | Value of the `service.name` OpenTelemetry resource attribute. |
+| `logging.batch.max_queue_size` | u32 | `2048` | — | Maximum number of log records buffered before export. |
+| `logging.batch.scheduled_delay_ms` | u64 | `5000` | — | Interval (ms) between batch export flushes. |
+| `logging.batch.max_export_batch_size` | u32 | `512` | — | Maximum records per export RPC. |
+| `logging.batch.export_timeout_ms` | u64 | `10000` | — | Timeout (ms) for a single export RPC. |
+| `logging.tls.verify` | bool | `true` | — | Whether to verify the OTLP endpoint's TLS certificate. Set `false` only for development. |
+| `logging.tls.ca_cert_path` | string | null | — | Path to a custom CA certificate PEM for self-signed OTLP backends. |
+
+#### `metrics`
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `logging.level` | enum | `info` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
-| `logging.format` | enum | `json` | `json` \| `text` |
-| `logging.file` | string | null | Log file path. Omit to write to stdout. |
 | `metrics.enabled` | bool | `true` | Enable Prometheus metrics |
 | `metrics.port` | u16 | `9090` | Metrics exposition port |
 | `metrics.path` | string | `/metrics` | HTTP path for scraping |
+
+#### `tracing`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
 | `tracing.enabled` | bool | `false` | Enable distributed tracing via OpenTelemetry |
-| `tracing.otlp_endpoint` | string | null | OTLP collector endpoint |
 
 ---
 
