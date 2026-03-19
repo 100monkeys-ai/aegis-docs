@@ -48,6 +48,9 @@ spec:
       disk_gb: 500
       gpu: true
 
+  # ─── Image Tag ──────────────────────────────────────────────────────────────
+  image_tag: "0.1.0-pre-alpha"      # optional; written by aegis init --tag / aegis update
+
   # ─── LLM Providers ──────────────────────────────────────────────────────────
   llm_providers:
     - name: openai-primary
@@ -386,6 +389,16 @@ Required. Identifies this node within the AEGIS cluster.
 | `resources.memory_gb` | u32 | ❌ | — | Available RAM in GB |
 | `resources.disk_gb` | u32 | ❌ | — | Available disk in GB |
 | `resources.gpu` | bool | ❌ | `false` | GPU available |
+
+---
+
+### `spec.image_tag`
+
+Optional. The Docker image tag used for all AEGIS-owned service containers. Written by `aegis init --tag <TAG>` at initialization and updated automatically by `aegis update`. When absent, both commands default to the version string embedded in the `aegis` binary.
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `image_tag` | string | ❌ | `<binary version>` | Tag applied to all AEGIS-owned Docker images (e.g. `ghcr.io/100monkeys-ai/aegis-orchestrator:<tag>`). Written by `aegis init --tag` and updated by `aegis update`. |
 
 ---
 

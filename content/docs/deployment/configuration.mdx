@@ -87,6 +87,12 @@ node:
     disk_gb: 500
     gpu: false
 
+# ─── Image Tag ────────────────────────────────────────────────────────────────
+# Docker image tag for all AEGIS-owned service containers.
+# Written by `aegis init --tag <TAG>` and updated by `aegis update`.
+# When absent, both commands default to the version of the aegis binary.
+image_tag: "0.1.0-pre-alpha"
+
 # ─── LLM Providers ────────────────────────────────────────────────────────────
 # Array of LLM provider configurations. At least one entry is required.
 llm_providers:
@@ -521,6 +527,16 @@ Required. Identifies this node within the AEGIS cluster.
 | `resources.memory_gb` | u32 | ❌ | — | Available RAM in GB |
 | `resources.disk_gb` | u32 | ❌ | — | Available disk in GB |
 | `resources.gpu` | bool | ❌ | `false` | GPU available |
+
+---
+
+### `spec.image_tag`
+
+Optional. Docker image tag for AEGIS-owned services.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `image_tag` | string | `<binary version>` | Tag applied to all AEGIS-owned Docker images. Written by `aegis init --tag` and updated by `aegis update`. When absent, defaults to the version string embedded in the `aegis` binary. |
 
 ---
 
