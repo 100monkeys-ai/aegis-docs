@@ -1,21 +1,71 @@
 ---
 title: Multi-Node Deployment
-description: Distribute AEGIS across multiple machines using orchestrator, edge, and hybrid node types.
+description: Distribute AEGIS across multiple machines for production deployments using the gRPC cluster protocol.
 ---
 
 # Multi-Node Deployment
 
-A single AEGIS deployment can span multiple machines. Each machine runs one `aegis daemon` process configured with a `spec.node.type` that determines its role in the cluster.
+AEGIS supports distributed deployments across multiple machines. Each machine runs one `aegis daemon` process configured with two orthogonal roles:
+
+- **`spec.node.type`** — the node's _deployment role_ (whether it hosts agents vs. serves as an API entry point)
+- **`spec.cluster.role`** — the node's _cluster coordination role_ (whether it controls the cluster vs. accepts forwarded work)
+
+These two settings are independent and can be mixed freely. A node can be `spec.node.type: orchestrator` and `spec.cluster.role: worker` at the same time.
 
 ---
 
-## Node Types
+## Node Types (`spec.node.type`)
 
 | Type | Role |
 |------|------|
 | `orchestrator` | Hosts the management plane: API server, workflow engine, Temporal client, Cortex connection, secrets manager. Does **not** run agent containers locally. |
-| `edge` | Executes agent containers (Docker runtime). Does not expose the public API. Connects to an `orchestrator` node for task assignment. |
+| `edge` | Executes agent containers (Docker runtime). Does not expose the public API. Connects to a controller node for task assignment. |
 | `hybrid` | Combines both roles on a single machine. The default for development and small deployments. |
+
+---
+
+## Cluster Protocol (`spec.cluster.role`)
+
+AEGIS uses a dedicated **NodeClusterService** gRPC protocol on **port 50056** for inter-node coordination. This is separate from the agent gRPC API on port 50051.
+
+### Cluster Roles
+
+| Role | Description |
+|------|-------------|
+| `controller` | Manages the `NodeCluster` aggregate. Routes executions to workers. Issues `NodeSecurityToken`s to attested workers. Exposes `NodeClusterService` on port 50056. |
+| `worker` | Attests to a controller on startup. Advertises `NodeCapabilityAdvertisement`. Accepts forwarded executions via the `ForwardExecution` RPC. |
+| `hybrid` | Controller and worker in one process. Used for standalone single-node and development deployments. No separate controller endpoint needed. |
+
+### The Two-Tier Model
+
+```
+  spec.node.type     →  determines what the node DOES for agents
+                        (run the API, run containers, or both)
+
+  spec.cluster.role  →  determines how nodes COORDINATE with each other
+                        (who routes work, who accepts work)
+```
+
+A common production pairing: the API-facing machine is `type: orchestrator, cluster.role: controller`; each GPU machine is `type: edge, cluster.role: worker`. The controller receives execution requests from clients and routes them to workers best suited to run them.
+
+### NodeSecurityToken
+
+After a worker successfully attests to a controller, the controller issues a **NodeSecurityToken**: an RS256 JWT signed by the controller's OpenBao Transit key. This token:
+
+- Has a **1-hour TTL** and is auto-refreshed before expiry
+- Is analogous to the agent `SecurityToken` from the SMCP protocol, but scoped to node identity
+- Contains `node_id`, `role`, `capabilities_hash`, `iat`, and `exp`
+- Is included in every subsequent cluster RPC wrapped in a `SmcpNodeEnvelope`
+
+All inter-node gRPC calls use this envelope:
+
+```
+SmcpNodeEnvelope {
+  node_security_token: <NodeSecurityToken JWT>,
+  signature: <Ed25519 signature over inner_payload>,
+  inner_payload: <serialized RPC request bytes>
+}
+```
 
 ---
 
@@ -24,49 +74,78 @@ A single AEGIS deployment can span multiple machines. Each machine runs one `aeg
 ### Development / Single Node
 
 ```
-┌──────────────┐
-│   Hybrid     │  spec.node.type: hybrid
-│              │
-│  API Server  │  → receives gRPC + REST
-│  Scheduler   │  → assigns executions
-│  Docker      │  → runs agent containers
-└──────────────┘
+┌──────────────────────────────┐
+│   Hybrid Node                │  spec.node.type: hybrid
+│   spec.cluster.role: hybrid  │
+│                              │
+│  API Server  (gRPC + REST)   │
+│  Scheduler                   │
+│  Docker (agent containers)   │
+│  NodeClusterService :50056   │  ← routes to itself
+└──────────────────────────────┘
 ```
 
-Use `type: hybrid` for local development and small deployments. This is the default in `aegis-config.yaml`.
+Use `type: hybrid` and `cluster.role: hybrid` for local development and small deployments. This is the default in `aegis-config.yaml`.
 
 ---
 
 ### Production — Separated Control / Data Plane
 
 ```
-┌────────────────────┐
-│   Orchestrator     │  spec.node.type: orchestrator
-│   (1–3 instances)  │
-│                    │
-│  API → gRPC → REST │
-│  Workflow engine   │
-│  Temporal client   │
-│  Secrets (OpenBao) │
-└──────────┬─────────┘
-           │  (internal network)
-    ┌──────┴──────┐
-    │             │
-┌───▼───┐   ┌────▼──┐
-│ Edge  │   │ Edge  │   spec.node.type: edge
-│  #1   │   │  #2   │
-│Docker │   │Docker │   Each edge node runs
-│agents │   │agents │   agent containers
-└───────┘   └───────┘
+┌────────────────────────────────────────┐
+│   Orchestrator Node                    │  spec.node.type: orchestrator
+│   (1–3 instances)                      │
+│                                        │
+│  API → gRPC :50051 → REST :8080        │
+│  Workflow engine                        │
+│  Temporal client                        │
+│  Secrets (OpenBao)                     │
+└──────────────┬─────────────────────────┘
+               │  (internal network)
+        ┌──────┴──────┐
+        │             │
+┌───────▼───┐   ┌─────▼─────┐
+│  Edge #1  │   │  Edge #2  │   spec.node.type: edge
+│  Docker   │   │  Docker   │
+│  agents   │   │  agents   │
+└───────────┘   └───────────┘
 ```
 
 Edge nodes handle the compute-intensive agent workloads. Adding more edge nodes scales execution throughput without affecting the orchestrator.
 
 ---
 
+### Production — Cluster Protocol (Controller + Workers)
+
+This topology adds the **NodeClusterService** layer for authenticated, capability-aware execution routing.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Controller Node                              │
+│          spec.node.type: orchestrator                                │
+│          spec.cluster.role: controller                               │
+│                                                                      │
+│   gRPC :50051  ←  agent API (external clients)                      │
+│   gRPC :50056  ←  NodeClusterService (workers only)                 │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               │ SmcpNodeEnvelope over gRPC :50056
+               ┌───────────────┼───────────────┐
+               ▼               ▼               ▼
+        ┌──────────┐    ┌──────────┐    ┌──────────┐
+        │ Worker 1 │    │ Worker 2 │    │ Worker 3 │
+        │ :50051   │    │ :50051   │    │ :50051   │
+        └──────────┘    └──────────┘    └──────────┘
+          spec.node.type: edge
+          spec.cluster.role: worker
+```
+
+When a client submits an execution to the controller, the **NodeRouter** selects the best available worker (Phase 1: round-robin among healthy workers with matching tags; Phase 2: load-aware scoring). The controller forwards the execution to the selected worker via the `ForwardExecution` server-streaming RPC on port 50051, then streams `ExecutionEvent`s back to the original client.
+
+---
+
 ## Configuring Nodes
 
-### Orchestrator Node
+### Orchestrator / Controller Node
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
@@ -139,54 +218,230 @@ spec:
 
 ---
 
+## Cluster Configuration
+
+The `spec.cluster` block configures the gRPC cluster protocol. All nodes require a persistent Ed25519 keypair; if `keypair_path` does not exist on disk, AEGIS auto-generates one on first run.
+
+### Controller Node
+
+```yaml
+spec:
+  node:
+    id: "ctrl-001"
+    type: orchestrator
+    region: us-east-1
+    tags: [controller, production]
+  network:
+    port: 8080
+    grpc_port: 50051
+  cluster:
+    role: controller
+    node_id: "ctrl-001"           # must match spec.node.id
+    keypair_path: /etc/aegis/node-keypair.pem
+    cluster_grpc_port: 50056
+```
+
+The controller exposes `NodeClusterService` on `cluster_grpc_port` (default `50056`). Only attested workers may call RPCs on this port.
+
+### Worker Node
+
+```yaml
+spec:
+  node:
+    id: "worker-gpu-001"
+    type: edge
+    region: us-east-1
+    tags: [gpu, production]
+    resources:
+      cpu_cores: 16
+      memory_gb: 64
+      gpu: true
+  cluster:
+    role: worker
+    node_id: "worker-gpu-001"     # must match spec.node.id
+    controller_endpoint: "https://ctrl-001.internal:50056"
+    keypair_path: /etc/aegis/node-keypair.pem
+    heartbeat_interval_seconds: 30
+```
+
+Workers contact the controller at `controller_endpoint` on startup to perform attestation. The `heartbeat_interval_seconds` (default `30`) controls how frequently the worker sends a `Heartbeat` RPC carrying its current load and capabilities.
+
+### Hybrid Node (Standalone / Development)
+
+```yaml
+spec:
+  node:
+    id: "dev-local"
+    type: hybrid
+  cluster:
+    role: hybrid   # controller + worker in one process
+    node_id: "dev-local"
+    keypair_path: /etc/aegis/node-keypair.pem
+```
+
+No `controller_endpoint` is needed in `hybrid` mode — the process routes executions to itself.
+
+---
+
+## Node Attestation Flow
+
+Before a worker can receive forwarded executions, it must prove its identity to the controller. This happens automatically on startup via the following sequence:
+
+```
+Worker                                      Controller
+  │                                              │
+  │  1. Load Ed25519 keypair from               │
+  │     spec.cluster.keypair_path               │
+  │     (auto-generated if absent)              │
+  │                                              │
+  │──── AttestNode(node_id, public_key) ────────►│
+  │                                              │  2. Generates cryptographic challenge
+  │◄─── ChallengeNode(challenge_bytes) ──────────│
+  │                                              │
+  │  3. Signs challenge_bytes with              │
+  │     Ed25519 private key                     │
+  │                                              │
+  │──── ChallengeNode(signature) ───────────────►│
+  │                                              │  4. Verifies signature against
+  │                                              │     registered public key
+  │◄─── NodeSecurityToken (RS256 JWT) ───────────│  5. Issues token (1-hour TTL)
+  │                                              │     via OpenBao Transit signing
+  │  6. Wraps all future RPCs in               │
+  │     SmcpNodeEnvelope {                      │
+  │       node_security_token,                  │
+  │       signature,                            │
+  │       inner_payload                         │
+  │     }                                       │
+  │                                              │
+  │──── RegisterNode(capabilities) ────────────►│  7. Advertises NodeCapabilityAdvertisement
+  │                                              │     { gpu_count, vram_gb, cpu_cores,
+  │                                              │       available_memory_gb,
+  │                                              │       supported_runtimes, tags }
+  │◄─── Registered ─────────────────────────────│
+  │                                              │
+  │──── Heartbeat (every 30s) ─────────────────►│  8. Keeps NodePeer status Active
+  │◄─── NodeCommand (optional) ─────────────────│     Response may carry commands:
+  │                                              │     drain, config push, shutdown
+```
+
+The `NodeSecurityToken` is automatically refreshed before its 1-hour expiry via the ongoing heartbeat cycle. No manual token management is required.
+
+**NodePeer status transitions:**
+- `Active` — node is registered and sending heartbeats within the expected interval
+- `Draining` — controller has issued a drain command; no new executions are routed to this node
+- `Unhealthy` — no heartbeat received within 3× the expected interval
+
+---
+
+## NodeClusterService RPC Reference
+
+The `NodeClusterService` exposes 10 RPCs on port 50056. All RPCs except `AttestNode` and `ChallengeNode` require a valid `NodeSecurityToken` in the `authorization` metadata key and an `SmcpNodeEnvelope` wrapping the payload. `AttestNode` is unauthenticated (it is the first call a new worker makes).
+
+| RPC | Direction | Description |
+|-----|-----------|-------------|
+| `AttestNode` | Worker → Controller | Initiate node attestation; send public key |
+| `ChallengeNode` | Bidirectional | Controller issues challenge; worker returns Ed25519 signature |
+| `RegisterNode` | Worker → Controller | Register with `NodeCapabilityAdvertisement` after attestation |
+| `Heartbeat` | Worker → Controller | Periodic status update (default 30s); response may carry `NodeCommand`s |
+| `DeregisterNode` | Worker → Controller | Graceful deregistration before shutdown |
+| `RouteExecution` | Controller-internal | Returns `ExecutionRoute { target_node_id, worker_grpc_address }` |
+| `ForwardExecution` | Controller → Worker (server-streaming) | Execute an agent on this worker; streams `ExecutionEvent`s back |
+| `SyncConfig` | Worker → Controller | Worker requests current config from controller |
+| `PushConfig` | Controller → Worker | Controller pushes updated config to a specific worker |
+| `ListPeers` | Any → Controller | List all registered `NodePeer`s with their status and capabilities |
+
+---
+
 ## Node Registration
 
-Each node registers with the orchestrator on startup by posting its `NodeIdentity` (type, id, region, tags, resources). The orchestrator maintains a live registry and uses it for scheduling decisions.
+Node registration is performed via gRPC using the `NodeClusterService` protocol described above, **not** via HTTP. The original HTTP-based `NodeIdentity` registration is used in legacy single-node mode only and is not involved in cluster coordination.
 
-Edge nodes poll the orchestrator for assigned executions. When an execution is assigned, the edge node pulls the agent image and starts the container.
+The registration sequence after successful attestation:
+
+1. Worker calls `RegisterNode` carrying its `NodeCapabilityAdvertisement`
+2. Controller records the `NodePeer` in the `NodeCluster` aggregate
+3. Worker enters the heartbeat loop (`Heartbeat` every `heartbeat_interval_seconds`)
+4. Controller updates `NodePeer.last_heartbeat_at` and `NodePeer.status` on each heartbeat
+5. On graceful shutdown, worker calls `DeregisterNode`; controller marks `NodePeer` as removed
 
 ---
 
 ## Networking Requirements
 
-| Connection | Port | Direction | Notes |
-|------------|------|-----------|-------|
-| Edge → Orchestrator | `8080` (HTTP) | outbound | Execution polling and result submission |
-| Edge → Orchestrator | `50051` (gRPC) | outbound | Event streaming |
-| Client → Orchestrator | `8080` | inbound | REST API |
-| Client → Orchestrator | `50051` | inbound | gRPC API |
-| Orchestrator → Temporal | `7233` | outbound | Workflow engine |
-| Orchestrator → SeaweedFS | `8888` | outbound | Storage filer |
-| Edge → SeaweedFS | `8888` | outbound | Volume data access |
-| Edge agent containers → Edge daemon | `2049` (NFS) | internal | Volume mounts via NFS Gateway |
+| Connection | Protocol | Port | Direction |
+|-----------|----------|------|-----------|
+| Client → Controller | HTTP REST | 8080 | Inbound to controller |
+| Client → Controller | gRPC (agent API) | 50051 | Inbound to controller |
+| Worker → Controller | gRPC (NodeClusterService) | 50056 | Outbound from worker |
+| Controller → Worker | gRPC (ForwardExecution) | 50051 | Outbound from controller |
+| Orchestrator → Temporal | 7233 | Outbound | Workflow engine |
+| Orchestrator → SeaweedFS | 8888 | Outbound | Storage filer |
+| Edge → SeaweedFS | 8888 | Outbound | Volume data access |
+| Edge agent containers → Edge daemon | 2049 (NFS) | Internal | Volume mounts via NFS Gateway |
+
+Firewall rules must allow:
+- Controller inbound on 8080, 50051, and 50056
+- Workers inbound on 50051 (for `ForwardExecution` streaming from controller)
+- Workers outbound to controller on 50056
+
+Port 50056 should **not** be exposed to external clients — it is for inter-node cluster coordination only. Use network-level ACLs to restrict access to known worker IPs.
 
 ---
 
 ## High Availability
 
-Run two or three orchestrator instances behind a load balancer with a shared PostgreSQL database. Each orchestrator instance is stateless for the API and gRPC layers; persistent state lives in PostgreSQL and Temporal.
+### Phase 1 (Current): Single Controller + Multiple Workers
+
+Deploy one controller node and N worker nodes. The controller is the coordination point; workers are horizontally scalable. Multiple worker nodes provide execution capacity and fault tolerance for agent workloads.
+
+```
+                     ┌──────────────────────┐
+                     │    Load Balancer      │  (agent API traffic only)
+                     └──────────┬───────────┘
+                                │ :8080 / :50051
+                     ┌──────────▼───────────┐
+                     │   Controller Node     │  spec.cluster.role: controller
+                     │   (single instance)  │
+                     └──────────┬───────────┘
+                                │  port :50056
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                 ▼
+    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+    │   Worker 1   │  │   Worker 2   │  │   Worker 3   │
+    │   :50051     │  │   :50051     │  │   :50051     │
+    └──────────────┘  └──────────────┘  └──────────────┘
+```
+
+For controller resilience in Phase 1, run the controller with PostgreSQL as the persistence backend; on controller restart, workers re-attest automatically via the `AttestNode` → `ChallengeNode` → `RegisterNode` flow. The controller outage window only affects routing; in-flight executions on workers complete normally.
+
+### Phase 2 (Planned): Controller HA with Raft
+
+Phase 2 will introduce a Raft-based controller consensus layer, allowing N controller replicas with automatic leader election. Workers will use a discovery endpoint returned during attestation to locate the current leader. This is not yet implemented.
+
+For all orchestrator instances in either phase, share the same PostgreSQL database for consistent execution state. Redis is optional for session-level caching.
 
 ```
                       ┌─────────────────┐
                       │  Load Balancer  │
                       └────────┬────────┘
-                      ┌────────┴────────┐
-               ┌──────▼──────┐  ┌───────▼─────┐
-               │ Orchestrator│  │Orchestrator │
-               │     #1      │  │     #2      │
-               └──────┬──────┘  └──────┬──────┘
-                      └───────┬─────────┘
-                    ┌─────────▼──────────┐
-                    │    PostgreSQL       │
-                    │    (shared state)   │
-                    └────────────────────┘
+               ┌───────────────┼────────────────┐
+        ┌──────▼──────┐  ┌─────▼──────┐  ┌─────▼──────┐
+        │Controller 1 │  │Controller 2│  │Controller 3│  (Phase 2)
+        │  (leader)   │  │ (follower) │  │ (follower) │
+        └──────┬──────┘  └────────────┘  └────────────┘
+               │  Raft consensus
+        ┌──────▼──────────────┐
+        │    PostgreSQL        │
+        │    (shared state)   │
+        └─────────────────────┘
 ```
 
 ---
 
 ## See Also
 
-- [Configuration Reference](/docs/deployment/configuration) — full `NodeConfig` spec
-- [Docker Deployment](/docs/deployment/docker) — single-node Docker setup
-- [SeaweedFS Deployment](/docs/deployment/seaweedfs) — distributed storage for multi-node
-- [Temporal Deployment](/docs/deployment/temporal) — workflow engine for multi-node
+- [Node Config Reference](/docs/reference/node-config)
+- [gRPC API Reference](/docs/reference/grpc-api)
+- [Docker Deployment](/docs/deployment/docker)
+- [SeaweedFS Deployment](/docs/deployment/seaweedfs)
+- [Temporal Deployment](/docs/deployment/temporal)

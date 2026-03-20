@@ -350,3 +350,304 @@ message InvokeToolResponse {
 | `UNAUTHENTICATED` | Missing or invalid Bearer token. |
 | `INTERNAL` | Unhandled error — check daemon logs. |
 | `UNAVAILABLE` | Orchestrator temporarily down. |
+
+---
+
+## Service: `NodeClusterService`
+
+The cluster coordination service exposed by **controller** nodes. All inter-node cluster RPCs use this service. Defined in `aegis_cluster.proto` in the [`aegis-proto`](https://github.com/100monkeys-ai/aegis-proto) repository.
+
+**Port:** `50056` (default; configurable via `spec.cluster.cluster_grpc_port`)  
+**Package:** `aegis.cluster.v1`
+
+All RPCs (except `AttestNode`) require a valid `NodeSecurityToken` in the `authorization` metadata key and an `SmcpNodeEnvelope` wrapping the payload. `AttestNode` is unauthenticated (it is the first call a new worker makes).
+
+```protobuf
+package aegis.cluster.v1;
+
+service NodeClusterService {
+  // Node attestation and registration
+  rpc AttestNode(AttestNodeRequest) returns (AttestNodeResponse);
+  rpc ChallengeNode(ChallengeNodeRequest) returns (ChallengeNodeResponse);
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc DeregisterNode(DeregisterNodeRequest) returns (DeregisterNodeResponse);
+
+  // Execution routing
+  rpc RouteExecution(RouteExecutionRequest) returns (RouteExecutionResponse);
+  rpc ForwardExecution(ForwardExecutionRequest) returns (stream ExecutionEvent);
+
+  // Configuration management
+  rpc SyncConfig(SyncConfigRequest) returns (SyncConfigResponse);
+  rpc PushConfig(PushConfigRequest) returns (PushConfigResponse);
+
+  // Cluster introspection
+  rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+}
+```
+
+---
+
+### RPC Summary
+
+| RPC | Auth Required | Direction | Description |
+|-----|---------------|-----------|-------------|
+| `AttestNode` | No | Worker → Controller | Initiate node attestation |
+| `ChallengeNode` | No | Controller → Worker (response) | Cryptographic challenge to prove keypair ownership |
+| `RegisterNode` | Yes | Worker → Controller | Register with capability advertisement after attestation |
+| `Heartbeat` | Yes | Worker → Controller | Periodic status update; response may carry `NodeCommand`s |
+| `DeregisterNode` | Yes | Worker → Controller | Graceful deregistration |
+| `RouteExecution` | Yes | Any → Controller | Request an `ExecutionRoute` (target worker) for an execution |
+| `ForwardExecution` | Yes | Controller → Worker | Execute an agent on this worker; streams `ExecutionEvent` back |
+| `SyncConfig` | Yes | Worker → Controller | Request current config from controller |
+| `PushConfig` | Yes | Controller → Worker | Controller pushes updated config to worker |
+| `ListPeers` | Yes | Any → Controller | List all registered `NodePeer`s and their status |
+
+---
+
+### Node Attestation Flow
+
+Before a worker node can participate in the cluster, it must attest its identity to the controller:
+
+```
+Worker                              Controller
+  │                                      │
+  │  AttestNode(node_id, public_key_pem) │
+  │─────────────────────────────────────▶│
+  │                                      │  (generate challenge nonce)
+  │  ChallengeNode(nonce)                │
+  │◀─────────────────────────────────────│
+  │                                      │
+  │  (sign challenge with Ed25519 private key)
+  │                                      │
+  │  ChallengeNode(signature)            │
+  │─────────────────────────────────────▶│
+  │                                      │  (verify signature)
+  │  AttestNodeResponse(node_security_token)
+  │◀─────────────────────────────────────│
+  │                                      │
+  │  RegisterNode(capabilities_advertisement)
+  │─────────────────────────────────────▶│
+  │                                      │
+  │  RegisterNodeResponse(peer_id)       │
+  │◀─────────────────────────────────────│
+  │                                      │
+  │  [every 30s] Heartbeat(status, load) │
+  │─────────────────────────────────────▶│
+  │  HeartbeatResponse(commands?)        │
+  │◀─────────────────────────────────────│
+```
+
+The `NodeSecurityToken` is an RS256 JWT (1-hour TTL) signed by the controller's OpenBao Transit key. It is analogous to the agent `SecurityToken` from SMCP but scoped to node identity. All subsequent RPCs wrap their payload in:
+
+```protobuf
+message SmcpNodeEnvelope {
+  string node_security_token = 1; // NodeSecurityToken JWT
+  bytes  signature           = 2; // Ed25519 signature over inner_payload
+  bytes  inner_payload       = 3; // Serialized request message
+}
+```
+
+---
+
+### `AttestNode`
+
+Initiates the attestation handshake. No authentication required. Returns a challenge nonce that the worker must sign.
+
+```protobuf
+rpc AttestNode(AttestNodeRequest) returns (AttestNodeResponse);
+
+message AttestNodeRequest {
+  string node_id       = 1; // Must match spec.node.id / spec.cluster.node_id
+  string public_key_pem = 2; // Ed25519 public key in PEM format
+  NodeRole role        = 3; // WORKER or HYBRID
+}
+
+message AttestNodeResponse {
+  string challenge_nonce = 1; // Random nonce to be signed with private key
+  string challenge_id    = 2; // Correlation ID for the follow-up ChallengeNode call
+}
+
+enum NodeRole {
+  CONTROLLER = 0;
+  WORKER     = 1;
+  HYBRID     = 2;
+}
+```
+
+---
+
+### `ChallengeNode`
+
+Called by the worker to complete the attestation challenge. The worker signs the `challenge_nonce` from `AttestNodeResponse` with its Ed25519 private key and returns the signature. On success, returns a `NodeSecurityToken`.
+
+```protobuf
+rpc ChallengeNode(ChallengeNodeRequest) returns (ChallengeNodeResponse);
+
+message ChallengeNodeRequest {
+  string challenge_id        = 1; // From AttestNodeResponse
+  bytes  signature           = 2; // Ed25519 signature over challenge_nonce bytes
+}
+
+message ChallengeNodeResponse {
+  string node_security_token = 1; // RS256 JWT; use as Bearer in subsequent RPCs
+  string expires_at          = 2; // ISO 8601 expiry timestamp (1-hour TTL)
+}
+```
+
+---
+
+### `RegisterNode`
+
+Registers the worker with its capability advertisement after successful attestation. Must be called before `Heartbeat`.
+
+```protobuf
+rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+
+message RegisterNodeRequest {
+  NodeCapabilityAdvertisement capabilities = 1;
+}
+
+message NodeCapabilityAdvertisement {
+  uint32   gpu_count            = 1;
+  float    vram_gb              = 2;
+  uint32   cpu_cores            = 3;
+  float    available_memory_gb  = 4;
+  repeated string supported_runtimes = 5; // e.g. ["docker", "firecracker"]
+  repeated string tags               = 6; // Matched against ExecutionTarget tags
+}
+
+message RegisterNodeResponse {
+  string peer_id = 1; // Assigned NodePeer ID within the NodeCluster aggregate
+}
+```
+
+---
+
+### `Heartbeat`
+
+Periodic keep-alive sent by worker nodes (default: every 30 seconds). The response may contain `NodeCommand`s instructing the worker to drain, update config, or shut down.
+
+```protobuf
+rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+message HeartbeatRequest {
+  string peer_id                             = 1; // From RegisterNodeResponse
+  uint32 active_execution_count              = 2;
+  float  cpu_utilization_percent             = 3;
+  float  memory_utilization_percent          = 4;
+  NodePeerStatus status                      = 5;
+}
+
+message HeartbeatResponse {
+  repeated NodeCommand commands = 1; // Optional commands for the worker to execute
+}
+
+enum NodePeerStatus {
+  ACTIVE    = 0;
+  DRAINING  = 1;
+  UNHEALTHY = 2;
+}
+
+message NodeCommand {
+  oneof command {
+    DrainCommand   drain   = 1;
+    ShutdownCommand shutdown = 2;
+    SyncConfigCommand sync_config = 3;
+  }
+}
+```
+
+---
+
+### `RouteExecution`
+
+Returns the target worker for a given execution. The `NodeRouter` uses round-robin among healthy workers matching the requested `tags` (Phase 1).
+
+```protobuf
+rpc RouteExecution(RouteExecutionRequest) returns (RouteExecutionResponse);
+
+message RouteExecutionRequest {
+  string execution_id                    = 1;
+  NodeCapabilityAdvertisement required   = 2; // Minimum capabilities required
+}
+
+message RouteExecutionResponse {
+  string target_node_id       = 1;
+  string worker_grpc_address  = 2; // e.g. "worker-gpu-001.internal:50051"
+}
+```
+
+---
+
+### `ForwardExecution` (server-streaming)
+
+Forwards an execution to this worker. The worker executes the agent and streams `ExecutionEvent` messages back to the caller. Uses the same `ExecutionEvent` type as `AegisRuntime.ExecuteAgent`.
+
+```protobuf
+rpc ForwardExecution(ForwardExecutionRequest) returns (stream ExecutionEvent);
+
+message ForwardExecutionRequest {
+  string execution_id  = 1;
+  string agent_id      = 2;
+  string manifest_yaml = 3; // Serialized agent manifest YAML
+  string input         = 4;
+  string context_json  = 5;
+}
+```
+
+See [`ExecuteAgent`](#executeagent-server-streaming) for the `ExecutionEvent` stream format.
+
+---
+
+### `ListPeers`
+
+Returns all registered `NodePeer`s in the `NodeCluster` aggregate along with their current status and capabilities.
+
+```protobuf
+rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+
+message ListPeersRequest {
+  optional NodePeerStatus filter_status = 1; // Filter by status; omit for all peers
+}
+
+message ListPeersResponse {
+  repeated NodePeer peers = 1;
+}
+
+message NodePeer {
+  string   node_id            = 1;
+  NodeRole role               = 2;
+  NodeCapabilityAdvertisement capabilities = 3;
+  string   last_heartbeat_at  = 4; // ISO 8601
+  NodePeerStatus status       = 5;
+  string   grpc_address       = 6;
+}
+```
+
+---
+
+### `SyncConfig` / `PushConfig`
+
+Configuration synchronization between controller and workers. `SyncConfig` is worker-initiated; `PushConfig` is controller-initiated (typically triggered by a `SyncConfigCommand` in a `HeartbeatResponse`).
+
+```protobuf
+rpc SyncConfig(SyncConfigRequest) returns (SyncConfigResponse);
+rpc PushConfig(PushConfigRequest) returns (PushConfigResponse);
+
+message SyncConfigRequest {}
+
+message SyncConfigResponse {
+  string config_yaml = 1; // Controller-managed sections of NodeConfig YAML
+  string config_hash = 2; // SHA-256 of config_yaml for idempotency checks
+}
+
+message PushConfigRequest {
+  string config_yaml = 1;
+  string config_hash = 2;
+}
+
+message PushConfigResponse {
+  bool accepted = 1;
+  optional string rejection_reason = 2;
+}

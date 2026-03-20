@@ -486,6 +486,54 @@ aegis workflow generate --input "Create a human-approval gated release workflow"
 
 ---
 
+## `aegis node`
+
+Manage AEGIS cluster nodes and multi-node topology. See the [Multi-Node Deployment](/docs/deployment/multi-node) guide for architectural details.
+
+### `aegis node init`
+
+Initialize a new node keypair for cluster identity. Ed25519 keypairs are stored at the path specified in `spec.cluster.node_keypair_path`.
+
+```bash
+aegis node init
+aegis node init --dev
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dev` | `false` | Generate a development keypair and print the public key to stdout. |
+
+### `aegis node join <endpoint>`
+
+Join an existing AEGIS cluster by attesting to a controller node.
+
+```bash
+aegis node join https://aegis-controller.internal:50056
+```
+
+### `aegis node leave`
+
+Gracefully deregister the current node from the cluster before shutdown.
+
+```bash
+aegis node leave
+```
+
+### `aegis node peers`
+
+List all registered peers in the cluster. Only available on nodes with the `controller` or `hybrid` cluster role.
+
+```bash
+aegis node peers
+aegis node peers --status active
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--status <status>` | (all) | Filter peers by status: `active`, `draining`, or `unhealthy`. |
+
+---
+
 ## `aegis config`
 
 Utility commands for the daemon configuration file.

@@ -14,7 +14,7 @@ Built-in tools are divided into two main categories:
 
 <Callout type="info">
   `skip_judge` applies **only to agents executing inside the 100monkeys inner loop** (i.e. calls
-  routed through `bootstrap.py` via the Dispatch Protocol, ADR-040). External agents calling
+  routed through `bootstrap.py` via the Dispatch Protocol). External agents calling
   `/v1/smcp/invoke` directly are subject to SMCP authentication, policy, and argument validation
   (see [Argument Validation](#argument-validation) below) but are **never** sent to the semantic
   judge.

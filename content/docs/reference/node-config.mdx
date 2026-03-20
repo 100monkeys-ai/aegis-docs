@@ -130,7 +130,7 @@ spec:
     fallback_to_local: true
     nfs_port: 2049
     seaweedfs:
-      filer_url: "http://seaweedfs-filer:8888"
+      filer_url: "http://localhost:8888"
       mount_point: "/var/lib/aegis/storage"
       default_ttl_hours: 24
       default_size_limit_mb: 1000
@@ -277,12 +277,46 @@ spec:
     # gRPC endpoint URL for aegis-smcp-gateway
     url: "http://aegis-smcp-gateway:50055"
 
+  # ─── Cluster Protocol ───────────────────────────────────────────────────────
+  # Configures this node's role in the multi-node cluster topology.
+  cluster:
+    # Enable cluster mode. Default: false.
+    enabled: true
+    
+    # Node role in cluster. Options: controller | worker | hybrid. Default: hybrid.
+    role: worker
+    
+    # Controller settings (required for workers)
+    controller:
+      # gRPC endpoint of the controller node.
+      endpoint: "grpc://aegis-controller:50056"
+      # Bootstrap token for initial attestation (Step 0).
+      token: "env:AEGIS_CLUSTER_TOKEN"
+
+    # Port for NodeClusterService gRPC (controller only). Default: 50056.
+    cluster_grpc_port: 50056
+    # Static list of peer controller addresses. Default: [].
+    peers: []
+    # Path to the persistent Ed25519 keypair file for node identity.
+    # Generated automatically on first startup if missing.
+    node_keypair_path: "/etc/aegis/node_keypair.pem"
+    # Interval in seconds for worker heartbeats to the controller. Default: 30.
+    heartbeat_interval_secs: 30
+    # Re-attest this many seconds before the security token expires. Default: 120.
+    token_refresh_margin_secs: 120
+    # TLS configuration for cluster communication (mTLS).
+    tls:
+      enabled: true
+      cert_path: "/etc/aegis/certs/node.crt"
+      key_path: "/etc/aegis/certs/node.key"
+      ca_cert: "/etc/aegis/certs/ca.crt"
+
   # ─── Observability ──────────────────────────────────────────────────────────
   observability:
     logging:
       level: info
       format: json
-      # ── OTLP Log Export (ADR-057) ─────────────────────────────────────────
+      # ── OTLP Log Export ─────────────────────────────────────────
       # Set otlp_endpoint to start shipping logs to any OpenTelemetry-compatible
       # backend (Grafana Cloud, Datadog, self-hosted OTEL Collector, etc.).
       # otlp_endpoint: "http://otel-collector:4317"   # grpc (default)
@@ -540,7 +574,7 @@ Optional array. Each entry defines an external MCP Tool Server process.
 | `executable` | string | — | Executable path |
 | `args` | string[] | `[]` | Command-line arguments |
 | `capabilities` | CapabilityConfig[] | `[]` | Per-tool capability objects (see below) |
-| `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `env:` and `secret:`. |
+| `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `secret:`. |
 | `environment` | map | `{}` | Non-secret env vars for the server process |
 | `health_check.interval_seconds` | u64 | `60` | Health check interval |
 | `health_check.timeout_seconds` | u64 | `5` | Health check timeout |
@@ -754,6 +788,49 @@ If omitted, orchestrator does not forward unknown/external tools to the gateway 
 
 ---
 
+### `spec.cluster`
+
+Optional. Configures this node's role in the multi-node cluster topology. If omitted, the node defaults to `hybrid` and operates as a standalone single-node deployment.
+
+`spec.cluster.role` is **orthogonal** to `spec.node.type`. A node with `type: orchestrator` can have `cluster.role: worker`.
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `enabled` | bool | ❌ | `false` | Enable cluster mode. |
+| `role` | enum | ✅ | `hybrid` | Node role: `controller` \| `worker` \| `hybrid` |
+| `controller_endpoint` | string | ❌ | — | gRPC endpoint of the controller node. Required for `role: worker`. |
+| `cluster_grpc_port` | u16 | ❌ | `50056` | Port for `NodeClusterService` gRPC (controller only). |
+| `peers` | string[] | ❌ | `[]` | Static list of peer controller addresses. |
+| `node_keypair_path` | string | ✅ | — | Path to the persistent Ed25519 keypair file for node identity. |
+| `heartbeat_interval_secs` | u64 | ❌ | `30` | Interval in seconds for worker heartbeats. |
+| `token_refresh_margin_secs` | u64 | ❌ | `120` | Token re-attestation margin in seconds. |
+| `tls.enabled` | bool | ❌ | `true` | Enable TLS for cluster communication. |
+| `tls.cert_path` | string | ❌ | — | Path to node TLS certificate. |
+| `tls.key_path` | string | ❌ | — | Path to node TLS private key. |
+| `tls.ca_cert` | string | ❌ | — | Path to CA certificate for peer verification. |
+
+#### Cluster Roles
+
+| Role | Exposes | Connects To |
+|------|---------|-------------|
+| `controller` | `NodeClusterService` on `cluster_grpc_port` (default 50056) | Nothing (it is the authority) |
+| `worker` | `ForwardExecution` stream on `spec.network.grpc_port` (50051) | Controller at `controller_endpoint` |
+| `hybrid` | Both 50051 and 50056 | Itself (no external cluster required) |
+
+#### Node Attestation
+
+On startup, a `worker` node:
+1. Loads (or generates) its Ed25519 keypair from `node_keypair_path`
+2. Calls `AttestNode` on the controller
+3. Receives a `ChallengeNode` call — signs the challenge with its private key
+4. Receives a `NodeSecurityToken` (signed JWT)
+5. Wraps all subsequent cluster RPCs in a secure envelope
+6. Sends periodic heartbeats to the controller
+
+The `NodeSecurityToken` is automatically refreshed before expiry. The keypair is persistent across restarts, enabling the controller to recognize re-connecting workers.
+
+---
+
 ### `spec.observability`
 
 Optional.
@@ -765,7 +842,7 @@ Optional.
 | `logging.level` | enum | `info` | `RUST_LOG` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
 | `logging.format` | enum | `json` | `AEGIS_LOG_FORMAT` | `json` \| `text` |
 | `logging.file` | string | null | — | Log file path. Omit to write to stdout. |
-| `logging.otlp_endpoint` | string | null | `AEGIS_OTLP_ENDPOINT` | OTLP collector endpoint. Setting this value enables OTLP log export (ADR-057). Omit or `null` to disable. |
+| `logging.otlp_endpoint` | string | null | `AEGIS_OTLP_ENDPOINT` | OTLP collector endpoint. Setting this value enables OTLP log export. Omit or `null` to disable. |
 | `logging.otlp_protocol` | enum | `grpc` | `AEGIS_OTLP_PROTOCOL` | `grpc` \| `http`. `grpc` uses port 4317 (default); `http` uses port 4318 with Protobuf over HTTP/1.1. |
 | `logging.otlp_headers` | map | `{}` | `AEGIS_OTLP_HEADERS` | Key-value HTTP/gRPC metadata headers sent on every export RPC (e.g. `Authorization`, `api-key`). Values support `env:` prefixes. When set via env var, use comma-separated `key=value` pairs: `Authorization=Bearer token,x-scope-orgid=12345`. |
 | `logging.otlp_min_level` | string | `info` | `AEGIS_OTLP_LOG_LEVEL` | Minimum log level forwarded to OTLP. Does not affect stdout output. |

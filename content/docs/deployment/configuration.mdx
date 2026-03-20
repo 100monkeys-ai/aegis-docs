@@ -39,6 +39,18 @@ The recommended production pattern is `secret:` references for all API keys and 
 
 ---
 
+## Multi-Node Cluster Topology
+
+AEGIS supports a distributed **Controller-Worker topology** for high availability and horizontal scaling. Nodes can be configured as controllers (scheduling and management), workers (agent execution), or hybrid nodes.
+
+Key features of the cluster topology include:
+- **Distributed Scheduling**: Controllers route agent executions to the most suitable available workers.
+- **Node Identity**: Each node maintains a stable identity via a persistent Ed25519 keypair, used for secure attestation and SmcpNodeEnvelope signing.
+- **Secure Communication**: Inter-node traffic is protected by mTLS and SMCP-derived security tokens.
+- **Seamless Scaling**: New workers can be added to the cluster by pointing them at the controller endpoint and providing valid certificates.
+
+---
+
 ## Manifest Envelope
 
 All `aegis-config.yaml` files use the Kubernetes-style manifest envelope:
@@ -209,6 +221,43 @@ network:
     cert_path: "/etc/aegis/tls/server.crt"
     key_path: "/etc/aegis/tls/server.key"
     ca_path: null    # Optional CA certificate path
+
+# ─── Cluster ──────────────────────────────────────────────────────────────────
+# Optional. Configures the node's role in the multi-node cluster topology.
+cluster:
+  # Enable cluster mode. Default: false.
+  enabled: true
+  
+  # Node role in cluster. Options: controller | worker | hybrid. Default: hybrid.
+  # - controller: Manages routing and registration; does not run executions.
+  # - worker: Runs agent executions; does not perform routing decisions.
+  # - hybrid: Both controller and worker duties (default).
+  role: worker
+
+  # Controller settings (required for workers)
+  controller:
+    # gRPC endpoint of the controller node.
+    endpoint: "grpc://aegis-controller:50056"
+    # Bootstrap token for initial attestation (Step 0).
+    token: "env:AEGIS_CLUSTER_TOKEN"
+
+  # Port for NodeClusterService (controllers/hybrids). Default: 50056.
+  cluster_grpc_port: 50056
+  # Static list of peer controller addresses. Default: [].
+  peers: []
+  # Path to the persistent Ed25519 keypair file for node identity.
+  # Generated automatically on first startup if missing.
+  node_keypair_path: "/etc/aegis/node_keypair.pem"
+  # Interval in seconds for worker heartbeats to the controller. Default: 30.
+  heartbeat_interval_secs: 30
+  # Re-attest this many seconds before the security token expires. Default: 120.
+  token_refresh_margin_secs: 120
+  # TLS configuration for secure inter-node cluster communication (mTLS).
+  tls:
+    enabled: true
+    cert_path: "/etc/aegis/certs/node.crt"
+    key_path: "/etc/aegis/certs/node.key"
+    ca_cert: "/etc/aegis/certs/ca.crt"
 
 # ─── Storage ──────────────────────────────────────────────────────────────────
 # Optional. Defaults to local_host backend.
@@ -630,6 +679,27 @@ Optional. Configures ports and TLS.
 | `tls.cert_path` | string | — | TLS certificate path |
 | `tls.key_path` | string | — | TLS private key path |
 | `tls.ca_path` | string | null | CA certificate path (optional) |
+
+---
+
+### `spec.cluster`
+
+Optional. Configures the node's role in the multi-node cluster topology.
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `enabled` | bool | ❌ | `false` | Enable cluster mode. |
+| `role` | enum | ✅ | `hybrid` | Node role: `controller` \| `worker` \| `hybrid` |
+| `controller_endpoint` | string | ❌ | — | gRPC endpoint of the controller node. Required for `role: worker`. |
+| `cluster_grpc_port` | u16 | ❌ | `50056` | Port for `NodeClusterService` (controllers/hybrids) |
+| `peers` | string[] | ❌ | `[]` | Static list of peer controller addresses |
+| `node_keypair_path` | string | ✅ | — | Path to the persistent Ed25519 keypair file for node identity |
+| `heartbeat_interval_secs` | u64 | ❌ | `30` | Interval in seconds for worker heartbeats |
+| `token_refresh_margin_secs` | u64 | ❌ | `120` | Token re-attestation margin in seconds |
+| `tls.enabled` | bool | ❌ | `true` | Enable TLS for cluster communication |
+| `tls.cert_path` | string | ❌ | — | Path to node TLS certificate |
+| `tls.key_path` | string | ❌ | — | Path to node TLS private key |
+| `tls.ca_cert` | string | ❌ | — | Path to CA certificate for peer verification |
 
 ---
 
