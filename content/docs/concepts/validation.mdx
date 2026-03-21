@@ -5,7 +5,7 @@ description: How AEGIS uses gradient scoring, judge agents, and consensus to det
 
 # Validation
 
-AEGIS validates every iteration's output before deciding whether to accept it or start another attempt. Rather than a binary pass/fail, every validator produces a **`ValidationScore`** (0.0–1.0) and a **`Confidence`** (0.0–1.0). The execution loop compares scores against declared thresholds, choosing between three outcomes: accept the output, inject the failure reason and retry, or exhaust the iteration budget and fail permanently.
+AEGIS validates every iteration's output before deciding whether to accept it or start another attempt. It also supports a separate pre-dispatch tool judge for selected tool calls during the inner loop. Rather than a binary pass/fail, every validator produces a **`ValidationScore`** (0.0-1.0) and a **`Confidence`** (0.0-1.0). The execution loop compares scores against declared thresholds, choosing between three outcomes: accept the output, inject the failure reason and retry, or exhaust the iteration budget and fail permanently.
 
 ---
 
@@ -70,15 +70,19 @@ When a judge's self-reported `confidence` falls below the validator's `min_confi
 
 ## Inner-Loop Tool Validation
 
-While the outer-loop `validation` runs at the **end** of an iteration (evaluating the final output), AEGIS also supports **inner-loop** validation via the `tool_validation` field.
+While the outer-loop `validation` runs at the **end** of an iteration, AEGIS also supports **inner-loop** validation via the `tool_validation` field. For the full tool-call flow, judge payload contract, and operator bypass semantics, see [Tool-Call Judging](/docs/guides/tool-call-judging).
 
-This pre-execution semantic judge evaluates the agent's *intent* to use a specific tool. If an agent hallucinates a dangerous `cmd.run` payload, the Orchestrator pauses the execution, submits the proposed tool call to the semantic judge, and uses its gradient score to either permit the invocation or reject it synchronously. This fast-feedback mechanism prevents the agent from executing harmful actions and immediately provides reasoning to correct its course without failing the entire iteration.
+This is a pre-execution semantic judge for tool intent, not a post-execution output review. If an agent proposes a dangerous `cmd.run` payload, the orchestrator pauses the execution, submits the proposed tool call to the semantic judge, and uses the returned gradient result to either permit the invocation or reject it synchronously.
+
+The judge payload includes the current task context, the proposed tool call, the available tool list, the worker mount context, the judge criteria, and a validation-context marker that tells the judge it is operating in the inner loop. The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares that verdict to `min_score` and `min_confidence`; if either check fails, the call is blocked and the agent gets a reasoning-rich retry signal without consuming the full iteration.
+
+Operationally, this reduces blast radius. Unsafe or low-confidence tool intent is stopped before side effects occur, the decision is auditable as its own child execution, and operators can keep hard policy enforcement separate from semantic review.
 
 ---
 
 ## Judge Agents Are Child Executions
 
-When a `semantic` or `multi_judge` validator fires, the orchestrator does not call an internal function. It spawns the judge agent as a **child execution** — a full, isolated container run tracked in the same execution tree as the parent.
+When a `semantic`, `multi_judge`, or `tool_validation` judge fires, the orchestrator does not call an internal function. It spawns the judge agent as a **child execution** — a full, isolated container run tracked in the same execution tree as the parent.
 
 Every execution carries an `ExecutionHierarchy`:
 
@@ -91,7 +95,7 @@ Every execution carries an `ExecutionHierarchy`:
 This means judge executions are:
 
 - **Visible in execution history** — child executions appear in execution APIs and event streams alongside worker executions.
-- **Isolated** — the judge runs in its own container with its own security policy. It cannot read or write to the parent execution's workspace unless both share the same volume and the judge's manifest explicitly grants access.
+- **Isolated** — the judge runs in its own container with its own security policy. It cannot read or write to the parent execution's workspace unless the judge execution is explicitly granted access to the same mounted volume set.
 - **Audited** — every judge invocation generates the full set of execution events (`ExecutionStarted`, `IterationCompleted`, etc.), making the validation decision fully inspectable.
 
 Use execution APIs and logs to inspect judge executions spawned by a parent.

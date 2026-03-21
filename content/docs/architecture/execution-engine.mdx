@@ -237,6 +237,8 @@ Example schema entry for `fs.write`:
 
 Tool schemas surface through two layers. The node operator declares which tool servers exist in `aegis-config.yaml` (see [MCP Tool Routing](/docs/architecture/tool-routing)) — this is the ceiling of what any agent on that node can ever invoke. Each agent manifest then declares a `spec.tools` block that selects the subset of those node-level tools the agent is permitted to use and applies per-tool policy constraints (path allowlists, domain allowlists, `SubcommandAllowlist`, rate limits, and so on). Only the tools named in `spec.tools` are included in the schema array sent to the LLM; tools registered on the node but absent from the manifest are invisible to the agent. `bootstrap.py` itself never sees or manages tool schemas — schema injection and policy enforcement happen entirely in the orchestrator before the `generate()` response is returned.
 
+When `execution.tool_validation` is configured for a tool, the orchestrator inserts one more gate before any routing path fires. The semantic judge runs as a child execution, compares the proposed tool intent against `min_score` and `min_confidence`, and either blocks the call or allows it to continue into the normal policy and routing pipeline. That checkpoint improves execution reliability; it does not replace SMCP authorization or tool policy enforcement.
+
 ---
 
 ### Inner Loop Steps
@@ -252,10 +254,14 @@ bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[..
             ┌───────────────────▼────────────────────────────────────────┐
             │  Tool calls in response?                                   │
             │                                                            │
-            │  YES → Route each tool call:                               │
-            │    fs.* calls   → AegisFSAL (host, direct)                │
-            │    cmd.run      → Dispatch Protocol (in-container)         │  
-            │    web.*, etc.  → SMCP External (host MCP server)          │
+            │  YES → For each tool call:                                 │
+            │    0. If `execution.tool_validation` applies,             │
+            │       run semantic judge before dispatch                   │
+            │       (child execution, pre-execution, synchronous)       │
+            │    1. Route only if the judge passes:                     │
+            │       fs.* calls   → AegisFSAL (host, direct)             │
+            │       cmd.run      → Dispatch Protocol (in-container)     │
+            │       web.*, etc.  → SMCP External (host MCP server)      │
             │                                                            │
             │   cmd.run → return {type:"dispatch", dispatch_id, ...}     │
             │        bootstrap.py receives dispatch message              │

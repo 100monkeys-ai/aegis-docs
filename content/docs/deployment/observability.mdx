@@ -35,6 +35,9 @@ RUST_LOG=info,aegis_orchestrator_core::infrastructure::nfs=debug
 # Debug all tool routing
 RUST_LOG=info,aegis_orchestrator_core::infrastructure::tool_router=debug
 
+# Debug tool-call judging
+RUST_LOG=info,aegis_orchestrator_core::application::tool_invocation_service=debug,aegis_orchestrator_core::application::validation_service=debug
+
 # Verbose SMCP audit
 RUST_LOG=info,aegis_orchestrator_core::infrastructure::smcp=debug
 
@@ -133,6 +136,26 @@ SMCP policy violations always produce `WARN` log entries with structured fields 
 ```json
 {"level":"WARN","target":"aegis_orchestrator_core::infrastructure::smcp::audit","fields":{"execution_id":"a1b2...","tool_name":"fs.delete","violation":"ToolExplicitlyDenied"},"message":"SMCP tool call blocked"}
 ```
+
+### Tool-Call Judging
+
+The runtime documentation and verified logging surface do not currently expose a dedicated judge-specific telemetry stream. Today, you can observe the following:
+
+| Signal | What it tells you |
+|---|---|
+| Execution lifecycle logs | Whether the parent execution started, refined, completed, or failed. |
+| Inner-loop generation logs | Whether the model returned a final response or hit a generation error. |
+| SMCP audit logs | Whether a tool call was blocked by policy before routing. |
+| Tool routing debug logs | Which routing path a tool took when debug logging is enabled. |
+| Child execution logs | Whether a judge execution was spawned and how it completed, if you correlate by execution ID. |
+
+Use these logs to infer tool-call judging behavior today. Do not assume a dedicated `judge_execution_id`, `score`, `confidence`, or `decision` field is emitted unless you verify it in the running build.
+
+### Recommended Future Work
+
+If you want first-class operational visibility for tool-call judging, the next step is to add explicit judge telemetry in the orchestrator and surface it as structured logs or domain events. Useful fields would include the parent execution ID, the judge child execution ID, the tool name, the verdict score, the verdict confidence, and the final allow/block decision.
+
+That work is recommended future instrumentation, not current runtime behavior.
 
 ---
 

@@ -20,9 +20,13 @@ Built-in tools are divided into two main categories:
   judge.
 </Callout>
 
-When an agent manifest enables `spec.execution.tool_validation`, the orchestrator runs a **semantic judge** after each tool call to validate its output before letting the agent proceed. This adds latency but catches unsafe or incorrect tool results early.
+When an agent manifest enables `spec.execution.tool_validation`, the orchestrator may run a **semantic judge before the tool call is dispatched**. The judge evaluates the proposed tool use and arguments, not the output of a completed tool run. This adds latency, but it can stop unsafe or incorrect actions before they reach a side effect boundary.
 
-For **read-only tools** the judge adds latency without safety benefit — the file contents or search results are deterministic and carry no write-side risk. Operators can set `skip_judge: true` on individual tools in `spec.builtin_dispatchers[].capabilities` or `spec.mcp_servers[].capabilities` in the [Node Configuration](/docs/reference/node-config#specbuiltin_dispatchers) to bypass the judge for those specific tools.
+For **read-only tools** the judge often adds latency without meaningful safety value - the file contents or search results are deterministic and carry no write-side risk. Operators can set `skip_judge: true` on individual tools in `spec.builtin_dispatchers[].capabilities` or `spec.mcp_servers[].capabilities` in the [Node Configuration](/docs/reference/node-config#specbuiltin_dispatchers) to bypass the inner-loop judge for those specific tools.
+
+The judge only applies to inner-loop tool calls routed through the orchestrator's tool invocation path. It is not the same as outer-loop iteration validation, and it is not part of direct SMCP authentication or policy enforcement.
+
+The canonical explanation of this control is in [Tool-Call Judging](/docs/guides/tool-call-judging).
 
 **Compiled-in defaults:**
 

@@ -19,6 +19,10 @@ The **Orchestrator Proxy Pattern** provides three hard guarantees regardless of 
 
 **Full audit trail** — Every invocation, routing decision, and policy violation is published as a domain event on the internal event bus, giving the Cortex learning system and your external audit infrastructure a complete, tamper-resistant record of agent actions.
 
+**Semantic pre-dispatch review** — When `execution.tool_validation` is configured for a tool, the orchestrator runs that judge before the call enters the routing pipeline. The judge is a semantic gate, not a replacement for authorization: approved calls still pass through SMCP and policy enforcement, while rejected calls are blocked synchronously without side effects.
+
+If an operator explicitly disables the judge with `skip_judge`, the tool still remains subject to the normal policy-before-action path. The bypass only removes the semantic review step; it does not weaken routing or authorization checks.
+
 ---
 
 ## The Three Routing Paths

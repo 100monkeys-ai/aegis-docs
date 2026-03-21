@@ -1,11 +1,11 @@
 ---
 title: Configuring Agent Validation
-description: Validator types, gradient scoring, threshold configuration, and chaining multiple validators.
+description: Validator types, gradient scoring, threshold configuration, inner-loop tool-call judging, and chaining multiple validators.
 ---
 
 # Configuring Agent Validation
 
-AEGIS uses a **gradient validation** system. Instead of binary pass/fail, each validator produces a `ValidationScore` (0.0–1.0) and a `Confidence` (0.0–1.0). The execution loop compares the score against a configured threshold to decide whether to proceed to the next iteration or accept the output.
+AEGIS uses a **gradient validation** system. Instead of binary pass/fail, each validator produces a `ValidationScore` (0.0-1.0) and a `Confidence` (0.0-1.0). The execution loop compares the score against a configured threshold to decide whether to proceed to the next iteration or accept the output. AEGIS also supports a separate pre-dispatch semantic judge for selected tool calls via `execution.tool_validation`; see [Tool-Call Judging](/docs/guides/tool-call-judging) for the tool-specific runtime contract.
 
 ---
 
@@ -17,6 +17,8 @@ At the end of each iteration:
 2. If all validators' scores meet their thresholds → `IterationStatus::Success` → execution completes.
 3. If any validator's score falls below its threshold and iterations remain → `IterationStatus::Refining` → error context is injected and the next iteration begins.
 4. If retries are exhausted → `IterationStatus::Failed`.
+
+Tool-call judging uses the same gradient vocabulary, but it runs inside the inner loop before a tool is dispatched. That means a bad `cmd.run`, `fs.write`, or external tool call can be rejected without burning the full iteration budget.
 
 ---
 
@@ -115,10 +117,14 @@ validation:
 
 While the `validation` blocks above operate on the outer execution iteration (end of run), agents can also be checked *during* execution just before they invoke a tool. This prevents agents from calling potentially unsafe tools or wasting time on hallucinations.
 
-Unlike outer validators, the inner `tool_validation` acts synchronously:
-1. Agent decides to call a tool (e.g. `cmd.run`).
-2. Orchestrator intercepts the call and runs the `tool_validation` judge.
-3. If the judge returns confidence < `threshold`, the tool call is rejected, an error is appended to the inner-loop prompt, and the agent tries again *without* terminating the full iteration.
+Unlike outer validators, the inner `tool_validation` acts synchronously and pre-execution:
+1. The agent proposes a tool call, such as `cmd.run`.
+2. The orchestrator intercepts the call and evaluates the configured semantic judge before dispatch.
+3. The judge receives the proposed call, the available tools, the current criteria, and the worker mount context.
+4. If the judge returns `score < min_score` or `confidence < min_confidence`, the tool call is rejected, the judge reasoning is appended to the inner-loop prompt, and the agent tries again without terminating the full iteration.
+5. If the judge passes, the tool call proceeds into the normal routing and policy pipeline.
+
+Operators can explicitly bypass this semantic gate with `skip_judge` for approved tools. That removes only the judge step; the call still remains subject to the normal policy and authorization path. For the complete gate semantics and bypass rules, see [Tool-Call Judging](/docs/guides/tool-call-judging).
 
 ```yaml
 execution:
@@ -129,7 +135,23 @@ execution:
         Determine if the tool call and arguments are safe and align with the agent's goal.
       min_score: 0.85
       min_confidence: 0.8
+      timeout_seconds: 300
 ```
+
+### Tool Judge Contract
+
+The tool judge sees a semantic payload rather than raw output:
+
+| Field | Purpose |
+|---|---|
+| `task` | The task or instruction currently being executed. |
+| `proposed_tool_call` | The tool name and arguments the agent wants to run. |
+| `available_tools` | The tool list visible to the worker at that point in the inner loop. |
+| `worker_mounts` | The inherited mount context available to the judge execution. |
+| `criteria` | The rubric text configured by the operator or agent author. |
+| `validation_context` | A marker that identifies the inner-loop pre-execution judge path. |
+
+The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares both thresholds before allowing the tool to execute.
 
 ---
 
@@ -181,7 +203,7 @@ The judge agent specified in `semantic` or `multi_judge` validators is a regular
 - Run in an isolated container with their own resource limits and security policy.
 - Be specialized for specific domains (e.g., a judge trained to evaluate security code reviews).
 - Run as **child executions** in the execution tree — visible in execution APIs and event streams for the parent execution.
-- Inherit the worker execution's mounted volumes as read-only views at the same `/workspace...` mount paths, so file-based checks run against the exact worker artifacts.
+- Receive the worker execution's inherited mount context through `worker_mounts`, so file-based checks can inspect the same artifacts the worker can reach when the judge manifest permits access.
 
 Judges always use `execution.mode: one-shot`. Judgment is a single-shot decision by design; the judge does not retry its own verdict through the iteration loop.
 
@@ -235,7 +257,7 @@ spec:
               type: string
 ```
 
-The judge runtime reads the code under review from the inherited `/workspace...` mounts, evaluates it, and writes the JSON verdict to `/workspace/verdict.json`.
+The judge runtime writes its final verdict as text output, and the orchestrator parses that output as JSON. The judge should emit a JSON object containing the verdict fields on its final turn; the runtime does not require a verdict file path. `worker_mounts` is still the source of truth for filesystem context available to the judge, but verdict transport is text-based.
 
 Judge input payloads expose mounted filesystem context through `worker_mounts` (array of inherited mount paths). Treat this as the source of truth for artifact discovery.
 

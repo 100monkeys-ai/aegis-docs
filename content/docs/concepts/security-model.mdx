@@ -7,6 +7,8 @@ description: The two-layer AEGIS security model — infrastructure policy enforc
 
 AEGIS enforces security at two independent layers that work in concert: **infrastructure-level policy** (declared in the agent manifest) and **SMCP** (Secure Model Context Protocol, enforced at the tool call level). Both layers must be satisfied for any agent operation to proceed.
 
+Some deployments also enable `execution.tool_validation`, a semantic pre-dispatch judge for selected tool calls. This is a safety control, not a third hard-security boundary. It can block a low-quality or dangerous tool intent before side effects occur, but it does not grant access, expand capabilities, or replace manifest policy or SMCP authorization.
+
 ---
 
 ## Layer 1: Infrastructure Policy

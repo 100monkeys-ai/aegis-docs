@@ -1,0 +1,136 @@
+---
+title: Tool-Call Judging
+description: How AEGIS performs inner-loop semantic pre-execution review for tool calls, and how operators configure or bypass it safely.
+---
+
+# Tool-Call Judging
+
+AEGIS can place a semantic judge in front of a tool call before the call is dispatched. This is an inner-loop control: it evaluates the agent's intent to use a tool, not the output of a completed tool execution.
+
+That distinction matters in production. A pre-execution judge can stop a dangerous write, delete, or external request before it reaches a side effect boundary. It is a safety and reliability layer, not a replacement for SMCP, policy enforcement, or argument validation.
+
+---
+
+## When It Runs
+
+The orchestrator invokes tool-call judging only for tool invocations that go through the inner-loop tool router and have `spec.execution.tool_validation` configured.
+
+The flow is:
+
+1. The model proposes a tool call.
+2. The orchestrator checks node configuration for `skip_judge` on that tool.
+3. If the tool is not bypassed, the orchestrator evaluates `spec.execution.tool_validation` in declaration order.
+4. Each `semantic` validator spawns the configured judge agent as a child execution.
+5. The judge returns a JSON `GradientResult`.
+6. The orchestrator allows the tool call only if both `min_score` and `min_confidence` are satisfied.
+
+If the judge rejects the call, the tool is blocked synchronously and the inner loop continues with the rejection reasoning in context. The surrounding iteration is not failed just because one tool invocation was denied.
+
+---
+
+## Configuration
+
+Tool-call judging is declared under `spec.execution.tool_validation` as an ordered list of validator entries.
+
+Only `semantic` entries participate in the current inner-loop tool-call gate. Other validation types remain part of the outer-loop validation model and are not used to gate tool dispatch.
+
+```yaml
+execution:
+  tool_validation:
+    - type: semantic
+      judge_agent: security-judge
+      criteria: |
+        Decide whether this tool call is safe, necessary, and consistent
+        with the task objective.
+      min_score: 0.85
+      min_confidence: 0.0
+      timeout_seconds: 300
+```
+
+Field behavior:
+
+| Field | Meaning |
+|---|---|
+| `type` | Must be `semantic` for the inner-loop judge path. |
+| `judge_agent` | Deployed judge agent name looked up by the orchestrator. |
+| `criteria` | Human-readable rubric passed to the judge execution. |
+| `min_score` | Minimum score required to permit the tool call. Default `0.7`. |
+| `min_confidence` | Minimum self-reported confidence required. Default `0.0`. |
+| `timeout_seconds` | Maximum time to wait for the judge child execution. Default `300`. |
+
+Evaluation is conjunctive: the call is allowed only when `score >= min_score` and `confidence >= min_confidence`.
+
+Multiple semantic validators, when present, are evaluated in order. The first rejecting judge blocks the tool call.
+
+---
+
+## Judge Contract
+
+The orchestrator starts the judge as a child execution and passes a structured payload that describes the proposed tool use.
+
+The payload includes:
+
+- `task`
+- `proposed_tool_call`
+- `available_tools`
+- `worker_mounts`
+- `output`
+- `criteria`
+- `validation_context`
+
+The `output` key is a compatibility field name. For tool-call judging it contains a serialized preview of the proposed tool call, not the output of a completed tool run.
+
+The `validation_context` value is fixed by the runtime to `semantic_judge_pre_execution_inner_loop`. Use that string as a cue when debugging execution traces or judge prompts.
+
+The judge must return a `GradientResult`-shaped JSON object:
+
+```json
+{
+  "score": 0.92,
+  "confidence": 0.88,
+  "reasoning": "The tool call is scoped to a read-only path and matches the task.",
+  "signals": [
+    { "category": "read_only", "score": 1.0, "message": "No side effects expected" }
+  ],
+  "metadata": {
+    "policy": "allow"
+  }
+}
+```
+
+The orchestrator extracts JSON from the judge's final output and treats malformed output, failed execution, cancelled execution, or timeout as a rejection path.
+
+`worker_mounts` is the source of truth for filesystem context available to the judge. It describes the inherited mount paths exposed to the child execution and should be used instead of guessing at workspace layout.
+
+---
+
+## `skip_judge`
+
+`skip_judge` is an operator-controlled bypass for low-risk tools. It is evaluated before the tool-call judge runs.
+
+The orchestrator checks built-in dispatchers first, then MCP server capabilities. If any matching capability has `skip_judge: true`, the inner-loop judge is skipped for that tool call.
+
+Use `skip_judge` only for read-only or otherwise idempotent tools where the semantic judge adds latency but little or no safety value. Do not use it for state-mutating or destructive tools.
+
+`skip_judge` does not bypass SMCP signature verification, SecurityContext policy, tool argument validation, or routing. It only removes the inner-loop semantic pre-execution review for the marked tool.
+
+---
+
+## Production Posture
+
+Tool-call judging improves production safety by reducing the blast radius of bad tool intents:
+
+- It stops unsafe calls before side effects happen.
+- It keeps the agent in the same execution loop instead of failing the entire run.
+- It makes the decision auditable through the judge child execution.
+- It lets operators reserve the judge for high-risk tools and bypass it for deterministic reads.
+
+Recommended judge manifests are narrow and defensive:
+
+- Disable network access unless the judge truly needs it.
+- Keep the timeout short enough to avoid blocking the inner loop.
+- Return strict JSON only.
+- Scope filesystem access to the minimal inherited mounts required for review.
+
+In enterprise deployments, treat the tool-call judge as a semantic control layer that complements hard policy enforcement. SMCP still enforces identity and capability boundaries; the judge adds intent-level review before action.
+

@@ -587,7 +587,9 @@ Each `CapabilityConfig` entry:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `name` | string | — | Tool name exposed to agents (e.g. `"web.search"`, `"gmail.read"`) |
-| `skip_judge` | bool | `false` | When `true`, the inner-loop semantic judge is bypassed for this tool even if `spec.execution.tool_validation` is enabled in the agent manifest. Set `true` for read-only / idempotent tools to reduce latency. Set `false` for any state-mutating tool. |
+| `skip_judge` | bool | `false` | When `true`, the orchestrator bypasses the inner-loop semantic pre-execution judge for this tool even if `spec.execution.tool_validation` is enabled in the agent manifest. Set `true` only for read-only or otherwise idempotent tools. Set `false` for any state-mutating tool. |
+
+`skip_judge` is an operator override. It does not disable SMCP authentication, SecurityContext policy, argument validation, or routing. It only removes the extra semantic review step before dispatch.
 
 ---
 
@@ -665,6 +667,8 @@ Each `CapabilityConfig` entry follows the same schema described under [`spec.mcp
 | `web.fetch` | `true` | Read-only HTTP fetch |
 
 If `spec.builtin_dispatchers` is omitted the orchestrator uses the compiled-in defaults shown above. Explicit configuration is only needed when overriding those defaults.
+
+For external MCP servers, `skip_judge` follows the same rule: `true` for deterministic reads, `false` for anything that can mutate state or trigger side effects. The node configuration is the source of truth for the bypass decision.
 
 ---
 

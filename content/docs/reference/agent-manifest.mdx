@@ -118,13 +118,10 @@ spec:
     iteration_timeout: "60s"     # per-iteration timeout (default: 300s); "30s", "60s", "5m"
     memory: false                # enable Cortex memory system
     validation:
-      system:
-        must_succeed: true       # require exit code 0
-        allow_stderr: false      # fail on stderr output
-        timeout_seconds: 90      # per-iteration execution timeout
-      output:
-        format: json             # json | yaml | text | csv | pdf
-        schema:                  # optional JSON Schema for structural validation
+      - type: exit_code
+        expected: 0
+      - type: json_schema
+        schema:
           type: object
           required: ["solution_path", "output"]
           properties:
@@ -132,17 +129,18 @@ spec:
               type: string
             output:
               type: string
-      semantic:
-        enabled: true            # auto-enabled when task.instruction is set
-        model: default           # model alias from aegis-config.yaml
-        threshold: 0.80          # confidence threshold (0.0–1.0)
-        timeout_seconds: 30
-        fallback_on_unavailable: skip  # skip | fail
+      - type: semantic
+        judge_agent: "output-judge"
+        criteria: "Ensure the final output is correct and complete."
+        min_score: 0.80
+        min_confidence: 0.70
     tool_validation:
-      - type: semantic           # Pre-execution semantic judge for tool calls
+      - type: semantic           # Inner-loop pre-execution semantic judge for tool calls
         judge_agent: "security-judge"
         criteria: "Ensure the tool call is safe and aligns with the agent's goal."
         min_score: 0.85
+        min_confidence: 0.0
+        timeout_seconds: 300
 
   # MCP tools the agent may invoke
   tools:
@@ -282,45 +280,71 @@ Supports two mutually exclusive runtime modes:
 | `iteration_timeout` | string | | `"300s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations. |
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
 | `llm_timeout_seconds` | integer | | `300` | HTTP socket timeout for bootstrap.py LLM proxy calls in seconds. Applies to network requests from agent to orchestrator. |
-| `validation` | object | | | Outer-loop acceptance criteria (end of iteration). |
-| `tool_validation` | `object[]` | | | Inner-loop pre-execution semantic evaluation for tool calls. |
+| `validation` | `ValidatorSpec[]` | | | Ordered outer-loop validators executed after each iteration. |
+| `tool_validation` | `ValidatorSpec[]` | | | Ordered inner-loop tool-call validators. Current runtime consumes `semantic` entries for pre-execution judging; see [Tool-Call Judging](/docs/guides/tool-call-judging). |
 
 ### `spec.execution.validation`
 
-#### `validation.system`
+`validation` is an ordered list of `ValidatorSpec` entries executed after each iteration. Each variant has its own fields:
+
+#### `exit_code`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `must_succeed` | boolean | `true` | Require exit code 0. |
-| `allow_stderr` | boolean | `false` | Fail if agent writes to stderr. |
-| `timeout_seconds` | integer | `90` | Per-iteration execution timeout in seconds. Must be `≤ resources.timeout`. |
+| `expected` | integer | `0` | Required exit code. |
+| `min_score` | float | `1.0` | Minimum score to accept this step. |
 
-#### `validation.output`
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `format` | `json` \| `yaml` \| `text` \| `csv` \| `pdf` | | Expected output format. |
-| `schema` | JSON Schema object | | JSON Schema for structural validation (if `format: json`). |
-| `regex` | string | | Regex pattern the output must match (if `format: text`). |
-
-#### `validation.script`
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `path` | string | ✓ | Path to validation script inside container. |
-| `description` | string | | What the script validates. |
-| `timeout_seconds` | integer | | Script timeout. Default: `30`. Must be `≤ resources.timeout`. |
-
-#### `validation.semantic`
+#### `json_schema`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | boolean | `true` when `task.instruction` set | Enable LLM-as-judge validation. |
-| `model` | string | `default` | Model alias from `aegis-config.yaml`. |
-| `prompt` | string | built-in template | Prompt template. Placeholders: `{criteria}`, `{output}`, `{exit_code}`, `{stderr}`. |
-| `threshold` | float | `0.8` | Minimum confidence score (0.0–1.0) to accept output. |
-| `timeout_seconds` | integer | `30` | LLM call timeout. Must be `≤ resources.timeout`. |
-| `fallback_on_unavailable` | `skip` \| `fail` | `fail` | Behavior when LLM is unavailable. |
+| `schema` | JSON Schema object | — | Schema applied to the output payload. |
+| `min_score` | float | `1.0` | Minimum score to accept this step. |
+
+#### `regex`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `pattern` | string | — | Regular expression to match against the selected output stream. |
+| `target` | string | `stdout` | Output stream to inspect: `stdout` or `stderr`. |
+| `min_score` | float | `1.0` | Minimum score to accept this step. |
+
+#### `semantic`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `judge_agent` | string | — | Deployed judge agent to spawn as a child execution. |
+| `criteria` | string | — | Human-readable rubric passed to the judge. |
+| `min_score` | float | `0.7` | Minimum score required to accept the output. |
+| `min_confidence` | float | `0.0` | Minimum self-reported confidence required. |
+| `timeout_seconds` | integer | `300` | Maximum wait time for the judge child execution in seconds. |
+
+#### `multi_judge`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `judges` | `string[]` | — | Deployed judge agents to spawn in parallel. |
+| `consensus` | enum | `weighted_average` | Aggregation strategy used to combine judge results. |
+| `min_judges_required` | integer | `1` | Minimum number of judges that must complete. |
+| `criteria` | string | — | Human-readable rubric passed to each judge. |
+| `min_score` | float | `0.7` | Minimum score required to accept the output. |
+| `min_confidence` | float | `0.0` | Minimum self-reported confidence required. |
+| `timeout_seconds` | integer | `300` | Maximum wait time for all judge child executions in seconds. |
+
+`tool_validation` is an ordered list of validator specifications. In the current runtime, only `semantic` entries are used for tool-call gating; they run before dispatch and can block the call synchronously. See [Tool-Call Judging](/docs/guides/tool-call-judging) for the inner-loop contract.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `type` | `semantic` | ✓ | | Validator type used by the inner-loop tool gate. |
+| `judge_agent` | string | ✓ | | Deployed judge agent to spawn as a child execution. |
+| `criteria` | string | ✓ | | Human-readable rubric passed to the judge. |
+| `min_score` | float |  | `0.7` | Minimum score required to allow the tool call. |
+| `min_confidence` | float |  | `0.0` | Minimum self-reported confidence required to allow the tool call. |
+| `timeout_seconds` | integer |  | `300` | Maximum wait time for the judge child execution in seconds. |
+
+Tool-call judging is conjunctive: the orchestrator allows the tool only when both the score and confidence thresholds are satisfied.
+
+If a non-`semantic` validator is present in `tool_validation`, it is ignored by the current inner-loop tool gate and should be documented as an outer-loop validator instead.
 
 ### `spec.tools[]`
 
@@ -480,7 +504,7 @@ Skills provide the **HOW** (instructions); MCP tools provide the **WHAT** (execu
 
 #### `task.instruction`
 
-High-level steering instructions for the agent. When present, **automatically enables semantic validation** using the instruction as the judge's criteria — no explicit `execution.validation.semantic` block is needed unless customizing the threshold or model.
+High-level steering instructions for the agent. When present, the instruction text can be reused as the criteria for a semantic validator in the ordered `spec.execution.validation` list.
 
 #### `task.prompt_template`
 
@@ -515,9 +539,8 @@ The `timeout` field is the outer bound for the entire execution. All validation 
 
 ```
 security.resources.timeout                                    (e.g., 600s)
-  └─ execution.validation.system.timeout_seconds    (e.g., 90s)  — agent code per iteration
-  └─ execution.validation.script.timeout_seconds    (e.g., 30s)  — validation script
-  └─ execution.validation.semantic.timeout_seconds  (e.g., 30s)  — LLM judge call
+  └─ execution.validation[*].timeout_seconds         (e.g., 90s)  — outer-loop validator budgets
+  └─ execution.tool_validation[*].timeout_seconds    (e.g., 30s)  — inner-loop tool-call judge
 ```
 
 ### `spec.volumes[]`
@@ -539,17 +562,19 @@ Controls the **100monkeys iterative execution strategy**. When `mode: iterative`
 
 Setting `memory: true` enables the Cortex learning system to index refinements from this execution, improving suggestions for future runs.
 
-#### `validation.semantic`
+#### `validation` and `tool_validation`
 
-LLM-as-judge evaluation. When `task.instruction` is defined, this is **automatically enabled** — no explicit configuration is needed unless customizing behavior.
+`validation` and `tool_validation` are both ordered lists of `ValidatorSpec` entries. Outer-loop validators run after each iteration; inner-loop tool-call validators run before dispatch.
 
-**How the judge decides iteration outcome:**
+Common validator variants:
 
-- Judge returns `"success": false` → `IterationStatus::Refining`
-- Judge returns `"success": true` but `confidence < threshold` → `IterationStatus::Refining`
-- Judge returns `"success": true` and `confidence >= threshold` → `IterationStatus::Success`
+- `exit_code` - checks the process exit code.
+- `json_schema` - validates the agent output against a JSON Schema document.
+- `regex` - validates output text with a regular expression.
+- `semantic` - spawns a judge agent as a child execution and compares the returned `score` and `confidence` against thresholds.
+- `multi_judge` - runs multiple judge agents and aggregates their results.
 
-**Available prompt template placeholders:** `{criteria}` (from `task.instruction`), `{output}`, `{exit_code}`, `{stderr}`.
+For tool-call judging specifics, including the judge payload and bypass semantics, see [Tool-Call Judging](/docs/guides/tool-call-judging).
 
 ### `spec.tools[]`
 
@@ -872,12 +897,12 @@ spec:
 
 ## Multi-Judge Consensus
 
-For validation requiring multiple independent judges with consensus aggregation, use **workflow `ParallelAgents` states** rather than agent-level validation. See:
+For validation requiring multiple independent judges with consensus aggregation, use `ValidatorSpec::MultiJudge` inside `spec.execution.validation`. For workflow-level fan-out and consensus, use **workflow `ParallelAgents` states**. See:
 
 - [Building Workflows](/docs/guides/building-workflows) — `ParallelAgents` state type
 - [Validation Guide](/docs/guides/validation) — gradient scoring and confidence gating
 
-| Feature | `execution.validation.semantic` | Workflow `ParallelAgents` |
+| Feature | `spec.execution.validation.multi_judge` | Workflow `ParallelAgents` |
 |---|---|---|
 | Number of judges | Single | Multiple in parallel |
 | Consensus algorithm | N/A | `mean`, `min`, `max`, `majority` |
