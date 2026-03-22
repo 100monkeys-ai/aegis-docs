@@ -64,20 +64,26 @@ SMCP operates at the **protocol layer**, on top of the physical Orchestrator Pro
 │  Physical layer: Orchestrator Proxy Pattern                 │
 │    All agent tool calls physically route through here       │
 │    Internal tools → Runtime exec()                          │
-│    External tools → executed with orchestrator credentials  │
 │                                                             │
 │  Protocol layer: SMCP                                       │
 │    AttestationService: verify workload, issue JWT           │
 │    SmcpMiddleware: verify signature + JWT                   │
 │    PolicyEngine (Cedar): evaluate SecurityContext           │
-│    Unwrap → forward plain MCP to Tool Server                │
-└──────────────────────────┬──────────────────────────────────┘
-                           │  Standard MCP JSON-RPC
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       Tool Server                           │
-│  (No SMCP awareness — receives plain MCP JSON-RPC)          │
-└─────────────────────────────────────────────────────────────┘
+│    Unwrap → route to internal tool OR SMCP Gateway          │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+               │ Standard MCP                 │ SMCP (Signed)
+               ▼                              ▼
+┌──────────────────────────────┐  ┌───────────────────────────┐
+│       Internal Tools         │  │    SMCP Tooling Gateway   │
+│   (fs.*, web.*, cmd.run)     │  │  (SaaS APIs, Macro-Tools) │
+└──────────────────────────────┘  └──────────────┬────────────┘
+                                                 │ Standard MCP
+                                                 ▼
+                                  ┌───────────────────────────┐
+                                  │       External APIs       │
+                                  │   (GitHub, AWS, Jira)     │
+                                  └───────────────────────────┘
 ```
 
 The physical proxy layer ensures credentials are never in agent containers. SMCP adds protocol-level identity and authorization. Both layers are required.

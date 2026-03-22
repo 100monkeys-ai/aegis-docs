@@ -7,7 +7,15 @@ description: How the AEGIS orchestrator connects to the central Cortex memory gr
 
 The **Cortex** is the system-wide memory and learning layer for the cyber-biological architecture. Rather than treating each execution in isolation, the orchestrator leverages Cortex to transform individual agent errors into shared, system-wide capabilities.
 
-> **Note:** Cortex is a centralized, proprietary service hosted and managed exclusively by 100monkeys. The AEGIS orchestrator connects to Cortex via public APIs.
+---
+
+## Pillar 2: Trajectory Consolidation
+
+A key feature of the Cortex integration established in the system architecture is **Trajectory Consolidation**. While standard refinement captures error-solution pairs, Trajectory Consolidation memorizes entire successful sequences of tool calls.
+
+When an execution completes successfully, the Orchestrator extracts the sequence of `ToolInvocationCompleted` events and converts them into a `TrajectoryPattern`. These patterns are indexed by the task's semantic embedding.
+
+Future agents assigned similar tasks will receive these successful trajectories as "Suggested Workflows" in their system prompts. Over time, frequently successful trajectories are crystallized into permanent **Macro-Tools** (ToolWorkflows) in the SMCP Gateway, effectively allowing the swarm to learn new procedural skills autonomously.
 
 ---
 
