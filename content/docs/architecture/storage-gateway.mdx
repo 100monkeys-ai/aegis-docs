@@ -201,6 +201,18 @@ This is safe for the common case of single-agent-per-volume. For multi-agent coo
 
 Persistent volumes with `ReadWrite` access can only be mounted by one execution at a time. Attempting a second `ReadWrite` mount on the same volume returns `VolumeAlreadyMounted`. Multiple executions may hold `ReadOnly` mounts simultaneously.
 
+## SRE & Performance Tuning
+
+To optimize the AegisFSAL NFS Server Gateway for varied agent workloads, operators should tune the kernel NFS client mount options. By default, the orchestrator mounts volumes with the following options:
+
+```text
+addr=<orchestrator_host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock,acregmin=3,acregmax=60
+```
+
+- **Graceful Degradation (`soft,timeo=10`)**: A soft mount ensures that if the NFS server crashes or becomes unreachable, the agent container's I/O operations will return an `EIO` error rather than hanging indefinitely in a D-state. The `timeo=10` parameter specifies a 1-second timeout (measured in deciseconds).
+- **Client Caching (`acregmin`, `acregmax`)**: The kernel NFS client caches file attributes. Lowering these values (`acregmin=1`) reduces cache staleness at the cost of more `GETATTR` calls to the orchestrator. For high-throughput artifact generation, keeping the defaults (`acregmin=3`, `acregmax=60`) reduces load on the orchestrator.
+- **Latency Overhead**: Because every POSIX operation routes through the `AegisFSAL` orchestrator process for authorization, there is an expected 1-2ms latency overhead per operation compared to a direct FUSE mount. This is generally acceptable for agent-driven code generation, but may affect high-frequency I/O workloads.
+
 ---
 
 ## Export Path Routing

@@ -1,0 +1,124 @@
+---
+title: Multi-Tenancy Configuration
+description: Configure and isolate multiple tenants using Keycloak realms and OpenBao namespaces.
+---
+
+# Multi-Tenancy Configuration
+
+AEGIS is designed as a multi-tenant platform that can serve multiple independent organizations (tenants) from a single infrastructure deployment. This guide details how operators should configure and isolate these tenants using the AEGIS four-layer isolation model.
+
+---
+
+## The Four-Layer Isolation Model
+
+AEGIS enforces tenant isolation at four complementary layers. Each layer must hold independently to ensure a failure in one does not create a cross-tenant data leak.
+
+| Layer | Mechanism | Implementation |
+|-------|-----------|----------------|
+| **1. Identity** | Keycloak Realms | Each tenant has a dedicated Keycloak realm. `TenantId` is derived from the JWT issuer URL. |
+| **2. Authorization** | SMCP Contexts | `SecurityContext` names are namespaced (e.g., `tenant-acme-corp-research`). |
+| **3. Data** | PostgreSQL Scoping | All core tables (`agents`, `executions`, `workflows`) are scoped by a `tenant_id` column. |
+| **4. Secrets** | OpenBao Namespaces | Each tenant has a dedicated OpenBao namespace: `tenant-{slug}/`. |
+
+---
+
+## Layer 1: Identity (Keycloak)
+
+AEGIS identifies tenants based on the **Keycloak realm slug** embedded in the JWT's `iss` (issuer) claim.
+
+### Tenant Kinds
+
+| Kind | Keycloak Realm | TenantId |
+|------|----------------|----------|
+| **Consumer Pool** | `zaru-consumer` | `zaru-consumer` |
+| **Enterprise Tenant** | `tenant-{slug}` | `{slug}` |
+| **Platform Operator** | `aegis-system` | `aegis-system` |
+
+### Configuration
+
+To onboard a new tenant, an operator must create a corresponding realm in Keycloak. AEGIS will automatically derive the `TenantId` from the cryptographically validated JWT issued by that realm.
+
+---
+
+## Layer 2: Authorization (SMCP SecurityContext)
+
+To prevent cross-tenant capability name collisions, all enterprise tenant `SecurityContext` names must follow a strict naming convention:
+
+| Tenant Type | Pattern | Example |
+|-------------|---------|---------|
+| Zaru Consumer | `zaru-{tier}` | `zaru-pro` |
+| Enterprise | `tenant-{slug}-{name}` | `tenant-acme-research` |
+| Operator | `aegis-system-{name}` | `aegis-system-admin` |
+
+The `AttestationService` enforces this convention. A principal from tenant `acme` cannot request a context named `tenant-globex-research`.
+
+---
+
+## Layer 3: Data (PostgreSQL)
+
+AEGIS uses a **shared schema** model where a `tenant_id` column is added to all aggregate tables.
+
+- **Isolation**: Every repository query includes a `WHERE tenant_id = $1` clause.
+- **Uniqueness**: Resources like Agent and Workflow names are unique *within* a tenant, not globally.
+- **Performance**: Indexes are applied to `(tenant_id, id)` and `(tenant_id, status)` to ensure performant scoped lookups.
+
+---
+
+## Layer 4: Secrets (OpenBao)
+
+Each tenant is assigned a dedicated OpenBao namespace for their credentials, tool API keys, and webhook secrets.
+
+### Namespace Pattern
+`tenant-{slug}/`
+
+### Policy Enforcement
+The AEGIS Orchestrator uses its AppRole to access these namespaces. The `CredentialResolver` automatically routes secret lookups to the appropriate namespace based on the `TenantId` of the requesting execution.
+
+```yaml
+# Example secret reference in an agent manifest
+spec:
+  tools:
+    - name: "custom-tool"
+      api_key: "secret:custom-api-key" # Automatically looked up in tenant-acme/kv/
+```
+
+---
+
+## Operator Administration
+
+### Provisioning a Tenant
+
+Tenant provisioning is handled by the `TenantOnboardingService` (triggered via the Control Plane or CLI). The sequence is atomic:
+
+1. **Create Keycloak Realm**: `tenant-{slug}`
+2. **Create OpenBao Namespace**: `tenant-{slug}/`
+3. **Register in AEGIS**: Insert record into the `tenants` table.
+
+### Cross-Tenant Admin Access
+
+Platform operators (`aegis-system` realm) can perform administrative actions on behalf of a tenant using the `X-Aegis-Tenant` header:
+
+```bash
+curl -H "X-Aegis-Tenant: acme-corp" \
+     -H "Authorization: Bearer <system-admin-jwt>" \
+     https://api.aegis.cloud/v1/agents
+```
+
+Every use of this bypass is logged as a `TenantEvent::AdminCrossTenantAccess` for audit compliance.
+
+---
+
+## Quotas and Rate Limits
+
+Tenant-level quotas are configured in the `tenants` table and can be overridden in `node-config.yaml`:
+
+```yaml
+tenants:
+  overrides:
+    - slug: acme-corp
+      max_concurrent_executions: 200
+      max_agents: 2000
+      max_storage_gb: 1000.0
+```
+
+When a quota is exceeded, AEGIS returns `429 Too Many Requests` and publishes a `TenantQuotaExceeded` event to the event bus.

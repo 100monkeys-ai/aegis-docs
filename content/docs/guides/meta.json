@@ -16,6 +16,7 @@
         "local-testing",
         "configuring-webhooks",
         "human-approvals",
-        "configuring-security-contexts"
+        "configuring-security-contexts",
+        "multi-tenancy"
     ]
 }

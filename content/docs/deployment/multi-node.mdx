@@ -438,6 +438,59 @@ For all orchestrator instances in either phase, share the same PostgreSQL databa
 
 ---
 
+## Day-2 Operations: mTLS Certificate Rotation
+
+In production environments, AEGIS requires mutual TLS (mTLS) for all inter-node communication on port `50056`. This ensures that only nodes possessing a certificate signed by the platform CA can even attempt the SMCP attestation flow.
+
+### Rotating the Platform CA
+
+If the root platform CA is rotated, you must perform a multi-step rollout to avoid cluster-wide disconnects:
+
+1. **Distribute New CA**: Update `spec.cluster.tls.ca_cert` on all nodes to include BOTH the old and new CA certificates in a single PEM bundle. Restart all nodes.
+2. **Issue New Node Certs**: Generate new node certificates signed by the new CA.
+3. **Update Node Certs**: Update `spec.cluster.tls.cert_path` and `key_path` on each node one-by-one and restart.
+4. **Remove Old CA**: Once all nodes are using certificates from the new CA, remove the old CA from the `ca_cert` bundle.
+
+### Zero-Downtime Node Certificate Rotation
+
+Individual node certificates (e.g., `node.crt`) can be rotated without cluster downtime as long as the CA remains valid. The `aegis` daemon watches the certificate files on disk and reloads them automatically upon change (when using standard `spec.cluster.tls` configuration).
+
+```bash
+# Example: Rotating a worker certificate
+cp new-node.crt /etc/aegis/certs/node.crt
+cp new-node.key /etc/aegis/certs/node.key
+# AEGIS will detect the change and use the new cert for the next gRPC connection
+```
+
+---
+
+## Troubleshooting Cluster Operations
+
+### NodeSecurityToken Attestation Failures
+
+If a worker fails to join the cluster, check the controller logs for the following common errors:
+
+| Error | Root Cause | Resolution |
+|-------|------------|------------|
+| `TokenExpired` | **Clock Skew**: The worker's system clock is significantly ahead of the controller's. | Synchronize clocks on all nodes using NTP (e.g., `chronyd`). |
+| `NonceReplay` | **Replay Attack / Rapid Restart**: The worker sent an attestation request with a nonce that was already used in the last 5 minutes. | Wait 5 minutes before restarting the worker, or ensure the worker generates a fresh UUID for the `nonce` field on every attempt. |
+| `InvalidSignature` | **Keypair Mismatch**: The worker's Ed25519 signature does not match its registered public key. | Verify that `spec.cluster.keypair_path` points to the same persistent key that was used during the initial `RegisterNode` call. |
+| `UntrustedCA` | **mTLS Failure**: The certificate presented by the node is not signed by the CA in `spec.cluster.tls.ca_cert`. | Verify that all nodes share the same platform CA bundle. |
+
+### Diagnostic Commands
+
+Use the `aegis` CLI on the controller node to inspect cluster health:
+
+```bash
+# List all registered peers and their last heartbeat
+aegis node peers
+
+# Check if a specific node is currently marked Unhealthy
+aegis node inspect <node_id>
+```
+
+---
+
 ## See Also
 
 - [Node Config Reference](/docs/reference/node-config)

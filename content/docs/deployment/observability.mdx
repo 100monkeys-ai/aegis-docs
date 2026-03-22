@@ -304,6 +304,50 @@ logging:
 
 Your `otel-collector-config.yaml` can then fan out to Loki, Jaeger, Prometheus, S3, or any other exporter.
 
+##### Example: OTel Collector to Grafana Loki
+
+For SREs running a self-hosted observability stack, the following OTel Collector configuration demonstrates how to receive OTLP logs from AEGIS and fan them out to Grafana Loki while preserving structured attributes:
+
+```yaml
+# otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  
+  # Map OTLP attributes to Loki labels for efficient indexing
+  resource:
+    attributes:
+      - key: service.name
+        action: upsert
+        value: "aegis-orchestrator"
+
+exporters:
+  loki:
+    endpoint: "http://loki:3100/loki/api/v1/push"
+    labels:
+      resource:
+        service.name: "service_name"
+        deployment.environment: "env"
+      attributes:
+        level: "level"
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [loki]
+```
+
 ### Minimum Export Level
 
 Set `otlp_min_level` to filter how verbose the OTLP stream is, independently of stdout:

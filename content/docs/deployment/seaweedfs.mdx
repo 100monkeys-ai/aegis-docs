@@ -159,6 +159,16 @@ weed master -defaultReplicaPlacement=001 -mdir=/data
 
 ---
 
+## SRE & Performance Tuning
+
+For production environments, operators should apply the following tuning parameters to optimize SeaweedFS and the AEGIS NFS Gateway:
+
+- **NFS Client Caching**: The AEGIS `NfsMountOptions` (`acregmin=3`, `acregmax=60`) dictate how aggressively agent containers cache file attributes. To reduce load on the orchestrator host for high-throughput artifacts, leave these defaults. If strict synchronization is required between multiple readers, `acregmin` can be reduced to 1.
+- **Filer Database Tuning**: The PostgreSQL database backing the SeaweedFS filer is the central bottleneck for metadata operations. Ensure the `WEED_POSTGRES2_*` database is configured with an SSD, appropriate `max_connections` (e.g., 200+ for large clusters), and tuned `shared_buffers`.
+- **Concurrent Writes Constraint**: The AEGIS Phase 1 NFS Server uses the `nolock` option. **Do not** attempt to run concurrent write-heavy agent workloads (e.g., parallel git operations or SQLite database updates) on the same persistent volume, as it risks file corruption. Concurrent reads are fully supported.
+
+---
+
 ## S3 Gateway
 
 SeaweedFS includes an optional S3-compatible API server that exposes volume data as S3 objects. This is useful for inspecting execution artifacts using standard tools (`aws s3 ls`, S3 Browser, Cyberduck) without running a new execution.

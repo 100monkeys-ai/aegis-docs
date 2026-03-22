@@ -17,6 +17,37 @@ Zaru authenticates consumer users via an Identity Provider (e.g., OAuth 2.0 or E
 
 > **Note:** The `MyzaruJWT` is treated as a highly sensitive credential and is wrapped in a redacted display type; it is never logged or stored in plain text by the orchestrator.
 
+### LibreChat Configuration Example
+
+To securely bridge identity to AEGIS via MCP headers, Zaru uses a specialized `librechat.yaml` configuration. The orchestrator is registered as an MCP server using the Streamable HTTP transport.
+
+```yaml
+# librechat.yaml (myzaru.com deployment example)
+
+version: "1.2"
+
+# ── Application Identity ────────────────────────────────────────────────────
+app:
+  name: "Zaru"
+  description: "Digital Biology. The Architecture of Trust."
+
+# ── MCP Server Registration ─────────────────────────────────────────────────
+mcpServers:
+  aegis-orchestrator:
+    type: streamable-http
+    url: "https://api.myzaru.com/mcp/v1/"
+    headers:
+      # Inject LibreChat user identity as a signed claim.
+      # The AEGIS ZaruAuthMiddleware validates this against the JWKS endpoint.
+      X-LibreChat-User-ID: "{{LIBRECHAT_USER_ID}}"
+      X-Zaru-Tier: "{{LIBRECHAT_USER_TIER}}"   # Custom claim added to LibreChat JWT
+      Authorization: "Bearer {{LIBRECHAT_USER_TOKEN}}"
+    timeout: 120000   # 2-minute tool call timeout (covers long 100monkeys iterations)
+    globalCallbacks:
+      onToolCallStart: "zaru.onAgentToolCallStart"   # Trigger ZaruIterationPanel open
+      onToolCallEnd: "zaru.onAgentToolCallEnd"       # Finalize ZaruIterationPanel
+```
+
 ## Session and Swarm Management
 
 In Zaru, a **session** (a single chat conversation) maps directly to a **root `ExecutionId`**. 

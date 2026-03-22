@@ -124,3 +124,58 @@ All metric names are prefixed with `aegis_`.
 |--------|------|--------|-------------|
 | `aegis_node_info` | Gauge | `node_id`, `name`, `region`, `version` | Static node identification (value is always 1). |
 | `aegis_node_uptime_seconds` | Gauge | — | Seconds since the daemon started. |
+
+---
+
+## Grafana Dashboard Plan
+
+To provide comprehensive visibility into the AEGIS platform, we recommend implementing the following Grafana dashboards using the metrics listed above:
+
+| Dashboard | Key Panels |
+|-----------|------------|
+| **AEGIS Overview** | Active executions gauge, execution throughput (rate), P99 duration heatmap, active SMCP sessions, and event bus drop rate. |
+| **Security & Policy** | SMCP attestation success/failure ratio, policy violations by type (e.g., `ToolExplicitlyDenied`), and NFS path traversal attempts. |
+| **Storage (NFS)** | I/O operations/sec by type, latency percentiles, throughput (MB/s), and active volume count by storage class. |
+| **Execution Deep Dive** | Iteration count distribution, terminal status breakdown, and resource utilization (CPU/Mem) per execution node. |
+| **Cortex & Knowledge** | Pattern indexed/pruned rate, search latency, and embedding cache hit/miss ratio. |
+
+---
+
+## Prometheus Alerting Rules
+
+The following alerting rules provide baseline protection for critical AEGIS operational signals.
+
+```yaml
+groups:
+  - name: aegis_alerts
+    rules:
+      # Alert on high rate of security policy violations
+      - alert: HighSmcpPolicyViolations
+        expr: rate(aegis_smcp_policy_violations_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of SMCP policy violations on {{ $labels.instance }}"
+          description: "AEGIS blocked more than 0.1 violations/sec over the last 5m. This may indicate a misconfigured agent or a prompt injection attempt."
+
+      # Alert on dropped events (indicates subscriber lag or buffer exhaustion)
+      - alert: EventBusDroppedEvents
+        expr: increase(aegis_event_bus_dropped_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Domain events are being dropped"
+          description: "The internal event bus for {{ $labels.subscriber }} is full. This usually indicates that the subscriber is too slow to process incoming events."
+
+      # Alert on attestation failures
+      - alert: SmcpAttestationFailure
+        expr: rate(aegis_smcp_attestations_total{result="failure"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated SMCP attestation failures"
+          description: "Attestation is failing at a rate of {{ $value }}/sec. Check node clock skew or expired NodeSecurityTokens."
+```
