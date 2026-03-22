@@ -3,6 +3,7 @@
     "pages": [
         "agents",
         "execution",
+        "dispatch-protocol",
         "validation",
         "workflows",
         "swarms",

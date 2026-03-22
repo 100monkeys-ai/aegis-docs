@@ -1,6 +1,6 @@
 ---
 title: Execution Engine
-description: Deep dive into the ExecutionSupervisor outer loop, InnerLoopService, and the Dispatch Protocol wire format.
+description: Deep dive into the ExecutionSupervisor outer loop, InnerLoopService, and the Aegis Dispatch Protocol.
 ---
 
 # Execution Engine
@@ -37,6 +37,7 @@ pub struct ExecutionHierarchy {
     pub parent_execution_id: Option<ExecutionId>,
     pub depth: u8,  // 0 = root; increments with each swarm child level
     pub path: Vec<ExecutionId>,  // breadcrumb from root to this execution
+    pub swarm_id: Option<SwarmId>, // foreign key to the swarm coordination context
 }
 
 pub struct Iteration {
@@ -51,15 +52,6 @@ pub struct Iteration {
     pub ended_at: Option<DateTime<Utc>>,
     pub llm_interactions: Vec<LlmInteraction>, // full message history for this iteration
 }
-
-/// Collects the results of every validator that ran for an iteration.
-pub struct ValidationResults {
-    pub system:    Option<SystemValidationResult>,  // exit code / stdout text checks
-    pub output:    Option<OutputValidationResult>,  // regex / JSON schema
-    pub semantic:  Option<SemanticValidationResult>, // single LLM judge
-    pub gradient:  Option<GradientResult>,           // score: f64, confidence: f64
-    pub consensus: Option<MultiJudgeConsensus>,      // multi-judge aggregate
-}
 ```
 
 ### `ExecutionStatus` State Machine
@@ -72,15 +64,6 @@ pending ──► running ──► completed
                │
             cancelled  (from any state)
 ```
-
-### `IterationStatus` Values
-
-| Value | Meaning |
-|---|---|
-| `running` | Container is active, inner loop in progress. |
-| `failed` | Inner loop exited with error; max iterations not yet reached; refinement will proceed. |
-| `refining` | Validator rejected the output; error context injected; next iteration beginning. |
-| `success` | All validators passed; execution completes. |
 
 ---
 
@@ -125,7 +108,7 @@ ExecutionSupervisor
 
 ## Inner Loop: InnerLoopService
 
-The `InnerLoopService` drives the conversation loop for a single iteration. It communicates with `bootstrap.py` running inside the container via a bidirectional HTTP channel.
+The `InnerLoopService` drives the conversation loop for a single iteration. It communicates with `bootstrap.py` running inside the container via the **Aegis Dispatch Protocol**.
 
 ### Communication Protocol
 
@@ -135,68 +118,7 @@ The inner loop uses a single HTTP endpoint on the orchestrator host:
 POST /v1/dispatch-gateway
 ```
 
-Both sides use a discriminated-union message format.
-
-#### `AgentMessage` (bootstrap.py → orchestrator)
-
-To start an LLM inference pass:
-
-```json
-{
-  "type": "generate",
-  "agent_id": "<agent-uuid>",
-  "execution_id": "<execution-uuid>",
-  "iteration_number": 1,
-  "prompt": "Write a function that reverses a string.",
-  "model_alias": "default",
-  "messages": []
-}
-```
-
-| Field | Required | Description |
-|---|---|---|
-| `type` | yes | Always `"generate"` for an LLM inference request. |
-| `agent_id` | yes | UUID of the agent. Injected by the orchestrator as `AEGIS_AGENT_ID`. |
-| `execution_id` | yes | UUID of the current execution. Injected as `AEGIS_EXECUTION_ID`. |
-| `iteration_number` | yes | 1-based iteration counter. Injected as `AEGIS_ITERATION`. |
-| `prompt` | yes | The fully-rendered task prompt. Passed to `bootstrap.py` as `argv[1]`. |
-| `model_alias` | no | LLM alias to route through. Defaults to `"default"` (orchestrator's configured default). Maps from `spec.runtime.model` in the agent manifest. |
-| `messages` | no | Prior conversation turns to prepend. Empty array for a fresh iteration start. |
-
-To return the result of a dispatched subprocess:
-
-```json
-{
-  "type": "dispatch_result",
-  "dispatch_id": "a1b2c3d4-...",
-  "exit_code": 0,
-  "stdout": "Hello world\n",
-  "stderr": ""
-}
-```
-
-#### `OrchestratorMessage` (orchestrator → bootstrap.py)
-
-After LLM inference, if the model produced tool calls:
-
-```json
-{
-  "type": "dispatch",
-  "dispatch_id": "a1b2c3d4-...",
-  "action": "exec",
-  "command": "python",
-  "args": ["/workspace/solution.py"]
-}
-```
-
-When the model produced a final text response:
-
-```json
-{
-  "type": "final",
-  "content": "The solution has been written to /workspace/solution.py."
-}
-```
+This endpoint handles both initial LLM generation requests and the results of in-container command dispatches. For a detailed breakdown of the message schema and loop mechanics, see the [Aegis Dispatch Protocol](/docs/concepts/dispatch-protocol).
 
 ### Tool Schema Injection
 
@@ -215,29 +137,9 @@ let tool_schemas: Vec<Value> = available_tools.iter().map(|t| json!({
 })).collect();
 ```
 
-Example schema entry for `fs.write`:
+Tool schemas surface through two layers. The node operator declares which tool servers exist in `aegis-config.yaml` — this is the ceiling of what any agent on that node can ever invoke. Each agent manifest then declares a `spec.tools` block that selects the subset of those node-level tools the agent is permitted to use and applies per-tool policy constraints (path allowlists, domain allowlists, `subcommand_allowlist`, rate limits, and so on).
 
-```json
-{
-  "type": "function",
-  "function": {
-    "name": "fs.write",
-    "description": "Write content to a file inside the agent's workspace volume.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "path":    { "type": "string", "description": "Absolute path inside /workspace" },
-        "content": { "type": "string", "description": "File content to write" }
-      },
-      "required": ["path", "content"]
-    }
-  }
-}
-```
-
-Tool schemas surface through two layers. The node operator declares which tool servers exist in `aegis-config.yaml` (see [MCP Tool Routing](/docs/architecture/tool-routing)) — this is the ceiling of what any agent on that node can ever invoke. Each agent manifest then declares a `spec.tools` block that selects the subset of those node-level tools the agent is permitted to use and applies per-tool policy constraints (path allowlists, domain allowlists, `SubcommandAllowlist`, rate limits, and so on). Only the tools named in `spec.tools` are included in the schema array sent to the LLM; tools registered on the node but absent from the manifest are invisible to the agent. `bootstrap.py` itself never sees or manages tool schemas — schema injection and policy enforcement happen entirely in the orchestrator before the `generate()` response is returned.
-
-When `execution.tool_validation` is configured for a tool, the orchestrator inserts one more gate before any routing path fires. The semantic judge runs as a child execution, compares the proposed tool intent against `min_score` and `min_confidence`, and either blocks the call or allows it to continue into the normal policy and routing pipeline. That checkpoint improves execution reliability; it does not replace SMCP authorization or tool policy enforcement.
+Only the tools named in `spec.tools` are included in the schema array sent to the LLM; tools registered on the node but absent from the manifest are invisible to the agent. `bootstrap.py` itself never sees or manages tool schemas — schema injection and policy enforcement happen entirely in the orchestrator before any dispatch or generation response is returned.
 
 ---
 
@@ -278,141 +180,15 @@ bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[..
 
 ## Dispatch Protocol
 
-The Dispatch Protocol is how the orchestrator triggers subprocess execution inside the agent container.
+The **Aegis Dispatch Protocol** is the mechanism the orchestrator uses to trigger subprocess execution inside the agent container. It is designed to be runtime-agnostic, enabling AEGIS to switch between Docker and Firecracker without modification to the agent's execution logic.
 
-### Wire Format Summary
+For full technical details, including wire formats and the `bootstrap.py` implementation, see the [Aegis Dispatch Protocol](/docs/concepts/dispatch-protocol) concept page.
 
-| Message | Direction | Fields |
-|---|---|---|
-| `OrchestratorMessage{type:"dispatch"}` | Orchestrator → bootstrap.py | `dispatch_id` (UUID), `action` ("exec"), `command`, `args` |
-| `AgentMessage{type:"dispatch_result"}` | bootstrap.py → orchestrator | `dispatch_id` (echoed), `exit_code`, `stdout`, `stderr` |
+### Security and Subcommand Allowlist
 
-The `dispatch_id` is a UUID generated by the orchestrator. bootstrap.py echoes it back in the `dispatch_result` message for correlation. Mismatched `dispatch_id`s are rejected.
+Every `cmd.run` invocation is validated against the `subcommand_allowlist` declared in the agent manifest's `spec.tools` block before execution. This ensures that even within the container, agents can only execute a strictly defined set of commands and subcommands (e.g., allowing `cargo build` but not `cargo publish`).
 
-### DispatchAction Vocabulary
-
-The `action` field in `OrchestratorMessage{type:"dispatch"}` determines what bootstrap.py executes. Phase 1 defines one action:
-
-| Action | Status | Description |
-|---|---|---|
-| `"exec"` | Available | Execute a subprocess inside the container. Returns `stdout`, `stderr`, and `exit_code`. |
-| `"query_env"` | Future | Request container environment metadata (OS version, installed language versions). |
-| `"ping"` | Future | Health-check the bootstrap.py dispatch loop without spawning a process. |
-| `"stream_exec"` | Future | Begin a long-running exec with incremental output streaming. |
-
-When an unknown `action` is received, bootstrap.py returns a `dispatch_result` with `exit_code: -1` and `stderr: "unknown_action:<value>"`. The orchestrator injects this as a tool failure into the LLM conversation and the inner loop continues.
-
-### SubcommandAllowlist
-
-Every `cmd.run` invocation is validated against the `SubcommandAllowlist` declared in the agent manifest's `spec.tools` block before execution. The node-level `builtin_dispatchers.cmd` section in `aegis-config.yaml` sets hard ceilings (max timeout, max output bytes, global env denylist) that the manifest cannot exceed, but the per-command allowlist itself lives in the manifest:
-
-```yaml
-tools:
-  subcommand_allowlist:
-    python:
-      - /workspace   # allow running any .py file under /workspace
-    pytest:
-      - /workspace/tests
-    npm:
-      - install
-      - run
-      - test
-    git:
-      - status
-      - diff
-      - add
-      - commit
-```
-
-If the command or subcommand is not in the allowlist, the dispatch is rejected with `CommandPolicyViolation` and the error is returned to the LLM as context.
-
-### Output Limits
-
-`subprocess` stdout and stderr are captured up to a configurable limit (default 512 KB combined). Content exceeding the limit is truncated from the front — the tail is preserved, as it is most useful for LLM error diagnosis. A truncation notice is appended so the LLM knows the output was cut. This prevents agent containers from flooding orchestrator memory with large build logs.
-
-### bootstrap.py Dispatch Loop
-
-bootstrap.py runs inside the agent container and drives the Dispatch Protocol. It communicates with the orchestrator over a long-lived HTTP POST to `/v1/dispatch-gateway` with no socket timeout — required for long-running subprocesses such as a cold `cargo build`.
-
-```python
-import os, sys, json, subprocess, urllib.request
-
-ORCHESTRATOR_URL = os.environ["AEGIS_ORCHESTRATOR_URL"]
-EXECUTION_ID     = os.environ["AEGIS_EXECUTION_ID"]
-AGENT_ID         = os.environ.get("AEGIS_AGENT_ID", "")
-ITERATION        = int(os.environ.get("AEGIS_ITERATION", "1"))
-
-def post_json(payload):
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        f"{ORCHESTRATOR_URL}/v1/dispatch-gateway",
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=None) as resp:  # no socket timeout
-        return json.loads(resp.read().decode("utf-8"))
-
-def run_dispatch(msg):
-    dispatch_id = msg["dispatch_id"]
-    if msg.get("action") == "exec":
-        command = [msg["command"]] + msg.get("args", [])
-        env = os.environ.copy()
-        env.update(msg.get("env_additions", {}))
-        try:
-            result = subprocess.run(
-                command,
-                cwd=msg.get("cwd", "/workspace"),
-                env=env,
-                capture_output=True,
-                timeout=msg.get("timeout_secs", 60),
-            )
-            stdout = result.stdout.decode("utf-8", errors="replace")
-            stderr = result.stderr.decode("utf-8", errors="replace")
-            max_bytes = msg.get("max_output_bytes", 524288)
-            truncated = len((stdout + stderr).encode("utf-8")) > max_bytes
-            if truncated:
-                stdout = stdout[-(max_bytes // 2):]
-                stderr = stderr[-(max_bytes // 2):]
-            return {
-                "type": "dispatch_result", "execution_id": EXECUTION_ID,
-                "dispatch_id": dispatch_id, "exit_code": result.returncode,
-                "stdout": stdout, "stderr": stderr,
-                "duration_ms": 0, "truncated": truncated,
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "type": "dispatch_result", "execution_id": EXECUTION_ID,
-                "dispatch_id": dispatch_id, "exit_code": -1, "stdout": "",
-                "stderr": f"[AEGIS] Command timed out after {msg.get('timeout_secs', 60)}s",
-                "duration_ms": msg.get("timeout_secs", 60) * 1000, "truncated": False,
-            }
-    # Unknown action — report gracefully so the orchestrator can inject a tool error
-    return {
-        "type": "dispatch_result", "execution_id": EXECUTION_ID,
-        "dispatch_id": dispatch_id, "exit_code": -1, "stdout": "",
-        "stderr": f"unknown_action:{msg.get('action')}",
-        "duration_ms": 0, "truncated": False,
-    }
-
-def main():
-    prompt = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
-    msg = post_json({
-        "type": "generate", "agent_id": AGENT_ID,
-        "execution_id": EXECUTION_ID, "iteration_number": ITERATION,
-        "prompt": prompt, "messages": [],
-    })
-    while msg.get("type") == "dispatch":
-        msg = post_json(run_dispatch(msg))
-    print(msg.get("content", ""))  # type == "final"
-
-if __name__ == "__main__":
-    main()
-```
-
-**Security model:** bootstrap.py is a trusted executor — it runs whatever `dispatch` message it receives. The orchestrator enforces the `subcommand_allowlist` and `env_var_denylist` server-side before any dispatch message is constructed. bootstrap.py itself performs no policy checks.
-
-**Firecracker compatibility:** The Dispatch Protocol is transport-agnostic. For Firecracker, `AEGIS_ORCHESTRATOR_URL` points to the vsock-to-HTTP bridge. bootstrap.py is otherwise identical — no changes are needed for Phase 2.
+Policy enforcement happens entirely on the orchestrator host; `bootstrap.py` receives only commands that have already passed all security checks.
 
 ---
 

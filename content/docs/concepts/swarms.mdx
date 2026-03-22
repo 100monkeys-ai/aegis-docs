@@ -58,9 +58,21 @@ else:
 
 ### Security Context Ceiling
 
-A child agent's `security_context` must be a **subset** of its parent's `security_context`. The orchestrator enforces this at spawn time and rejects the call with `SpawnError::ContextExceedsParentCeiling` if the child requests broader permissions than the parent holds.
+A child agent's `security_context` must be a **subset** (≤) of its parent's `security_context`. The orchestrator enforces this at spawn time and rejects the call with `SpawnError::ContextExceedsParentCeiling` if the child requests broader permissions than the parent holds.
 
 This prevents privilege escalation via spawned children. A parent holding a restricted `SecurityContext` cannot grant a child execution broader permissions than it holds itself.
+
+### ZaruSession Invariant
+
+The **ZaruSession** (the user's active session in the Control Plane) maintains an invariant where it tracks exactly one **root execution** at a time. While a swarm can create many concurrent child executions, they are all subordinates to the single active root execution. 
+
+The **Glass Laboratory** renders this hierarchy as a coherent multi-agent execution tree, showing child progress as nested iteration panels within the root execution's view.
+
+### OpenBao Credential Isolation
+
+AEGIS uses the **Orchestrator Proxy Lease Model** for distributing secrets within a swarm. Each child execution triggers its own independent credential resolution call to OpenBao at spawn time. 
+
+This ensures that dynamic secret leases are isolated across child-execution boundaries; a child execution's lease expiry is independent of its siblings' or its parent's lifetime.
 
 ---
 

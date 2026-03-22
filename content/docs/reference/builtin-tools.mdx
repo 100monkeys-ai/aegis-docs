@@ -286,12 +286,36 @@ These tools map to the AEGIS Dispatch Protocol, meaning the orchestrator interce
 
 ### `cmd.run`
 
-Executes a shell command within the agent's containerized workspace. Subject to the agent's `SubcommandAllowlist` policy.
+Executes a shell command within the agent's containerized workspace. Subject to the agent's `subcommand_allowlist` policy and the node's `builtin_dispatchers.cmd` resource ceilings.
 
 **Parameters:**
 
-- `command` (string, required): The shell command and arguments to execute.
+- `command` (string, required): The base shell command to execute (e.g., `"cargo"`, `"git"`, `"npm"`).
+- `args` (array of strings, optional): Positional arguments passed to the command (e.g., `["build"]`, `["status"]`).
 
 **Returns:** An object containing `stdout` (string), `stderr` (string), and `exit_code` (integer). A non-zero `exit_code` is returned as a successful tool result — the agent's LLM receives all three fields and can interpret the failure.
 
-**Errors:** `ToolNotAllowed` or `SubcommandNotAllowed` if the command or subcommand is not in the SecurityContext allowlist; timeout error if the command exceeds the execution wall-clock limit; `OutputSizeLimitExceeded` if stdout/stderr combined exceed the configured maximum.
+**Subcommand Policy:**
+
+Every `cmd.run` call is validated against the `subcommand_allowlist`. This allowlist ensures that agents can only execute approved base commands and specific subcommands (the first positional argument).
+
+```yaml
+# Manifest Example
+tools:
+  - name: cmd
+    executor: "builtin:cmd"
+    config:
+      subcommand_allowlist:
+        git: [clone, add, commit, push, status]
+        cargo: [build, test, fmt, clippy]
+```
+
+A call like `cmd.run(command="cargo", args=["build"])` is permitted, while `cmd.run(command="cargo", args=["publish"])` would be rejected with `SubcommandNotAllowed`.
+
+**Errors:**
+
+- `ToolNotAllowed`: The `cmd` tool is not in the agent's `spec.tools` list.
+- `CommandNotAllowed`: The base command is not present in the `subcommand_allowlist`.
+- `SubcommandNotAllowed`: The first positional argument is not in the allowed list for that base command.
+- `OutputSizeLimitExceeded`: The combined `stdout` and `stderr` exceeded the `max_output_bytes` limit (default 512 KB).
+- `ExecTimeoutCeilingExceeded`: The execution exceeded the `timeout_ceiling_secs`.

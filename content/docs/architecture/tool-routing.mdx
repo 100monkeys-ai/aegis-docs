@@ -90,14 +90,14 @@ Before any routing happens, the `ToolPolicy` evaluates the invocation in order. 
    → NO  ‣ reject: DomainNotAllowed
 
 4c. Subcommand check  (for cmd.run only)
-   Is the base command in SubcommandAllowlist?
+   Is the base command in subcommand_allowlist?
    Is the first positional argument in the allowed args for that command?
    → NO  ‣ reject: SubcommandNotAllowed | CommandNotAllowed
 
 5. Forward to ToolRouter
 ```
 
-The `SubcommandAllowlist` is a map of `command → [allowed_first_positional_arguments]` defined in the agent manifest and bounded by the node-level ceiling in `builtin_dispatchers.cmd`. For example, allowing `cargo` with `[build, test]` permits `cargo build` and `cargo test` but rejects `cargo publish`.
+The `subcommand_allowlist` is a map of `command → [allowed_first_positional_arguments]` defined in the agent manifest and bounded by the node-level ceiling in `builtin_dispatchers.cmd`. For example, allowing `cargo` with `[build, test]` permits `cargo build` and `cargo test` but rejects `cargo publish`.
 
 ---
 
@@ -238,15 +238,17 @@ Orchestrator sends this as the HTTP response to the `POST /v1/dispatch-gateway` 
 
 The `dispatch_id` UUID is echoed from request to response. The orchestrator rejects any response whose `dispatch_id` does not match the outstanding dispatch. `bootstrap.py` re-posts immediately after the subprocess exits; it does not batch or defer results.
 
-### `BuiltinDispatcher` and `SubcommandAllowlist`
+### `BuiltinDispatcher` and `subcommand_allowlist`
 
-`cmd.run` is **not** handled by an MCP server process. It is routed to the `BuiltinDispatcher` — an in-process orchestrator component. Before the dispatch message is sent, the `BuiltinDispatcher` checks the call against the `SubcommandAllowlist` specified in the agent manifest and bounded by the node-level ceiling in `builtin_dispatchers.cmd`.
+`cmd.run` is **not** handled by an MCP server process. It is routed to the `BuiltinDispatcher` — an in-process orchestrator component. Before the dispatch message is sent, the `BuiltinDispatcher` checks the call against the `subcommand_allowlist` specified in the agent manifest and bounded by the node-level ceiling in `builtin_dispatchers.cmd`.
+
+`bootstrap.py` acts as a **trusted executor** inside the container. It receives only pre-validated, policy-cleared dispatch messages from the orchestrator and executes them locally using standard system subprocess calls.
 
 ```text
 cmd.run {command: "cargo", args: ["publish"]}
          │
          ▼
-SubcommandAllowlist check:
+subcommand_allowlist check:
   cargo → allowed first args: [build, test, fmt, clippy, check, run]
   "publish" not in list
          │
@@ -260,14 +262,14 @@ Return 403 to agent
 cmd.run {command: "cargo", args: ["build"]}
          │
          ▼
-SubcommandAllowlist check: PASS
+subcommand_allowlist check: PASS
          │
          ▼
 OrchestratorMessage {type:"dispatch", dispatch_id:"...", action:"exec",
                      command:"cargo", args:["build"]}
   sent to bootstrap.py as HTTP response
          │
-bootstrap.py spawns subprocess: cargo build
+bootstrap.py (trusted executor) spawns subprocess: cargo build
          │
 AgentMessage {type:"dispatch_result", dispatch_id:"...", exit_code:0, ...}
   re-posted to orchestrator
@@ -277,7 +279,7 @@ Result injected into LLM context
 Publish: CommandExecutionEvent::CommandExecutionCompleted
 ```
 
-For the full `builtin_dispatchers` and `SubcommandAllowlist` field schemas, see [Node Configuration Reference](/docs/reference/node-config) and [Agent Manifest Reference](/docs/reference/agent-manifest).
+For the full `builtin_dispatchers` and `subcommand_allowlist` field schemas, see [Node Configuration Reference](/docs/reference/node-config) and [Agent Manifest Reference](/docs/reference/agent-manifest).
 
 ---
 
@@ -293,8 +295,8 @@ When a tool call is rejected, the orchestrator returns a structured error to the
 | `PathOutsideBoundary` | Filesystem path is not prefixed by any entry in `path_allowlist` |
 | `PathTraversalAttempt` | Path contains `..` components — rejected unconditionally |
 | `DomainNotAllowed` | Target domain not in `domain_allowlist` |
-| `SubcommandNotAllowed` | First positional argument not in `SubcommandAllowlist` for the command |
-| `CommandNotAllowed` | Base command not present in `SubcommandAllowlist` at all |
+| `SubcommandNotAllowed` | First positional argument not in `subcommand_allowlist` for the command |
+| `CommandNotAllowed` | Base command not present in `subcommand_allowlist` at all |
 | `OutputSizeLimitExceeded` | Subprocess stdout+stderr exceeds `max_output_bytes` |
 
 ---
@@ -304,7 +306,7 @@ When a tool call is rejected, the orchestrator returns a structured error to the
 | Tool pattern | SMCP policy check | Routing path | Executor |
 |---|---|---|---|
 | `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list` | Filesystem path allowlist + traversal check | Path 1 — FSAL | `AegisFSAL` on orchestrator host; writes visible via NFS mount |
-| `cmd.run` | `SubcommandAllowlist` | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py` |
+| `cmd.run` | `subcommand_allowlist` | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py` |
 | `web.fetch`, `web.search` | Domain allowlist + rate limit | Path 2 — SMCP External | `web-search` Tool Server on host |
 | `email.send`, `email.read` | Domain and account allowlist | Path 2 — SMCP External | `gmail-tools` Tool Server on host |
 | Any unregistered tool | — | Rejected before routing | `ToolPolicyViolation` event emitted, 403 returned |

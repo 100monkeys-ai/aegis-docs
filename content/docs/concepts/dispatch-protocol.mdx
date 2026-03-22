@@ -1,0 +1,148 @@
+---
+title: Aegis Dispatch Protocol
+description: Runtime-agnostic in-container command execution via bootstrap.py.
+---
+
+# Aegis Dispatch Protocol
+
+The **Aegis Dispatch Protocol** is a bidirectional communication channel between the AEGIS orchestrator and `bootstrap.py` running inside an agent container. It enables the orchestrator to trigger in-container process execution (like `cargo build` or `npm install`) while remaining completely agnostic of the underlying container runtime (Docker, Firecracker, or bare metal).
+
+---
+
+## The Three-Path Routing Context
+
+AEGIS agents require three structurally different categories of tool execution. The Dispatch Protocol handles the third category:
+
+| Path | Category | Example | Execution Context |
+|---|---|---|---|
+| **Path 1: FSAL** | File Operations | `fs.read`, `fs.write` | Orchestrator host via Storage Gateway |
+| **Path 2: SMCP External** | Remote Tools | `web.search`, `github.issue` | Orchestrator host via SMCP Gateway |
+| **Path 3: Dispatch Protocol** | **In-Container** | `cargo build`, `cmd.run` | **Inside the agent container** |
+
+In-container execution is required for tools that depend on the container's installed toolchain (`rustc`, `npm`, `python`), its environment variables (`PATH`, `LD_LIBRARY_PATH`), or that produce side effects inside the container process tree.
+
+---
+
+## Protocol Architecture
+
+The Dispatch Protocol extends the `/v1/dispatch-gateway` endpoint into a bidirectional channel. Instead of the orchestrator using a runtime-specific API (like `docker exec`), it sends structured **OrchestratorMessages** as HTTP responses to the agent's long-polling requests. The agent executes the command locally and re-POSTs the result as an **AgentMessage**.
+
+### Key Components
+
+- **`bootstrap.py`**: A thin, trusted executor running inside the agent container. It manages the dispatch loop and handles subprocess execution.
+- **`InnerLoopService`**: The orchestrator-side service that manages the LLM conversation and maps `cmd.run` tool calls to dispatch messages.
+- **Dispatch Gateway**: The single HTTP endpoint (`/v1/dispatch-gateway`) that handles all protocol traffic.
+
+---
+
+## Wire Format
+
+Both sides use a discriminated-union message format serialized as JSON.
+
+### Agent Message (Agent → Orchestrator)
+
+All messages from `bootstrap.py` to the orchestrator use the `AgentMessage` envelope.
+
+```json
+// Initial generation request
+{
+  "type": "generate",
+  "agent_id": "agent-uuid",
+  "execution_id": "exec-uuid",
+  "iteration_number": 1,
+  "prompt": "Task description...",
+  "messages": []
+}
+
+// Dispatch result (after executing a command)
+{
+  "type": "dispatch_result",
+  "execution_id": "exec-uuid",
+  "dispatch_id": "dsp-uuid",
+  "exit_code": 0,
+  "stdout": "Build succeeded...",
+  "stderr": "",
+  "duration_ms": 4821,
+  "truncated": false
+}
+```
+
+### Orchestrator Message (Orchestrator → Agent)
+
+All responses from the orchestrator use the `OrchestratorMessage` envelope.
+
+```json
+// Dispatch command directive
+{
+  "type": "dispatch",
+  "dispatch_id": "dsp-uuid",
+  "action": "exec",
+  "command": "cargo",
+  "args": ["build", "--release"],
+  "cwd": "/workspace",
+  "timeout_secs": 120,
+  "max_output_bytes": 524288
+}
+
+// Final LLM response
+{
+  "type": "final",
+  "content": "The build passed. Here are the results...",
+  "tool_calls_executed": 3
+}
+```
+
+---
+
+## The Dispatch Loop
+
+The protocol operates as a loop that continues until the orchestrator issues a `final` message.
+
+1. `bootstrap.py` sends `type: "generate"`.
+2. Orchestrator calls the LLM. If the LLM returns a `cmd.run` tool call:
+   - Orchestrator validates the command against the **Subcommand Allowlist**.
+   - Orchestrator responds with `type: "dispatch"`.
+3. `bootstrap.py` receives the dispatch, spawns a subprocess, captures output, and re-POSTs with `type: "dispatch_result"`.
+4. Orchestrator injects the result into the LLM conversation and loops back to step 2.
+5. Once the LLM produces a final text response, the orchestrator responds with `type: "final"`.
+6. `bootstrap.py` prints the content and exits.
+
+---
+
+## Security and Policy Enforcement
+
+Security is enforced entirely **server-side** by the orchestrator. `bootstrap.py` is a trusted executor that only receives pre-validated, policy-cleared commands.
+
+### Subcommand Allowlist
+
+The `cmd.run` tool is governed by a `subcommand_allowlist` in the agent's `SecurityContext`. This allowlist validates both the base command and its first positional argument.
+
+```yaml
+capabilities:
+  - tool_pattern: "cmd.run"
+    subcommand_allowlist:
+      git: [clone, add, commit, push, pull, status]
+      cargo: [build, test, fmt, clippy, check]
+      npm: [install, run, test, build, ci]
+```
+
+### Environment Scrubbing
+
+The orchestrator scrubs sensitive environment variables (like `AEGIS_TOKEN`, `OPENAI_API_KEY`) from the `env_additions` payload before sending a dispatch message, preventing agents from leaking credentials into subprocesses.
+
+### Resource Constraints
+
+- **Timeout**: The orchestrator enforces a hard timeout for each dispatch.
+- **Output Capping**: `bootstrap.py` truncates `stdout`/`stderr` to a maximum size (default 512 KB) to prevent memory exhaustion and large log flooding.
+- **Concurrency**: By default, only one `cmd.run` can be in-flight per execution.
+
+---
+
+## Runtime Agnostic Execution
+
+Because the protocol uses standard HTTP and `bootstrap.py` uses standard Python `subprocess`, AEGIS can switch runtimes without changing the orchestration logic.
+
+- **Docker**: `bootstrap.py` communicates via `host.docker.internal`.
+- **Firecracker**: `bootstrap.py` communicates via a `vsock-to-HTTP` bridge.
+
+The protocol remains identical in both cases, ensuring that agents developed in Docker-based local environments behave exactly the same when deployed to Firecracker-based production clusters.
