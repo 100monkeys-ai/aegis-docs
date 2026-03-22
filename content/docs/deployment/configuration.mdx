@@ -166,6 +166,10 @@ llm_selection:
   # Delay between retries in milliseconds. Default: 1000
   retry_delay_ms: 1000
 
+# ─── Execution Limits ────────────────────────────────────────────────────────
+# Optional. Protects list_executions from returning unbounded result sets. Defaults to 1000 when omitted.
+max_execution_list_limit: 1000
+
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 # Optional. Has safe defaults for Docker.
 runtime:
@@ -521,6 +525,9 @@ temporal:
   namespace: "default"
   # Temporal task queue. Default: aegis-agents
   task_queue: "aegis-agents"
+  # Maximum number of connection retries when establishing the Temporal client.
+  # If omitted, a default of 30 retries is used.
+  max_connection_retries: 30
 
 # ─── Cortex ───────────────────────────────────────────────────────────────────
 # Optional. If omitted or grpc_url is null the daemon runs in memoryless mode.
@@ -878,6 +885,7 @@ Optional. Temporal workflow engine configuration for durable workflow execution.
 | `worker_secret` | string | null | Shared secret for authenticating worker callbacks. Supports `env:` and `secret:`. |
 | `namespace` | string | `default` | Temporal namespace |
 | `task_queue` | string | `aegis-agents` | Temporal task queue name |
+| `max_connection_retries` | i32 | `30` | Maximum number of connection retries when establishing the Temporal client. |
 
 ---
 
@@ -910,6 +918,16 @@ Optional. Configures the AgentSkills API endpoint.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `endpoint` | string | `"https://agentskills.io/api"` | Endpoint URL for AgentSkills API. |
+
+---
+
+### `spec.max_execution_list_limit`
+
+Optional. Upper bound on executions returned by a single `list_executions` request.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `max_execution_list_limit` | usize | `1000` | Maximum number of executions returned by a single `list_executions` request. Protects against excessive memory usage. |
 
 ---
 

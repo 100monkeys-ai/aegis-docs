@@ -267,6 +267,7 @@ spec:
     worker_secret: "env:TEMPORAL_WORKER_SECRET"
     namespace: "default"
     task_queue: "aegis-agents"
+    max_connection_retries: 30
 
   # ─── Cortex ─────────────────────────────────────────────────────────────────
   cortex:
@@ -280,6 +281,9 @@ spec:
   # ─── AgentSkills API ────────────────────────────────────────────────────────
   agent_skills:
     endpoint: "https://agentskills.io/api"
+
+  # ─── Execution Limits ───────────────────────────────────────────────────────
+  max_execution_list_limit: 1000
 
   # ─── Cluster Protocol ───────────────────────────────────────────────────────
   # Configures this node's role in the multi-node cluster topology.
@@ -753,6 +757,7 @@ Optional. Temporal workflow engine configuration for durable workflow execution.
 | `worker_secret` | string | null | Shared secret for authenticating worker callbacks. Supports `env:`. |
 | `namespace` | string | `default` | Temporal namespace |
 | `task_queue` | string | `aegis-agents` | Temporal task queue name |
+| `max_connection_retries` | i32 | `30` | Maximum number of connection retries when establishing the Temporal client. |
 
 **Example:**
 
@@ -763,6 +768,7 @@ temporal:
   worker_secret: "env:TEMPORAL_WORKER_SECRET"
   namespace: "default"
   task_queue: "aegis-agents"
+  max_connection_retries: 30
 ```
 
 ---
@@ -803,6 +809,16 @@ Optional. Configures the AgentSkills API endpoint.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `endpoint` | string | `"https://agentskills.io/api"` | Endpoint URL for AgentSkills API. |
+
+---
+
+### `spec.max_execution_list_limit`
+
+Optional. Upper bound on executions returned by a single `list_executions` request.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `max_execution_list_limit` | usize | `1000` | Maximum number of executions returned by a single `list_executions` request. Protects against excessive memory usage. |
 
 ---
 

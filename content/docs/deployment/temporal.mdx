@@ -61,7 +61,10 @@ temporal:
   address: "localhost:7233"   # or temporal:7233 inside Compose
   namespace: "default"
   task_queue: "aegis-agents"
+  max_connection_retries: 30
 ```
+
+If `spec.temporal.max_connection_retries` is omitted, the orchestrator retries Temporal client connection setup 30 times before failing startup.
 
 ---
 
