@@ -284,6 +284,8 @@ aegis agent logs python-coder --verbose
 ### `aegis agent generate --input <text>`
 
 Runs the built-in agent generator flow and deploys the generated manifest.
+Generated manifests are persisted under `.aegis/generated/agents/` (or the configured AEGIS base dir)
+and the command reports that artifact root alongside the execution id.
 
 ```bash
 aegis agent generate --input "Create an agent that reviews pull requests for security issues."
@@ -476,6 +478,8 @@ aegis workflow delete dev-pipeline --yes
 ### `aegis workflow generate --input <text>`
 
 Runs the built-in workflow generator flow and deploys the resulting workflow.
+Generated workflow manifests are persisted under `.aegis/generated/workflows/`; if the workflow flow
+creates missing agents, those manifests are persisted under `.aegis/generated/agents/`.
 
 ```bash
 aegis workflow generate --input "Create a CI/CD workflow: build, test, and deploy a Rust service."
