@@ -482,11 +482,11 @@ If a worker fails to join the cluster, check the controller logs for the followi
 Use the `aegis` CLI on the controller node to inspect cluster health:
 
 ```bash
-# List all registered peers and their last heartbeat
+# List all registered peers
 aegis node peers
 
-# Check if a specific node is currently marked Unhealthy
-aegis node inspect <node_id>
+# Check end-to-end cluster health from the local node config
+aegis status --cluster
 ```
 
 ---

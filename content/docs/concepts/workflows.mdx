@@ -323,15 +323,42 @@ The three `completion` strategies control how individual step outcomes are aggre
 
 ## The Blackboard
 
-The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is seeded from `spec.context` at workflow start and updated as states complete.
+The **Blackboard** is a mutable key-value store shared across all states in a workflow execution. It is seeded from `spec.context`, can be overridden at workflow start with `blackboard`, and is updated as states complete.
 
 ### Lifecycle
 
 The Blackboard has three lifecycle phases:
 
-1. **Seed** — Before the workflow starts, the orchestrator writes all `spec.context` keys into the Blackboard. These are accessible via `{{workflow.context.KEY}}` or `{{blackboard.KEY}}`.
-2. **Live execution** — The Temporal worker owns the Blackboard during execution. After each state completes, its output is written to the Blackboard under the state's name (e.g. `REQUIREMENTS.output`, `REQUIREMENTS.status`, `REQUIREMENTS.score`). All Handlebars templates in subsequent states are resolved against this live state.
+1. **Seed** — Before the workflow starts, the orchestrator writes all `spec.context` keys into the Blackboard and then merges any startup `blackboard` overrides. Startup overrides must be a JSON or YAML object and win on same-named top-level keys. The reserved `workflow` key cannot be overridden.
+2. **Live execution** — The Temporal worker owns the Blackboard during execution. It receives the merged startup Blackboard, preserves authoritative `workflow.*` metadata, and writes each completed state's output back under the state's name (for example `REQUIREMENTS.output`, `REQUIREMENTS.status`, `REQUIREMENTS.score`). All Handlebars templates in subsequent states are resolved against this live state.
 3. **Capture** — When the workflow finishes, the orchestrator captures the final Blackboard snapshot from Temporal and persists it to PostgreSQL, where it is available via the execution history API.
+
+### Startup Overrides
+
+Use startup Blackboard overrides when you want to inject per-run variables without changing the workflow manifest:
+
+```bash
+aegis workflow run release-pipeline \
+  --input @input.yaml \
+  --blackboard @blackboard.yaml
+```
+
+Example `blackboard.yaml`:
+
+```yaml
+review_threshold: 0.92
+deploy_env: staging
+release:
+  candidate: rc-4
+```
+
+Rules:
+
+- `--blackboard` accepts inline JSON/YAML or `@file` input.
+- The value must be an object, not a scalar or array.
+- Blackboard overrides are merged on top of `spec.context`.
+- `workflow.*` metadata remains authoritative and cannot be replaced by overrides.
+- The live Blackboard is passed into downstream Agent states as structured execution context.
 
 ### Accessing Blackboard Values
 
@@ -341,11 +368,14 @@ Use Handlebars template syntax in `input`, `command`, `env`, `prompt`, and trans
 # Access a prior state's output
 command: "process-results --input '{{ANALYZE.output}}'"
 
-# Access a spec.context value
+# Access a spec.context or startup blackboard override value
 command: "run-tests --threshold {{workflow.context.review_threshold}}"
 
 # Access workflow start input
 command: "git clone {{input.repo_url}}"
+
+# Access top-level blackboard values used during live execution
+command: "deploy --env {{blackboard.deploy_env}}"
 ```
 
 Available template variables:
@@ -365,7 +395,7 @@ Available template variables:
 | `{{STATE.score}}` | Validation score of an Agent state (0.0–1.0). |
 | `{{STATE.consensus.score}}` | Aggregated score of a ParallelAgents state. |
 | `{{STATE.agents.N.output}}` | Individual judge output (ParallelAgents, 0-indexed). |
-| `{{blackboard.KEY}}` | Any key set in `spec.context` or by a System state. |
+| `{{blackboard.KEY}}` | Any key from merged startup Blackboard data or any key written during execution. |
 | `{{state.feedback}}` | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | Feedback text from the Human `signal --feedback` argument. |
 | `{{input.KEY}}` | Key from the workflow start `--input` payload. |
@@ -463,6 +493,9 @@ aegis workflow list
 
 # Start a workflow execution
 aegis workflow run <workflow-name> --input '{"key": "value"}'
+
+# Start with startup blackboard overrides from JSON or YAML
+aegis workflow run <workflow-name> --blackboard @blackboard.yaml
 
 # Follow workflow logs
 aegis workflow logs <execution-id> --follow

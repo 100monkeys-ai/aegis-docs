@@ -1,6 +1,6 @@
 ---
 title: Deploying & Running Agents
-description: Full agent lifecycle management via the AEGIS CLI — deploy, pause, resume, delete, execute, and monitor.
+description: Deploy, inspect, execute, and monitor agents with the current AEGIS CLI.
 ---
 
 # Deploying & Running Agents
@@ -203,10 +203,10 @@ Outputs the full agent manifest as YAML.
 ### Update an Agent
 
 ```bash
-aegis agent deploy ./my-agent/agent.yaml
+aegis agent deploy ./my-agent/agent.yaml --force
 ```
 
-Re-deploying an agent with the same `metadata.name` updates the manifest in-place. Running executions are not affected — they continue using the manifest version that was active when they started.
+If an agent with the same `metadata.name` and `metadata.version` is already deployed, the CLI requires `--force` to overwrite that exact definition. Running executions are not affected — they continue using the manifest version that was active when they started.
 
 ### Remove an Agent
 
@@ -304,13 +304,13 @@ Cancellation stops the current iteration's container, releases any held locks, a
 
 ---
 
-## Scripting with JSON Output
+## Scripting with CLI Output
 
-All CLI commands support `--output json` for machine-readable output. This is useful for CI/CD pipelines:
+The current CLI does not expose a general `--output json` mode. For shell automation, capture the UUIDs printed by the CLI and poll with the status subcommand:
 
 ```bash
-# Deploy and capture the agent ID
-AGENT_ID=$(aegis agent deploy ./agent.yaml --output json | jq -r '.id')
+# Deploy and capture the agent ID from stdout
+AGENT_ID=$(aegis agent deploy ./agent.yaml 2>&1 | grep -oE '[0-9a-f-]{36}' | tail -1)
 
 # Start an execution and capture the execution ID
 EXEC_ID=$(aegis task execute "$AGENT_ID" \
@@ -318,7 +318,7 @@ EXEC_ID=$(aegis task execute "$AGENT_ID" \
 
 # Poll until complete
 while true; do
-  STATUS=$(aegis task status "$EXEC_ID" --output json | jq -r '.status')
+  STATUS=$(aegis task status "$EXEC_ID" | awk -F': ' '/Status:/ {print tolower($2)}')
   echo "Status: $STATUS"
   if [[ "$STATUS" == "completed" || "$STATUS" == "failed" || "$STATUS" == "cancelled" ]]; then
     break

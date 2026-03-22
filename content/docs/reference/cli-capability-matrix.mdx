@@ -5,7 +5,7 @@ description: Current CLI command coverage, MCP tool equivalents, and API-only su
 
 # CLI Capability Matrix
 
-This page reflects the currently implemented `aegis` command surface and its mapping to the built-in MCP tool equivalents.
+This page reflects the currently implemented `aegis` command surface and its relationship to the built-in MCP management tools.
 
 ## Implemented Top-Level Commands
 
@@ -14,43 +14,65 @@ This page reflects the currently implemented `aegis` command surface and its map
 | `aegis daemon` | `start`, `stop`, `status`, `install`, `uninstall` |
 | `aegis agent` | `deploy`, `list`, `show`, `remove`, `logs`, `generate --input ...` |
 | `aegis task` | `execute`, `status`, `logs`, `cancel`, `remove`, `list` |
-| `aegis workflow` | `validate`, `deploy`, `run`, `list`, `describe`, `logs`, `delete`, `generate --input ...` |
+| `aegis workflow` | `validate`, `deploy`, `run`, `list`, `executions list`, `describe`, `logs`, `delete`, `generate --input ...` |
+| `aegis node` | `init`, `join`, `leave`, `peers` |
 | `aegis config` | `show`, `validate`, `generate` |
-| stack lifecycle | `init`, `up`, `down`, `restart`, `update`, `uninstall` |
+| stack lifecycle | `init`, `up`, `down`, `restart`, `status`, `update`, `uninstall` |
 
 ---
 
 ## CLI ↔ MCP Tool Mapping
 
-Every CLI management operation has a corresponding built-in MCP tool. Agents and external automation may use either surface; both target the same Application Services.
+Only part of the CLI has a direct MCP management-tool equivalent today. Local stack lifecycle, daemon lifecycle, cluster-node commands, and local status checks remain CLI-only.
 
 | CLI Command | MCP Tool | Purpose |
 |---|---|---|
 | **Agent Management** | | |
 | `aegis agent list` | `aegis.agent.list` | List all deployed agents |
 | `aegis agent deploy` | `aegis.agent.create` | Deploy a new agent |
-| `aegis agent deploy --force` | `aegis.agent.update` | Update an existing agent |
-| `aegis agent show <name>` | `aegis.agent.export` | Export agent manifest as YAML |
+| `aegis agent deploy --force` | `aegis.agent.update` | Overwrite an existing name+version pair |
+| `aegis agent show <uuid>` | `aegis.agent.export` | Export agent manifest as YAML |
 | `aegis agent remove <id>` | `aegis.agent.delete` | Permanently remove an agent |
 | `aegis agent generate --input ...` | `aegis.agent.generate` | Natural language agent authoring loop |
 | **Workflow Management** | | |
 | `aegis workflow list` | `aegis.workflow.list` | List all registered workflows |
 | `aegis workflow deploy` | `aegis.workflow.create` | Validate and register a workflow |
-| `aegis workflow deploy --force` | `aegis.workflow.update` | Update an existing workflow |
 | `aegis workflow describe <name>` | `aegis.workflow.export` | Export workflow manifest as YAML |
 | `aegis workflow delete <name>` | `aegis.workflow.delete` | Remove a workflow from registry |
 | `aegis workflow run <name>` | `aegis.workflow.run` | Execute a registered workflow |
 | `aegis workflow generate --input ...` | `aegis.workflow.generate` | Natural language workflow authoring loop |
 | `aegis workflow logs <execution_id>` | `aegis.workflow.logs` | Retrieve workflow execution event log |
 | **Task Management** | | |
-| `aegis task execute <agent_id>` | `aegis.task.execute` | Execute an agent task |
+| `aegis task execute <agent>` | `aegis.task.execute` | Execute an agent task |
 | `aegis task status <execution_id>` | `aegis.task.status` | Check execution progress and outcome |
 | `aegis task list` | `aegis.task.list` | List recent task executions |
 | `aegis task cancel <execution_id>` | `aegis.task.cancel` | Stop a running execution |
 | `aegis task remove <execution_id>` | `aegis.task.remove` | Delete an execution record |
 | **System Management** | | |
-| `aegis daemon status` | `aegis.system.info` | Get node metadata, status, and capabilities |
+| `aegis daemon status` | `aegis.system.info` | Closest MCP read-only system status equivalent |
 | `aegis config show` | `aegis.system.config` | View active node configuration |
+
+The CLI also exposes commands with no current MCP counterpart:
+
+- `aegis daemon start|stop|install|uninstall`
+- `aegis init|up|down|restart|status|update|uninstall`
+- `aegis node init|join|leave|peers`
+- `aegis workflow validate`
+- `aegis workflow executions list`
+- `aegis task logs`
+
+---
+
+## Context Override Support
+
+The current CLI supports file-backed context dictionaries for direct execution and workflow startup:
+
+| Command | Override Flag | Accepted Formats | Validation |
+|---|---|---|---|
+| `aegis task execute <agent>` | `--context <DICT>` | Inline JSON/YAML or `@file` JSON/YAML | Must be an object; reserved execution keys are rejected by the orchestrator |
+| `aegis workflow run <name>` | `--blackboard <DICT>` | Inline JSON/YAML or `@file` JSON/YAML | Must be an object; reserved workflow keys such as `workflow` are rejected |
+
+`aegis task execute --input` and `aegis workflow run --input` also accept inline JSON/YAML or `@file` values, but those flags carry primary execution/workflow input rather than top-level context overrides.
 
 ---
 

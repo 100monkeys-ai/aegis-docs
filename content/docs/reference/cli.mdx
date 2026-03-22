@@ -1,35 +1,53 @@
 ---
 title: CLI Reference
-description: Complete reference for all aegis CLI commands, subcommands, flags, and exit codes.
+description: Reference for the currently implemented aegis CLI commands and flags.
 ---
 
 # CLI Reference
 
-The `aegis` binary is the primary interface for managing the AEGIS daemon and all resources.
+The `aegis` binary is the user-facing CLI for local stack management, daemon lifecycle, agent and workflow operations, cluster-node actions, and status inspection.
+
+This page documents the command surface implemented in `aegis-orchestrator/cli/src`. If you are looking for built-in MCP tools such as `aegis.agent.create`, use the [Management Tools](/docs/reference/management-tools) reference instead; those are not shell subcommands.
 
 ## Global Flags
 
-These flags are available on all commands:
+These flags are parsed at the top level and can be combined with subcommands where relevant:
 
 | Flag | Environment Variable | Default | Description |
 |---|---|---|---|
-| `--config <path>` | `AEGIS_CONFIG_PATH` | (auto-discovered) | Path to the daemon configuration file. |
-| `--host <host>` | `AEGIS_HOST` | `127.0.0.1` | Hostname of the AEGIS daemon HTTP API. |
-| `--port <port>` | `AEGIS_PORT` | `8088` | Port of the AEGIS daemon HTTP API. |
+| `--config <path>` | `AEGIS_CONFIG_PATH` | auto-discovered | Path to the node configuration file. |
+| `--host <host>` | `AEGIS_HOST` | `127.0.0.1` | Host used for daemon HTTP API calls. |
+| `--port <port>` | `AEGIS_PORT` | `8088` | Port used for daemon HTTP API calls. |
 | `--log-level <level>` | `AEGIS_LOG_LEVEL` | `info` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`. |
-| `--daemon` | — | `false` | Start the process as a background daemon service rather than running a CLI command. |
+| `--daemon` | — | `false` | Run the process in daemon mode instead of executing a CLI subcommand. |
 
-The daemon HTTP API runs on port `8088` by default.
+## Top-Level Commands
+
+| Command | Purpose |
+|---|---|
+| `aegis daemon` | Manage the background daemon process. |
+| `aegis task` | Execute agents and inspect execution records. |
+| `aegis node` | Perform cluster node bootstrap and peer operations. |
+| `aegis config` | Show, validate, or generate config files. |
+| `aegis agent` | Deploy, inspect, remove, log, or generate agents. |
+| `aegis workflow` | Validate, deploy, run, inspect, and generate workflows. |
+| `aegis update` | Pull images, restart services, run migrations, and refresh built-ins. |
+| `aegis init` | Guided first-time setup wizard. |
+| `aegis down` | Stop the local Docker Compose stack. |
+| `aegis up` | Start the local stack, running `aegis init` automatically if needed. |
+| `aegis restart` | Restart local Docker Compose services. |
+| `aegis status` | Report local stack health or cluster health. |
+| `aegis uninstall` | Tear down the local stack and remove its working directory. |
 
 ---
 
 ## `aegis daemon`
 
-Manage the AEGIS daemon process.
+Manage the daemon lifecycle.
 
 ### `aegis daemon start`
 
-Start the daemon in the foreground.
+Starts the daemon if it is not already running. The CLI re-execs itself with `--daemon` and detaches it into the background.
 
 ```bash
 aegis daemon start
@@ -38,15 +56,21 @@ aegis daemon start --config /etc/aegis/config.yaml
 
 ### `aegis daemon stop`
 
-Stop the running daemon.
+Stops the running daemon.
 
 ```bash
 aegis daemon stop
+aegis daemon stop --force --timeout 10
 ```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force`, `-f` | `false` | Force termination if graceful shutdown fails. |
+| `--timeout <seconds>`, `-t` | `30` | Graceful shutdown timeout in seconds. |
 
 ### `aegis daemon status`
 
-Show daemon status, version, uptime, and connected dependency health.
+Checks whether the daemon is running and whether its HTTP health probe succeeds.
 
 ```bash
 aegis daemon status
@@ -54,15 +78,16 @@ aegis daemon status
 
 ### `aegis daemon install`
 
-Install the daemon as a system service (systemd).
+Installs the daemon as a system service.
 
 ```bash
 aegis daemon install
+aegis daemon install --binary-path /usr/local/bin/aegis --user aegis
 ```
 
 ### `aegis daemon uninstall`
 
-Remove the system service installation.
+Removes the system-service installation.
 
 ```bash
 aegis daemon uninstall
@@ -70,143 +95,148 @@ aegis daemon uninstall
 
 ---
 
-## Stack Lifecycle Commands
-
-Manage local stack setup, start/stop, restart, upgrade, and full uninstall.
+## Stack Lifecycle
 
 ### `aegis init`
 
-Interactive setup wizard for first-time installation. Downloads stack files, configures node settings, starts Docker Compose services, verifies health, and optionally deploys example agents.
+Runs the guided setup wizard. It prepares stack files, configures the node, starts Docker Compose services, verifies health, and can optionally load smoke-test agents. The wizard now defers database migrations to `aegis update` after the daemon is running.
 
 ```bash
 aegis init
 aegis init --yes
-aegis init --dir ~/.aegis --host 127.0.0.1 --port 8088
+aegis init --dir ~/.aegis --tag latest
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--yes` | `false` | Accept defaults and skip interactive prompts. |
-| `--manual` | `false` | Do not auto-install prerequisites; print manual instructions instead. |
+| `--manual` | `false` | Print prerequisite instructions instead of auto-installing them. |
 | `--dir <path>` | `~/.aegis` | Working directory for stack files. |
 | `--host <host>` | `127.0.0.1` | Host used for post-start health checks. |
 | `--port <port>` | `8088` | Port used for post-start health checks. |
+| `--tag <tag>` | binary version | Image tag for AEGIS-owned Docker images. |
 
 ### `aegis up`
 
-Start the local stack. If no stack exists in the target directory, this runs `aegis init` automatically first.
+Starts the local stack. If the stack directory does not exist yet, this command runs `aegis init` automatically first.
 
 ```bash
 aegis up
-aegis up --yes
-aegis up --dir ~/.aegis --host 127.0.0.1 --port 8088
+aegis up --profile temporal
+aegis up --tag latest
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--dir <path>` | `~/.aegis` | Stack working directory. |
-| `--host <host>` | `127.0.0.1` | API host shown after startup / used by init fallback. |
-| `--port <port>` | `8088` | API port shown after startup / used by init fallback. |
-| `--yes` | `false` | Non-interactive defaults when `aegis init` is triggered automatically. |
+| `--host <host>` | `127.0.0.1` | Host shown after startup and used by `aegis init` fallback. |
+| `--port <port>` | `8088` | Port shown after startup and used by `aegis init` fallback. |
+| `--yes` | `false` | Non-interactive defaults if `aegis init` is triggered automatically. |
+| `--tag <tag>` | config or binary version | Image tag to refresh into the stack before startup. |
+| `--profile <name>` | all services | Start only services in the selected Compose profile when the stack already exists. |
 
 ### `aegis down`
 
-Stop the local Docker Compose stack.
+Stops the local Docker Compose stack.
 
 ```bash
 aegis down
-aegis down --volumes
-aegis down --dir ~/.aegis
+aegis down --profile temporal
+aegis down --volumes --yes
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--dir <path>` | `~/.aegis` | Stack working directory. |
-| `--volumes` | `false` | Also remove named volumes (destructive: removes persisted data). |
+| `--profile <name>` | all services | Stop only services in the selected Compose profile. |
+| `--volumes` | `false` | Remove named volumes as part of teardown. |
+| `--yes`, `-y` | `false` | Skip the destructive-action confirmation prompt. |
 
 ### `aegis restart`
 
-Restart local Docker Compose services.
+Restarts the local Docker Compose services.
 
 ```bash
 aegis restart
 aegis restart --profile temporal
-aegis restart --dir ~/.aegis
 ```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--dir <path>` | `~/.aegis` | Stack working directory. |
-| `--profile <name>` | (all services) | Restart only services in the specified compose profile. |
 
 ### `aegis update`
 
-Upgrade the stack by pulling latest images, restarting services, running DB migrations, and re-deploying built-in templates (agents/workflows).
+Refreshes the stack: pull images, restart services, run database migrations, and optionally re-deploy built-in agents and workflows.
 
 ```bash
 aegis update
 aegis update --dry-run
-aegis update --skip-pull --skip-restart
-aegis update --skip-migrations --skip-builtins
+aegis update --skip-pull --skip-restart --skip-migrations
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--dir <path>` | `~/.aegis` | Stack working directory. |
 | `--skip-pull` | `false` | Skip `docker compose pull`. |
-| `--skip-restart` | `false` | Skip stack restart (`docker compose up -d --wait`). |
+| `--skip-restart` | `false` | Skip service restart. |
 | `--skip-migrations` | `false` | Skip database migrations. |
-| `--skip-builtins` | `false` | Skip re-deploying built-in templates (judges, generators, etc). |
-| `--dry-run` | `false` | Show planned actions without making changes. |
+| `--skip-builtins` | `false` | Skip built-in agent/workflow refresh. |
+| `--dry-run` | `false` | Preview actions without making changes. |
+| `--tag <tag>` | from config or binary version | Override the image tag used during refresh. |
 
-### `aegis uninstall`
+### `aegis status`
 
-Stop containers, remove volumes, and delete the AEGIS working directory.
+Reports health for the local stack by default. With `--cluster`, it queries the cluster controller for peer status and probes each node's orchestrator health.
 
 ```bash
-aegis uninstall
-aegis uninstall --yes
-aegis uninstall --dir ~/.aegis
+aegis status
+aegis status --cluster
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dir <path>` | `~/.aegis` | AEGIS working directory to remove. |
-| `--yes`, `-y` | `false` | Skip confirmation prompt. |
+| `--dir <path>` | `~/.aegis` | Stack working directory used for local status checks. |
+| `--cluster` | `false` | Report cluster node health instead of local Compose status. |
 
-`aegis uninstall` removes local stack data.  
-`aegis daemon uninstall` only removes the system service registration.
+### `aegis uninstall`
+
+Stops the local stack, removes volumes, and deletes the working directory.
+
+```bash
+aegis uninstall
+aegis uninstall --yes
+```
+
+`aegis uninstall` removes the local stack data directory.  
+`aegis daemon uninstall` only removes the daemon service registration.
 
 ---
 
 ## `aegis agent`
 
-Manage agent definitions.
-
-### `aegis agent deploy <manifest>`
-
-Deploy or update an agent from a manifest file. Re-deploying an agent with the same `metadata.name` updates the manifest in-place.
-
-```bash
-aegis agent deploy ./agent.yaml
-aegis agent deploy ./agent.yaml --validate-only
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--validate-only` | `false` | Parse and validate the manifest without persisting it. |
-
 ### `aegis agent list`
 
-List all deployed agents.
+Lists deployed agents.
 
 ```bash
 aegis agent list
 ```
 
+### `aegis agent deploy <manifest>`
+
+Deploys an agent manifest. By default this fails if an agent with the same name and version already exists; use `--force` to overwrite that exact pair.
+
+```bash
+aegis agent deploy ./agent.yaml
+aegis agent deploy ./agent.yaml --validate-only
+aegis agent deploy ./agent.yaml --force
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--validate-only` | `false` | Parse and validate without deploying. |
+| `--force` | `false` | Overwrite an existing agent with the same name and version. |
+
 ### `aegis agent show <AGENT_ID>`
 
-Show the full stored manifest for an agent. `<AGENT_ID>` must be a UUID.
+Prints the stored manifest as YAML. This subcommand expects a UUID.
 
 ```bash
 aegis agent show a1b2c3d4-0000-0000-0000-000000000001
@@ -214,40 +244,32 @@ aegis agent show a1b2c3d4-0000-0000-0000-000000000001
 
 ### `aegis agent remove <AGENT_ID>`
 
-Remove a deployed agent. Running executions are not affected.
+Removes a deployed agent by UUID.
 
 ```bash
 aegis agent remove a1b2c3d4-0000-0000-0000-000000000001
 ```
 
-### `aegis agent logs <AGENT_ID>`
+### `aegis agent logs <AGENT_ID_OR_NAME>`
 
-Stream event log output for a specific agent.
+Streams logs for an agent. The CLI accepts either a UUID or an agent name and resolves names through the daemon.
 
 ```bash
-aegis agent logs a1b2c3d4-0000-0000-0000-000000000001
+aegis agent logs python-coder
 aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --follow
-aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --errors
-aegis agent logs a1b2c3d4-0000-0000-0000-000000000001 --verbose
+aegis agent logs python-coder --errors
+aegis agent logs python-coder --verbose
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--follow` | `false` | Tail log output. |
-| `--errors` | `false` | Show error-level events only. |
-| `--verbose` | `false` | Include LLM prompt and response content. |
+| `--follow`, `-f` | `false` | Tail log output. |
+| `--errors`, `-e` | `false` | Show only error entries. |
+| `--verbose`, `-v` | `false` | Include verbose log output such as prompt details. |
 
-### `aegis agent generate <input>`
+### `aegis agent generate --input <text>`
 
-Generate and deploy an agent from a natural-language prompt.  
-This command executes the `agent-creator-agent` generator agent. If that agent is not yet deployed, the CLI auto-deploys it from the built-in template first.
-The CLI also auto-deploys generation judges (`agent-generator-judge`, `workflow-generator-judge`) so generation runs with semantic validation in the iterative 100monkeys loop.
-Bundled templates are materialized to disk automatically:
-- default path: `~/.aegis/templates/agents/*.yaml`
-- custom config path: `<config-dir>/templates/agents/*.yaml`
-Generated manifests are also written to disk for inspection/versioning:
-- default path: `~/.aegis/generated/agents/<agent-name>/<version>.yaml`
-- if daemon uses a custom config path, files are written under that config directory's `generated/` tree.
+Runs the built-in agent generator flow and deploys the generated manifest.
 
 ```bash
 aegis agent generate --input "Create an agent that reviews pull requests for security issues."
@@ -256,34 +278,38 @@ aegis agent generate --input "Create a SQL migration reviewer agent" --follow
 
 | Flag | Default | Description |
 |---|---|---|
-| `--follow` | `false` | Stream generation execution logs until completion. |
+| `--input <text>`, `-i` | required | Natural-language intent for the generator. |
+| `--follow`, `-f` | `false` | Stream generator execution logs. |
 
 ---
 
 ## `aegis task`
 
-Manage agent task executions.
-
 ### `aegis task execute <AGENT>`
 
-Start a single agent execution. `<AGENT>` may be an agent UUID or a path to a manifest file.
+Starts an execution for an agent. `<AGENT>` may be a UUID, a deployed agent name, or a path to a manifest file. If you pass a manifest path, the CLI deploys it first and then executes it.
 
 ```bash
-aegis task execute a1b2c3d4-0000-0000-0000-000000000001
+aegis task execute python-coder
 aegis task execute ./agent.yaml
-aegis task execute a1b2c3d4-0000-0000-0000-000000000001 --input '{"task": "Write a primality check."}'
-aegis task execute a1b2c3d4-0000-0000-0000-000000000001 --input '{"task": "..."}' --follow
+aegis task execute python-coder --input '{"task": "Write a primality check."}'
+aegis task execute python-coder --context '{"repo_url":"https://github.com/example/service","branch":"main"}'
+aegis task execute python-coder --input @input.json --follow
+aegis task execute python-coder --input @input.json --context @context.yaml --follow
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--input <json>` | `null` | JSON input string passed to `bootstrap.py` via `task.input`. Accepts an inline JSON string or `@file.json` to read from a file. |
-| `--wait` | `false` | Block until the execution completes. |
-| `--follow` | `false` | Stream iteration events to stdout (implies `--wait`). |
+| `--input <value>`, `-i` | empty object | Inline JSON/YAML, `@file`, or a plain string. |
+| `--context <dict>` | none | Context override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object. |
+| `--wait`, `-w` | `false` | Block until the execution completes. |
+| `--follow`, `-f` | `false` | Stream execution logs. |
+
+`--context` injects top-level execution variables for that run only. The value must be a JSON or YAML object. Reserved built-in execution keys are rejected by the orchestrator.
 
 ### `aegis task status <EXECUTION_ID>`
 
-Show the current status of an execution.
+Shows current execution status.
 
 ```bash
 aegis task status a1b2c3d4-1111-0000-0000-000000000001
@@ -291,7 +317,7 @@ aegis task status a1b2c3d4-1111-0000-0000-000000000001
 
 ### `aegis task logs <EXECUTION_ID>`
 
-Stream or print iteration logs.
+Streams or prints execution logs.
 
 ```bash
 aegis task logs a1b2c3d4-1111-0000-0000-000000000001
@@ -300,28 +326,20 @@ aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --errors-only
 aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --verbose
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--follow` | `false` | Tail log output until the execution ends. |
-| `--errors-only` | `false` | Suppress non-error output lines. |
-| `--verbose` | `false` | Include LLM prompt and response text in output. |
-
 ### `aegis task cancel <EXECUTION_ID>`
 
-Cancel a running execution.
+Cancels a running execution.
 
 ```bash
 aegis task cancel a1b2c3d4-1111-0000-0000-000000000001
 aegis task cancel a1b2c3d4-1111-0000-0000-000000000001 --force
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--force` | `false` | Kill without waiting for graceful shutdown. |
+The CLI accepts `--force`, but the current daemon path cancels through the standard execution-cancel API rather than a separate force-kill path.
 
 ### `aegis task remove <EXECUTION_ID>`
 
-Delete an execution record from the database.
+Removes an execution record.
 
 ```bash
 aegis task remove a1b2c3d4-1111-0000-0000-000000000001
@@ -329,7 +347,7 @@ aegis task remove a1b2c3d4-1111-0000-0000-000000000001
 
 ### `aegis task list`
 
-List recent executions.
+Lists recent executions.
 
 ```bash
 aegis task list
@@ -337,22 +355,13 @@ aegis task list --agent-id a1b2c3d4-0000-0000-0000-000000000001
 aegis task list --limit 50
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--agent-id <uuid>` | (all agents) | Filter executions by agent UUID. |
-| `--limit <n>` | `20` | Maximum number of results to return. |
-
----
-
 ---
 
 ## `aegis workflow`
 
-Manage workflow definitions.
-
 ### `aegis workflow validate <file>`
 
-Parse and validate a workflow manifest without deploying it.
+Validates a workflow manifest locally.
 
 ```bash
 aegis workflow validate ./pipeline.yaml
@@ -360,7 +369,7 @@ aegis workflow validate ./pipeline.yaml
 
 ### `aegis workflow deploy <file>`
 
-Deploy a workflow to the registry.
+Deploys a workflow through the daemon after local parsing.
 
 ```bash
 aegis workflow deploy ./pipeline.yaml
@@ -368,24 +377,29 @@ aegis workflow deploy ./pipeline.yaml
 
 ### `aegis workflow run <name>`
 
-Start a workflow execution.
+Runs a registered workflow.
 
 ```bash
 aegis workflow run dev-pipeline
 aegis workflow run dev-pipeline --input '{"task": "..."}'
-aegis workflow run dev-pipeline --input '{"task": "..."}' --follow
-aegis workflow run dev-pipeline --param branch=main --param env=staging
+aegis workflow run dev-pipeline --input @input.yaml
+aegis workflow run dev-pipeline --blackboard '{"review_threshold":0.9,"deploy_env":"staging"}'
+aegis workflow run dev-pipeline --blackboard @blackboard.yaml
+aegis workflow run dev-pipeline --param branch=main --param env=staging --follow
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--input <json>` | `null` | JSON input available as Blackboard context. |
-| `--param <key=value>` | — | Individual named parameters. May be repeated. |
-| `--follow` | `false` | Stream state-transition events to stdout. |
+| `--input <json>`, `-i` | empty object | Workflow input as inline JSON/YAML or `@file`. Must deserialize to an object. |
+| `--param <key=value>`, `-p` | none | Individual workflow input values merged into the input object. Values are parsed as JSON when possible, otherwise treated as strings. |
+| `--blackboard <dict>` | none | Startup blackboard override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object. |
+| `--follow`, `-f` | `false` | Stream workflow logs after the execution starts. |
+
+`--blackboard` merges on top of `spec.context` for that execution. Reserved workflow keys, including `workflow`, are rejected. The merged Blackboard becomes the live template context inside the Temporal worker and is forwarded into downstream Agent-state execution context.
 
 ### `aegis workflow list`
 
-List all registered workflows.
+Lists registered workflows.
 
 ```bash
 aegis workflow list
@@ -393,119 +407,73 @@ aegis workflow list --long
 aegis workflow list --label team=platform
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--long` | `false` | Show detailed information (states, labels). |
-| `--label <key=value>` | — | Filter by label. May be repeated. |
-
 ### `aegis workflow executions list`
 
-List recent workflow executions.
+Lists recent workflow executions.
 
 ```bash
 aegis workflow executions list
 aegis workflow executions list --workflow-id a1b2c3d4-0000-0000-0000-000000000001
-aegis workflow executions list --limit 50
-aegis workflow executions list --long
+aegis workflow executions list --limit 50 --long
 ```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--workflow-id <uuid>` | (all workflows) | Filter executions by workflow UUID. |
-| `--limit <n>` | `20` | Maximum number of results to return. |
-| `--long` | `false` | Show detailed information (current state, timestamps). |
 
 ### `aegis workflow describe <name>`
 
-Show the full YAML definition of a deployed workflow.
+Prints a workflow definition as YAML.
 
 ```bash
 aegis workflow describe dev-pipeline
-aegis workflow describe dev-pipeline --output json
 ```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--output <format>` | `yaml` | Output format: `yaml` or `json`. |
 
 ### `aegis workflow logs <EXECUTION_ID>`
 
-Stream or print workflow execution logs.
+Prints or streams workflow execution logs.
 
 ```bash
 aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001
 aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001 --follow
 aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001 --transitions
+aegis workflow logs a1b2c3d4-2222-0000-0000-000000000001 --verbose
 ```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--follow` | `false` | Tail log output until execution ends. |
-| `--transitions` | `false` | Show only state-transition events. |
 
 ### `aegis workflow delete <name>`
 
-Delete a workflow from the registry.
+Deletes a workflow from the registry.
 
 ```bash
 aegis workflow delete dev-pipeline
 aegis workflow delete dev-pipeline --yes
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--yes` | `false` | Skip the confirmation prompt. |
+### `aegis workflow generate --input <text>`
 
-### `aegis workflow generate <input>`
-
-Generate and register a workflow from a natural-language prompt.  
-This command runs the built-in `builtin-workflow-generator` workflow:
-1. Discovers currently deployed agents.
-2. Generates missing agents through the `agent-creator-agent` when needed.
-3. Generates and registers the final workflow through `workflow-creator-validator-agent`.
-
-Generator agents/workflow are auto-deployed from built-in templates if missing.
-The CLI also auto-deploys generation judges (`agent-generator-judge`, `workflow-generator-judge`) so planner and workflow authoring states run with semantic validation in the iterative 100monkeys loop.
-Bundled templates are materialized to disk automatically:
-- default paths: `~/.aegis/templates/agents/*.yaml` and `~/.aegis/templates/workflows/*.yaml`
-- custom config path: `<config-dir>/templates/...`
-Generated workflow manifests are also written to disk for inspection/versioning:
-- default path: `~/.aegis/generated/workflows/<workflow-name>/<version>.yaml`
-- if daemon uses a custom config path, files are written under that config directory's `generated/` tree.
+Runs the built-in workflow generator flow and deploys the resulting workflow.
 
 ```bash
 aegis workflow generate --input "Create a CI/CD workflow: build, test, and deploy a Rust service."
 aegis workflow generate --input "Create a human-approval gated release workflow" --follow
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--follow` | `false` | Stream generation execution logs until completion. |
-
----
-
 ---
 
 ## `aegis node`
 
-Manage AEGIS cluster nodes and multi-node topology. See the [Multi-Node Deployment](/docs/deployment/multi-node) guide for architectural details.
+Use these commands for multi-node bootstrap and peer inspection.
 
 ### `aegis node init`
 
-Initialize a new node keypair for cluster identity. Ed25519 keypairs are stored at the path specified in `spec.cluster.node_keypair_path`.
+Generates the node identity Ed25519 keypair at the configured keypair path.
 
 ```bash
 aegis node init
 aegis node init --dev
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--dev` | `false` | Generate a development keypair and print the public key to stdout. |
+The current implementation parses `--dev` but does not change the generated output; treat it as reserved for future development defaults.
 
 ### `aegis node join <endpoint>`
 
-Join an existing AEGIS cluster by attesting to a controller node.
+Runs the controller attestation and challenge handshake.
 
 ```bash
 aegis node join https://aegis-controller.internal:50056
@@ -513,7 +481,7 @@ aegis node join https://aegis-controller.internal:50056
 
 ### `aegis node leave`
 
-Gracefully deregister the current node from the cluster before shutdown.
+This command name exists, but the current single-node baseline returns an error instead of performing deregistration.
 
 ```bash
 aegis node leave
@@ -521,39 +489,30 @@ aegis node leave
 
 ### `aegis node peers`
 
-List all registered peers in the cluster. Only available on nodes with the `controller` or `hybrid` cluster role.
+Lists cluster peers known to the configured controller.
 
 ```bash
 aegis node peers
-aegis node peers --status active
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--status <status>` | (all) | Filter peers by status: `active`, `draining`, or `unhealthy`. |
+No CLI filters are currently implemented for this command.
 
 ---
 
 ## `aegis config`
 
-Utility commands for the daemon configuration file.
-
 ### `aegis config show`
 
-Print the resolved daemon configuration, with `env:` variables expanded and secrets redacted.
+Prints the resolved configuration and can also show discovery paths.
 
 ```bash
 aegis config show
 aegis config show --paths
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--paths` | `false` | Also show the config file search paths that were checked. |
+### `aegis config validate [file]`
 
-### `aegis config validate`
-
-Validate an `aegis-config.yaml` file without starting the daemon.
+Validates a configuration file. If no file is provided, the CLI uses normal config discovery.
 
 ```bash
 aegis config validate
@@ -562,7 +521,7 @@ aegis config validate ./my-config.yaml
 
 ### `aegis config generate`
 
-Generate a commented sample `aegis-config.yaml`.
+Generates a sample config file.
 
 ```bash
 aegis config generate
@@ -572,19 +531,11 @@ aegis config generate --examples
 
 | Flag | Default | Description |
 |---|---|---|
-| `--output <path>` | `./aegis-config.yaml` | Output file path. |
-| `--examples` | `false` | Include inline comments and example values. |
+| `--output <path>`, `-o` | `./aegis-config.yaml` | Output path. |
+| `--examples` | `false` | Use the annotated template with example values. |
 
 ---
 
 ## Exit Codes
 
-| Code | Meaning |
-|---|---|
-| `0` | Success |
-| `1` | Resource not found |
-| `2` | Validation error (manifest, config) |
-| `3` | Permission denied (IAM role insufficient) |
-| `4` | Resource conflict (e.g., agent name already exists) |
-| `5` | Connection error (daemon unreachable) |
-| `10` | Unhandled internal error |
+The CLI does not currently publish a stable command-by-command exit code contract beyond standard success/failure process behavior. For automation, prefer parsing command output and treating a non-zero exit status as failure.

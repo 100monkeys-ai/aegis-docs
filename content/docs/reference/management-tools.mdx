@@ -7,6 +7,8 @@ AEGIS provides a suite of built-in management tools under the `aegis.*` namespac
 
 Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact directly with the Orchestrator's internal registry and services.
 
+These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
+
 ## Versioning and Safety
 
 All creation and update tools in the management suite respect AEGIS's strict versioning policy. By default, attempting to overwrite an existing name and version pair will be rejected.
@@ -192,7 +194,7 @@ Retrieves the execution event log for a workflow run, returning state transition
 }
 ```
 
-**CLI equivalent:**
+**Related CLI command:**
 
 ```bash
 aegis workflow logs <execution_id>

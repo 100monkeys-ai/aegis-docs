@@ -11,6 +11,36 @@ Agents do not maintain state between executions. Context is injected by the orch
 
 ---
 
+## Execution Context Overrides
+
+Direct agent executions can inject a structured dictionary of context variables at start time using `context_overrides`.
+
+- The dictionary must be a JSON or YAML object.
+- Keys are exposed as top-level template variables during prompt rendering.
+- The same normalized object is forwarded into the runtime task context so the agent receives the structured values beyond prompt interpolation.
+- Reserved built-in keys cannot be overridden. Attempts to replace fields such as `instruction`, `input`, or iteration metadata fail validation.
+
+This makes it possible to keep a reusable agent manifest while swapping execution-specific variables from a file or API call.
+
+```bash
+aegis task execute python-coder \
+  --input @input.json \
+  --context @context.yaml
+```
+
+Example `context.yaml`:
+
+```yaml
+repo_url: https://github.com/example/service
+branch: main
+review:
+  severity: high
+```
+
+If the prompt template references `{{repo_url}}` or `{{review.severity}}`, the override values win over same-named non-reserved context variables for that execution.
+
+---
+
 ## Manifest Structure
 
 All agent manifests follow a Kubernetes-style format:

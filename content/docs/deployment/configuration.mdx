@@ -534,6 +534,12 @@ smcp_gateway:
   # gRPC endpoint URL for aegis-smcp-gateway.
   url: "http://aegis-smcp-gateway:50055"
 
+# ─── AgentSkills API ─────────────────────────────────────────────────────────
+# Optional.
+agent_skills:
+  # Endpoint URL for AgentSkills API.
+  endpoint: "https://agentskills.io/api"
+
 # ─── Observability ────────────────────────────────────────────────────────────
 # Optional.
 observability:
@@ -894,6 +900,16 @@ Optional. Configures forwarding of external tool invocations to the standalone S
 | `url` | string | null | gRPC endpoint URL of `aegis-smcp-gateway` (example: `http://aegis-smcp-gateway:50055`). |
 
 If omitted, orchestrator does not forward unknown/external tools to the gateway and continues with built-in routing only.
+
+---
+
+### `spec.agent_skills`
+
+Optional. Configures the AgentSkills API endpoint.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `endpoint` | string | `"https://agentskills.io/api"` | Endpoint URL for AgentSkills API. |
 
 ---
 
