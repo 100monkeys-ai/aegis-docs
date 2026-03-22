@@ -476,7 +476,7 @@ RequirementsAI → [Human Approval] → ArchitectureAI → TesterAI → CoderAI 
 Prerequite: Clone the [aegis-examples](https://github.com/100monkeys-ai/aegis-examples) repository to access `the-forge` example workflow below.
 
 ```bash
-aegis workflow deploy ./agents/workflows/the-forge.yaml
+aegis workflow deploy ./agents/workflows/the-forge.yaml --force
 aegis workflow run the-forge --input '{"task": "Build a REST API for user authentication", "repo_url": "https://github.com/org/repo"}'
 ```
 
@@ -486,7 +486,7 @@ aegis workflow run the-forge --input '{"task": "Build a REST API for user authen
 
 ```bash
 # Deploy a workflow manifest
-aegis workflow deploy ./my-workflow.yaml
+aegis workflow deploy ./my-workflow.yaml --force
 
 # List all deployed workflows
 aegis workflow list
@@ -500,6 +500,8 @@ aegis workflow run <workflow-name> --blackboard @blackboard.yaml
 # Follow workflow logs
 aegis workflow logs <execution-id> --follow
 ```
+
+Use `--force` when you are re-deploying the same workflow name and version.
 
 For execution status and Human-state signaling, use the REST API:
 

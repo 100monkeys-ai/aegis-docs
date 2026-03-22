@@ -33,8 +33,8 @@ pkill aegis || true && \
 cargo build -p aegis-orchestrator && \
 target/debug/aegis daemon start && \
 target/debug/aegis daemon status && \
-target/debug/aegis agent deploy ./agents/echo/agent.yaml && \
-target/debug/aegis task execute echo --input "Hello Daemon" && \
+target/debug/aegis agent deploy ./agents/echo/agent.yaml --output json && \
+target/debug/aegis task execute echo --input "Hello Daemon" --output json && \
 target/debug/aegis agent logs echo
 ```
 
@@ -73,12 +73,12 @@ All demo manifests live under `agents/` in `aegis-examples`. Start the daemon fi
 target/debug/aegis daemon start
 target/debug/aegis daemon status
 
-target/debug/aegis agent deploy ./agents/echo/agent.yaml
-target/debug/aegis agent deploy ./agents/greeter/agent.yaml
-target/debug/aegis agent deploy ./agents/coder/agent.yaml
-target/debug/aegis agent deploy ./agents/debater/agent.yaml
-target/debug/aegis agent deploy ./agents/poet/agent.yaml
-target/debug/aegis agent deploy ./agents/piglatin/agent.yaml
+target/debug/aegis agent deploy ./agents/echo/agent.yaml --output json
+target/debug/aegis agent deploy ./agents/greeter/agent.yaml --output json
+target/debug/aegis agent deploy ./agents/coder/agent.yaml --output json
+target/debug/aegis agent deploy ./agents/debater/agent.yaml --output json
+target/debug/aegis agent deploy ./agents/poet/agent.yaml --output json
+target/debug/aegis agent deploy ./agents/piglatin/agent.yaml --output json
 
 target/debug/aegis agent list
 ```
@@ -87,18 +87,18 @@ target/debug/aegis agent list
 
 | Agent | Command | Expected behaviour |
 |---|---|---|
-| `echo` | `target/debug/aegis task execute echo --input "Hello Daemon"` | Echoes the input verbatim |
-| `greeter` | `target/debug/aegis task execute greeter --input "Jeshua"` | Returns a personalised greeting |
-| `coder` | `target/debug/aegis task execute coder --input "What are the advantages of using this language?"` | Provides Rust code examples & explanations |
-| `debater` | `target/debug/aegis task execute debater --input "Sushi is delicious."` | Returns a counter-argument |
-| `poet` | `target/debug/aegis task execute poet --input "Tell me about the stars"` | Generates creative, poetic text |
-| `piglatin` | `target/debug/aegis task execute piglatin --input "How are you doing today my friend?"` | Translates the input to Pig Latin |
+| `echo` | `target/debug/aegis task execute echo --input "Hello Daemon" --output json` | Echoes the input verbatim |
+| `greeter` | `target/debug/aegis task execute greeter --input "Jeshua" --output json` | Returns a personalised greeting |
+| `coder` | `target/debug/aegis task execute coder --input "What are the advantages of using this language?" --output json` | Provides Rust code examples & explanations |
+| `debater` | `target/debug/aegis task execute debater --input "Sushi is delicious." --output json` | Returns a counter-argument |
+| `poet` | `target/debug/aegis task execute poet --input "Tell me about the stars" --output json` | Generates creative, poetic text |
+| `piglatin` | `target/debug/aegis task execute piglatin --input "How are you doing today my friend?" --output json` | Translates the input to Pig Latin |
 
 View logs per agent and list all executions:
 
 ```bash
 target/debug/aegis agent logs <agent-name>
-target/debug/aegis task list
+target/debug/aegis task list --output json
 target/debug/aegis task logs <execution-id>
 ```
 
@@ -126,7 +126,7 @@ for agent in echo greeter coder debater poet piglatin; do
     target/debug/aegis agent deploy ./agents/$agent/agent.yaml
 done
 
-target/debug/aegis agent list
+target/debug/aegis agent list --output json
 
 target/debug/aegis task execute echo    --input "Hello Daemon"
 target/debug/aegis task execute greeter --input "Jeshua"
@@ -140,7 +140,7 @@ for agent in echo greeter coder debater poet piglatin; do
     target/debug/aegis agent logs $agent | head -20
 done
 
-target/debug/aegis task list
+target/debug/aegis task list --output json
 
 echo "=== Test Complete ==="
 ```
@@ -198,7 +198,7 @@ ps aux | grep aegis
 ```bash
 target/debug/aegis daemon stop
 
-for agent_id in $(target/debug/aegis agent list | grep -oP '^[a-f0-9-]{36}'); do
+for agent_id in $(target/debug/aegis agent list --output json | jq -r '.[].id'); do
     target/debug/aegis agent remove $agent_id
 done
 

@@ -137,9 +137,11 @@ spec:
 Deploy and run it:
 
 ```bash
-aegis workflow deploy ./build-pipeline.yaml
+aegis workflow deploy ./build-pipeline.yaml --force
 aegis workflow run build-pipeline --input '{"task": "Write a Rust CLI tool that counts lines in a file"}'
 ```
+
+Use `--force` when you are replacing an existing pipeline definition with the same name and version.
 
 When `BUILD` fails, the exit code triggers the `FIX_ERRORS` state. The agent receives the compiler errors via `{{state.feedback}}` and re-edits the files in `/workspace`. The workflow loops back to `BUILD` automatically.
 

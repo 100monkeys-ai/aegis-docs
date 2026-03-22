@@ -60,9 +60,12 @@ In Zaru, a **session** (a single chat conversation) maps directly to a **root `E
 
 A user's `ZaruTier` determines their allocated resources and tool capabilities. The `ZaruAuthMiddleware` intercepts the tier claim from the JWT and automatically maps it to a pre-configured SMCP `SecurityContext`.
 
+The `zaru-mcp-server` bridge does not hardcode AEGIS tools locally. It discovers the orchestrator's current tool inventory at runtime and then exposes only the tools allowed by the user's tier-derived `SecurityContext`.
+
 For example:
 - **Free Tier (`ZaruTier::Free`)**: Maps to a `"zaru-free"` SecurityContext. It may enforce stricter rate limits and is structurally prohibited from mounting persistent, stateful `Volume`s.
-- **Enterprise Tier**: Maps to custom SecurityContexts with elevated resource limits and access to specialized internal APIs.
+- **Pro Tier (`ZaruTier::Pro`)**: Maps to `"zaru-pro"` and is intended for full AEGIS workflow and execution management through MCP.
+- **Enterprise Tier (`ZaruTier::Enterprise`)**: Maps to `"zaru-enterprise"` and is intended for the full orchestrator-discovered AEGIS tool surface.
 
 Because the system enforces a strict "ceiling rule" during Swarm creation, a child agent can never be spawned with a broader `SecurityContext` than its parent, ensuring tier restrictions apply collectively across the entire agent swarm.
 

@@ -9,6 +9,8 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, and `aegis.workflow.logs`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. Workflow execution signaling remains API-only today.
+
 ## Versioning and Safety
 
 All creation and update tools in the management suite respect AEGIS's strict versioning policy. By default, attempting to overwrite an existing name and version pair will be rejected.
@@ -88,6 +90,8 @@ Lists all currently deployed agents in the registry.
 
 Performs strict deterministic and semantic validation on a workflow before registering it. This is the preferred way to deploy complex workflows.
 
+This is the MCP equivalent of `aegis workflow deploy`; set `force: true` when you intentionally want to overwrite an existing workflow with the same name and version.
+
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `manifest_yaml` | `string` | ✅ | — | The full Workflow manifest YAML. |
@@ -138,8 +142,43 @@ Executes a registered workflow by name, passing an optional input payload to the
 |-----------|------|----------|---------|-------------|
 | `name` | `string` | ✅ | — | The name of the workflow to execute. |
 | `input` | `object` | ❌ | `{}` | Key-value input passed to the workflow's initial blackboard state. |
+| `blackboard` | `object` | ❌ | — | Additional blackboard values merged into the workflow execution before startup. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`.
+
+### `aegis.workflow.validate`
+
+Parses and deterministically validates a workflow manifest before registration.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | ✅ | — | The full Workflow manifest YAML to validate. |
+
+**Returns:** A JSON object with `valid`, deterministic validation details, and basic workflow metadata when parsing succeeds.
+
+### `aegis.workflow.executions.list`
+
+Lists workflow executions for the current tenant, optionally filtered to a single workflow.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `workflow_id` | `string` | ❌ | — | Optional workflow UUID or workflow name to filter by. |
+| `limit` | `integer` | ❌ | `20` | Maximum number of execution results to return. |
+| `offset` | `integer` | ❌ | `0` | Pagination offset. |
+| `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
+
+**Returns:** A paginated list of execution summaries including `execution_id`, `workflow_id`, `status`, `current_state`, and timestamps.
+
+### `aegis.workflow.executions.get`
+
+Fetches a single workflow execution with its current status and persisted execution context.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | Workflow execution UUID to inspect. |
+| `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
+
+**Returns:** A workflow execution object including `status`, `input`, `blackboard`, `state_outputs`, and timestamps.
 
 ### `aegis.workflow.generate`
 
@@ -247,6 +286,50 @@ Lists recent task executions, optionally filtered by agent.
 | `limit` | `integer` | ❌ | `20` | Maximum number of results to return. |
 
 **Returns:** A list of execution summaries including `id`, `agent_id`, `status`, and `started_at`.
+
+### `aegis.task.logs`
+
+Retrieves the execution event log for an agent task, returning chronological execution events. This is a read-only query, so `skip_judge` defaults to `true`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the task execution to retrieve logs for. |
+| `limit` | `number` | ❌ | `50` | Maximum number of events to return, capped at 200. |
+| `offset` | `number` | ❌ | `0` | Number of events to skip for pagination. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.task.logs",
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "status": "completed",
+  "events": [
+    {
+      "sequence": 1,
+      "event_type": "ExecutionStarted",
+      "payload": { "agent_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301", "started_at": "2026-03-14T10:00:00Z" },
+      "recorded_at": "2026-03-14T10:00:00Z"
+    },
+    {
+      "sequence": 2,
+      "event_type": "ExecutionOutputReceived",
+      "payload": { "chunk": "..." },
+      "recorded_at": "2026-03-14T10:00:01Z"
+    }
+  ],
+  "total": 2,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**Related CLI command:**
+
+```bash
+aegis task logs <execution_id>
+aegis task logs <execution_id> --follow        # stream events live
+```
 
 ### `aegis.task.cancel`
 

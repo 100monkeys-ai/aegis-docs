@@ -62,6 +62,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.task.execute` | `false` | Execution trigger — spawns an agent execution |
 | `aegis.task.status` | `true` | Read-only execution status query |
 | `aegis.task.list` | `true` | Read-only execution listing |
+| `aegis.task.logs` | `true` | Read-only execution log query |
 | `aegis.workflow.logs` | `true` | Read-only execution log query |
 | `aegis.task.cancel` | `false` | State-mutating — terminates a running execution |
 | `aegis.task.remove` | `false` | Destructive — deletes an execution record |
@@ -110,7 +111,7 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `aegis.agent.generate`, `aegis.workflow.generate` | `input` |
 | `aegis.workflow.create`, `aegis.workflow.update` | `manifest_yaml` |
 | `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run` | `name` |
-| `aegis.workflow.logs` | `execution_id` |
+| `aegis.workflow.logs`, `aegis.task.logs` | `execution_id` |
 | `aegis.task.status`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
 | `aegis.schema.get` | `key` |
 | `aegis.schema.validate` | `kind`, `manifest_yaml` |

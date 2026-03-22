@@ -14,10 +14,27 @@ This page reflects the currently implemented `aegis` command surface and its rel
 | `aegis daemon` | `start`, `stop`, `status`, `install`, `uninstall` |
 | `aegis agent` | `deploy`, `list`, `show`, `remove`, `logs`, `generate --input ...` |
 | `aegis task` | `execute`, `status`, `logs`, `cancel`, `remove`, `list` |
-| `aegis workflow` | `validate`, `deploy`, `run`, `list`, `executions list`, `describe`, `logs`, `delete`, `generate --input ...` |
+| `aegis workflow` | `validate`, `deploy`, `deploy --force`, `run`, `list`, `executions list`, `describe`, `logs`, `delete`, `generate --input ...` |
 | `aegis node` | `init`, `join`, `leave`, `peers` |
 | `aegis config` | `show`, `validate`, `generate` |
 | stack lifecycle | `init`, `up`, `down`, `restart`, `status`, `update`, `uninstall` |
+
+## Output Contract
+
+Structured output is available on commands that return a bounded result set. Use `json` or `yaml` for automation and `text` or `table` for terminal-oriented use.
+
+| Command Group | Structured Output | Notes |
+|---|---|---|
+| `aegis daemon status` | Yes | Summary object suitable for JSON/YAML. |
+| `aegis agent list/show/deploy/remove` | Yes | `logs` and `generate --follow` remain stream-oriented. |
+| `aegis task execute/status/list/cancel/remove` | Yes | `logs` and `--follow` modes remain stream-oriented. |
+| `aegis workflow validate/deploy/deploy --force/run/list/executions list/describe/delete` | Yes | `logs` and `generate --follow` remain stream-oriented. |
+| `aegis node init/join/peers` | Yes | Finite bootstrap and inspection results. |
+| `aegis config show/validate` | Yes | `config generate` uses `--out <path>` instead of `--output`. |
+| `aegis status` | Yes | Local and cluster status both return summaries. |
+| `aegis update` | Yes | Returns a bounded refresh summary. |
+| `aegis init`, `aegis up`, `aegis down`, `aegis restart`, `aegis uninstall` | Mixed | Scriptable in non-interactive mode; interactive or teardown progress remains human-oriented. |
+| `aegis agent logs`, `aegis task logs`, `aegis workflow logs` | No | These are streaming commands and do not use the generic renderer. |
 
 ---
 
@@ -31,21 +48,26 @@ Only part of the CLI has a direct MCP management-tool equivalent today. Local st
 | `aegis agent list` | `aegis.agent.list` | List all deployed agents |
 | `aegis agent deploy` | `aegis.agent.create` | Deploy a new agent |
 | `aegis agent deploy --force` | `aegis.agent.update` | Overwrite an existing name+version pair |
-| `aegis agent show <uuid>` | `aegis.agent.export` | Export agent manifest as YAML |
+| `aegis agent show <uuid>` | `aegis.agent.export` | Export agent manifest as a structured document |
 | `aegis agent remove <id>` | `aegis.agent.delete` | Permanently remove an agent |
 | `aegis agent generate --input ...` | `aegis.agent.generate` | Natural language agent authoring loop |
 | **Workflow Management** | | |
 | `aegis workflow list` | `aegis.workflow.list` | List all registered workflows |
 | `aegis workflow deploy` | `aegis.workflow.create` | Validate and register a workflow |
-| `aegis workflow describe <name>` | `aegis.workflow.export` | Export workflow manifest as YAML |
+| `aegis workflow deploy --force` | `aegis.workflow.create` | Validate and overwrite an existing name+version pair |
+| `aegis workflow validate` | `aegis.workflow.validate` | Parse and deterministically validate a workflow manifest |
+| `aegis workflow describe <name>` | `aegis.workflow.export` | Export workflow manifest as a structured document |
 | `aegis workflow delete <name>` | `aegis.workflow.delete` | Remove a workflow from registry |
 | `aegis workflow run <name>` | `aegis.workflow.run` | Execute a registered workflow |
+| `aegis workflow executions list` | `aegis.workflow.executions.list` | List workflow executions with optional workflow filtering |
+| workflow execution status/detail | `aegis.workflow.executions.get` | Fetch a single workflow execution, including status and blackboard state |
 | `aegis workflow generate --input ...` | `aegis.workflow.generate` | Natural language workflow authoring loop |
 | `aegis workflow logs <execution_id>` | `aegis.workflow.logs` | Retrieve workflow execution event log |
 | **Task Management** | | |
 | `aegis task execute <agent>` | `aegis.task.execute` | Execute an agent task |
 | `aegis task status <execution_id>` | `aegis.task.status` | Check execution progress and outcome |
 | `aegis task list` | `aegis.task.list` | List recent task executions |
+| `aegis task logs <execution_id>` | `aegis.task.logs` | Retrieve task execution event log |
 | `aegis task cancel <execution_id>` | `aegis.task.cancel` | Stop a running execution |
 | `aegis task remove <execution_id>` | `aegis.task.remove` | Delete an execution record |
 | **System Management** | | |
@@ -57,9 +79,6 @@ The CLI also exposes commands with no current MCP counterpart:
 - `aegis daemon start|stop|install|uninstall`
 - `aegis init|up|down|restart|status|update|uninstall`
 - `aegis node init|join|leave|peers`
-- `aegis workflow validate`
-- `aegis workflow executions list`
-- `aegis task logs`
 
 ---
 
@@ -73,6 +92,8 @@ The current CLI supports file-backed context dictionaries for direct execution a
 | `aegis workflow run <name>` | `--blackboard <DICT>` | Inline JSON/YAML or `@file` JSON/YAML | Must be an object; reserved workflow keys such as `workflow` are rejected |
 
 `aegis task execute --input` and `aegis workflow run --input` also accept inline JSON/YAML or `@file` values, but those flags carry primary execution/workflow input rather than top-level context overrides.
+
+For automation, prefer the CLI's structured `--output` contract on the commands above instead of parsing human-readable terminal output.
 
 ---
 
