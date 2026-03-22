@@ -19,7 +19,7 @@ event_bus:
   capacity: 1000     # ring buffer size; older events are dropped if full
 ```
 
-The channel has a ring‑buffer capacity of 1000 events. If subscribers are slow and the buffer fills, the oldest events are dropped. In Phase 1, this is acceptable because all subscribers are in-process and fast. Future persistent event streaming (e.g., Kafka) will replace this for durability.
+The channel has a ring‑buffer capacity of 1000 events. If subscribers are slow and the buffer fills, the oldest events are dropped. In Phase 1, this is acceptable because all subscribers are in-process and fast. Future persistent event streaming (e.g., Redpanda) will replace this for durability.
 
 ---
 
@@ -178,6 +178,6 @@ tokio::spawn(async move {
 
 **In-memory only**: The event bus does not persist events. If the orchestrator restarts, all in-flight events are lost. The `PostgreSQL event recorder` subscriber durably writes all events to the `domain_events` table — use this table for historical event queries.
 
-**No cross-node delivery**: Each orchestrator node has its own event bus. In multi-node deployments (future), events are not automatically shared across nodes. Cross-node event streaming via a message broker (e.g., NATS, Kafka) is planned for post-Phase 1.
+**No cross-node delivery**: Each orchestrator node has its own event bus. In multi-node deployments (future), events are not automatically shared across nodes. Cross-node event streaming via a message broker (e.g., NATS, Redpanda) is planned for post-Phase 1.
 
 **Lagged receiver**: If a subscriber's receive loop is slow and the ring buffer fills (1000 events), the subscriber receives a `RecvError::Lagged(n)` indicating `n` events were dropped. Design subscribers to be fast — offload expensive processing to background tasks.
