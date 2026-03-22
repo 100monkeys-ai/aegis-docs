@@ -130,12 +130,12 @@ llm_providers:
 
   - name: anthropic-primary
     type: anthropic
-    endpoint: "https://api.anthropic.com"
+    endpoint: "https://api.anthropic.com/v1"
     api_key: "secret:aegis-system/llm/anthropic-api-key"
     enabled: true
     models:
       - alias: smart
-        model: claude-3-5-sonnet-20241022
+        model: claude-sonnet-4-6
         capabilities: [chat, code, reasoning]
         context_window: 200000
         cost_per_1k_tokens: 0.003

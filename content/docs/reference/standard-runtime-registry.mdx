@@ -11,6 +11,37 @@ Using StandardRuntime means you never specify a Docker image directly — AEGIS 
 
 ---
 
+## Registry YAML Example
+
+The registry is stored as a single YAML document. The canonical full file lives in [aegis-orchestrator/runtime-registry.yaml](/home/theaxiom/100monkeys/aegis-orchestrator/runtime-registry.yaml).
+
+```yaml
+apiVersion: aegis.ai/v1
+kind: RuntimeRegistry
+metadata:
+  name: standard-runtime-registry
+  namespace: aegis-system
+spec:
+  registry_url: "docker.io"
+  runtimes:
+    python:
+      "3.11":
+        image: "python:3.11-slim"
+        description: "Python 3.11 with slim Debian base"
+    javascript:
+      "20":
+        image: "node:20-alpine"
+        description: "Node.js 20 with Alpine base"
+    typescript:
+      "5.1":
+        image: "node:20-alpine"
+        bootstrap_env:
+          TYPESCRIPT_VERSION: "5.1"
+        description: "TypeScript 5.1 via Node.js 20 with Alpine base; global install required"
+```
+
+---
+
 ## Runtime Matrix
 
 | Language | Version | Docker Image | Base OS | Package Manager | Status |
@@ -118,7 +149,7 @@ The orchestrator loads the registry from disk at startup via `spec.runtime.runti
 # aegis-config.yaml
 spec:
   runtime:
-    # Path to the StandardRuntime registry YAM.
+    # Path to the StandardRuntime registry YAML.
     # Default: "runtime-registry.yaml" (relative to daemon working directory)
     runtime_registry_path: "runtime-registry.yaml"
 ```
