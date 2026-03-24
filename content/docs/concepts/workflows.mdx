@@ -498,17 +498,23 @@ aegis workflow run <workflow-name> --input '{"key": "value"}'
 aegis workflow run <workflow-name> --blackboard @blackboard.yaml
 
 # Follow workflow logs
-aegis workflow logs <execution-id> --follow
+aegis workflow logs <execution-id> --follow --verbose
+aegis workflow logs <execution-id> --transitions
+
+# Inspect a running or completed execution
+aegis workflow executions get <execution-id>
 ```
 
 Use `--force` when you are re-deploying the same workflow name and version.
 
-For execution status and Human-state signaling, use the REST API:
+For execution status and Human-state signaling, use the CLI:
 
-```http
-GET /v1/workflows/executions/{execution_id}
-POST /v1/workflows/executions/{execution_id}/signal
+```bash
+aegis workflow executions get <execution-id>
+aegis workflow signal <execution-id> --response approved
 ```
+
+The underlying REST API remains available for integrations, but the CLI is the preferred operator path.
 
 See the [Workflow Manifest Reference](/docs/reference/workflow-manifest) for the complete field specification.
 See [CLI Capability Matrix](/docs/reference/cli-capability-matrix) for currently CLI-exposed workflow operations.

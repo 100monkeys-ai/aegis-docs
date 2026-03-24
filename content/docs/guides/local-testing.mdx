@@ -599,7 +599,7 @@ curl http://localhost:8088/health
 
 - Verify Handlebars template syntax: `{{STATE_NAME.output}}`
 - Confirm the state completed before the value is referenced.
-- Check workflow logs for template rendering errors.
+- Check `aegis workflow logs <EXEC_ID> --verbose` for template rendering errors and state transitions.
 
 ### Cortex methods show "not yet implemented"
 
@@ -655,7 +655,9 @@ curl http://localhost:3000/workflows
 cargo run --bin aegis -- --port 8088 workflow deploy <YAML>
 cargo run --bin aegis -- --port 8088 agent deploy <YAML>
 cargo run --bin aegis -- --port 8088 workflow run <NAME> --input '<JSON>'
-cargo run --bin aegis -- --port 8088 workflow logs <EXEC_ID> --follow
+cargo run --bin aegis -- --port 8088 workflow executions get <EXEC_ID>
+cargo run --bin aegis -- --port 8088 workflow signal <EXEC_ID> --response approved
+cargo run --bin aegis -- --port 8088 workflow logs <EXEC_ID> --follow --verbose
 ```
 
 ---

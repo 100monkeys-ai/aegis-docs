@@ -9,7 +9,7 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
-The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, and `aegis.workflow.logs`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. Workflow execution signaling remains API-only today.
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, and `aegis.workflow.logs`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`.
 
 ## Versioning and Safety
 
@@ -180,6 +180,8 @@ Fetches a single workflow execution with its current status and persisted execut
 
 **Returns:** A workflow execution object including `status`, `input`, `blackboard`, `state_outputs`, and timestamps.
 
+This is the structured execution-detail alias for `aegis.workflow.status`.
+
 ### `aegis.workflow.generate`
 
 Launches a natural language authoring loop that produces and deploys a new workflow manifest from a plain-English objective.
@@ -239,6 +241,9 @@ Retrieves the execution event log for a workflow run, returning state transition
 aegis workflow logs <execution_id>
 aegis workflow logs <execution_id> --follow        # stream events live
 aegis workflow logs <execution_id> --transitions   # state entries/exits only
+aegis workflow logs <execution_id> --verbose       # include resolved workflow metadata
+aegis workflow executions get <execution_id>
+aegis workflow signal <execution_id> --response approved
 ```
 
 ### `aegis.workflow.list`

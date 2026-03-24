@@ -149,8 +149,9 @@ aegis workflow deploy ./aegis-examples/agents/workflows/echo-workflow.yaml
 # Start an execution
 aegis workflow run echo-workflow --input '{"message": "hello"}'
 
-# Watch logs
-aegis workflow logs <execution-id> --follow
+# Inspect and watch the execution
+aegis workflow executions get <execution-id>
+aegis workflow logs <execution-id> --follow --verbose
 ```
 
 The execution should appear in the Temporal UI under **Workflows** with status `Running` and then `Completed`.
@@ -212,4 +213,4 @@ The Temporal UI at `http://localhost:8233` provides full observability into all 
 - **Schedules** — manage scheduled workflow starts (if used)
 - **Execution detail** — full event history for any execution, including Blackboard state at each transition, input/output of each activity, and any failures or retries
 
-This is the authoritative view for debugging stuck, failed, or unexpectedly slow workflow executions.
+The Temporal UI remains the authoritative raw engine view, while `aegis workflow logs` provides the AEGIS domain-event view with workflow names, states, and iteration metadata.

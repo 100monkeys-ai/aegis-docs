@@ -19,7 +19,7 @@ All `aegis.*` tools are built directly into the Orchestrator as first-class buil
 | Capability | Tools |
 |---|---|
 | **Agent Lifecycle** | `aegis.agent.list`, `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.delete`, `aegis.agent.generate` |
-| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.generate`, `aegis.workflow.logs` |
+| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs` |
 | **Task Execution** | `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, `aegis.task.remove` |
 | **System Introspection** | `aegis.system.info`, `aegis.system.config` |
 | **Schema & Validation** | `aegis.schema.get`, `aegis.schema.validate` |
@@ -94,6 +94,11 @@ If you intentionally want to overwrite an existing same-name/same-version workfl
 ```
 
 If the semantic judge score is below the threshold, the tool returns the judge's feedback, allowing the authoring agent to refine the manifest and try again.
+
+For running workflows, the corresponding execution tools expose the read-side lifecycle:
+
+- `aegis.workflow.status` and `aegis.workflow.executions.get` for status, blackboard, and persisted execution state
+- `aegis.workflow.logs` for the execution event log and live follow mode
 
 ---
 
@@ -185,6 +190,9 @@ capabilities:
   - name: "aegis.workflow.*"
   - name: "aegis.schema.*"
 ```
+
+The `aegis.workflow.*` capability family covers workflow definition management, execution
+inspection, logging, signaling, and the higher-trust execution control flows documented above.
 
 ---
 

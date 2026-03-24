@@ -59,11 +59,14 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.workflow.delete` | `false` | Destructive — removes workflow from registry |
 | `aegis.workflow.run` | `false` | Execution trigger — spawns a workflow run |
 | `aegis.workflow.generate` | `false` | Creates new workflow via inner authoring loop |
+| `aegis.workflow.executions.list` | `true` | Read-only workflow execution listing |
 | `aegis.task.execute` | `false` | Execution trigger — spawns an agent execution |
 | `aegis.task.status` | `true` | Read-only execution status query |
 | `aegis.task.list` | `true` | Read-only execution listing |
 | `aegis.task.logs` | `true` | Read-only execution log query |
 | `aegis.workflow.logs` | `true` | Read-only execution log query |
+| `aegis.workflow.executions.get` | `true` | Read-only execution detail query |
+| `aegis.workflow.status` | `true` | Read-only execution status query |
 | `aegis.task.cancel` | `false` | State-mutating — terminates a running execution |
 | `aegis.task.remove` | `false` | Destructive — deletes an execution record |
 | `aegis.system.info` | `true` | Read-only node status query |
@@ -112,6 +115,7 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `aegis.workflow.create`, `aegis.workflow.update` | `manifest_yaml` |
 | `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run` | `name` |
 | `aegis.workflow.logs`, `aegis.task.logs` | `execution_id` |
+| `aegis.workflow.status`, `aegis.workflow.executions.get` | `execution_id` |
 | `aegis.task.status`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
 | `aegis.schema.get` | `key` |
 | `aegis.schema.validate` | `kind`, `manifest_yaml` |

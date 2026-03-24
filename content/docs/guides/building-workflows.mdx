@@ -165,8 +165,11 @@ Workflow execution started: wfx-a1b2c3d4-1111-...
 Watch execution logs:
 
 ```bash
-aegis workflow logs wfx-a1b2c3d4-1111-... --follow
+aegis workflow logs wfx-a1b2c3d4-1111-... --follow --verbose
 ```
+
+Use `aegis workflow executions get wfx-a1b2c3d4-1111-...` when you want a point-in-time view of
+the execution status, blackboard, and persisted metadata.
 
 Example output:
 
@@ -185,27 +188,17 @@ State History:
 
 ## Step 5: Signal a Human State
 
-The workflow is suspended at `APPROVE_REQUIREMENTS`. Signal it through the workflow execution API.
-To approve:
+The workflow is suspended at `APPROVE_REQUIREMENTS`. Resume it through the workflow CLI:
 
-```http
-POST /v1/workflows/executions/wfx-a1b2c3d4-1111-.../signal
-Content-Type: application/json
-
-{
-  "response": "approved"
-}
+```bash
+aegis workflow signal wfx-a1b2c3d4-1111-... --response approved
 ```
 
 To reject with feedback:
 
-```http
-POST /v1/workflows/executions/wfx-a1b2c3d4-1111-.../signal
-Content-Type: application/json
-
-{
-  "response": "rejected: Requirements need more detail on error handling"
-}
+```bash
+aegis workflow signal wfx-a1b2c3d4-1111-... \
+  --response "rejected: Requirements need more detail on error handling"
 ```
 
 After approval, the workflow continues to the `IMPLEMENT` state automatically.
@@ -216,7 +209,7 @@ After approval, the workflow continues to the `IMPLEMENT` state automatically.
 
 ```bash
 # Continue watching logs
-aegis workflow logs wfx-a1b2c3d4-1111-... --follow
+aegis workflow logs wfx-a1b2c3d4-1111-... --follow --verbose
 ```
 
 ---
