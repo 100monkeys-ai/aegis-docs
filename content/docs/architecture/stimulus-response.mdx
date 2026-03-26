@@ -1,0 +1,215 @@
+---
+title: Stimulus-Response Routing
+description: Architecture deep-dive into the two-stage hybrid routing pipeline for external event ingestion (BC-8).
+---
+
+BC-8 owns external event ingestion and intelligent routing. It implements a two-stage hybrid pipeline that balances speed (deterministic lookup) with flexibility (LLM classification). Every external event — whether a GitHub webhook, an HTTP API call, or a line of JSON on stdin — enters AEGIS through this context and exits as a routed `RoutingDecision` targeting a specific workflow.
+
+---
+
+## Two-Stage Hybrid Pipeline
+
+The routing pipeline processes each incoming `Stimulus` through up to two stages. Stage 1 is always attempted first; Stage 2 is a fallback for unmatched sources.
+
+```text
+Stimulus arrives
+│
+├── Stage 1: Deterministic Routing (< 1ms)
+│     └── Lookup source_name in WorkflowRegistry.routes
+│           ├── MATCH → RoutingDecision { mode: Deterministic, confidence: 1.0 }
+│           └── NO MATCH → fall through to Stage 2
+│
+└── Stage 2: LLM Classification (1-5s)
+      └── RouterAgent receives stimulus content + headers
+            ├── confidence ≥ threshold → RoutingDecision { mode: LlmClassified }
+            └── confidence < threshold → StimulusRejected { reason: LowConfidence }
+```
+
+### Stage 1 — Deterministic Routing
+
+Direct `source_name -> WorkflowId` lookup in the `WorkflowRegistry`. Zero LLM tokens consumed. Used for known webhook sources with pre-configured routes. Latency is sub-millisecond because the lookup is an in-memory `HashMap` read.
+
+### Stage 2 — LLM Classification
+
+RouterAgent fallback for unmatched sources. The RouterAgent receives the stimulus content and headers, classifies it, and returns a `workflow_id` + `confidence` score. Results below the confidence threshold (default 0.7) are rejected with `422 Unprocessable Entity`.
+
+If no `router_agent_id` is configured on the `WorkflowRegistry`, unmatched stimuli are rejected immediately with `RejectionReason::NoRouterConfigured`.
+
+---
+
+## Domain Model
+
+```rust
+/// Aggregate Root — manages deterministic routes and optional LLM fallback.
+struct WorkflowRegistry {
+    routes: HashMap<String, WorkflowId>,    // source_name → workflow
+    router_agent_id: Option<AgentId>,       // LLM fallback agent
+    confidence_threshold: f64,              // default: 0.7
+}
+
+/// Immutable event envelope — created on ingestion, never mutated.
+struct Stimulus {
+    id: StimulusId,
+    source: StimulusSource,
+    content: Value,                         // raw JSON payload
+    idempotency_key: Option<String>,
+    headers: HashMap<String, String>,
+    received_at: DateTime<Utc>,
+}
+
+/// Discriminated source type.
+enum StimulusSource {
+    Webhook { source_name: String },
+    HttpApi,
+    Stdin,
+    TemporalSignal,
+}
+
+/// Output of the routing pipeline.
+struct RoutingDecision {
+    workflow_id: WorkflowId,
+    confidence: f64,                        // 1.0 for deterministic, 0.0–1.0 for LLM
+    mode: RoutingMode,
+}
+
+enum RoutingMode {
+    Deterministic,
+    LlmClassified,
+}
+
+/// Why a stimulus was not routed.
+enum RejectionReason {
+    LowConfidence,
+    NoRouterConfigured,
+    HmacInvalid,
+    IdempotentDuplicate,
+}
+```
+
+---
+
+## Ingestion Endpoints
+
+All external events enter AEGIS through one of three ingestion endpoints:
+
+| Endpoint | Auth Mechanism | Use Case |
+|---|---|---|
+| `POST /v1/stimuli` | Keycloak JWT Bearer token | Programmatic API clients, SDKs |
+| `POST /v1/webhooks/{source}` | HMAC-SHA256 signature | Third-party webhooks (GitHub, Stripe, etc.) |
+| gRPC `AegisRuntime.IngestStimulus` | mTLS | Internal service-to-service, Temporal signals |
+
+All three endpoints converge into the same `IngestStimulusUseCase`, which performs idempotency checks, authentication verification, and two-stage routing before publishing the result to the event bus.
+
+---
+
+## Webhook Authentication
+
+Webhook endpoints use HMAC-SHA256 signature verification to authenticate incoming requests.
+
+### Verification Flow
+
+```text
+POST /v1/webhooks/github
+Headers:
+  X-Aegis-Signature: sha256=a1b2c3...
+  Content-Type: application/json
+Body: {"action": "push", ...}
+│
+├── 1. Extract source_name from URL path ("github")
+├── 2. Resolve secret: AEGIS_WEBHOOK_SECRET_GITHUB env var
+├── 3. Compute HMAC-SHA256(secret, raw_body)
+├── 4. Constant-time compare via `subtle` crate
+│     ├── MATCH → proceed to routing pipeline
+│     └── MISMATCH → 401 Unauthorized, publish StimulusRejected { reason: HmacInvalid }
+```
+
+### Secret Resolution
+
+- **Phase 1 (current):** Secrets resolved from `AEGIS_WEBHOOK_SECRET_{SOURCE}` environment variables. Source name is uppercased and hyphens are replaced with underscores.
+- **Phase 2:** OpenBao-backed secret resolution with automatic key rotation. Secrets stored at `secret/webhooks/{source_name}/hmac_key`.
+
+---
+
+## Idempotency
+
+Duplicate stimulus submissions are detected and rejected to prevent double-processing.
+
+### Scope and Key
+
+The idempotency scope is the `(source_name, idempotency_key)` tuple. For webhooks, the idempotency key is typically extracted from a provider-specific header (e.g., `X-GitHub-Delivery`). For API submissions, clients provide it explicitly via the `Idempotency-Key` header.
+
+### Implementation
+
+| Aspect | Detail |
+|---|---|
+| **Storage** | In-memory `DashMap<(String, String), StimulusId>` |
+| **TTL** | 24 hours — entries are evicted after this window |
+| **Duplicate response** | `409 Conflict` with the original `stimulus_id` in the response body |
+| **Phase 2** | Redis-backed store for multi-node consistency with configurable TTL |
+
+---
+
+## Sensor Infrastructure
+
+The `SensorService` manages always-on sensor loops that continuously ingest stimuli from non-HTTP sources.
+
+```text
+SensorService
+│
+├── StdinSensor
+│     └── Reads newline-delimited JSON from stdin
+│     └── Each line is parsed as a Stimulus and routed through the pipeline
+│
+├── (Custom sensors implement the Sensor trait)
+│
+└── Lifecycle
+      ├── Started during orchestrator boot
+      ├── Each sensor runs in a dedicated tokio::spawn task
+      └── Graceful shutdown via CancellationToken propagation
+```
+
+### Sensor Trait
+
+Custom sensors implement the `Sensor` trait to integrate new event sources:
+
+```rust
+#[async_trait]
+trait Sensor: Send + Sync {
+    /// Human-readable name for logging and metrics.
+    fn name(&self) -> &str;
+
+    /// Run the sensor loop. Implementations should select! on the
+    /// cancellation token to support graceful shutdown.
+    async fn run(
+        &self,
+        tx: mpsc::Sender<Stimulus>,
+        cancel: CancellationToken,
+    ) -> Result<()>;
+}
+```
+
+---
+
+## Domain Events
+
+The Stimulus-Response context publishes the following domain events to the EventBus under the `"stimulus"` topic:
+
+| Event | Trigger | Key Payload |
+|---|---|---|
+| `StimulusReceived` | Stimulus passes auth and idempotency checks | `stimulus_id`, `source`, `received_at` |
+| `StimulusClassified` | Routing pipeline produces a `RoutingDecision` | `stimulus_id`, `workflow_id`, `confidence`, `mode` |
+| `StimulusRejected` | Routing fails or auth fails | `stimulus_id`, `reason` |
+| `ClassificationFailed` | RouterAgent errors or times out | `stimulus_id`, `error` |
+
+These events are consumed by the **Cortex** context for pattern learning — over time, frequently classified stimuli can be promoted to deterministic routes, reducing LLM token usage and latency.
+
+---
+
+## See Also
+
+- [Stimulus-Response Concepts](/docs/concepts/stimulus-response) — Conceptual overview
+- [Configuring Webhooks](/docs/guides/configuring-webhooks) — Webhook setup guide
+- [Event Bus](/docs/architecture/event-bus) — Domain event system
+- [Workflow Engine](/docs/architecture/workflow-engine) — Workflow execution
+- [REST API Reference](/docs/reference/rest-api) — REST endpoint reference
+- [gRPC API Reference](/docs/reference/grpc-api) — gRPC endpoint reference

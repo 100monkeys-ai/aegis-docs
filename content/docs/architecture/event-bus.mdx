@@ -37,6 +37,7 @@ pub enum DomainEvent {
     McpTool(MCPToolEvent),
     Command(CommandExecutionEvent),
     Smcp(SmcpEvent),
+    Stimulus(StimulusEvent),
     Swarm(SwarmEvent),
     Workflow(WorkflowEvent),
 }
@@ -110,6 +111,17 @@ Published by `StandardSwarmService`:
 
 `SwarmCreated`, `SwarmDissolved`, `ChildAgentSpawned`, `ChildAgentCompleted`, `SpawnRejected`, `MessageSent`, `BroadcastSent`, `LockAcquired`, `LockReleased`, `LockExpired`, `CascadeCancellationInitiated`, `ChildCancelled`
 
+### Stimulus Events
+
+Published to the `"stimulus"` topic by the Stimulus-Response routing pipeline. Consumed by the Cortex learning pipeline for pattern analysis.
+
+| Event | Fields | When |
+|---|---|---|
+| `StimulusReceived` | `stimulus_id`, `source`, `received_at` | Stimulus ingested via any endpoint |
+| `StimulusClassified` | `stimulus_id`, `workflow_id`, `confidence`, `routing_mode`, `classified_at` | Routing succeeds — `routing_mode` is `"Deterministic"` (Stage 1 direct route match) or `"LlmClassified"` (Stage 2 RouterAgent fallback) |
+| `StimulusRejected` | `stimulus_id`, `reason`, `rejected_at` | Routing fails (low confidence, no router, HMAC invalid, duplicate) |
+| `ClassificationFailed` | `stimulus_id`, `error`, `failed_at` | RouterAgent errors during classification |
+
 ---
 
 ## Active Subscribers
@@ -121,6 +133,7 @@ Published by `StandardSwarmService`:
 | `PostgreSQL event recorder` | All events | Persist to `domain_events` table for history |
 | `Metrics collector` | Execution, Iteration, Tool events | Prometheus counters/histograms |
 | `TTL reaper` | VolumeCreated | Register ephemeral volumes for auto-deletion |
+| `Cortex learning pipeline` | All Stimulus events | Pattern analysis for routing confidence tuning |
 
 ---
 

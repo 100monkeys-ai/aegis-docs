@@ -15,6 +15,7 @@ A **Stimulus** is any external or internal event that should trigger a workflow 
 |--------|-----------|----------------|
 | `Webhook` | `POST /v1/webhooks/{source}` | HMAC-SHA256 signature (`X-Aegis-Signature`) |
 | `HttpApi` | `POST /v1/stimuli` | Keycloak Bearer JWT |
+| `Grpc` | `IngestStimulus` RPC on `AegisRuntime` service | Keycloak Bearer JWT |
 | `Stdin` | Always-on `SensorService` loop | N/A (internal) |
 | `TemporalSignal` | Forwarded by TypeScript worker over gRPC | Temporal workflow identity |
 
@@ -140,3 +141,4 @@ Custom sensors are not yet supported in Phase 1. Use webhook ingestion for exter
 - [Building Workflows](/docs/guides/building-workflows) — define the workflows that handle stimuli
 - [CLI Capability Matrix](/docs/reference/cli-capability-matrix) — current CLI vs API routing operations
 - [REST API Reference](/docs/reference/rest-api#post-v1stimuli) — full request/response schemas
+- [gRPC API Reference](/docs/reference/grpc-api) — `IngestStimulus` RPC and other gRPC endpoints

@@ -10,6 +10,7 @@
         "storage-gateway",
         "storage-backends",
         "event-bus",
+        "stimulus-response",
         "identity-and-secrets"
     ]
 }

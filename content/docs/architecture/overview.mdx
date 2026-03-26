@@ -83,7 +83,7 @@ AEGIS is divided into 16 bounded contexts. Each owns its domain model and expose
 | 5 | Cortex (Memory) | Rust + Python | Pattern storage — cloud-managed; not in OSS deployment |
 | 6 | Swarm Coordination | Rust | Multi-agent hierarchy, messaging, locks |
 | 7 | Storage Gateway | Rust | NFS server, AegisFSAL, SeaweedFS |
-| 8 | Stimulus–Response | Rust | Webhook ingestion, workflow routing |
+| 8 | Stimulus–Response | Rust | Two-stage hybrid routing pipeline for webhook ingestion and workflow routing |
 | 9 | Control Plane (UX) | TypeScript | Operator dashboard (separate repo) |
 | 10 | Client SDK | Python, TypeScript | Programmatic access (separate repos) |
 | 11 | Secrets & Identity | Rust | OpenBao, credential resolution |
@@ -174,3 +174,4 @@ Each layer only depends on layers below it. The domain layer has no external dep
 | AegisFSAL and NFS storage gateway | [Storage Gateway](/docs/architecture/storage-gateway) |
 | Event bus and domain events | [Event Bus](/docs/architecture/event-bus) |
 | SMCP Tooling Gateway — macro-tool workflows, ephemeral CLI, credential proxy | [Tooling Gateway](/docs/architecture/tooling-gateway) |
+| Stimulus-Response Routing — two-stage hybrid routing pipeline for external event ingestion | [Stimulus-Response Routing](/docs/architecture/stimulus-response) |
