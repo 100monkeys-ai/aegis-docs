@@ -104,6 +104,16 @@ ExecutionSupervisor
 └── 8. Stop container, detach volumes, release locks
 ```
 
+### Container Cleanup Guarantees
+
+The supervisor provides defense-in-depth container cleanup to prevent orphaned containers:
+
+1. **Explicit termination** — On every normal exit path (success, failure, timeout, cancellation), the supervisor calls `runtime.terminate()` which force-removes the container.
+2. **RAII guard (`ContainerGuard`)** — Created immediately after `runtime.spawn()` succeeds. If the code panics or takes an unexpected error path before reaching the explicit terminate call, the guard's `Drop` implementation spawns a tokio task to force-terminate the container. The guard is *defused* before intentional termination or debug-retain to avoid double cleanup.
+3. **Background orphan reaper** — A daemon-level background task runs every 5 minutes (with an immediate first tick on startup). It cross-references all containers labeled `aegis.managed=true` against execution status in the database, and force-removes any container whose execution is missing, completed, failed, or cancelled.
+
+The `keep_container_on_failure` flag (set in the agent manifest) bypasses all three layers for failed containers, preserving them for manual debugging.
+
 ---
 
 ## Inner Loop: InnerLoopService

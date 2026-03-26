@@ -51,6 +51,24 @@ When an execution starts, the orchestrator:
 
 Containers are removed immediately after each iteration. A fresh container is created for each iteration in the 100monkeys loop.
 
+### Container Cleanup (Defense-in-Depth)
+
+Agent containers are cleaned up through three independent mechanisms:
+
+| Layer | Trigger | Mechanism |
+| ----- | ------- | --------- |
+| **Explicit termination** | Normal exit paths (success, failure, timeout, cancellation) | `runtime.terminate()` → `docker rm -f` |
+| **RAII guard** | Panic or unexpected error between `spawn()` and `terminate()` | `ContainerGuard` Drop impl spawns async cleanup task |
+| **Background reaper** | Orphaned containers from process crashes or Docker API failures | Daemon task runs every 5 min, cross-references containers against DB |
+
+The reaper identifies orphans by listing all containers with the `aegis.managed=true` label and checking their `aegis.execution_id` against the execution repository. Containers are reaped when:
+
+- The execution record is missing
+- The execution status is not `Running`
+- The container is not running but the execution is still marked `Running`
+
+Containers with `aegis.keep_container_on_failure=true` are skipped by the reaper, allowing manual debugging via `docker exec`.
+
 ---
 
 ## Resource Limits
