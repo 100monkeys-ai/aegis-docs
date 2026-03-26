@@ -327,6 +327,7 @@ Worker                                      Controller
 The `NodeSecurityToken` is automatically refreshed before its 1-hour expiry via the ongoing heartbeat cycle. No manual token management is required.
 
 **NodePeer status transitions:**
+
 - `Active` — node is registered and sending heartbeats within the expected interval
 - `Draining` — controller has issued a drain command; no new executions are routed to this node
 - `Unhealthy` — no heartbeat received within 3× the expected interval
@@ -380,6 +381,7 @@ The registration sequence after successful attestation:
 | Edge agent containers → Edge daemon | 2049 (NFS) | Internal | Volume mounts via NFS Gateway |
 
 Firewall rules must allow:
+
 - Controller inbound on 8080, 50051, and 50056
 - Workers inbound on 50051 (for `ForwardExecution` streaming from controller)
 - Workers outbound to controller on 50056
@@ -487,6 +489,114 @@ aegis node peers
 
 # Check end-to-end cluster health from the local node config
 aegis status --cluster
+```
+
+---
+
+## Health Endpoints
+
+Each AEGIS daemon exposes HTTP health endpoints on the configured REST port (default `8080`). These endpoints are useful for load balancer health checks, Kubernetes probes, and manual diagnostics.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health/live` | GET | Liveness probe. Returns `200 OK` if the process is running. Does not check downstream dependencies. |
+| `/health/ready` | GET | Readiness probe. Returns `200 OK` only when all critical subsystems (database, Temporal, event bus) are initialised. Returns `503 Service Unavailable` during startup or if a dependency becomes unreachable. |
+| `/health` | GET | Composite health check. Returns `200 OK` with a JSON body containing `uptime_seconds` and subsystem status. Used by the `aegis status` CLI command and the daemon client library. |
+
+In a clustered deployment, the controller node's **HealthSweeper** background task also monitors worker health by evaluating heartbeat freshness. If a worker misses 3 consecutive heartbeat intervals, the HealthSweeper marks its `NodePeer` status as `Unhealthy` and emits a `ClusterEvent::NodeUnhealthy` event.
+
+---
+
+## Remote Volume Access
+
+When an agent executing on Worker Node A needs to access a volume that resides on Worker Node B, AEGIS transparently proxies the file operation via the **RemoteStorageService** gRPC protocol (ADR-064).
+
+### How It Works
+
+1. The `StorageRouter` on Node A inspects the file path. Paths prefixed with `/aegis/smcp/{node_id}/{volume_id}/...` are routed to the `SmcpStorageProvider`.
+2. `SmcpStorageProvider` extracts the target `node_id` from the path, looks up the node's gRPC address in the `NodeClusterRepository`, and establishes (or reuses) a gRPC channel.
+3. Each RPC call is wrapped in an `SmcpNodeEnvelope` carrying the node's Ed25519 signature and `NodeSecurityToken`.
+4. The target node's `RemoteStorageServiceHandler` verifies the envelope, performs authoritative `AegisFSAL` access checks, and delegates to its local `StorageProvider`.
+5. The response is returned to the requesting node and surfaced through the standard `StorageProvider` trait.
+
+### Supported Operations
+
+All POSIX-style file operations are supported over the wire:
+
+- `CreateDirectory`, `DeleteDirectory`
+- `SetQuota`, `GetUsage`
+- `OpenFile`, `ReadAt`, `WriteAt`, `CloseFile`
+- `Stat`, `Readdir`
+- `CreateFile`, `DeleteFile`, `Rename`
+- `HealthCheck`
+
+### Path Format
+
+Remote volume paths follow this convention:
+
+```text
+/aegis/smcp/{target_node_id}/{volume_id}/{path/within/volume}
+```
+
+The `StorageRouter` detects the `/aegis/smcp/` prefix and dispatches to `SmcpStorageProvider`. All other `/aegis/volumes/...` paths route to the default backend (SeaweedFS/OpenDAL), and bare absolute paths (`/opt/data/...`) route to the local host filesystem.
+
+---
+
+## Configuration Hierarchy
+
+AEGIS supports hierarchical configuration layering with the following precedence (lowest to highest):
+
+| Scope | Description | Example |
+|-------|-------------|---------|
+| **Global** | Cluster-wide defaults applied to all nodes | Default LLM provider settings |
+| **Tenant** | Per-tenant overrides (keyed by `TenantSlug`) | Tenant-specific rate limits |
+| **Node** | Per-node overrides (keyed by `NodeId`) | Node-specific runtime settings |
+| **Local** | On-disk `aegis-config.yaml` loaded at startup | Hardware-specific configuration |
+
+When the controller pushes a configuration update via the `PushConfig` heartbeat command, the worker merges the layers in precedence order. Each layer is stored as a `ConfigSnapshot` value object containing the scope, a JSON payload, and a version hash. The merged result is a `MergedConfig` that the worker applies atomically.
+
+Workers can also pull their current effective configuration on demand using the `SyncConfig` RPC. This is useful after a restart when the worker needs to catch up on configuration changes that occurred while it was offline.
+
+---
+
+## Worker Lifecycle
+
+When a daemon starts with `spec.cluster.role: worker` or `spec.cluster.role: hybrid` and a `controller.endpoint` is configured, the daemon automatically spawns a **WorkerLifecycle** background task. This task manages the full lifecycle of the worker's relationship with the cluster controller.
+
+### Lifecycle Stages
+
+```text
+┌─────────┐     ┌──────────┐     ┌──────────┐     ┌───────────┐     ┌────────────┐
+│ Connect  │────▶│  Attest  │────▶│ Register │────▶│ Heartbeat │────▶│ Deregister │
+└─────────┘     └──────────┘     └──────────┘     │   Loop    │     └────────────┘
+                                                   └───────────┘
+```
+
+1. **Connect** — Establish a gRPC channel to the controller's `NodeClusterService` on port 50056.
+2. **Attest** — Perform the two-step Ed25519 challenge handshake (`AttestNode` + `ChallengeNode`). On success, the worker receives a `NodeSecurityToken` JWT.
+3. **Register** — Call `RegisterNode` to advertise the worker's `NodeCapabilityAdvertisement` (GPU count, CPU cores, memory, supported runtimes, tags).
+4. **Heartbeat Loop** — Send `Heartbeat` RPCs at the configured `heartbeat_interval_secs` (default 30s). Process any `NodeCommand`s returned in the response:
+   - **Drain** — Stop accepting new executions; complete in-flight work.
+   - **PushConfig** — Apply a configuration update from the controller.
+   - **Shutdown** — Begin graceful process shutdown after draining.
+5. **Deregister** — On daemon shutdown (SIGTERM / Ctrl+C), call `DeregisterNode` to cleanly remove the worker from the cluster.
+
+If a heartbeat fails (e.g., network partition), the worker logs a warning and retries on the next interval. The controller's HealthSweeper will mark the worker as `Unhealthy` after 3 missed intervals.
+
+### Configuration
+
+The worker lifecycle is controlled by the `spec.cluster` section of `aegis-config.yaml`:
+
+```yaml
+spec:
+  cluster:
+    enabled: true
+    role: worker
+    controller:
+      endpoint: "http://controller.internal:50056"
+    node_keypair_path: /etc/aegis/node-keypair.pem
+    heartbeat_interval_secs: 30       # How often to send heartbeats
+    token_refresh_margin_secs: 120    # Re-attest this many seconds before token expiry
 ```
 
 ---
