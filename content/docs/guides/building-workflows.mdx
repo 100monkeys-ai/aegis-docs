@@ -259,11 +259,171 @@ All three judges run simultaneously. The state waits until all have completed (o
 
 ---
 
+## Composing Workflows with Subworkflows
+
+As your workflow library grows, you will find common patterns repeated across pipelines — data processing, deployment sequences, validation gates. The `Subworkflow` state kind lets you extract these into standalone workflows and invoke them from a parent.
+
+### Example: Parent Workflow Calling a Reusable Validation Pipeline
+
+Suppose you have a reusable `validation-pipeline` workflow that runs security scanning, linting, and test execution. You can invoke it from any parent workflow:
+
+**Child workflow** (`validation-pipeline.yaml`, deployed separately):
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: validation-pipeline
+  version: "1.0.0"
+spec:
+  initial_state: SECURITY_SCAN
+  states:
+    SECURITY_SCAN:
+      kind: Agent
+      agent: security-scanner
+      input: "{{workflow.task}}"
+      timeout: 300s
+      transitions:
+        - condition: on_success
+          target: LINT
+        - condition: on_failure
+          target: FAILED
+    LINT:
+      kind: ContainerRun
+      image: "rust:1.75-alpine"
+      command: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: exit_code_zero
+          target: TEST
+        - condition: exit_code_non_zero
+          target: FAILED
+    TEST:
+      kind: ContainerRun
+      image: "rust:1.75-alpine"
+      command: ["cargo", "test", "--workspace"]
+      workdir: "/workspace"
+      volumes:
+        - name: workspace
+          mount_path: /workspace
+      transitions:
+        - condition: exit_code_zero
+          target: DONE
+        - condition: exit_code_non_zero
+          target: FAILED
+    DONE:
+      kind: System
+      command: "echo 'Validation passed'"
+      transitions: []
+    FAILED:
+      kind: System
+      command: "echo 'Validation failed'"
+      transitions: []
+```
+
+**Parent workflow** that invokes the child:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: release-pipeline
+  version: "1.0.0"
+spec:
+  initial_state: GENERATE_CODE
+  states:
+    GENERATE_CODE:
+      kind: Agent
+      agent: coder-v2
+      input: "{{workflow.task}}"
+      timeout: 600s
+      transitions:
+        - condition: on_success
+          target: VALIDATE
+        - condition: on_failure
+          target: FAILED
+
+    VALIDATE:
+      kind: Subworkflow
+      workflow_id: validation-pipeline
+      mode: blocking
+      result_key: validation_result
+      input: "Validate code generated for: {{workflow.task}}"
+      timeout: 1800s
+      transitions:
+        - condition: on_success
+          target: DEPLOY
+        - condition: on_failure
+          target: FIX_CODE
+          feedback: "Validation failed: {{VALIDATE.result}}"
+
+    FIX_CODE:
+      kind: Agent
+      agent: coder-v2
+      input: |
+        Fix the code based on validation feedback:
+        {{state.feedback}}
+      timeout: 600s
+      transitions:
+        - condition: on_success
+          target: VALIDATE
+        - condition: on_failure
+          target: FAILED
+
+    DEPLOY:
+      kind: ContainerRun
+      image: "docker:24-cli"
+      command: ["sh", "-c", "echo 'Deploying validated artifact'"]
+      transitions:
+        - condition: exit_code_zero
+          target: DONE
+        - condition: exit_code_non_zero
+          target: FAILED
+
+    DONE:
+      kind: System
+      command: "echo 'Release complete'"
+      transitions: []
+
+    FAILED:
+      kind: System
+      command: "echo 'Release failed'"
+      transitions: []
+```
+
+The `VALIDATE` state starts the `validation-pipeline` child workflow in blocking mode. The parent waits for the child to complete and then stores the child's final Blackboard under the `validation_result` key. If the child fails, the parent routes to `FIX_CODE` with the child's output as feedback.
+
+### Fire-and-Forget for Background Tasks
+
+Use `fire_and_forget` mode when you want to trigger a workflow without waiting for it to finish — for example, kicking off a notification pipeline or a cleanup job:
+
+```yaml
+NOTIFY:
+  kind: Subworkflow
+  workflow_id: notification-pipeline
+  mode: fire_and_forget
+  input: |
+    {"message": "Deployment complete", "channel": "ops"}
+  transitions:
+    - condition: on_success
+      target: DONE
+```
+
+The parent continues immediately. The child's execution ID is available as `{{NOTIFY.child_execution_id}}` for later inspection.
+
+For the complete field specification and validation rules, see the [Workflow Manifest Reference — `kind: Subworkflow`](/docs/reference/workflow-manifest).
+
+---
+
 ## Temporal UI
 
 Temporal provides a built-in workflow visibility UI that shows the durable state of every workflow execution. Access it at `http://localhost:8233` when running the local dev stack.
 
 The UI shows:
+
 - Current state of each execution
 - History of state transitions
 - Any pending timers (e.g., Human state timeouts)

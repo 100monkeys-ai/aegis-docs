@@ -319,6 +319,33 @@ The three `completion` strategies control how individual step outcomes are aggre
 | `any_succeed` | State succeeds if at least one step exits with code 0. |
 | `best_effort` | State always transitions with `on_success`; per-step results are available on the Blackboard regardless. |
 
+### `Subworkflow`
+
+Invokes another deployed workflow as a child execution. Use `Subworkflow` to compose workflows — extract reusable pipelines (data processing, deployment, validation) into standalone workflows and call them from a parent.
+
+Two execution modes are supported:
+
+| Mode | Behaviour |
+|---|---|
+| `blocking` | The parent state waits for the child workflow to complete. The child's final Blackboard is written to the parent Blackboard under `result_key`. |
+| `fire_and_forget` | The parent starts the child workflow and immediately transitions to the next state. The child runs independently. |
+
+```yaml
+TRIGGER_CHILD:
+  kind: Subworkflow
+  workflow_id: data-pipeline-v2
+  mode: blocking
+  result_key: pipeline_output
+  input: "{{workflow.context.task}}"
+  transitions:
+    - condition: on_success
+      target: PROCESS_RESULT
+    - condition: on_failure
+      target: HANDLE_ERROR
+```
+
+In `blocking` mode, the child workflow's final output is available as `{{TRIGGER_CHILD.result}}` and the full result object is stored under the `result_key` on the parent Blackboard (e.g., `{{blackboard.pipeline_output}}`). In `fire_and_forget` mode, only the child's execution ID is written to the Blackboard as `{{TRIGGER_CHILD.child_execution_id}}`.
+
 ---
 
 ## The Blackboard
@@ -395,6 +422,8 @@ Available template variables:
 | `{{STATE.score}}` | Validation score of an Agent state (0.0–1.0). |
 | `{{STATE.consensus.score}}` | Aggregated score of a ParallelAgents state. |
 | `{{STATE.agents.N.output}}` | Individual judge output (ParallelAgents, 0-indexed). |
+| `{{STATE.result}}` | Final output of a Subworkflow state (blocking mode). |
+| `{{STATE.child_execution_id}}` | Child execution ID of a Subworkflow state. |
 | `{{blackboard.KEY}}` | Any key from merged startup Blackboard data or any key written during execution. |
 | `{{state.feedback}}` | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | Feedback text from the Human `signal --feedback` argument. |

@@ -67,6 +67,7 @@ The AEGIS Workflow manifest maps to Temporal as follows:
 | `WorkflowState` (ParallelAgents) | Parallel Temporal Activities + aggregation |
 | `WorkflowState` (ContainerRun) | Temporal Activity (`executeContainerRunActivity`) |
 | `WorkflowState` (ParallelContainerRun) | Parallel Temporal Activities (`executeContainerRunActivity` × N) |
+| `WorkflowState` (Subworkflow) | Temporal Child Workflow Execution |
 | `Blackboard` | Temporal Workflow State (persisted in Temporal's event history) |
 | `TransitionRule` | Conditional logic within the Temporal workflow function |
 
@@ -145,6 +146,17 @@ enum StateKind {
         steps: Vec<ContainerRunConfig>,         // concurrent container steps
         completion: ParallelCompletionStrategy, // AllSucceed | AnySucceed | BestEffort
     },
+    Subworkflow {
+        workflow_id: String,                    // deployed child workflow name or UUID
+        mode: SubworkflowMode,                  // Blocking | FireAndForget
+        result_key: Option<String>,             // Blackboard key for child's final output (blocking)
+        input: Option<String>,                  // Handlebars template passed as child's start input
+    },
+}
+
+enum SubworkflowMode {
+    Blocking,       // parent waits for child completion
+    FireAndForget,  // parent continues immediately
 }
 
 struct TransitionRule {
@@ -185,6 +197,7 @@ The TypeScript worker never executes agent code directly. All compute-heavy work
 | `executeParallelAgentsActivity` | `AegisRuntime.ExecuteAgent` × N, then `ValidateWithJudges` | parallel + unary | Fans out to N concurrent `ExecuteAgent` calls via `Promise.all`, then computes consensus. |
 | `executeContainerRunActivity` | `AegisRuntime.ExecuteContainerRun` | unary | Creates a container, mounts volumes via NFS gateway, runs the command, captures stdout/stderr/exit_code, destroys the container. No LLM, no bootstrap, no iteration loop. |
 | `executeParallelContainerRunActivity` | `AegisRuntime.ExecuteContainerRun` × N | `Promise.allSettled` + aggregation | Dispatches N concurrent `executeContainerRunActivity` calls; aggregates results per `ParallelCompletionStrategy`. |
+| `executeSubworkflowActivity` | Temporal Child Workflow API | child workflow | Starts a child workflow execution via Temporal's native child workflow support. In `blocking` mode, awaits the child's completion and returns the final Blackboard. In `fire_and_forget` mode, starts the child and returns immediately with the child execution ID. |
 
 The gRPC server runs on port 50051 (configurable via `AEGIS_RUNTIME_GRPC_URL`). Security policy enforcement, SMCP attestation, and container lifecycle remain entirely in Rust — the TypeScript worker has no direct access to agent containers or the Docker socket.
 
@@ -388,6 +401,60 @@ If any single agent fails, `all_succeeded` is set to `false`. The default transi
 
 ---
 
+## Workflow Composition
+
+The `Subworkflow` state kind enables parent-child workflow composition. When a workflow state with `kind: Subworkflow` is entered, the Temporal worker starts a **child workflow execution** using Temporal's native child workflow API rather than a gRPC activity call.
+
+### How It Works
+
+```
+Enter TRIGGER_CHILD (Subworkflow, mode: blocking)
+│
+├── Temporal startChildWorkflowExecution(workflow_id, input)
+│     │
+│     ├── Child workflow starts as an independent Temporal workflow run
+│     ├── Child has its own Blackboard, state machine, and execution history
+│     ├── Child runs the same aegis_workflow() generic interpreter
+│     │
+│     └── Parent waits for child WorkflowExecutionCompleted signal
+│           │
+│           └── Child's final_blackboard returned to parent
+│
+├── Blackboard["TRIGGER_CHILD"] = {
+│     "status": "success",
+│     "result": <child's final output>,
+│     "child_execution_id": "wfx-child-..."
+│   }
+├── Blackboard["pipeline_output"] = <child's final_blackboard>  (via result_key)
+│
+TransitionRules evaluated → next state chosen
+```
+
+In `fire_and_forget` mode, the parent does not wait:
+
+```
+Enter START_BACKGROUND (Subworkflow, mode: fire_and_forget)
+│
+├── Temporal startChildWorkflowExecution(workflow_id, input)
+│     └── Child starts; parent does NOT await completion
+│
+├── Blackboard["START_BACKGROUND"] = {
+│     "status": "success",
+│     "child_execution_id": "wfx-child-..."
+│   }
+│
+TransitionRules evaluated → parent continues immediately
+```
+
+### Design Principles
+
+- **Isolation**: The child workflow has its own Blackboard. It cannot read or write the parent's Blackboard directly. Data flows in via `input` and out via the child's `final_blackboard`.
+- **Durability**: Temporal's child workflow mechanism ensures that if the parent crashes, the child either completes or is cancelled according to the configured `ParentClosePolicy`. By default, children are allowed to run to completion.
+- **Reusability**: Any deployed workflow can be invoked as a child. The child does not need to know it is being called from a parent — it is a standard workflow.
+- **Observability**: Child workflow executions appear as independent runs in the Temporal UI and in the AEGIS execution history API. The parent-child relationship is tracked via `WorkflowChildStarted` and `WorkflowChildCompleted` domain events.
+
+---
+
 ## Workflow Execution Events
 
 The workflow engine publishes to the event bus:
@@ -400,6 +467,8 @@ The workflow engine publishes to the event bus:
 | `WorkflowStateFailed` | Temporal activity fails or times out |
 | `WorkflowSignalReceived` | Human state receives signal |
 | `WorkflowCompleted` | Reaches a terminal state with no transitions |
+| `WorkflowChildStarted` | Subworkflow state starts a child workflow execution |
+| `WorkflowChildCompleted` | Child workflow execution completes (blocking mode) |
 | `WorkflowFailed` | Reaches a terminal error state or exceeds Temporal timeout |
 
 These events are consumable via the gRPC streaming API for real-time monitoring dashboards.

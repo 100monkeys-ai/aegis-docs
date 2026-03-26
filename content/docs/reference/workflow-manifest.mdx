@@ -1,6 +1,6 @@
 ---
 title: Workflow Manifest Reference
-description: Complete specification for the WorkflowManifest YAML format — schema, field definitions, all six state kinds including ContainerRun for CI/CD steps, consensus strategies, and complete examples.
+description: Complete specification for the WorkflowManifest YAML format — schema, field definitions, all seven state kinds including ContainerRun for CI/CD steps, Subworkflow for workflow composition, consensus strategies, and complete examples.
 ---
 
 # Workflow Manifest Reference
@@ -52,7 +52,7 @@ spec:
   states:
 
     GENERATE:
-      kind: Agent                  # StateKind: Agent | System | Human | ParallelAgents | ContainerRun | ParallelContainerRun
+      kind: Agent                  # StateKind: Agent | System | Human | ParallelAgents | ContainerRun | ParallelContainerRun | Subworkflow
       agent: coder-v1              # required for Agent kind; deployed agent name or UUID
       input: |                     # Handlebars template rendered as the agent's task input
         {{#if blackboard.iteration_number}}
@@ -219,7 +219,7 @@ spec:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` \| `ContainerRun` \| `ParallelContainerRun` |
+| `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` \| `ContainerRun` \| `ParallelContainerRun` \| `Subworkflow` |
 | `timeout` | string | | `300s` | Maximum time in this state. Human-readable: `"300s"`, `"5m"`, `"1h"`. |
 | `volumes` | `object[]` | | | Volume mounts for this state (`Agent` kind). |
 | `volumes[].volume` | string | ✓ | | Volume reference. Supports Handlebars: `{{workflow.storage.workspace}}`. |
@@ -409,6 +409,86 @@ After all steps complete, the Blackboard is updated under the state name with pe
 
 Access per-step output as `{{STATE.output.STEPNAME.stdout}}`, `{{STATE.output.STEPNAME.stderr}}`, and `{{STATE.output.STEPNAME.exit_code}}`.
 
+### `kind: Subworkflow`
+
+Invokes another deployed workflow as a child execution. Use `Subworkflow` to compose workflows — extract reusable pipelines into standalone workflows and call them from a parent.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `workflow_id` | string | ✓ | | Deployed workflow name or UUID of the child workflow to invoke. |
+| `mode` | string | | `blocking` | `blocking` \| `fire_and_forget`. Determines whether the parent waits for the child to complete. |
+| `result_key` | string | | | Blackboard key where the child's final Blackboard is stored (blocking mode only). If omitted in blocking mode, the child result is still available as `{{STATE.result}}`. |
+| `input` | string | | | Handlebars template rendered and passed as the child workflow's start input (`--input`). |
+
+#### Execution Modes
+
+| Mode | Parent Behaviour | Blackboard Output |
+|---|---|---|
+| `blocking` | Waits for the child workflow to reach a terminal state. | `STATE.status`, `STATE.result` (child's final output), `STATE.child_execution_id`. If `result_key` is set, the child's full `final_blackboard` is also written to `blackboard.{result_key}`. |
+| `fire_and_forget` | Starts the child and immediately evaluates transitions. | `STATE.status` (`"success"` if child was started), `STATE.child_execution_id`. |
+
+**Blocking mode example:**
+
+```yaml
+RUN_PIPELINE:
+  kind: Subworkflow
+  workflow_id: data-pipeline-v2
+  mode: blocking
+  result_key: pipeline_output
+  input: "{{workflow.context.task}}"
+  timeout: 1800s
+  transitions:
+    - condition: on_success
+      target: PROCESS_RESULT
+    - condition: on_failure
+      target: HANDLE_ERROR
+      feedback: "Child workflow failed: {{RUN_PIPELINE.result}}"
+```
+
+**Fire-and-forget example:**
+
+```yaml
+START_BACKGROUND_JOB:
+  kind: Subworkflow
+  workflow_id: nightly-cleanup
+  mode: fire_and_forget
+  input: |
+    {"environment": "{{blackboard.deploy_env}}"}
+  transitions:
+    - condition: on_success
+      target: CONTINUE_MAIN_FLOW
+```
+
+After the state completes, the Blackboard is updated under the state name:
+
+**Blocking mode:**
+
+```json
+{
+  "status": "success",
+  "result": "<child workflow's final output>",
+  "child_execution_id": "wfx-child-a1b2c3d4-..."
+}
+```
+
+**Fire-and-forget mode:**
+
+```json
+{
+  "status": "success",
+  "child_execution_id": "wfx-child-a1b2c3d4-..."
+}
+```
+
+Use `{{STATE.result}}` in downstream states to reference the child's output (blocking mode) and `{{STATE.child_execution_id}}` to reference the child execution.
+
+#### Validation Rules
+
+- `workflow_id` must reference a deployed workflow. The engine validates this at state entry and fails with a descriptive error if the workflow is not found.
+- `result_key` is only meaningful in `blocking` mode; it is ignored in `fire_and_forget` mode.
+- Circular composition (workflow A calls B which calls A) is detected at runtime. The engine enforces a maximum child depth of 10 and fails with `SubworkflowDepthExceeded` if exceeded.
+- The child workflow's `timeout` is independent of the parent state's `timeout`. If the parent state times out before the child completes, the child is cancelled.
+
 ### `spec.states[*].transitions[]`
 
 | Field | Type | Required | Description |
@@ -428,8 +508,8 @@ Access per-step output as `{{STATE.output.STEPNAME.stdout}}`, `{{STATE.output.ST
 |---|---|---|
 | *(absent)* | All | Unconditional fallback. Always matches. Place last. |
 | `always` | All | Explicit unconditional. Equivalent to absent condition. |
-| `on_success` | Agent, System, ContainerRun, ParallelContainerRun | State succeeded (exit code 0 or agent returned success). |
-| `on_failure` | Agent, System, ContainerRun, ParallelContainerRun | State failed. |
+| `on_success` | Agent, System, ContainerRun, ParallelContainerRun, Subworkflow | State succeeded (exit code 0, agent returned success, or child workflow completed). |
+| `on_failure` | Agent, System, ContainerRun, ParallelContainerRun, Subworkflow | State failed. |
 | `exit_code_zero` | System, ContainerRun | Exit code was 0. |
 | `exit_code_non_zero` | System, ContainerRun | Exit code was non-zero. |
 | `exit_code` | System, ContainerRun | Exit code equals `value`. |
@@ -492,6 +572,8 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 | `{{STATE.consensus.confidence}}` | States after STATE | Consensus confidence (ParallelAgents states). |
 | `{{STATE.agents.N.output}}` | States after STATE | Individual judge full output (ParallelAgents, 0-indexed). |
 | `{{STATE.agents.N.output.FIELD}}` | States after STATE | Field from a judge's JSON output (e.g. `{{AUDIT.agents.0.output.score}}`, `{{AUDIT.agents.1.output.reasoning}}`). |
+| `{{STATE.result}}` | States after STATE | Final output of a Subworkflow state (blocking mode). |
+| `{{STATE.child_execution_id}}` | States after STATE | Child workflow execution ID (Subworkflow states). |
 | `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state. |
 | `{{state.feedback}}` | All states | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | After Human states | Additional feedback text from the `signal --feedback` argument. |
@@ -1073,3 +1155,4 @@ SECURITY_GATE:
 |---|---|---|
 | **v1.0** | 2026-02-16 | Initial canonical format. All four state kinds (`Agent`, `System`, `Human`, `ParallelAgents`). Named-condition transitions. Handlebars templates. Four consensus strategies. |
 | **v1.1** | 2026-03-05 | Added `ContainerRun` and `ParallelContainerRun` state kinds for CI/CD pipeline steps. Added `completion` strategies (`all_succeed`, `any_succeed`, `best_effort`). Extended condition types and Handlebars variables for exit-code-based routing. |
+| **v1.2** | 2026-03-25 | Added `Subworkflow` state kind for workflow-to-workflow composition (ADR-065). Two execution modes: `blocking` and `fire_and_forget`. Child workflows use Temporal's native child workflow support. |
