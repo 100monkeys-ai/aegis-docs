@@ -5,52 +5,41 @@ description: How the Zaru consumer product interfaces with the AEGIS orchestrato
 
 # Zaru Integration
 
-**Zaru** (`myzaru.com`) is the consumer-facing product built atop the AEGIS orchestrator. It integrates the LibreChat frontend with AEGIS's execution semantics via the Secure Model Context Protocol (SMCP), providing users access to the Glass Laboratory UX and intelligent agent swarm orchestration.
+**Zaru** (`myzaru.com`) is the consumer-facing product built atop the AEGIS orchestrator. It uses a custom Zaru chat client (`zaru-client`) that connects to AEGIS's execution semantics via the Secure Model Context Protocol (SMCP), providing users access to the Glass Laboratory UX and intelligent agent swarm orchestration.
 
 ## Identity Bridging
 
 Zaru authenticates consumer users via an Identity Provider (e.g., OAuth 2.0 or Enterprise SAML). To bridge this web-layer identity to the AEGIS execution engine securely, the orchestrator employs the `ZaruAuthMiddleware`.
 
 1. **Token Validation**: Zaru passes a JSON Web Token (JWT) representing the user session (`MyzaruJWT`) to the Orchestrator via HTTP headers.
-2. **Attestation**: The middleware validates the JWT against the identity provider's JWKS and extracts the user identity (`LibreChatUserId`) and their subscription layer (`ZaruTierClaim`).
+2. **Attestation**: The middleware validates the JWT against the identity provider's JWKS and extracts the user identity (`ZaruUserId`) and their subscription layer (`ZaruTierClaim`).
 3. **Security Token Issuance**: AEGIS translates this verified identity into an SMCP `SecurityToken`, granting the user's agent executions authorized access to a specific `SecurityContext`.
 
 > **Note:** The `MyzaruJWT` is treated as a highly sensitive credential and is wrapped in a redacted display type; it is never logged or stored in plain text by the orchestrator.
 
-### LibreChat Configuration Example
+### Zaru Client MCP Configuration
 
-To securely bridge identity to AEGIS via MCP headers, Zaru uses a specialized `librechat.yaml` configuration. The orchestrator is registered as an MCP server using the Streamable HTTP transport.
+The Zaru client connects to the AEGIS orchestrator as an MCP server using the Streamable HTTP transport. Identity headers are injected by the client to bridge authenticated user sessions into SMCP security contexts.
 
 ```yaml
-# librechat.yaml (myzaru.com deployment example)
+# zaru-client MCP configuration (myzaru.com deployment example)
 
-version: "1.2"
-
-# ── Application Identity ────────────────────────────────────────────────────
-app:
-  name: "Zaru"
-  description: "Digital Biology. The Architecture of Trust."
-
-# ── MCP Server Registration ─────────────────────────────────────────────────
 mcpServers:
   aegis-orchestrator:
     type: sse
     url: "https://api.myzaru.com/mcp/v1/sse"
     headers:
-      # Inject LibreChat user identity as a signed claim.
+      # Inject Zaru user identity as a signed claim.
       # The AEGIS ZaruAuthMiddleware validates this against the JWKS endpoint.
-      X-LibreChat-User-ID: "{{LIBRECHAT_USER_ID}}"
-      X-Zaru-Tier: "{{LIBRECHAT_USER_TIER}}"   # Custom claim added to LibreChat JWT
-      Authorization: "Bearer {{LIBRECHAT_USER_TOKEN}}"
+      X-Zaru-User-ID: "{{ZARU_USER_ID}}"
+      X-Zaru-Tier: "{{ZARU_USER_TIER}}"
+      Authorization: "Bearer {{ZARU_USER_TOKEN}}"
     timeout: 120000   # 2-minute tool call timeout (covers long 100monkeys iterations)
-    globalCallbacks:
-      onToolCallStart: "zaru.onAgentToolCallStart"   # Trigger ZaruIterationPanel open
-      onToolCallEnd: "zaru.onAgentToolCallEnd"       # Finalize ZaruIterationPanel
 ```
 
 ## Session and Swarm Management
 
-In Zaru, a **session** (a single chat conversation) maps directly to a **root `ExecutionId`**. 
+In Zaru, a **session** (a single chat conversation) maps directly to a **root `ExecutionId`**.
 
 - **Single Active Root**: A user cannot launch two independent top-level agent tasks concurrently within the same session.
 - **Swarm Subordination**: If the primary agent decides to parallelize work, it can spawn child agents (forming a Swarm). Every child execution is subordinate to the root `ExecutionId` representing the Zaru session.
@@ -60,9 +49,10 @@ In Zaru, a **session** (a single chat conversation) maps directly to a **root `E
 
 A user's `ZaruTier` determines their allocated resources and tool capabilities. The `ZaruAuthMiddleware` intercepts the tier claim from the JWT and automatically maps it to a pre-configured SMCP `SecurityContext`.
 
-The `zaru-mcp-server` bridge does not hardcode AEGIS tools locally. It discovers the orchestrator's current tool inventory at runtime and then exposes only the tools allowed by the user's tier-derived `SecurityContext`.
+The Zaru client does not hardcode AEGIS tools locally. It discovers the orchestrator's current tool inventory at runtime via MCP and then exposes only the tools allowed by the user's tier-derived `SecurityContext`.
 
 For example:
+
 - **Free Tier (`ZaruTier::Free`)**: Maps to a `"zaru-free"` SecurityContext. It may enforce stricter rate limits and is structurally prohibited from mounting persistent, stateful `Volume`s.
 - **Pro Tier (`ZaruTier::Pro`)**: Maps to `"zaru-pro"` and is intended for full AEGIS workflow and execution management through MCP.
 - **Enterprise Tier (`ZaruTier::Enterprise`)**: Maps to `"zaru-enterprise"` and is intended for the full orchestrator-discovered AEGIS tool surface.
@@ -71,7 +61,7 @@ Because the system enforces a strict "ceiling rule" during Swarm creation, a chi
 
 ## Glass Laboratory UX
 
-Zaru provides a specialized frontend experience known as the Glass Laboratory. This includes:
+The Zaru client provides a specialized frontend experience known as the Glass Laboratory. This includes:
 
 - **Transparent Iteration Panel**: Subscribes to the orchestrator's event stream (via gRPC) to render the inner loop (`Execute → Evaluate → Refine`) in real time, making the agent's reasoning, tool use, and judge validations visible within the chat thread.
 - **Nested Iteration Sub-Panels**: Visually separates child agent executions in a Swarm under the parent agent.

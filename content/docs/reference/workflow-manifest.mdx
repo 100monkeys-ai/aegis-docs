@@ -1155,4 +1155,4 @@ SECURITY_GATE:
 |---|---|---|
 | **v1.0** | 2026-02-16 | Initial canonical format. All four state kinds (`Agent`, `System`, `Human`, `ParallelAgents`). Named-condition transitions. Handlebars templates. Four consensus strategies. |
 | **v1.1** | 2026-03-05 | Added `ContainerRun` and `ParallelContainerRun` state kinds for CI/CD pipeline steps. Added `completion` strategies (`all_succeed`, `any_succeed`, `best_effort`). Extended condition types and Handlebars variables for exit-code-based routing. |
-| **v1.2** | 2026-03-25 | Added `Subworkflow` state kind for workflow-to-workflow composition (ADR-065). Two execution modes: `blocking` and `fire_and_forget`. Child workflows use Temporal's native child workflow support. |
+| **v1.2** | 2026-03-25 | Added `Subworkflow` state kind for workflow-to-workflow composition. Two execution modes: `blocking` and `fire_and_forget`. Child workflows use Temporal's native child workflow support. |
