@@ -34,8 +34,8 @@ app:
 # ── MCP Server Registration ─────────────────────────────────────────────────
 mcpServers:
   aegis-orchestrator:
-    type: streamable-http
-    url: "https://api.myzaru.com/mcp/v1/"
+    type: sse
+    url: "https://api.myzaru.com/mcp/v1/sse"
     headers:
       # Inject LibreChat user identity as a signed claim.
       # The AEGIS ZaruAuthMiddleware validates this against the JWKS endpoint.
