@@ -42,7 +42,7 @@ spec:
 
 The `ExecutionSupervisor` drives the 100monkeys iterative refinement strategy. When an execution is started, the supervisor:
 
-1. **Spawns a fresh, isolated container** from the agent's image. Each iteration gets a clean environment — no shared process state from previous iterations.
+1. **Spawns a fresh, isolated container** from the agent's image using the configured container runtime (Docker or Podman). Each iteration gets a clean environment — no shared process state from previous iterations.
 2. **Injects context** into the container: the task input, any prior iteration errors (on retries), and tool definitions filtered to the agent's declared capabilities.
 3. **Monitors execution** until the inner loop reports completion or timeout.
 4. **Runs validators** against the iteration output. Validators produce a `ValidationScore` (0.0–1.0) and `Confidence` (0.0–1.0).
@@ -157,10 +157,10 @@ From `bootstrap.py`'s perspective, it sends one `generate` message and receives 
 
 The Dispatch Protocol handles tool calls that require running a subprocess **inside** the agent container — for example, compiling code, running tests, or executing an interpreter. This is Path 3 of the three-path tool router.
 
-### Why Not Docker Exec?
+### Why Not Container Exec?
 
-The orchestrator cannot call Docker exec API directly because:
-- It would be runtime-specific (breaks Firecracker support).
+The orchestrator cannot call the container runtime's exec API directly because:
+- It would be runtime-specific (breaks Firecracker support and ties the orchestrator to a single container engine).
 - It bypasses the bootstrap script's process supervision and output capture.
 
 Instead, the orchestrator sends a `dispatch` message over the existing HTTP channel to `bootstrap.py`, which runs the subprocess and sends back a `dispatch_result`.

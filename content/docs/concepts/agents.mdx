@@ -195,14 +195,16 @@ See [Standard Runtime Registry](/docs/reference/standard-runtime-registry) for t
 
 ### Isolation Technology: Node-Config-Driven
 
-The `AgentRuntime` trait abstracts both isolation backends. Switching a node from Docker to Firecracker requires only a config change — no agent manifest changes needed.
+The `AgentRuntime` trait abstracts all isolation backends. Switching a node from Docker to Podman or Firecracker requires only a config change — no agent manifest changes needed.
 
 | Isolation | Use Case | Requirement |
 |---|---|---|
-| `docker` | Development and staging | Docker daemon accessible |
-| `firecracker` | Production | Bare-metal or KVM-passthrough host, Linux kernel 5.10+ |
+| `docker` | Development, staging, and production | Docker or Podman runtime accessible via `container_socket_path` |
+| `firecracker` | Hardened production | Bare-metal or KVM-passthrough host, Linux kernel 5.10+ |
 
-See [Docker Deployment](/docs/deployment/docker) and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.
+The `docker` isolation type works with both Docker and Podman. The orchestrator auto-detects the container engine from the configured socket. Podman rootless mode provides additional security by eliminating the privileged daemon.
+
+See [Docker Deployment](/docs/deployment/docker), [Podman Deployment](/docs/deployment/podman), and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.
 
 ---
 

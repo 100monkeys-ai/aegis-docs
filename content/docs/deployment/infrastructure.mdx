@@ -13,8 +13,9 @@ This page defines the infrastructure components required to run AEGIS, their int
 
 | Component | Version | Role | Required |
 |---|---|---|---|
-| Docker Engine | 24.0+ | Agent container runtime (Phase 1) | ✓ |
-| Docker Compose | 2.20+ | Dev/staging orchestration | Dev only |
+| Docker Engine | 24.0+ | Agent container runtime (Phase 1) | ✓ (one of Docker or Podman) |
+| Podman | 4.0+ | Agent container runtime (rootless alternative to Docker) | ✓ (one of Docker or Podman) |
+| Docker Compose | 2.20+ | Dev/staging orchestration (or `podman compose`) | Dev only |
 | PostgreSQL | 15+ | Primary data store (agents, executions, events) | ✓ |
 | Temporal | 1.22+ | Durable workflow execution | ✓ (if using workflows) |
 | SeaweedFS | 3.60+ | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓ |
@@ -22,7 +23,7 @@ This page defines the infrastructure components required to run AEGIS, their int
 | Keycloak | 24.0+ | OIDC identity provider | Recommended |
 | Linux kernel | 5.15+ | KVM support for Firecracker (Phase 2) | Phase 2 only |
 
-Minimum viable deployment (no Temporal, no workflows, OpenBao, or Keycloak) requires only Docker, PostgreSQL, and SeaweedFS.
+Minimum viable deployment (no Temporal, no workflows, OpenBao, or Keycloak) requires only a container runtime (Docker or Podman), PostgreSQL, and SeaweedFS.
 
 ---
 
@@ -45,7 +46,7 @@ Minimum viable deployment (no Temporal, no workflows, OpenBao, or Keycloak) requ
 │      └──► Keycloak    :8443  (can be shared service)          │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐   │
-│  │  Agent Containers (Docker bridge network)              │   │
+│  │  Agent Containers (Docker/Podman bridge network)       │   │
 │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐       │   │
 │  │  │ container1 │  │ container2 │  │ container3 │       │   │
 │  │  │  NFS mount │  │  NFS mount │  │  NFS mount │       │   │
@@ -69,9 +70,9 @@ Agent containers communicate **only** with the AEGIS daemon (via `/v1/dispatch-g
 | CPU | 4 cores | 8+ cores |
 | RAM | 8 GiB | 16 GiB |
 | Disk | 40 GiB SSD | 200 GiB SSD |
-| OS | Linux, macOS (Docker Desktop) | Ubuntu 22.04 LTS |
+| OS | Linux, macOS (Docker Desktop or Podman Desktop) | Ubuntu 22.04 LTS |
 
-Note: macOS is supported for local development only (Docker Desktop). Production deployments require Linux.
+Note: macOS is supported for local development only (Docker Desktop or Podman Desktop). Production deployments require Linux.
 
 ### Production Multi-Node
 

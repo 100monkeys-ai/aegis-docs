@@ -19,7 +19,7 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 | gRPC API | Tonic + Prost |
 | Database | PostgreSQL via SQLx |
 | Workflow durability | Temporal |
-| Container runtime | Docker (via bollard) — Firecracker in development |
+| Container runtime | Docker / Podman (via bollard) — Firecracker planned for hardened production |
 | Container image distribution | OCI registries (Docker Hub, GHCR, private) |
 | Storage backend | SeaweedFS |
 | Storage transport | User-space NFSv3 (`nfsserve` crate) |
@@ -57,9 +57,9 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 │                                                                     │
 │  Infrastructure Layer                                               │
 │  ┌──────────────┐  ┌──────────┐  ┌─────────┐  ┌────────────────┐ │
-│  │   Docker /   │  │  SMCP    │  │  NFS    │  │  PostgreSQL    │ │
-│  │  Firecracker │  │ Gateway  │  │ Gateway │  │  Repositories  │ │
-│  │  Runtime     │  │ + Cedar  │  │ FSAL    │  │                │ │
+│  │  Docker /   │  │  SMCP    │  │  NFS    │  │  PostgreSQL    │ │
+│  │  Podman /   │  │ Gateway  │  │ Gateway │  │  Repositories  │ │
+│  │ Firecracker │  │ + Cedar  │  │ FSAL    │  │                │ │
 │  └──────────────┘  └──────────┘  └─────────┘  └────────────────┘ │
 │  ┌──────────────┐  ┌──────────┐  ┌─────────┐                      │
 │  │   Temporal   │  │ OpenBao  │  │Keycloak │                      │
@@ -115,7 +115,7 @@ Application Layer: StartExecutionUseCase
   │  4. Publishes ExecutionStarted domain event
   ▼
 Execution Context: ExecutionSupervisor
-  │  5. Starts Container (Docker / Firecracker)
+  │  5. Starts Container (Docker / Podman / Firecracker)
   │  6. Resolves volumes, starts NFS gateways
   │  7. Begins outer iteration loop
   ▼

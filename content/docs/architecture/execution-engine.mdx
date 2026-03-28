@@ -77,7 +77,7 @@ ExecutionSupervisor
 ├── 1. Resolve Agent manifest from AgentRepository
 ├── 2. Create Execution aggregate (status=pending)
 ├── 3. Provision volumes → start NFS gateways for each volume
-├── 4. Pull and start container (Docker daemon via bollard)
+├── 4. Pull and start container (Docker or Podman via bollard / ContainerRuntime)
 │
 └── ITERATION LOOP (max_iterations times):
     │
@@ -190,7 +190,11 @@ bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[..
 
 ## Dispatch Protocol
 
-The **Aegis Dispatch Protocol** is the mechanism the orchestrator uses to trigger subprocess execution inside the agent container. It is designed to be runtime-agnostic, enabling AEGIS to switch between Docker and Firecracker without modification to the agent's execution logic.
+The **Aegis Dispatch Protocol** is the mechanism the orchestrator uses to trigger subprocess execution inside the agent container. It is designed to be runtime-agnostic, enabling AEGIS to switch between Docker, Podman, and Firecracker without modification to the agent's execution logic.
+
+### AgentRuntime Trait and ContainerRuntime
+
+The `AgentRuntime` trait abstracts over all supported container backends. The concrete implementation, `ContainerRuntime` (previously named `DockerRuntime`), uses the `bollard` crate to communicate with any Docker-API-compatible daemon -- including both Docker Engine and Podman. The same trait will back future Firecracker support as a separate implementation.
 
 For full technical details, including wire formats and the `bootstrap.py` implementation, see the [Aegis Dispatch Protocol](/docs/concepts/dispatch-protocol) concept page.
 

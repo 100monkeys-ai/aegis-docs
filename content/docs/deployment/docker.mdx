@@ -5,14 +5,20 @@ description: Docker Engine setup, agent container lifecycle, bollard integration
 
 # Docker Deployment
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout type="info">
+For production deployments, consider [Podman rootless](/docs/deployment/podman) which provides the same container runtime API without a privileged daemon process.
+</Callout>
+
 Docker is the Phase 1 container runtime for AEGIS. The orchestrator communicates with Docker via the **bollard** Rust library (Docker API over the Unix socket). This page covers production Docker deployment, container lifecycle, and the NFS volume mounting model.
 
 ---
 
 ## Prerequisites
 
-- Docker Engine 24.0+
-- The AEGIS daemon process has read/write access to `/var/run/docker.sock`
+- Docker Engine 24.0+ (or Podman 4.0+ with Docker-compatible socket)
+- The AEGIS daemon process has read/write access to `/var/run/docker.sock` (or the Podman socket)
 - Agent container images are accessible from the daemon host (either locally present or pullable)
 - NFS traffic (TCP port 2049) is routable between agent containers and the daemon host
 
@@ -152,8 +158,8 @@ For production deployments, run the AEGIS daemon as a systemd service:
 # /etc/systemd/system/aegis.service
 [Unit]
 Description=AEGIS Orchestrator Daemon
-After=network-online.target docker.service
-Requires=docker.service
+After=network-online.target docker.service  # or podman.socket for Podman
+Requires=docker.service                     # or podman.socket for Podman
 
 [Service]
 User=aegis

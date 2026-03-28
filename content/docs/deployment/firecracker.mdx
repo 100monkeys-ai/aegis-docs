@@ -8,7 +8,7 @@ description: KVM requirements, AgentRuntime trait abstraction, isolation model, 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 <Callout type="warn">
-Firecracker support is in active development and is not yet recommended for production use. The Docker runtime is the stable Phase 1 deployment target. This page documents the planned and in-progress Firecracker integration.
+Firecracker support is in active development and is not yet recommended for production use. The Docker and Podman runtimes are the stable Phase 1 deployment targets. This page documents the planned and in-progress Firecracker integration.
 </Callout>
 
 Firecracker is a microVM technology developed by AWS that provides kernel-level isolation for workloads. In AEGIS, Firecracker replaces Docker containers as the agent execution runtime, giving each agent its own micro-virtual machine rather than a shared-kernel container.
@@ -19,14 +19,15 @@ Firecracker is a microVM technology developed by AWS that provides kernel-level 
 
 Docker containers share the host kernel — a container escape vulnerability could give a malicious prompt-injected agent code execution on the host. Firecracker provides hardware-level isolation via KVM:
 
-| Property | Docker Container | Firecracker microVM |
-|---|---|---|
-| Kernel isolation | Shared host kernel | Dedicated guest kernel per agent |
-| Attack surface | Kernel syscall interface (~350 calls) | Minimal API (≈ 50 ops) |
-| Boot time | ~100ms | ~125ms |
-| Memory overhead | ~5 MiB | ~5 MiB |
-| Storage transport | NFS (NFSv3 over bridge network) | virtio-fs (shared memory, no network) |
-| Blast radius on escape | Host compromise possible | Bounded to single microVM |
+| Property | Docker Container | Podman Container (rootless) | Firecracker microVM |
+|---|---|---|---|
+| Kernel isolation | Shared host kernel | Shared host kernel (user namespace) | Dedicated guest kernel per agent |
+| Attack surface | Kernel syscall interface (~350 calls) | Reduced (rootless, no daemon) | Minimal API (≈ 50 ops) |
+| Boot time | ~100ms | ~100ms | ~125ms |
+| Memory overhead | ~5 MiB | ~5 MiB | ~5 MiB |
+| Storage transport | NFS (NFSv3 over bridge network) | NFS (NFSv3 over bridge network) | virtio-fs (shared memory, no network) |
+| Blast radius on escape | Host compromise possible | Bounded to user namespace | Bounded to single microVM |
+| Daemon process | Privileged daemon required | No daemon (fork/exec) | No daemon (VMM per microVM) |
 
 ---
 
@@ -73,6 +74,7 @@ trait AgentRuntime: Send + Sync {
 ```
 
 - `DockerRuntime` implements `AgentRuntime` using the bollard Docker library.
+- `PodmanRuntime` implements `AgentRuntime` using the same Docker-compatible API via the Podman socket (rootless or system).
 - `FirecrackerRuntime` (in development) implements `AgentRuntime` using the Firecracker API over a Unix socket.
 
 ---

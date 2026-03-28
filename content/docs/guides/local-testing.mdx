@@ -3,6 +3,8 @@ title: Local & Integration Testing
 description: Build, run, and verify AEGIS locally — from a quick CLI smoke test to a full Docker-based Temporal workflow integration.
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
 # Local & Integration Testing
 
 This guide covers two complementary testing approaches:
@@ -209,7 +211,11 @@ cargo clean
 
 ## Part 2: Docker Integration Testing
 
-**Prerequisites:** Docker, Docker Compose, Rust toolchain.
+**Prerequisites:** Docker (or Podman), Docker Compose (or `podman-compose`), Rust toolchain.
+
+<Callout type="info">
+**Podman as a drop-in replacement** -- `podman-compose` can be used in place of `docker compose` throughout this section. All `docker compose` commands below work identically as `podman compose` (or `podman-compose`). If using Podman in rootless mode, ensure your user has a valid subuid/subgid mapping and that the Podman socket is active (`systemctl --user start podman.socket`). For production-style deployment testing with Podman pods, see the `aegis-platform-deployment` repository.
+</Callout>
 
 This section tests the complete Temporal workflow integration: YAML workflow → Rust registration → TypeScript worker → Temporal → gRPC → Rust execution service.
 
@@ -239,10 +245,10 @@ YAML Workflow → RegisterWorkflowUseCase (Rust)
 
 ```bash
 cd aegis-orchestrator/docker
-docker compose build
-docker compose down -v   # remove stale state
-docker compose up -d
-docker compose ps
+docker compose build       # or: podman compose build
+docker compose down -v     # or: podman compose down -v  (remove stale state)
+docker compose up -d       # or: podman compose up -d
+docker compose ps          # or: podman compose ps
 ```
 
 Expected services:
@@ -258,7 +264,7 @@ Expected services:
 **Health checks:**
 
 ```bash
-docker exec -it aegis-postgres pg_isready
+docker exec -it aegis-postgres pg_isready   # or: podman exec -it aegis-postgres pg_isready
 curl http://localhost:8233          # Temporal UI
 curl http://localhost:3000/health   # TypeScript worker
 grpcurl -plaintext localhost:50051 list
@@ -270,10 +276,10 @@ Keep Temporal, PostgreSQL, and the TypeScript worker in Docker while running the
 
 ```bash
 cd docker
-docker compose build
-docker compose up -d   # everything inc. orchestrator
+docker compose build               # or: podman compose build
+docker compose up -d               # or: podman compose up -d  (everything inc. orchestrator)
 # Then stop just the Rust runtime if you want a local binary instead:
-# docker compose stop aegis-runtime
+# docker compose stop aegis-runtime   (or: podman compose stop aegis-runtime)
 ```
 
 ### Database Verification
@@ -459,7 +465,7 @@ Tests shared-volume multi-agent workflows via the SeaweedFS-backed NFS gateway. 
 **Verify SeaweedFS is healthy:**
 
 ```bash
-docker compose ps | grep seaweedfs
+docker compose ps | grep seaweedfs             # or: podman compose ps | grep seaweedfs
 curl -f http://localhost:8888/ && echo "✓ Filer healthy"
 curl http://localhost:9333/cluster/status | jq
 ```
@@ -527,7 +533,7 @@ curl -N http://localhost:8088/v1/executions/<AGENT_EXECUTION_ID>/events
 
 ### Infrastructure ✅
 
-- All Docker containers healthy.
+- All Docker (or Podman) containers healthy.
 - Temporal UI accessible at `http://localhost:8233`.
 - TypeScript worker logs: `"Worker is running"`.
 - Rust gRPC logs: `"gRPC server listening on :50051"`.
@@ -563,17 +569,17 @@ curl -N http://localhost:8088/v1/executions/<AGENT_EXECUTION_ID>/events
 ### Temporal worker not connecting
 
 ```bash
-docker ps | grep temporal
+docker ps | grep temporal                          # or: podman ps | grep temporal
 telnet localhost 7233
-cd docker && docker compose restart temporal
-docker exec aegis-temporal-worker env | grep TEMPORAL
+cd docker && docker compose restart temporal       # or: podman compose restart temporal
+docker exec aegis-temporal-worker env | grep TEMPORAL  # or: podman exec ...
 ```
 
 ### gRPC connection refused (port 50051)
 
 ```bash
 grpcurl -plaintext localhost:50051 list
-docker logs aegis-runtime | grep gRPC
+docker logs aegis-runtime | grep gRPC              # or: podman logs aegis-runtime | grep gRPC
 grpcurl -plaintext -d '{"command":"echo test"}' \
   localhost:50051 aegis.runtime.v1.AegisRuntime/ExecuteSystemCommand
 ```
@@ -582,7 +588,7 @@ grpcurl -plaintext -d '{"command":"echo test"}' \
 
 ```bash
 psql -h localhost -U aegis -d aegis -c "SELECT 1;"
-docker logs aegis-temporal-worker
+docker logs aegis-temporal-worker              # or: podman logs aegis-temporal-worker
 psql -h localhost -U aegis -d aegis -c "\dt workflow_definitions"
 ```
 
@@ -608,9 +614,9 @@ This is expected — Cortex stubs return empty results gracefully. No action nee
 ### SeaweedFS / volume issues
 
 ```bash
-docker logs aegis-seaweedfs-master
-docker logs aegis-seaweedfs-filer
-docker exec -it <agent-container> df -h
+docker logs aegis-seaweedfs-master             # or: podman logs aegis-seaweedfs-master
+docker logs aegis-seaweedfs-filer              # or: podman logs aegis-seaweedfs-filer
+docker exec -it <agent-container> df -h        # or: podman exec -it <agent-container> df -h
 curl http://localhost:8080/status | jq
 ```
 
@@ -628,12 +634,12 @@ cat orchestrator/core/build.rs
 
 ```bash
 # Start / stop full stack (from docker/)
-cd docker && docker compose up -d
-cd docker && docker compose down
+cd docker && docker compose up -d              # or: podman compose up -d
+cd docker && docker compose down               # or: podman compose down
 
 # Live logs
-docker compose logs -f temporal-worker
-docker compose logs -f aegis-runtime
+docker compose logs -f temporal-worker         # or: podman compose logs -f temporal-worker
+docker compose logs -f aegis-runtime           # or: podman compose logs -f aegis-runtime
 
 # PostgreSQL
 psql -h localhost -U aegis -d aegis

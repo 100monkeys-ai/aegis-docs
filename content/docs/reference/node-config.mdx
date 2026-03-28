@@ -105,8 +105,8 @@ spec:
   runtime:
     bootstrap_script: "assets/bootstrap.py"
     default_isolation: docker        # docker | firecracker | inherit | process
-    docker_socket_path: "/var/run/docker.sock"
-    docker_network_mode: "aegis-network"
+    container_socket_path: "/var/run/docker.sock"  # or Podman: /run/user/1000/podman/podman.sock
+    container_network_mode: "aegis-network"
     orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
     nfs_server_host: "env:AEGIS_NFS_HOST"
     nfs_port: 2049
@@ -510,9 +510,9 @@ Optional. Controls how agent containers are launched.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `bootstrap_script` | string | `assets/bootstrap.py` | Path to bootstrap script relative to orchestrator binary |
-| `default_isolation` | enum | `inherit` | `docker` \| `firecracker` \| `inherit` \| `process` |
-| `docker_socket_path` | string | *(platform default)* | Custom Docker socket path |
-| `docker_network_mode` | string | null | Docker network name for agent containers. Supports `env:`. |
+| `default_isolation` | enum | `inherit` | `docker` \| `firecracker` \| `inherit` \| `process`. The `docker` value works with both Docker and Podman runtimes — the orchestrator auto-detects the engine from the configured socket. |
+| `container_socket_path` | string | *(platform default)* | Container runtime socket path. The orchestrator auto-detects whether the socket belongs to Docker or Podman. Common values: `/var/run/docker.sock` (Docker), `/run/user/<UID>/podman/podman.sock` (Podman rootless), `/run/podman/podman.sock` (Podman rootful). If omitted, the orchestrator checks `CONTAINER_HOST`, then `DOCKER_HOST`, then falls back to the platform default (`/var/run/docker.sock`). |
+| `container_network_mode` | string | null | Container network name for agent containers. Supports `env:`. Works with both Docker and Podman networks. |
 | `orchestrator_url` | string | `http://localhost:8088` | Callback URL reachable from inside agent containers. Supports `env:`. |
 | `nfs_server_host` | string | null | NFS server host as seen by the Docker daemon host OS. Supports `env:`. |
 | `nfs_port` | u16 | `2049` | NFS server port |
@@ -1061,7 +1061,7 @@ spec:
     default_provider: ollama
   runtime:
     default_isolation: docker
-    docker_network_mode: "env:AEGIS_DOCKER_NETWORK"
+    container_network_mode: "env:AEGIS_CONTAINER_NETWORK"
     orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
     nfs_server_host: "env:AEGIS_NFS_HOST"
     runtime_registry_path: "runtime-registry.yaml"

@@ -165,17 +165,23 @@ spec:
 
 ## Runtime Isolation
 
-The security model is strengthened by the underlying container runtime:
+The security model is strengthened by the underlying container runtime. AEGIS supports three isolation tiers, selectable per node via `default_isolation` in the node configuration:
 
 **Docker (development/staging):**
 - Container runs with default seccomp profile.
 - Network isolation via Docker bridge networks.
 - No `CAP_SYS_ADMIN` required — AEGIS volumes are mounted over NFS, not FUSE.
 
-**Firecracker (production):**
+**Podman (managed/production):**
+- Rootless mode eliminates the privileged daemon — no root-owned socket, no root-running background process. A compromised container cannot escalate to a host-level daemon.
+- User-namespace isolation maps container UID 0 to an unprivileged host UID, providing an additional containment layer beyond what Docker offers by default.
+- Compatible with the same OCI images and container network configuration as Docker. The orchestrator auto-detects the runtime from the configured `container_socket_path`.
+- Rootful Podman is also supported where rootless is impractical (e.g., NFS mounts requiring root).
+
+**Firecracker (hardened production):**
 - Each agent execution runs in an independent KVM micro-VM.
 - The VM has no knowledge of the host network, no shared memory with the host, and a strict device model.
 - A compromised agent process is contained within its VM boundary.
 - ~125ms VM boot time; overhead is amortized over the execution duration.
 
-See [Firecracker Runtime](/docs/deployment/firecracker) for production deployment details.
+See [Podman Deployment](/docs/deployment/podman) and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.

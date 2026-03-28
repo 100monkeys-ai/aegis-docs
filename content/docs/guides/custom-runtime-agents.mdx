@@ -106,6 +106,10 @@ docker build -t myregistry/my-agent:latest .
 docker push myregistry/my-agent:latest
 ```
 
+<Callout type="info">
+`podman build` uses the same Dockerfile format and accepts the same flags. Replace `docker` with `podman` in the commands above if using Podman as your container engine.
+</Callout>
+
 ---
 
 ## Step 2: Implement `bootstrap.py`
@@ -252,6 +256,10 @@ if __name__ == "__main__":
     main()
 ```
 
+<Callout type="info">
+**Podman host resolution** -- If running locally under Podman, the hostname `host.docker.internal` may not resolve. Use `host.containers.internal` instead, or set the `AEGIS_ORCHESTRATOR_URL` environment variable explicitly. In production, the orchestrator injects this variable automatically at container start, so the default value in the script is only used during local development.
+</Callout>
+
 ---
 
 ## Step 3: Add Output Schema
@@ -392,7 +400,7 @@ COPY bootstrap.js /agent/bootstrap.js
 CMD ["tail", "-f", "/dev/null"]
 ```
 
-The custom bootstrap must implement the dispatch protocol to communicate with the orchestrator via `AEGIS_ORCHESTRATOR_URL`.
+The custom bootstrap must implement the dispatch protocol to communicate with the orchestrator via `AEGIS_ORCHESTRATOR_URL`. The orchestrator sets this variable at container start to the correct host address for the active runtime (Docker or Podman).
 
 ---
 

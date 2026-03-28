@@ -6,6 +6,7 @@
         "iam",
         "secrets",
         "docker",
+        "podman",
         "temporal",
         "seaweedfs",
         "firecracker",

@@ -483,9 +483,11 @@ Both paths use the orchestrator-provided bootstrap script for 100monkeys iterati
 
 `isolation` specifies process isolation technology:
 - `inherit` (default): Use node configuration setting
-- `docker`: Run in Docker container (Phase 1)
+- `docker`: Run in a container managed by the configured container runtime (Phase 1)
 - `firecracker`: Firecracker microVM (Phase 2)
 - `process`: Host process (Phase 2)
+
+The `docker` isolation type uses the container runtime configured via `container_socket_path` in the node configuration. This works with both Docker and Podman — the runtime is auto-detected.
 
 ### `spec.task`
 

@@ -1,0 +1,389 @@
+---
+title: Podman Deployment
+description: Podman rootless deployment, systemd socket activation, bollard API compatibility, cgroup v2 delegation, NFS volume mounting, and differences from Docker.
+---
+
+# Podman Deployment
+
+Podman is the daemonless, rootless container runtime supported by AEGIS as an alternative to Docker. The orchestrator communicates with Podman via the same **bollard** Rust library used for Docker — Podman exposes a Docker-compatible API over its Unix socket. This page covers rootless Podman deployment, socket configuration, container lifecycle, and the key differences from Docker.
+
+---
+
+## Prerequisites
+
+- Podman 4.0+ installed and configured for rootless mode
+- systemd with user lingering enabled for the service account
+- cgroups v2 (recommended) or cgroups v1 with appropriate delegation
+- `slirp4netns` or `pasta` installed for rootless networking
+- Agent container images are accessible from the host (either locally present or pullable)
+- NFS traffic (TCP port 2049) is routable between agent containers and the host
+
+---
+
+## Socket Configuration
+
+Podman provides a Docker-compatible API socket via systemd socket activation. In rootless mode, the socket lives under the user's runtime directory.
+
+### Enable the Podman Socket
+
+```bash
+# Enable and start the rootless Podman socket
+systemctl --user enable --now podman.socket
+
+# Verify the socket is active
+systemctl --user status podman.socket
+
+# Confirm the socket path
+ls -la /run/user/$(id -u)/podman/podman.sock
+```
+
+### Enable User Lingering
+
+Without lingering, the user's systemd instance (and the Podman socket) is torn down when the user logs out. Enable lingering so the socket persists:
+
+```bash
+# Enable lingering for the aegis service user
+sudo loginctl enable-linger aegis
+
+# Verify
+loginctl show-user aegis | grep Linger
+```
+
+### AEGIS Configuration
+
+Point the AEGIS daemon at the Podman socket in `aegis-config.yaml`:
+
+```yaml
+runtime:
+  container_socket_path: "/run/user/1000/podman/podman.sock"
+```
+
+Replace `1000` with the UID of the service account running the daemon.
+
+Alternatively, set the `CONTAINER_HOST` environment variable:
+
+```bash
+export CONTAINER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+```
+
+---
+
+## Container Lifecycle
+
+The container lifecycle is identical to Docker. Bollard sends the same API calls to the Podman socket, and Podman handles them compatibly:
+
+1. **Pulls the image** (respecting `spec.runtime.image_pull_policy` from the agent manifest — see [Container Registry & Image Management](/docs/deployment/container-registry)).
+2. **Creates the container** with:
+   - CPU quota and memory limit from `spec.resources`
+   - NFS volume mounts (described below)
+   - Network configuration from `spec.security.network_policy`
+   - Environment variables from `spec.environment`
+   - The container UID/GID stored in the `Execution` metadata for UID/GID squashing
+3. **Starts the container** — `bootstrap.py` begins executing.
+4. **Monitors** the container for the duration of the iteration.
+5. **Stops and removes** the container after the iteration completes or times out.
+
+Containers are removed immediately after each iteration. A fresh container is created for each iteration in the 100monkeys loop.
+
+### Container Cleanup (Defense-in-Depth)
+
+The same three-layer cleanup defense applies:
+
+| Layer | Trigger | Mechanism |
+| ----- | ------- | --------- |
+| **Explicit termination** | Normal exit paths (success, failure, timeout, cancellation) | `runtime.terminate()` via Bollard API |
+| **RAII guard** | Panic or unexpected error between `spawn()` and `terminate()` | `ContainerGuard` Drop impl spawns async cleanup task |
+| **Background reaper** | Orphaned containers from process crashes or API failures | Daemon task runs every 5 min, cross-references containers against DB |
+
+The reaper identifies orphans by listing all containers with the `aegis.managed=true` label and checking their `aegis.execution_id` against the execution repository. Containers with `aegis.keep_container_on_failure=true` are skipped by the reaper.
+
+---
+
+## Resource Limits
+
+Manifest resource limits are translated to container constraints via the same Bollard API fields:
+
+```yaml
+spec:
+  resources:
+    cpu_quota: 1.0          # -> nano_cpus (1_000_000_000)
+    memory_bytes: 1073741824  # -> memory limit in bytes
+    timeout_secs: 300
+```
+
+`timeout_secs` is enforced by the `ExecutionSupervisor`. If the inner loop has not produced a final response within `timeout_secs`, the container is force-killed and the iteration is failed.
+
+### cgroups v2 Delegation for Rootless
+
+Rootless Podman requires cgroup v2 delegation to enforce resource limits. Without delegation, CPU and memory limits may be silently ignored.
+
+```bash
+# Verify cgroups v2 is in use
+stat -fc %T /sys/fs/cgroup/
+
+# Expected output: cgroup2fs
+```
+
+If resource limits are not being enforced, enable CPU and memory delegation for the user:
+
+```bash
+# /etc/systemd/system/user@.service.d/delegate.conf
+[Service]
+Delegate=cpu cpuset io memory pids
+```
+
+```bash
+sudo systemctl daemon-reload
+```
+
+---
+
+## NFS Volume Mounting
+
+Agent containers mount their volumes via the kernel NFS client to the orchestrator's NFS server gateway (port 2049). The mount configuration is identical to Docker:
+
+```
+# Example Bollard mount configuration produced by AEGIS for a volume named "workspace":
+{
+  "Target": "/workspace",
+  "Type": "volume",
+  "VolumeOptions": {
+    "DriverConfig": {
+      "Name": "local",
+      "Options": {
+        "type":   "nfs",
+        "o":      "addr=<orchestrator-host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock",
+        "device": ":/<tenant_id>/<volume_id>"
+      }
+    }
+  }
+}
+```
+
+The agent container does not require `CAP_SYS_ADMIN` or any elevated capabilities for NFS mounts.
+
+### Network Reachability of NFS
+
+In rootless Podman, use `host.containers.internal` to reach the host from within a container. Configure the NFS listen address in `aegis-config.yaml`:
+
+```yaml
+storage:
+  nfs_listen_addr: "0.0.0.0:2049"
+```
+
+In multi-host deployments, use the orchestrator host's external IP or hostname.
+
+---
+
+## Network Configuration
+
+### Creating the AEGIS Network
+
+```bash
+# Create a Podman network for AEGIS containers
+podman network create aegis-network
+
+# Verify
+podman network ls
+```
+
+### Container DNS and Host Access
+
+Podman maps `host.containers.internal` to the host by default. AEGIS also adds `host.docker.internal` for compatibility:
+
+```json
+{
+  "extra_hosts": [
+    "host.docker.internal:host-gateway",
+    "host.containers.internal:host-gateway"
+  ]
+}
+```
+
+Both names resolve to the host IP from within agent containers, so NFS mount addresses and SMCP callbacks work regardless of which runtime is in use.
+
+### Network Policy Enforcement
+
+Network egress is controlled by the manifest `network_policy`, identical to Docker:
+
+```yaml
+spec:
+  security:
+    network_policy:
+      mode: allow
+      allowlist:
+        - pypi.org
+        - api.github.com
+```
+
+The AEGIS daemon enforces network policy at the SMCP layer (per tool call), not via container network rules.
+
+---
+
+## Differences from Docker
+
+| Aspect | Docker | Podman |
+| ------ | ------ | ------ |
+| **Daemon model** | Persistent root daemon (`dockerd`) | Daemonless; socket-activated per user |
+| **Socket path** | `/var/run/docker.sock` | `/run/user/<UID>/podman/podman.sock` |
+| **Default registries** | `docker.io` only | Configurable in `/etc/containers/registries.conf` |
+| **Auth file** | `~/.docker/config.json` | `${XDG_RUNTIME_DIR}/containers/auth.json` |
+| **Host DNS name** | `host.docker.internal` | `host.containers.internal` (both mapped by AEGIS) |
+| **cgroup management** | Delegated by `dockerd` | Requires explicit cgroup v2 delegation for rootless |
+| **Security model** | Root daemon, user communicates via group | No privileged daemon; socket is user-scoped |
+| **Process model** | Containers are children of `dockerd` | Containers are children of `conmon` (per-container) |
+
+### Socket Activation Behavior
+
+Podman's socket is activated on demand by systemd. After a period of inactivity, the `podman` API process exits. The next API call re-activates it transparently. This is normally invisible to the AEGIS daemon, but be aware:
+
+- The first API call after an idle period may have slightly higher latency.
+- If `podman.socket` is not enabled, the socket file will not exist and Bollard will fail to connect.
+
+### Stats API Differences
+
+The container stats endpoint may return different fields depending on the cgroup version. Under cgroups v2, some fields that Docker populates (e.g., per-CPU usage arrays) may be absent or zeroed. The AEGIS daemon normalizes these differences in the `ContainerStats` adapter layer.
+
+---
+
+## systemd Service Configuration
+
+For rootless Podman, the AEGIS daemon runs as a systemd **user** service:
+
+```ini
+# ~/.config/systemd/user/aegis.service
+[Unit]
+Description=AEGIS Orchestrator Daemon
+After=network-online.target podman.socket
+Requires=podman.socket
+
+[Service]
+WorkingDirectory=/opt/aegis
+ExecStart=/usr/local/bin/aegis --daemon --config /etc/aegis/config.yaml
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=65535
+Environment=CONTAINER_HOST=unix:///run/user/%U/podman/podman.sock
+
+# Environment variables for secrets (avoid plaintext in config)
+EnvironmentFile=%h/.config/aegis/env
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+# ~/.config/aegis/env (chmod 600)
+DATABASE_URL=postgresql://aegis:password@localhost:5432/aegis
+OPENAI_API_KEY=sk-...
+OPENBAO_ROLE_ID=...
+OPENBAO_SECRET_ID=...
+```
+
+```bash
+# Enable and start (as the aegis user)
+systemctl --user enable aegis
+systemctl --user start aegis
+
+# Check status
+systemctl --user status aegis
+
+# Follow logs
+journalctl --user -u aegis -f
+```
+
+User lingering must be enabled (see [Socket Configuration](#socket-configuration)) or the service will stop when the user session ends.
+
+---
+
+## Troubleshooting
+
+### Socket Not Found
+
+If the AEGIS daemon fails to connect to the Podman socket:
+
+```bash
+# Check if the socket unit is active
+systemctl --user status podman.socket
+
+# Check if the socket file exists
+ls -la /run/user/$(id -u)/podman/podman.sock
+
+# Restart the socket if needed
+systemctl --user restart podman.socket
+```
+
+### Permission Denied
+
+If the daemon gets permission errors connecting to the socket:
+
+```bash
+# Verify lingering is enabled
+loginctl show-user aegis | grep Linger
+
+# Verify the socket is owned by the correct user
+ls -la /run/user/$(id -u)/podman/
+
+# Verify the daemon is running as the correct user
+ps aux | grep aegis
+```
+
+### Container Stats Returning Zeros
+
+If resource usage metrics are all zeros, cgroup v2 delegation is likely not configured:
+
+```bash
+# Check cgroup version
+stat -fc %T /sys/fs/cgroup/
+
+# Check delegation
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
+
+# If cpu/memory/io are missing, add the delegation override
+sudo mkdir -p /etc/systemd/system/user@.service.d
+sudo tee /etc/systemd/system/user@.service.d/delegate.conf <<EOF
+[Service]
+Delegate=cpu cpuset io memory pids
+EOF
+sudo systemctl daemon-reload
+```
+
+Log out and back in (or reboot) for delegation changes to take effect.
+
+### Network Connectivity Issues
+
+If containers cannot reach the host or external networks:
+
+```bash
+# Check which network mode is in use
+podman info | grep -i network
+
+# Verify slirp4netns or pasta is installed
+which slirp4netns
+which pasta
+
+# Test host connectivity from a container
+podman run --rm alpine ping -c1 host.containers.internal
+```
+
+If using `pasta` (default in Podman 5.0+), and connectivity fails, try falling back to `slirp4netns`:
+
+```bash
+podman run --network=slirp4netns --rm alpine ping -c1 host.containers.internal
+```
+
+---
+
+## Health Checks
+
+The AEGIS daemon exposes the same health endpoints regardless of the container runtime:
+
+```bash
+# Liveness (daemon process alive)
+curl http://localhost:8080/health/live
+
+# Readiness (daemon ready to accept requests; all dependencies connected)
+curl http://localhost:8080/health/ready
+```
+
+Use these in load balancer health check configuration or monitoring systems.
