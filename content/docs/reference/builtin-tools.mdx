@@ -73,6 +73,8 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.workflow.cancel` | `false` | State-mutating — terminates a running workflow execution |
 | `aegis.workflow.signal` | `false` | State-mutating — delivers human input to a paused workflow |
 | `aegis.workflow.remove` | `false` | Destructive — deletes a workflow execution record |
+| `aegis.tools.list` | `true` | Read-only tool discovery |
+| `aegis.tools.search` | `true` | Read-only tool search |
 | `aegis.system.info` | `true` | Read-only node status query |
 | `aegis.system.config` | `true` | Read-only configuration access |
 
@@ -135,7 +137,7 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `web.search` | `query` |
 | `web.fetch` | `url` |
 
-Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.system.info`) accept any object including `{}`.
+Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`) accept any object including `{}`. `aegis.tools.search` accepts an optional `query` string but has no required fields.
 
 ---
 

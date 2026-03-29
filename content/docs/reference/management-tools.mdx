@@ -9,7 +9,7 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
-The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The agent management surface also includes `aegis.agent.logs` for retrieving agent-level activity logs.
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The agent management surface also includes `aegis.agent.logs` for retrieving agent-level activity logs. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog.
 
 ## Versioning and Safety
 
@@ -483,6 +483,84 @@ Deletes an execution record from the registry. The execution must be in a termin
 | `execution_id` | `string` | ✅ | — | UUID of the execution record to remove. |
 
 **Returns:** A JSON object confirming removal with `execution_id` and `removed: true`.
+
+---
+
+## Tool Discovery
+
+Tool discovery tools allow agents and external clients to programmatically enumerate and search the available MCP tool surface on the current node. Results are filtered by the caller's `SecurityContext`, so different tiers see different tool sets.
+
+### `aegis.tools.list`
+
+Returns the full list of tools available to the caller, including both built-in dispatchers and external MCP server capabilities. The response is filtered by the caller's security context.
+
+**Parameters:** None.
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.tools.list",
+  "tools": [
+    {
+      "name": "fs.read",
+      "description": "Read file contents",
+      "source": "builtin",
+      "skip_judge": true
+    },
+    {
+      "name": "aegis.agent.create",
+      "description": "Deploy a new agent to the orchestrator registry",
+      "source": "builtin",
+      "skip_judge": false
+    }
+  ],
+  "total": 42
+}
+```
+
+Each entry includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `string` | Fully qualified tool name (e.g. `fs.read`, `aegis.agent.create`) |
+| `description` | `string` | Human-readable tool description |
+| `source` | `string` | `"builtin"` for built-in dispatchers, `"mcp"` for external MCP servers |
+| `skip_judge` | `boolean` | Whether the inner-loop semantic judge is bypassed for this tool |
+
+### `aegis.tools.search`
+
+Searches the available tool surface by keyword, returning tools whose name or description matches the query. Like `aegis.tools.list`, results are filtered by the caller's security context.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | `string` | ❌ | — | Search term matched against tool names and descriptions. When omitted, behaves identically to `aegis.tools.list`. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.tools.search",
+  "query": "workflow",
+  "tools": [
+    {
+      "name": "aegis.workflow.create",
+      "description": "Deploy a new workflow to the orchestrator registry",
+      "source": "builtin",
+      "skip_judge": false
+    },
+    {
+      "name": "aegis.workflow.run",
+      "description": "Execute a registered workflow by name",
+      "source": "builtin",
+      "skip_judge": false
+    }
+  ],
+  "total": 2
+}
+```
+
+**Example usage:** An agent that needs to discover what tools are available before deciding on a plan can call `aegis.tools.search` with a domain keyword (e.g. `"filesystem"`, `"workflow"`, `"agent"`) to get a focused subset of the tool surface.
 
 ---
 
