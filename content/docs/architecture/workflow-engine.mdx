@@ -93,6 +93,7 @@ This means deploying a new workflow YAML requires no TypeScript code changes and
 struct Workflow {
     id: WorkflowId,
     metadata: WorkflowMetadata,   // name, version, labels
+    scope: WorkflowScope,         // Global | Tenant | User
     spec: WorkflowSpec,
     created_at: DateTime<Utc>,
 }
@@ -101,6 +102,16 @@ struct WorkflowSpec {
     initial_state: String,                      // entry state name
     context: HashMap<String, Value>,            // default Blackboard values (spec.context)
     states: HashMap<String, WorkflowState>,
+}
+
+// The Workflow aggregate includes a `scope` field (WorkflowScope) that controls visibility.
+// Scope can be Global (platform-wide, tenant_id = "aegis-system"), Tenant (default, visible
+// to all users in the tenant), or User (private to the owning user). Name-based lookups
+// resolve using narrowest-first precedence: User → Tenant → Global.
+enum WorkflowScope {
+    Global,   // tenant_id = "aegis-system"; visible to all tenants
+    Tenant,   // visible to all users within the owning tenant (default)
+    User,     // visible only to the owning user within their tenant
 }
 
 struct WorkflowState {
