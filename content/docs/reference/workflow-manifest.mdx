@@ -191,6 +191,8 @@ spec:
 | `labels` | `map[string]string` | | Key-value labels for categorization and discovery. |
 | `annotations` | `map[string]string` | | Arbitrary non-identifying metadata (URLs, changelogs, JSON blobs). |
 
+> **Scope:** Workflows are deployed at Tenant scope by default. Use `--scope user` for personal workflows or `--scope global` for platform-wide workflows (requires operator role). After deployment, use `aegis workflow promote` and `aegis workflow demote` to change scope. Scope is not a manifest field — it is controlled via the CLI `--scope` flag or API parameter at deploy time.
+
 ### `spec`
 
 | Field | Type | Required | Description |

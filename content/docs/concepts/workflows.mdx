@@ -25,6 +25,38 @@ This page documents **Temporal Workflows**. For documentation on REST macro-tool
 
 ---
 
+## Workflow Scope and Visibility
+
+Every workflow has a **scope** that controls who can discover and execute it:
+
+| Scope | Visibility | Use Case |
+|---|---|---|
+| **User** | Only the owning user within their tenant | Personal sandbox, experimentation |
+| **Tenant** | All users within the owning tenant | Team-shared workflows (default) |
+| **Global** | All users across all tenants | Platform-standard workflows managed by operators |
+
+**Scope Resolution:** When you reference a workflow by name, AEGIS resolves it using a narrowest-first strategy: your User-scoped workflows are checked first, then Tenant-scoped, then Global. This means you can shadow a platform workflow with a personal version of the same name.
+
+**Promotion and Demotion:** Workflows can be promoted (User → Tenant → Global) or demoted (Global → Tenant → User) via CLI or API:
+
+```bash
+# Deploy a personal workflow
+aegis workflow deploy my-workflow.yaml --scope user
+
+# Promote to tenant-wide visibility
+aegis workflow promote my-workflow --to tenant
+
+# Promote to global (operator role required)
+aegis workflow promote my-workflow --to global
+
+# List all visible workflows (user + tenant + global)
+aegis workflow list --visible
+```
+
+Direct jumps between User and Global are not allowed — you must promote through Tenant first to enforce a review step.
+
+---
+
 ## Manifest Structure
 
 ```yaml
