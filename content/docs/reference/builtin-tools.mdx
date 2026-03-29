@@ -7,8 +7,8 @@ The AEGIS Orchestrator provides a set of native, built-in tools out of the box. 
 
 Built-in tools are divided into two main categories:
 
-1.  **Execution Tools**: Tools like `fs.*`, `web.*`, and `cmd.run` that agents use to perform their tasks. (Documented on this page)
-2.  **Management Tools**: Tools like `aegis.agent.*` and `aegis.workflow.*` used for platform administration and generative authoring. See the [Management Tools](/docs/reference/management-tools) reference for more details.
+1. **Execution Tools**: Tools like `fs.*`, `web.*`, and `cmd.run` that agents use to perform their tasks. (Documented on this page)
+2. **Management Tools**: Tools like `aegis.agent.*` and `aegis.workflow.*` used for platform administration and generative authoring. See the [Management Tools](/docs/reference/management-tools) reference for more details.
 
 ## Inner-Loop Judge Optimization (`skip_judge`)
 
@@ -69,6 +69,10 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.workflow.status` | `true` | Read-only execution status query |
 | `aegis.task.cancel` | `false` | State-mutating — terminates a running execution |
 | `aegis.task.remove` | `false` | Destructive — deletes an execution record |
+| `aegis.agent.logs` | `true` | Read-only agent activity log query |
+| `aegis.workflow.cancel` | `false` | State-mutating — terminates a running workflow execution |
+| `aegis.workflow.signal` | `false` | State-mutating — delivers human input to a paused workflow |
+| `aegis.workflow.remove` | `false` | Destructive — deletes a workflow execution record |
 | `aegis.system.info` | `true` | Read-only node status query |
 | `aegis.system.config` | `true` | Read-only configuration access |
 
@@ -117,6 +121,9 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `aegis.workflow.logs`, `aegis.task.logs` | `execution_id` |
 | `aegis.workflow.status`, `aegis.workflow.executions.get` | `execution_id` |
 | `aegis.task.status`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
+| `aegis.workflow.cancel`, `aegis.workflow.remove` | `execution_id` |
+| `aegis.workflow.signal` | `execution_id`, `response` |
+| `aegis.agent.logs` | `agent_id` |
 | `aegis.schema.get` | `key` |
 | `aegis.schema.validate` | `kind`, `manifest_yaml` |
 | `cmd.run` | `command` (must be a non-empty string) |

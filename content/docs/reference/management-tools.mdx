@@ -9,7 +9,7 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
-The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, and `aegis.workflow.logs`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`.
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The agent management surface also includes `aegis.agent.logs` for retrieving agent-level activity logs.
 
 ## Versioning and Safety
 
@@ -82,6 +82,47 @@ Lists all currently deployed agents in the registry.
 
 **Returns:** A list of agent summaries including `id`, `name`, `version`, `status`, and `labels`.
 
+### `aegis.agent.logs`
+
+Retrieves agent-level activity logs, returning deployment events, execution summaries, and lifecycle transitions in reverse chronological order. This is a **read-only** query — `skip_judge` defaults to `true`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `agent_id` | `string` | ✅ | — | UUID of the agent to retrieve logs for. |
+| `limit` | `integer` | ❌ | `50` | Maximum number of events to return. |
+| `offset` | `integer` | ❌ | `0` | Number of events to skip — use for pagination. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.agent.logs",
+  "agent_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "events": [
+    {
+      "event_type": "AgentDeployed",
+      "payload": { "version": "1.0.0", "deployed_at": "2026-03-14T10:00:00Z" },
+      "recorded_at": "2026-03-14T10:00:00Z"
+    },
+    {
+      "event_type": "ExecutionCompleted",
+      "payload": { "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "status": "completed" },
+      "recorded_at": "2026-03-14T11:00:00Z"
+    }
+  ],
+  "total": 2,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**Related CLI command:**
+
+```bash
+aegis agent logs <agent_id>
+aegis agent logs <agent_id> --follow        # stream events live
+```
+
 ---
 
 ## Workflow Management Tools
@@ -143,6 +184,7 @@ Executes a registered workflow by name, passing an optional input payload to the
 | `name` | `string` | ✅ | — | The name of the workflow to execute. |
 | `input` | `object` | ❌ | `{}` | Key-value input passed to the workflow's initial blackboard state. |
 | `blackboard` | `object` | ❌ | — | Additional blackboard values merged into the workflow execution before startup. |
+| `version` | `string` | ❌ | — | Optional semantic version of the workflow to execute. When omitted, the latest deployed version is used. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`.
 
@@ -246,6 +288,91 @@ aegis workflow executions get <execution_id>
 aegis workflow signal <execution_id> --response approved
 ```
 
+### `aegis.workflow.cancel`
+
+Gracefully cancels a running workflow execution. The workflow engine will stop processing further states and mark the execution as `cancelled`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the workflow execution to cancel. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.workflow.cancel",
+  "cancelled": true,
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+}
+```
+
+On failure:
+
+```json
+{
+  "tool": "aegis.workflow.cancel",
+  "cancelled": false,
+  "error": "execution not found or already in terminal state"
+}
+```
+
+### `aegis.workflow.signal`
+
+Sends human input to a workflow execution that is paused at a `human_input` state. The workflow engine resumes execution with the provided response placed on the blackboard.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the paused workflow execution. |
+| `response` | `string` | ✅ | — | Human input text to deliver to the waiting workflow state. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.workflow.signal",
+  "signalled": true,
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+}
+```
+
+On failure:
+
+```json
+{
+  "tool": "aegis.workflow.signal",
+  "signalled": false,
+  "error": "execution is not in a waiting_for_human_input state"
+}
+```
+
+### `aegis.workflow.remove`
+
+Deletes a workflow execution record from the registry. The execution must be in a terminal state (`completed`, `failed`, or `cancelled`).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the workflow execution record to remove. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.workflow.remove",
+  "removed": true,
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+}
+```
+
+On failure:
+
+```json
+{
+  "tool": "aegis.workflow.remove",
+  "removed": false,
+  "error": "execution not found or still in progress"
+}
+```
+
 ### `aegis.workflow.list`
 
 Lists all currently registered workflows.
@@ -268,6 +395,7 @@ Executes a deployed agent by ID, optionally passing an input payload.
 |-----------|------|----------|---------|-------------|
 | `agent_id` | `string` | ✅ | — | UUID of the agent to execute. |
 | `input` | `object` | ❌ | `{}` | Key-value payload passed to the agent's execution context. |
+| `version` | `string` | ❌ | — | Optional semantic version of the agent to execute. When omitted, the latest deployed version is used. |
 
 **Returns:** An object containing `execution_id` and `status: "started"`.
 

@@ -6,6 +6,7 @@ description: How to use built-in management tools to automate agent and workflow
 AEGIS is designed for high degrees of autonomy. While the CLI is excellent for human operators, AI agents can manage the platform themselves using the built-in **Management MCP Tools**.
 
 This enables powerful patterns like:
+
 - **Agent Factories**: Agents that create specialized "child" agents on demand.
 - **Self-Optimizing Workflows**: Workflows that analyze their own performance and update their definitions.
 - **Generative Authoring**: Generating complete agent/workflow manifests from natural language and deploying them immediately.
@@ -19,7 +20,8 @@ All `aegis.*` tools are built directly into the Orchestrator as first-class buil
 | Capability | Tools |
 |---|---|
 | **Agent Lifecycle** | `aegis.agent.list`, `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.delete`, `aegis.agent.generate` |
-| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs` |
+| **Agent Observability** | `aegis.agent.logs` |
+| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, `aegis.workflow.remove` |
 | **Task Execution** | `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, `aegis.task.remove` |
 | **System Introspection** | `aegis.system.info`, `aegis.system.config` |
 | **Schema & Validation** | `aegis.schema.get`, `aegis.schema.validate` |
@@ -33,6 +35,7 @@ For a complete parameter reference, see the [Management Tools](/docs/reference/m
 An "Agent Factory" is an agent specialized in authoring other agents. It typically follows a structured loop to ensure safety and correctness.
 
 ### Step 1: Discover Existing Capabilities
+
 The factory should first check what agents already exist to avoid duplication.
 
 ```json
@@ -41,6 +44,7 @@ The factory should first check what agents already exist to avoid duplication.
 ```
 
 ### Step 2: Retrieve the Schema
+
 To write a valid manifest, the agent retrieves the current canonical schema.
 
 ```json
@@ -49,6 +53,7 @@ To write a valid manifest, the agent retrieves the current canonical schema.
 ```
 
 ### Step 3: Author and Validate
+
 After composing the YAML, the agent validates it before attempting deployment.
 
 ```json
@@ -60,6 +65,7 @@ After composing the YAML, the agent validates it before attempting deployment.
 ```
 
 ### Step 4: Deploy or Update
+
 Finally, the agent deploys the new manifest. If updating an existing agent, it should ensure the version is incremented or use `force: true`.
 
 ```json
@@ -75,11 +81,11 @@ Finally, the agent deploys the new manifest. If updating an existing agent, it s
 
 Updating a workflow requires care to ensure the new definition is sound. The `aegis.workflow.create` tool provides a high-assurance path by running both deterministic checks and semantic judge evaluations.
 
-### The Recommended Update Flow:
+### The Recommended Update Flow
 
-1.  **Export Current**: Call `aegis.workflow.export` to get the current source.
-2.  **Modify**: Apply changes to the YAML (increment version).
-3.  **Validate & Register**: Call `aegis.workflow.create` with a `task_context` explaining the change.
+1. **Export Current**: Call `aegis.workflow.export` to get the current source.
+2. **Modify**: Apply changes to the YAML (increment version).
+3. **Validate & Register**: Call `aegis.workflow.create` with a `task_context` explaining the change.
 
 If you intentionally want to overwrite an existing same-name/same-version workflow, pass `force: true` to `aegis.workflow.create` instead of introducing a separate deployment path.
 
@@ -94,6 +100,17 @@ If you intentionally want to overwrite an existing same-name/same-version workfl
 ```
 
 If the semantic judge score is below the threshold, the tool returns the judge's feedback, allowing the authoring agent to refine the manifest and try again.
+
+To execute a workflow pinned to a specific version:
+
+```json
+// Tool Call: aegis.workflow.run (with version)
+{
+  "name": "deploy-pipeline",
+  "version": "1.0.0",
+  "input": { "environment": "staging" }
+}
+```
 
 For running workflows, the corresponding execution tools expose the read-side lifecycle:
 
@@ -117,6 +134,17 @@ Management tools give agents complete control over the task execution lifecycle.
 ```
 
 Returns `{ "execution_id": "6ba7b810-...", "status": "started" }`.
+
+To pin execution to a specific agent version:
+
+```json
+// Tool Call: aegis.task.execute (with version)
+{
+  "agent_id": "code-reviewer",
+  "version": "2.1.0",
+  "input": { "repo": "my-project" }
+}
+```
 
 ### Step 2: Poll for Completion
 
@@ -153,6 +181,65 @@ After a task concludes, remove the execution record from the registry:
 // Tool Call: aegis.task.remove
 { "execution_id": "6ba7b810-..." }
 ```
+
+---
+
+## Pattern: Workflow Execution Control
+
+Management tools provide full lifecycle control over workflow executions, including cancellation, human-in-the-loop signaling, and cleanup.
+
+### Cancel a Stuck Workflow
+
+If a workflow execution is unresponsive or no longer needed, cancel it gracefully:
+
+```json
+// Tool Call: aegis.workflow.cancel
+{ "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8" }
+```
+
+Returns `{ "tool": "aegis.workflow.cancel", "cancelled": true, "execution_id": "6ba7b810-..." }`.
+
+### Send Human Input to a Paused Workflow
+
+Workflows using `human_input` states will pause and wait for a signal. Deliver the response via MCP:
+
+```json
+// Tool Call: aegis.workflow.signal
+{
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "response": "approved"
+}
+```
+
+Returns `{ "tool": "aegis.workflow.signal", "signalled": true, "execution_id": "6ba7b810-..." }`.
+
+### Clean Up Old Executions
+
+After a workflow execution reaches a terminal state, remove the record from the registry:
+
+```json
+// Tool Call: aegis.workflow.remove
+{ "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8" }
+```
+
+Returns `{ "tool": "aegis.workflow.remove", "removed": true, "execution_id": "6ba7b810-..." }`.
+
+---
+
+## Pattern: Agent Activity Logs
+
+Retrieve deployment events, execution summaries, and lifecycle transitions for a specific agent. This is useful for auditing and diagnostics.
+
+```json
+// Tool Call: aegis.agent.logs
+{
+  "agent_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "limit": 100,
+  "offset": 0
+}
+```
+
+Returns a paginated list of agent events. Use `offset` to page through longer histories.
 
 ---
 

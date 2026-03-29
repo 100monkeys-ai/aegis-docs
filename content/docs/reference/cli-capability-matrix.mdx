@@ -51,6 +51,7 @@ Only part of the CLI has a direct MCP management-tool equivalent today. Local st
 | `aegis agent show <uuid>` | `aegis.agent.export` | Export agent manifest as a structured document |
 | `aegis agent remove <id>` | `aegis.agent.delete` | Permanently remove an agent |
 | `aegis agent generate --input ...` | `aegis.agent.generate` | Natural language agent authoring loop |
+| `aegis agent logs <id>` | `aegis.agent.logs` | Retrieve agent-level activity logs |
 | **Workflow Management** | | |
 | `aegis workflow list` | `aegis.workflow.list` | List all registered workflows |
 | `aegis workflow deploy` | `aegis.workflow.create` | Validate and register a workflow |
@@ -58,13 +59,16 @@ Only part of the CLI has a direct MCP management-tool equivalent today. Local st
 | `aegis workflow validate` | `aegis.workflow.validate` | Parse and deterministically validate a workflow manifest |
 | `aegis workflow describe <name>` | `aegis.workflow.export` | Export workflow manifest as a structured document |
 | `aegis workflow delete <name>` | `aegis.workflow.delete` | Remove a workflow from registry |
-| `aegis workflow run <name>` | `aegis.workflow.run` | Execute a registered workflow |
+| `aegis workflow run <name> [--version <semver>]` | `aegis.workflow.run` | Execute a registered workflow |
 | `aegis workflow executions list` | `aegis.workflow.executions.list` | List workflow executions with optional workflow filtering |
 | `aegis workflow executions get` | `aegis.workflow.status` / `aegis.workflow.executions.get` | Fetch a single workflow execution, including status and blackboard state |
 | `aegis workflow generate --input ...` | `aegis.workflow.generate` | Natural language workflow authoring loop |
 | `aegis workflow logs <execution_id>` | `aegis.workflow.logs` | Retrieve workflow execution event log |
+| `aegis workflow cancel <id>` | `aegis.workflow.cancel` | Cancel a running workflow execution |
+| `aegis workflow signal <id> --response <text>` | `aegis.workflow.signal` | Send human input to a paused workflow |
+| `aegis workflow remove <id>` | `aegis.workflow.remove` | Remove a workflow execution record |
 | **Task Management** | | |
-| `aegis task execute <agent>` | `aegis.task.execute` | Execute an agent task |
+| `aegis task execute <agent> [--version <semver>]` | `aegis.task.execute` | Execute an agent task |
 | `aegis task status <execution_id>` | `aegis.task.status` | Check execution progress and outcome |
 | `aegis task list` | `aegis.task.list` | List recent task executions |
 | `aegis task logs <execution_id>` | `aegis.task.logs` | Retrieve task execution event log |
@@ -80,7 +84,6 @@ The CLI also exposes commands with no current MCP counterpart:
 - `aegis init|up|down|restart|status|update|uninstall`
 - `aegis node init|join|leave|peers`
 - `aegis workflow run --wait`
-- `aegis workflow signal|cancel|remove`
 
 ---
 
@@ -91,7 +94,9 @@ The current CLI supports file-backed context dictionaries for direct execution a
 | Command | Override Flag | Accepted Formats | Validation |
 |---|---|---|---|
 | `aegis task execute <agent>` | `--context <DICT>` | Inline JSON/YAML or `@file` JSON/YAML | Must be an object; reserved execution keys are rejected by the orchestrator |
+| `aegis task execute <agent>` | `--version <semver>` | Semantic version string | Pins execution to a specific agent version; latest deployed version is used when omitted |
 | `aegis workflow run <name>` | `--blackboard <DICT>` | Inline JSON/YAML or `@file` JSON/YAML | Must be an object; reserved workflow keys such as `workflow` are rejected |
+| `aegis workflow run <name>` | `--version <semver>` | Semantic version string | Pins execution to a specific workflow version; latest deployed version is used when omitted |
 
 `aegis task execute --input` and `aegis workflow run --input` also accept inline JSON/YAML or `@file` values, but those flags carry primary execution/workflow input rather than top-level context overrides.
 
