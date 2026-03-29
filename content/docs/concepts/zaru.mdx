@@ -51,11 +51,23 @@ A user's `ZaruTier` determines their allocated resources and tool capabilities. 
 
 The Zaru client does not hardcode AEGIS tools locally. It discovers the orchestrator's current tool inventory at runtime via MCP and then exposes only the tools allowed by the user's tier-derived `SecurityContext`.
 
-For example:
+All paid tiers (Pro, Business, Enterprise) share identical full tool access. Free has a slightly reduced tool set — it lacks `aegis.agent.update`, `aegis.workflow.update`, and `aegis.workflow.signal`. The primary tier differentiators are rate limits, resource allocation, teams and organization support, storage quotas, and self-hosted deployment options.
 
-- **Free Tier (`ZaruTier::Free`)**: Maps to a `"zaru-free"` SecurityContext. It may enforce stricter rate limits and is structurally prohibited from mounting persistent, stateful `Volume`s.
-- **Pro Tier (`ZaruTier::Pro`)**: Maps to `"zaru-pro"` and is intended for full AEGIS workflow and execution management through MCP.
-- **Enterprise Tier (`ZaruTier::Enterprise`)**: Maps to `"zaru-enterprise"` and is intended for the full orchestrator-discovered AEGIS tool surface.
+- **Free (`ZaruTier::Free`)** — maps to `"zaru-free"`. Slightly reduced tool set (no agent update, workflow update, or workflow signal). Strict rate limits (3 agent executions/min, 20/day). 5-minute execution timeout, 5 max iterations, 1 concurrent execution, 512 MB memory. Limited persistent storage with a configurable volume count.
+- **Pro (`ZaruTier::Pro`)** — maps to `"zaru-pro"`. Full tool access, persistent storage up to 10 GB (30-day TTL), 30-minute timeout, 10 iterations, 5 concurrent executions. Rate limits: 10 agent executions/min, 200/day. BYOK users are exempt from LLM-specific rate limits.
+- **Business (`ZaruTier::Business`)** — maps to `"zaru-business"`. Same tool access as Pro. Adds teams and organization support, dedicated node option, custom agent and workflow manifests, and audit logs with 90-day retention. 50 GB storage, 4-hour timeout, 50+ concurrent executions. Rate limits: 30 agent executions/min, 1,000/day. Limits are customizable per-tenant.
+- **Enterprise (`ZaruTier::Enterprise`)** — maps to `"zaru-enterprise"`. Same tool access. Adds self-hosted and air-gapped deployment, SAML federation, and a full audit trail with 365-day retention. 100 GB storage, 24-hour timeout, unlimited concurrent executions. Rate limits: 100 agent executions/min, 10,000/day. All limits are fully customizable per-tenant and per-user.
+
+| Capability | Free | Pro | Business | Enterprise |
+|---|---|---|---|---|
+| Tool access | Slightly reduced | Full | Full | Full |
+| Persistent storage | Limited | 10 GB | 50 GB | 100 GB |
+| Max execution timeout | 5 min | 30 min | 4 hours | 24 hours |
+| Concurrent executions | 1 | 5 | 50+ | Unlimited |
+| Agent executions/min | 3 | 10 | 30 | 100 |
+| Teams and orgs | — | — | Yes | Yes |
+| Self-hosted / air-gapped | — | — | — | Yes |
+| Audit log retention | — | — | 90 days | 365 days |
 
 Because the system enforces a strict "ceiling rule" during Swarm creation, a child agent can never be spawned with a broader `SecurityContext` than its parent, ensuring tier restrictions apply collectively across the entire agent swarm.
 
