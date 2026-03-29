@@ -71,6 +71,27 @@ All paid tiers (Pro, Business, Enterprise) share identical full tool access. Fre
 
 Because the system enforces a strict "ceiling rule" during Swarm creation, a child agent can never be spawned with a broader `SecurityContext` than its parent, ensuring tier restrictions apply collectively across the entire agent swarm.
 
+## Operator Tier
+
+Alongside the consumer tiers above, AEGIS supports a separate **operator** tier for platform administrators and SREs. Operators and consumers use distinct identity paths:
+
+| Dimension | Consumer (Zaru) | Operator (AEGIS) |
+|-----------|----------------|-------------------|
+| Keycloak realm | `zaru-consumer` | `aegis-system` |
+| JWT claim | `zaru_tier` (`Free`, `Pro`, `Business`, `Enterprise`) | `aegis_role` (`admin`, `operator`, `readonly`) |
+| Identity kind | `IdentityKind::ZaruUser` | `IdentityKind::Operator` |
+| SecurityContext | `zaru-free`, `zaru-pro`, `zaru-business`, `zaru-enterprise` | `aegis-system-operator` |
+
+`ZaruTier` is a subscription tier — it determines the consumer's resource allocation, rate limits, and storage quotas. `AegisRole` is a platform role — it determines what administrative operations an operator may perform.
+
+Operators authenticate via the `aegis-system` Keycloak realm and carry `aegis_role` claims in their JWT. Their sessions are mapped to the `aegis-system-operator` SecurityContext, which provides access to **all** safe commands (the same set available to enterprise consumers) plus destructive and orchestrator commands that are never exposed to any consumer tier.
+
+The three operator roles provide graduated access:
+
+- **`aegis:admin`** — full read/write on all objects, daemon configuration, user management
+- **`aegis:operator`** — deploy/manage agents and workflows, start/cancel executions, manage volumes
+- **`aegis:readonly`** — read any object, list executions, stream events, no mutations
+
 ## Glass Laboratory UX
 
 The Zaru client provides a specialized frontend experience known as the Glass Laboratory. This includes:

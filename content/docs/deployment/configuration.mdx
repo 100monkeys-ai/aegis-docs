@@ -439,6 +439,30 @@ security_contexts:
           calls: 60
           per_seconds: 60
 
+  - name: aegis-system-operator
+    description: "Platform operator — all safe tools plus destructive and orchestrator commands"
+    capabilities:
+      - tool_pattern: "fs.*"
+        path_allowlist:
+          - /workspace
+          - /agent
+          - /shared
+      - tool_pattern: "cmd.run"
+        subcommand_allowlist:
+          git: [clone, add, commit, push, pull, status, diff, stash]
+          cargo: [build, test, fmt, clippy, check, run]
+          npm: [install, run, test, build, ci]
+          python: ["-m"]
+      - tool_pattern: "web.*"
+      # Destructive commands (operator-only)
+      - tool_pattern: "aegis.agent.delete"
+      - tool_pattern: "aegis.workflow.delete"
+      - tool_pattern: "aegis.task.remove"
+      # Orchestrator commands (operator-only)
+      - tool_pattern: "aegis.system.info"
+      - tool_pattern: "aegis.system.config"
+    deny_list: []
+
 # ─── Builtin Dispatchers ──────────────────────────────────────────────────────
 # Configuration for the in-process Dispatch Protocol handler.
 # The cmd dispatcher is NOT an MCP server — it runs subprocesses inside agent

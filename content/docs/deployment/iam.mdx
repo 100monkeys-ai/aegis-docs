@@ -151,9 +151,34 @@ aegis daemon start --config aegis-config.yaml
 
 ---
 
+## Operator Identity → SecurityContext Mapping
+
+When an operator authenticates via the `aegis-system` realm, the orchestrator resolves their identity and SecurityContext through the following chain:
+
+```text
+aegis-system realm JWT
+  → aegis_role claim extracted
+  → IdentityKind::Operator resolved
+  → aegis-system-operator SecurityContext assigned
+```
+
+The `aegis_role` claim determines the operator's read/write scope within that SecurityContext:
+
+| Role | Identity Kind | SecurityContext | Mutations |
+|------|--------------|-----------------|-----------|
+| `aegis:admin` | `IdentityKind::Operator` | `aegis-system-operator` | Full — all safe, destructive, and orchestrator commands |
+| `aegis:operator` | `IdentityKind::Operator` | `aegis-system-operator` | Limited — safe commands and restricted destructive commands |
+| `aegis:readonly` | `IdentityKind::Operator` | `aegis-system-operator` | None — read-only access, no mutations |
+
+All three roles map to the same `aegis-system-operator` SecurityContext (which defines the tool capabilities ceiling). The role-based differentiation happens at the API handler level: `aegis:readonly` operators can invoke read tools (`aegis.system.info`) but not write tools (`aegis.agent.delete`, `aegis.system.config`).
+
+This is distinct from consumer identity resolution, where a `zaru-consumer` realm JWT with a `zaru_tier` claim maps to `IdentityKind::ZaruUser` and a tier-specific SecurityContext (`zaru-free`, `zaru-pro`, etc.).
+
+---
+
 ## Authentication Flow (HTTP API)
 
-```
+```text
 Client sends request:
   GET /v1/agents
   Authorization: Bearer <keycloak-issued-jwt>

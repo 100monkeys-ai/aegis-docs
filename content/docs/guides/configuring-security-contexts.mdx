@@ -193,6 +193,58 @@ The agent's LLM receives the violation error message and may attempt a different
 
 ---
 
+## Operator SecurityContext
+
+The `aegis-system-operator` SecurityContext grants platform operators access to administrative tools beyond what any consumer tier provides. It is a superset of enterprise-tier capabilities, adding destructive and orchestrator commands.
+
+```yaml
+- name: "aegis-system-operator"
+  description: "Platform operator — all safe tools plus destructive and orchestrator commands"
+  capabilities:
+    # All safe commands (same as enterprise tier)
+    - tool_pattern: "fs.*"
+      path_allowlist: [/workspace, /agent, /shared]
+    - tool_pattern: "cmd.run"
+      subcommand_allowlist:
+        git: [clone, add, commit, push, pull, status, diff, stash]
+        cargo: [build, test, fmt, clippy, check, run]
+        npm: [install, run, test, build, ci]
+        python: ["-m"]
+    - tool_pattern: "web.*"
+    # Destructive commands (operator-only)
+    - tool_pattern: "aegis.agent.delete"
+    - tool_pattern: "aegis.workflow.delete"
+    - tool_pattern: "aegis.task.remove"
+    # Orchestrator commands (operator-only)
+    - tool_pattern: "aegis.system.info"
+    - tool_pattern: "aegis.system.config"
+  deny_list: []
+```
+
+### Tool Categories
+
+Tools exposed by the SMCP gateway are classified into three categories:
+
+| Category | Description | Availability |
+|----------|-------------|-------------|
+| **Safe commands** | Read operations, agent creation, workflow execution, file/command tools | All tiers (Free through Enterprise) and operators |
+| **Destructive commands** | Permanent deletions — `aegis.agent.delete`, `aegis.workflow.delete`, `aegis.task.remove` | Operator-only |
+| **Orchestrator commands** | System introspection and configuration — `aegis.system.info`, `aegis.system.config` | Operator-only |
+
+The five operator-only tools are:
+
+1. `aegis.agent.delete` — permanently remove an agent definition
+2. `aegis.workflow.delete` — permanently remove a workflow definition
+3. `aegis.task.remove` — permanently remove a task from the execution queue
+4. `aegis.system.info` — retrieve orchestrator system information (version, uptime, cluster state)
+5. `aegis.system.config` — read and modify runtime configuration
+
+### Why the `aegis-system-` Prefix?
+
+The operator context uses the `aegis-system-` prefix rather than `zaru-` to avoid SMCP middleware parameter stripping. For contexts prefixed with `zaru-`, the SMCP middleware automatically strips `force` and `version` parameters from tool calls — a safety measure for consumer-facing requests. Operator sessions need these parameters to reach the orchestrator unmodified, so they use the `aegis-system-` prefix which bypasses that stripping logic.
+
+---
+
 ## Swarm Security Context Ceiling
 
 When an agent spawns child agents in a swarm, the child's security context must be **equal to or more restrictive** than the parent's. Attempting to spawn a child with greater permissions fails immediately with a `SpawnError`.
