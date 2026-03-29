@@ -320,6 +320,14 @@ storage:
     # Hard ceiling on any single volume size in MB. Default: 10000
     max_size_limit_mb: 10000
 
+# ─── Deploy Built-In Templates ───────────────────────────────────────────────
+# Deploy vendored built-in agent and workflow templates on startup.
+# Includes agent-creator-agent, workflow-generator-planner-agent, judge agents,
+# and the builtin-workflow-generator workflow.
+# Required for aegis.agent.generate and aegis.workflow.generate to function.
+# Default: false
+deploy_builtins: false
+
 # ─── MCP Tool Servers ─────────────────────────────────────────────────────────
 # External MCP server processes. Optional array.
 mcp_servers:
@@ -750,6 +758,16 @@ Optional. Defaults to the `local_host` backend.
 | `local_host.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
 | `local_host.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
 | `local_host.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
+
+---
+
+### `spec.deploy_builtins`
+
+Optional. Default: `false`.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, and the builtin-workflow-generator workflow. Required for `aegis.agent.generate` and `aegis.workflow.generate` to function. |
 
 ---
 

@@ -141,6 +141,13 @@ spec:
     opendal:
       provider: "memory"
 
+  # ─── Deploy Built-In Templates ──────────────────────────────────────────────
+  # Deploy vendored built-in agent and workflow templates on startup.
+  # Includes agent-creator-agent, workflow-generator-planner-agent, judge agents,
+  # and the builtin-workflow-generator workflow.
+  # Required for aegis.agent.generate and aegis.workflow.generate to function.
+  deploy_builtins: false
+
   # ─── MCP Tool Servers ───────────────────────────────────────────────────────
   mcp_servers:
     - name: web-search
@@ -568,6 +575,16 @@ Optional. Defaults to the `local_host` backend.
 | `local_host.mount_point` | string | `/var/lib/aegis/local-host-volumes` | Host filesystem mount point for local volumes |
 | `opendal.provider` | string | `memory` | OpenDAL scheme provider |
 | `opendal.options` | map | `{}` | OpenDAL provider options |
+
+---
+
+### `spec.deploy_builtins`
+
+Optional. Default: `false`.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, and the builtin-workflow-generator workflow. Required for `aegis.agent.generate` and `aegis.workflow.generate` to function. |
 
 ---
 
