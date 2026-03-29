@@ -135,7 +135,9 @@ The child reads `TARGET_FILE` from its environment at runtime.
 
 ## Resource Locking
 
-When multiple children might write to the same file or shared state, use resource locks:
+When multiple children might write to the same file or shared state, use resource locks.
+
+Each lock is internally bound to the calling execution's `execution_id`. This means locks are **automatically released** when the holding execution completes or is cancelled, in addition to the TTL-based expiry. You do not need to pass `execution_id` explicitly — the orchestrator resolves it from the caller's context.
 
 ```python
 # Child agent acquires a lock before writing to shared output
@@ -197,6 +199,8 @@ A child agent's `security_context` must be a subset of the parent's. If your par
 SpawnError: ContextExceedsParentCeiling (requested=privileged, parent=default)
 ```
 
+**Phase 1 (current):** Enforcement uses name-based comparison — the child's `security_context` name must exactly match the parent's. A child requesting a different security context name is rejected. **Phase 2** will introduce capability-lattice comparison, enabling strict-subset requests under different context names.
+
 Always use the same or more restrictive security context for child agents.
 
 ---
@@ -211,7 +215,13 @@ Design your decomposition to stay within this limit. If you need deeper hierarch
 
 ## Monitoring Swarms
 
-Swarm-specific listing and cancellation are not exposed as dedicated CLI commands in the current release.
-Use execution logs/streams for observability and `POST /v1/executions/{execution_id}/cancel` for cancellation.
+Swarm-specific listing and cancellation are not exposed as dedicated CLI commands in the current release. Use execution logs/streams for observability and `POST /v1/executions/{execution_id}/cancel` for cancellation. Cancelling a parent execution automatically cascades to all children via `SwarmCancellationPort`.
 
-Swarm events (child spawned, child completed, locks acquired/released, cascade cancellation) are published to the event bus and available via gRPC streaming.
+Six `SwarmEvent` variants are published to the event bus and available via gRPC streaming:
+
+- `SwarmCreated` — emitted when a new swarm is initialized
+- `ChildSpawned` — emitted for each child execution added to the swarm
+- `SwarmDissolved` — emitted when the swarm enters Dissolved state (includes `reason` and `dissolved_at`)
+- `LockAcquired` — emitted when a resource lock is granted (includes `execution_id` of the holder)
+- `LockReleased` — emitted when a resource lock is released or expires
+- `MessageBroadcast` — emitted for broadcast messages (includes `recipient_count`)

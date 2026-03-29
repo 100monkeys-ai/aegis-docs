@@ -85,6 +85,8 @@ The `Execution` aggregate root enforces these invariants at the domain level:
 - `max_iterations` cannot be exceeded (default: 10).
 - A completed or failed execution is immutable.
 
+The `ExecutionHierarchy` value object tracks an execution's position within multi-agent structures. It includes an optional `swarm_id` field that links the execution to its parent swarm when spawned as a child agent. This `swarm_id` is propagated to all child executions for end-to-end tracing correlation across the swarm.
+
 ---
 
 ## The Inner Loop: InnerLoopService
@@ -160,6 +162,7 @@ The Dispatch Protocol handles tool calls that require running a subprocess **ins
 ### Why Not Container Exec?
 
 The orchestrator cannot call the container runtime's exec API directly because:
+
 - It would be runtime-specific (breaks Firecracker support and ties the orchestrator to a single container engine).
 - It bypasses the bootstrap script's process supervision and output capture.
 
@@ -223,6 +226,7 @@ This allows nuanced threshold configuration. An agent can succeed with a score o
 Multiple validators are applied in order. The execution proceeds to the next iteration if any validator's score falls below its threshold.
 
 Validator types:
+
 - **`exit_code`** — deterministic; checks process exit code.
 - **`json_schema`** — deterministic; validates stdout against a JSON Schema.
 - **`regex`** — deterministic; matches stdout against a pattern.

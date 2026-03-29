@@ -22,6 +22,8 @@ Root Execution (parent)
 
 **Maximum recursive depth: 3.** An execution at depth 3 cannot spawn further children. Attempts to do so are rejected with `SpawnError::MaxDepthExceeded`.
 
+Swarm members are tracked by `ExecutionId` — the internal map is `HashMap<ExecutionId, AgentId>`. Each child gets a unique `execution_id` + `agent_id` pair at spawn time, and the child's `ExecutionHierarchy` has its `swarm_id` set so that every execution in the tree is traceable back to the swarm.
+
 ---
 
 ## Spawning Child Agents
@@ -39,8 +41,9 @@ result = client.call_tool("aegis.spawn_child", {
     # swarm_id is optional; omit to have the orchestrator create a new swarm
 })
 
-child_execution_id = result["execution_id"]
-swarm_id = result["swarm_id"]
+child_agent_id = result["agent_id"]       # AgentId of the spawned child
+child_execution_id = result["execution_id"]  # ExecutionId of the child's run
+swarm_id = result["swarm_id"]                # SwarmId (created automatically if omitted)
 
 # Do other work while the child runs...
 
@@ -62,15 +65,17 @@ A child agent's `security_context` must be a **subset** (≤) of its parent's `s
 
 This prevents privilege escalation via spawned children. A parent holding a restricted `SecurityContext` cannot grant a child execution broader permissions than it holds itself.
 
+**Phase 1 (current):** Enforcement uses name-based comparison — the child's `security_context` name must exactly match the parent's. A child requesting a different security context name is rejected. **Phase 2** will introduce capability-lattice comparison, enabling children to request a strict subset of the parent's capabilities under a different context name.
+
 ### ZaruSession Invariant
 
-The **ZaruSession** (the user's active session in the Control Plane) maintains an invariant where it tracks exactly one **root execution** at a time. While a swarm can create many concurrent child executions, they are all subordinates to the single active root execution. 
+The **ZaruSession** (the user's active session in the Control Plane) maintains an invariant where it tracks exactly one **root execution** at a time. While a swarm can create many concurrent child executions, they are all subordinates to the single active root execution.
 
 The **Glass Laboratory** renders this hierarchy as a coherent multi-agent execution tree, showing child progress as nested iteration panels within the root execution's view.
 
 ### OpenBao Credential Isolation
 
-AEGIS uses the **Orchestrator Proxy Lease Model** for distributing secrets within a swarm. Each child execution triggers its own independent credential resolution call to OpenBao at spawn time. 
+AEGIS uses the **Orchestrator Proxy Lease Model** for distributing secrets within a swarm. Each child execution triggers its own independent credential resolution call to OpenBao at spawn time.
 
 This ensures that dynamic secret leases are isolated across child-execution boundaries; a child execution's lease expiry is independent of its siblings' or its parent's lifetime.
 
@@ -128,11 +133,12 @@ finally:
 | Property | Value |
 |---|---|
 | **Default TTL** | 300 seconds (5 minutes) |
-| **TTL on execution end** | Lock is automatically released when the holding execution completes or is cancelled. |
+| **Execution binding** | Each lock stores the holder's `execution_id`. When that execution completes or is cancelled, the lock is automatically released. |
 | **Contention behavior** | `acquire_lock` blocks until the lock is available or the call times out. |
-| **Expiry** | A background GC task sweeps expired locks. `LockExpired` domain event is emitted. |
+| **Background GC** | A background task runs every 30 seconds, sweeping expired locks. `LockExpired` domain event is emitted for each. |
 
 To avoid deadlocks:
+
 - Always use `try/finally` to release locks.
 - Set TTLs conservatively — if your critical section takes 10 seconds, use a 30-second TTL.
 - Avoid circular lock acquisition (A waits for B's lock while B waits for A's lock).
@@ -141,14 +147,15 @@ To avoid deadlocks:
 
 ## Cascade Cancellation
 
-Cancelling a swarm propagates cancellation to all live child executions.
-Swarm control is not exposed as dedicated CLI commands in the current release.
+Cancelling a parent execution automatically cascades to its swarm and all child executions. This is wired through the `SwarmCancellationPort` trait — when the core execution engine processes a cancellation for a parent execution, it invokes the port, which cancels the associated swarm and every live child within it.
+
+Swarm control is not exposed as dedicated CLI commands in the current release. Use the execution cancellation endpoint:
 
 ```http
 POST /v1/executions/{execution_id}/cancel
 ```
 
-The cancellation reason is recorded in `ChildCancelled` domain events for the audit trail. Possible reasons:
+The cancellation reason is recorded in `SwarmDissolved` and per-child cancellation domain events for the audit trail. Possible reasons:
 
 | Reason | Description |
 |---|---|
@@ -169,10 +176,11 @@ Created ──▶ Active ──▶ Dissolving ──▶ Dissolved
 ```
 
 A swarm enters `Dissolving` when:
+
 - All child executions have completed/failed, or
 - a manual cancellation request is issued.
 
-It transitions to `Dissolved` once all in-flight child state is cleaned up (locks released, messages drained).
+It transitions to `Dissolved` once all in-flight child state is cleaned up (locks released, messages drained). The `dissolved_at: Option<DateTime<Utc>>` timestamp is recorded on the `Swarm` aggregate when it enters the `Dissolved` state.
 
 ---
 
@@ -180,5 +188,16 @@ It transitions to `Dissolved` once all in-flight child state is cleaned up (lock
 
 Swarm lifecycle and child execution state are observable through execution events and the streaming APIs.
 
-Swarm lifecycle events (`SwarmCreated`, `ChildAgentSpawned`, `ChildAgentCompleted`, `SwarmDissolved`, etc.) are published to the event bus and can be consumed by external systems via the gRPC streaming API.
+Six `SwarmEvent` variants are published to the event bus:
+
+| Event | Key Fields |
+|---|---|
+| `SwarmCreated` | `swarm_id`, `parent_execution_id`, `created_at` |
+| `ChildSpawned` | `swarm_id`, `agent_id`, `execution_id`, `spawned_at` |
+| `SwarmDissolved` | `swarm_id`, `reason`, `dissolved_at` |
+| `LockAcquired` | `swarm_id`, `resource_id`, `holder`, `execution_id` |
+| `LockReleased` | `swarm_id`, `resource_id` |
+| `MessageBroadcast` | `swarm_id`, `from`, `recipient_count` |
+
+These events can be consumed by external systems via the gRPC streaming API.
 See [CLI Capability Matrix](/docs/reference/cli-capability-matrix) for current CLI command coverage.

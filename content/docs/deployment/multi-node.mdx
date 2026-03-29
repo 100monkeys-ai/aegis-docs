@@ -141,6 +141,8 @@ This topology adds the **NodeClusterService** layer for authenticated, capabilit
 
 When a client submits an execution to the controller, the **NodeRouter** selects the best available worker (Phase 1: round-robin among healthy workers with matching tags; Phase 2: load-aware scoring). The controller forwards the execution to the selected worker via the `ForwardExecution` server-streaming RPC on port 50051, then streams `ExecutionEvent`s back to the original client.
 
+The `ClusterAwareExecutionService` handles this routing and forwarding transparently — it wraps the local `ExecutionService` and routes to workers when cluster mode is enabled, falling back to local execution when no workers are available.
+
 ---
 
 ## Configuring Nodes
@@ -347,6 +349,16 @@ The `NodeClusterService` exposes 10 RPCs on port 50056. All RPCs except `AttestN
 | `DeregisterNode` | Worker → Controller | Graceful deregistration before shutdown |
 | `RouteExecution` | Controller-internal | Returns `ExecutionRoute { target_node_id, worker_grpc_address }` |
 | `ForwardExecution` | Controller → Worker (server-streaming) | Execute an agent on this worker; streams `ExecutionEvent`s back |
+
+**Execution forwarding end-to-end flow:**
+
+1. Client sends an execution request to the controller.
+2. `ClusterAwareExecutionService` calls `RouteExecutionUseCase` to select a worker based on health, tags, and availability.
+3. Controller connects to the selected worker via `NodeClusterClient::connect_to_worker()`.
+4. Controller calls `forward_execution()` with the original `execution_id` preserved for end-to-end tracing correlation.
+5. Worker runs the execution locally via `start_execution_with_id()`, importing the upstream execution ID rather than generating a new one.
+6. Execution events stream back to the controller via the gRPC server-streaming response, which relays them to the original client.
+
 | `SyncConfig` | Worker → Controller | Worker requests current config from controller |
 | `PushConfig` | Controller → Worker | Controller pushes updated config to a specific worker |
 | `ListPeers` | Any → Controller | List all registered `NodePeer`s with their status and capabilities |
@@ -557,6 +569,8 @@ When the controller pushes a configuration update via the `PushConfig` heartbeat
 
 Workers can also pull their current effective configuration on demand using the `SyncConfig` RPC. This is useful after a restart when the worker needs to catch up on configuration changes that occurred while it was offline.
 
+After merging configuration layers, the worker runs `EffectiveConfigValidator` to verify that the merged result contains all required sections (`runtime`, `storage`, `llm`) before accepting work. If validation fails, the worker logs a fatal error and refuses to enter the heartbeat loop — preventing a misconfigured node from silently accepting executions it cannot fulfil.
+
 ---
 
 ## Worker Lifecycle
@@ -574,7 +588,7 @@ When a daemon starts with `spec.cluster.role: worker` or `spec.cluster.role: hyb
 
 1. **Connect** — Establish a gRPC channel to the controller's `NodeClusterService` on port 50056.
 2. **Attest** — Perform the two-step Ed25519 challenge handshake (`AttestNode` + `ChallengeNode`). On success, the worker receives a `NodeSecurityToken` JWT.
-3. **Register** — Call `RegisterNode` to advertise the worker's `NodeCapabilityAdvertisement` (GPU count, CPU cores, memory, supported runtimes, tags).
+3. **Register** — Call `RegisterNode` to advertise the worker's `NodeCapabilityAdvertisement` (GPU count, CPU cores, memory, supported runtimes, tags). The controller creates initial `NodeConfigAssignment` and `RuntimeRegistryAssignment` records for the worker via the `NodeRegistryRepository`, separating cluster membership ("is this node alive?") from configuration assignment ("what should this node run?").
 4. **Heartbeat Loop** — Send `Heartbeat` RPCs at the configured `heartbeat_interval_secs` (default 30s). Process any `NodeCommand`s returned in the response:
    - **Drain** — Stop accepting new executions; complete in-flight work.
    - **PushConfig** — Apply a configuration update from the controller.

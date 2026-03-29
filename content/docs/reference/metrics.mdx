@@ -65,6 +65,16 @@ All metric names are prefixed with `aegis_`.
 
 ---
 
+## Cluster Coordination (BC-16)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aegis_cluster_peers` | Gauge | `status` | Number of cluster peers by status (`active`, `draining`, `unhealthy`). |
+| `aegis_cluster_heartbeat_age_seconds` | Histogram | — | Age of the most recent heartbeat from each worker at evaluation time. |
+| `aegis_cluster_health_status` | Gauge | — | Overall cluster health (1 = healthy, 0 = degraded). |
+
+---
+
 ## Storage Gateway & NFS (BC-7)
 
 | Metric | Type | Labels | Description |
