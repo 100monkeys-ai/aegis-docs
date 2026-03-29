@@ -1,0 +1,189 @@
+---
+title: Upgrade Procedures
+description: How to upgrade AEGIS platform components — image updates, database migrations, rolling upgrades, version compatibility, and rollback procedures.
+---
+
+# Upgrade Procedures
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This guide covers the process for upgrading AEGIS platform components to new versions.
+
+---
+
+## Image Update Procedure
+
+The standard upgrade path is to pull new images and redeploy pods.
+
+### Step 1: Update Image Tag
+
+Edit `.env` to point to the new version:
+
+```bash
+# Pin to a specific version
+AEGIS_IMAGE_TAG=1.3.0
+```
+
+### Step 2: Pull New Images
+
+```bash
+# Authenticate if needed
+make registry-login
+
+# Pull updated images
+podman pull ghcr.io/100monkeys-ai/aegis-runtime:1.3.0
+podman pull ghcr.io/100monkeys-ai/aegis-temporal-worker:1.3.0
+podman pull ghcr.io/100monkeys-ai/aegis-smcp-gateway:1.3.0
+```
+
+### Step 3: Redeploy
+
+```bash
+# Redeploy individual pods (preferred for minimal downtime)
+make redeploy POD=core
+make redeploy POD=temporal
+make redeploy POD=smcp-gateway
+
+# Or full teardown and redeploy
+make teardown
+make deploy PROFILE=full
+```
+
+### Step 4: Validate
+
+```bash
+make validate
+```
+
+---
+
+## Database Migrations
+
+AEGIS runs database migrations automatically on startup. When upgrading to a version with schema changes:
+
+1. **Back up the database first** — see [Backup & Restore](/docs/guides/backup-restore)
+2. **Deploy the new version** — migrations run during pod-core startup
+3. **Verify** — check runtime logs for successful migration messages
+
+```bash
+# Check migration status in logs
+make logs POD=core | grep -i migrat
+```
+
+<Callout type="warn">
+Always back up PostgreSQL before upgrading to a version with schema changes. While migrations are designed to be forward-compatible, having a backup allows rollback if issues arise.
+</Callout>
+
+---
+
+## Rolling Upgrade vs Full Teardown
+
+### Rolling Upgrade (Preferred)
+
+Redeploy pods one at a time to minimize downtime:
+
+```bash
+# 1. Database first (if schema changes)
+make redeploy POD=database
+
+# 2. Core runtime
+make redeploy POD=core
+
+# 3. Temporal worker
+make redeploy POD=temporal
+
+# 4. Other pods as needed
+make redeploy POD=smcp-gateway
+make redeploy POD=observability
+```
+
+**Downtime:** Brief per-pod restart (seconds to minutes).
+
+### Full Teardown
+
+For major version upgrades or when pod definitions change:
+
+```bash
+make teardown
+make deploy PROFILE=full
+make bootstrap-secrets
+make bootstrap-keycloak
+make validate
+```
+
+**Downtime:** Full stack unavailable during teardown/deploy cycle.
+
+---
+
+## Third-Party Component Upgrades
+
+### PostgreSQL
+
+```bash
+# 1. Backup
+podman exec aegis-database-postgres pg_dumpall -U aegis > ./backups/pre-upgrade.sql
+
+# 2. Update image tag in pod-database.yaml
+# 3. Redeploy
+make redeploy POD=database
+
+# 4. Verify
+podman exec aegis-database-postgres psql -U aegis -c "SELECT version();"
+```
+
+### Temporal
+
+```bash
+make redeploy POD=temporal
+# Temporal auto-setup handles schema migrations
+```
+
+### Keycloak
+
+```bash
+# 1. Backup database
+# 2. Update image tag
+make redeploy POD=iam
+# Keycloak runs auto-migration on startup
+```
+
+---
+
+## Version Compatibility
+
+| AEGIS Runtime | Temporal | PostgreSQL | Keycloak | OpenBao |
+|--------------|----------|------------|----------|---------|
+| 0.x (pre-alpha) | 1.22-1.23 | 15+ | 24.0 | 2.0+ |
+
+<Callout type="info">
+During pre-alpha, there are no backward compatibility guarantees. Always test upgrades in a development environment first.
+</Callout>
+
+---
+
+## Rollback Procedure
+
+If an upgrade causes issues:
+
+```bash
+# 1. Update .env to previous version
+AEGIS_IMAGE_TAG=1.2.0
+
+# 2. Redeploy affected pods
+make redeploy POD=core
+
+# 3. If database migrations are not backward-compatible, restore from backup
+podman exec -i aegis-database-postgres psql -U aegis < ./backups/pre-upgrade.sql
+make redeploy POD=core
+
+# 4. Validate
+make validate
+```
+
+---
+
+## See Also
+
+- [Backup & Restore](/docs/guides/backup-restore) — backup procedures before upgrading
+- [Container Registry](/docs/deployment/container-registry) — image tagging and versioning
+- [Deployment Profiles](/docs/deployment/profiles) — profile-based deployment

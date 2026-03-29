@@ -1,0 +1,176 @@
+---
+title: Backup & Restore
+description: Backup and restore procedures for AEGIS stateful services — PostgreSQL, OpenBao, SeaweedFS, and coordinated backup strategies.
+---
+
+# Backup & Restore
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+AEGIS runs several stateful services that require regular backups. This guide covers backup and restore procedures for each service and a coordinated backup strategy.
+
+---
+
+## PostgreSQL
+
+PostgreSQL stores agent definitions, execution records, workflow state, and Keycloak data.
+
+### Backup
+
+```bash
+# Logical backup (recommended for portability)
+podman exec aegis-database-postgres pg_dump -U aegis -d aegis -F c -f /tmp/aegis-backup.dump
+
+# Copy backup from container
+podman cp aegis-database-postgres:/tmp/aegis-backup.dump ./backups/aegis-$(date +%Y%m%d).dump
+
+# All databases (including temporal, keycloak)
+podman exec aegis-database-postgres pg_dumpall -U aegis > ./backups/all-databases-$(date +%Y%m%d).sql
+```
+
+### Restore
+
+```bash
+# Restore from custom-format dump
+podman exec -i aegis-database-postgres pg_restore -U aegis -d aegis -c /tmp/aegis-backup.dump
+
+# Restore from SQL dump
+cat ./backups/all-databases.sql | podman exec -i aegis-database-postgres psql -U aegis
+```
+
+### Automated Schedule
+
+```bash
+# Add to crontab (daily at 2 AM)
+0 2 * * * podman exec aegis-database-postgres pg_dump -U aegis -d aegis -F c -f /backups/aegis-$(date +\%Y\%m\%d).dump
+```
+
+---
+
+## OpenBao
+
+OpenBao stores encrypted secrets, AppRole credentials, and KV data.
+
+### Backup
+
+OpenBao uses file-based storage by default. Back up the data directory:
+
+```bash
+# Stop writes (optional but recommended for consistency)
+# Back up the persistent volume
+podman volume export aegis-openbao-data > ./backups/openbao-data-$(date +%Y%m%d).tar
+```
+
+### Restore
+
+```bash
+# Restore the volume
+podman volume import aegis-openbao-data ./backups/openbao-data-YYYYMMDD.tar
+
+# Restart the secrets pod
+make redeploy POD=secrets
+```
+
+<Callout type="warn">
+After restoring OpenBao, you may need to unseal it. Keep your unseal keys in a secure, separate location from the backup.
+</Callout>
+
+---
+
+## SeaweedFS
+
+SeaweedFS stores agent volume data (files created during execution).
+
+### Backup
+
+```bash
+# Export master metadata
+podman volume export aegis-seaweedfs-master-data > ./backups/seaweedfs-master-$(date +%Y%m%d).tar
+
+# Export volume data
+podman volume export aegis-seaweedfs-volume-data > ./backups/seaweedfs-volume-$(date +%Y%m%d).tar
+
+# Export filer data
+podman volume export aegis-seaweedfs-filer-data > ./backups/seaweedfs-filer-$(date +%Y%m%d).tar
+```
+
+### Restore
+
+```bash
+# Import volumes (stop storage pod first)
+make teardown-pod POD=storage
+
+podman volume import aegis-seaweedfs-master-data ./backups/seaweedfs-master-YYYYMMDD.tar
+podman volume import aegis-seaweedfs-volume-data ./backups/seaweedfs-volume-YYYYMMDD.tar
+podman volume import aegis-seaweedfs-filer-data ./backups/seaweedfs-filer-YYYYMMDD.tar
+
+make deploy-pod POD=storage
+```
+
+---
+
+## Coordinated Backup Strategy
+
+For a consistent backup across all services:
+
+1. **Pause new executions** — prevent new agent executions from starting
+2. **Wait for in-flight executions** to complete or timeout
+3. **Back up PostgreSQL** — captures all relational state
+4. **Back up OpenBao** — captures all secrets
+5. **Back up SeaweedFS** — captures all volume data
+6. **Resume executions**
+
+### Backup Script Example
+
+```bash
+#!/bin/bash
+BACKUP_DIR="./backups/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+echo "Backing up PostgreSQL..."
+podman exec aegis-database-postgres pg_dumpall -U aegis > "$BACKUP_DIR/all-databases.sql"
+
+echo "Backing up OpenBao..."
+podman volume export aegis-openbao-data > "$BACKUP_DIR/openbao-data.tar"
+
+echo "Backing up SeaweedFS..."
+podman volume export aegis-seaweedfs-master-data > "$BACKUP_DIR/seaweedfs-master.tar"
+podman volume export aegis-seaweedfs-volume-data > "$BACKUP_DIR/seaweedfs-volume.tar"
+podman volume export aegis-seaweedfs-filer-data > "$BACKUP_DIR/seaweedfs-filer.tar"
+
+echo "Backup complete: $BACKUP_DIR"
+```
+
+### Retention Policy
+
+| Backup Type | Frequency | Retention |
+|-------------|-----------|-----------|
+| PostgreSQL | Daily | 30 days |
+| OpenBao | Daily | 30 days |
+| SeaweedFS | Weekly | 90 days |
+| Full coordinated | Weekly | 90 days |
+
+---
+
+## Verification
+
+After restoring from backup, verify service health:
+
+```bash
+# Check all services
+make validate
+
+# Verify PostgreSQL data
+podman exec aegis-database-postgres psql -U aegis -c "SELECT count(*) FROM agents;"
+
+# Verify OpenBao
+curl -s http://localhost:8200/v1/sys/health | jq .sealed
+```
+
+---
+
+## See Also
+
+- [Disaster Recovery](/docs/guides/disaster-recovery) — failure scenarios and recovery runbooks
+- [Production Hardening](/docs/deployment/production-hardening) — security checklist
+- [Pod Architecture](/docs/deployment/pod-architecture) — persistent volume reference

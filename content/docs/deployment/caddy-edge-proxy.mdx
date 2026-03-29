@@ -1,0 +1,139 @@
+---
+title: Caddy Edge Proxy
+description: Reverse proxy configuration with Caddy for production AEGIS deployments — automatic TLS, domain routing, and Cloudflare DNS-01.
+---
+
+# Caddy Edge Proxy
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+For production deployments, a reverse proxy provides TLS termination, domain-based routing, and a single entry point for all AEGIS services. The `aegis-deploy` repository includes a Caddy configuration with automatic certificate management.
+
+<Callout type="info">
+The Caddy edge proxy is optional and only needed for production deployments with custom domains. For local development, access services directly on their pod ports.
+</Callout>
+
+---
+
+## Route Table
+
+Caddy routes incoming requests to internal pod services based on the domain name:
+
+| Domain | Upstream | Service |
+|--------|----------|---------|
+| `api.<domain>` | aegis-core:8088 | AEGIS REST API |
+| `auth.<domain>` | aegis-iam:8180 | Keycloak IAM |
+| `grafana.<domain>` | aegis-observability:3300 | Grafana dashboards |
+| `prometheus.<domain>` | aegis-observability:9090 | Prometheus UI |
+| `jaeger.<domain>` | aegis-observability:16686 | Jaeger tracing UI |
+| `temporal.<domain>` | aegis-temporal:8233 | Temporal workflow UI |
+| `smcp.<domain>` | aegis-smcp-gateway:8089 | SMCP Gateway |
+| `secrets.<domain>` | aegis-secrets:8200 | OpenBao UI |
+
+All domains are configurable via environment variables (e.g., `DOMAIN_API`, `DOMAIN_AUTH`, etc.) with `.localhost` defaults for development.
+
+---
+
+## TLS Configuration
+
+### Automatic TLS with Cloudflare DNS-01
+
+For production, Caddy obtains Let's Encrypt certificates automatically using the Cloudflare DNS-01 ACME challenge. This works even when port 80 is not publicly accessible.
+
+**Prerequisites:**
+
+- A Cloudflare-managed domain
+- A Cloudflare API token with `Zone:DNS:Edit` permission
+
+**Environment variables:**
+
+```bash
+CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+DOMAIN_API=api.example.com
+DOMAIN_AUTH=auth.example.com
+DOMAIN_GRAFANA=grafana.example.com
+# ... etc.
+```
+
+### Custom Caddy Image
+
+The Cloudflare DNS plugin is not included in the default Caddy image. The `aegis-deploy` repository includes a Dockerfile that builds Caddy with the plugin:
+
+```dockerfile
+FROM caddy:2.9-builder AS builder
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
+FROM caddy:2.9-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+```
+
+### Local Development (No TLS)
+
+For local development, use `.localhost` domains which Caddy serves without TLS:
+
+```bash
+DOMAIN_API=api.localhost
+DOMAIN_AUTH=auth.localhost
+DOMAIN_GRAFANA=grafana.localhost
+```
+
+Access services at `http://api.localhost`, `http://auth.localhost`, etc. No certificates are needed.
+
+---
+
+## Caddyfile Structure
+
+The Caddyfile uses environment variable substitution for all domain names and upstream addresses:
+
+```text
+{$DOMAIN_API:api.localhost} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy aegis-core:8088
+}
+
+{$DOMAIN_AUTH:auth.localhost} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy aegis-iam:8180
+}
+
+# ... additional routes follow the same pattern
+```
+
+Each route block:
+
+1. Matches on the configured domain
+2. Obtains TLS certificates via Cloudflare DNS-01
+3. Proxies to the internal pod service
+
+---
+
+## Persistent Volumes
+
+| Volume | Purpose |
+|--------|---------|
+| `aegis-caddy-data` | TLS certificates and ACME state |
+| `aegis-caddy-config` | Caddy runtime configuration |
+
+---
+
+## Production Considerations
+
+**Firewall:** Only ports 80 and 443 need to be exposed publicly. All other service ports should be restricted to the internal `aegis-network`.
+
+**Health checking:** Caddy provides automatic health checking of upstreams. If a backend pod is down, Caddy returns a 502 error.
+
+**WebSocket support:** Caddy automatically supports WebSocket upgrades, which is required for Temporal UI, Grafana live dashboards, and SMCP streaming connections.
+
+**Rate limiting:** Caddy supports rate limiting via the `rate_limit` directive if you need to throttle external API access at the proxy layer.
+
+---
+
+## See Also
+
+- [Podman Deployment](/docs/deployment/podman) — platform deployment guide
+- [Infrastructure Requirements](/docs/deployment/infrastructure) — network topology and port reference
+- [Production Hardening](/docs/deployment/production-hardening) — TLS and security checklist

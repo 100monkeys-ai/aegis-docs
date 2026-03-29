@@ -1,0 +1,176 @@
+---
+title: Disaster Recovery
+description: Recovery runbooks for AEGIS platform failure scenarios — pod failures, database corruption, secrets engine recovery, and full environment rebuild.
+---
+
+# Disaster Recovery
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This guide covers recovery procedures for common failure scenarios in AEGIS platform deployments.
+
+---
+
+## Pod Failure and Restart
+
+### Single Pod Failure
+
+If a single pod stops or becomes unhealthy:
+
+```bash
+# Check pod status
+make status
+
+# Redeploy the failed pod
+make redeploy POD=<pod-name>
+
+# Verify health
+make validate
+```
+
+### Full Stack Restart
+
+If all pods need restarting (e.g., after a host reboot):
+
+```bash
+# Teardown and redeploy
+make teardown
+make deploy PROFILE=full
+
+# Wait for services to initialize
+sleep 30
+
+# Validate
+make validate
+
+# Re-bootstrap if needed (safe to re-run)
+make bootstrap-secrets
+make bootstrap-keycloak
+```
+
+---
+
+## Database Corruption
+
+### Symptoms
+
+- AEGIS runtime fails to start with PostgreSQL connection errors
+- Queries return unexpected results or constraint violations
+- `pg_isready` passes but data is inconsistent
+
+### Recovery
+
+```bash
+# 1. Stop all pods that depend on the database
+make teardown
+
+# 2. Start only the database pod
+make deploy-pod POD=database
+
+# 3. Check PostgreSQL logs
+make logs POD=database
+
+# 4. If data is corrupted, restore from backup
+podman exec -i aegis-database-postgres psql -U aegis < ./backups/all-databases-YYYYMMDD.sql
+
+# 5. Restart the full stack
+make deploy PROFILE=full
+make validate
+```
+
+---
+
+## Secrets Engine Recovery
+
+### OpenBao Sealed
+
+If OpenBao becomes sealed (e.g., after a restart without auto-unseal):
+
+```bash
+# Check seal status
+curl -s http://localhost:8200/v1/sys/health | jq
+
+# Unseal with your unseal keys
+curl -X PUT http://localhost:8200/v1/sys/unseal -d '{"key": "<unseal-key-1>"}'
+curl -X PUT http://localhost:8200/v1/sys/unseal -d '{"key": "<unseal-key-2>"}'
+curl -X PUT http://localhost:8200/v1/sys/unseal -d '{"key": "<unseal-key-3>"}'
+```
+
+<Callout type="warn">
+Store unseal keys securely and separately from your backups. Loss of unseal keys means permanent loss of encrypted secrets.
+</Callout>
+
+### OpenBao Data Loss
+
+If the OpenBao data volume is lost:
+
+```bash
+# Restore from backup
+podman volume import aegis-openbao-data ./backups/openbao-data-YYYYMMDD.tar
+make redeploy POD=secrets
+
+# Or reinitialize (loses all stored secrets)
+make teardown-pod POD=secrets
+podman volume rm aegis-openbao-data
+make deploy-pod POD=secrets
+make bootstrap-secrets
+```
+
+After reinitialization, you must re-store all secrets (LLM API keys, SMCP keys, etc.).
+
+---
+
+## Full Environment Rebuild
+
+If the entire environment needs rebuilding from scratch:
+
+```bash
+# 1. Clean everything
+make clean
+
+# 2. Recreate from deployment repo
+make setup
+make registry-login
+make generate-keys
+make deploy PROFILE=full
+
+# 3. Wait for initialization
+sleep 60
+make validate
+
+# 4. Bootstrap services
+make bootstrap-secrets
+make bootstrap-keycloak
+
+# 5. Restore data from backups (if available)
+podman exec -i aegis-database-postgres psql -U aegis < ./backups/all-databases.sql
+podman volume import aegis-openbao-data ./backups/openbao-data.tar
+podman volume import aegis-seaweedfs-master-data ./backups/seaweedfs-master.tar
+podman volume import aegis-seaweedfs-volume-data ./backups/seaweedfs-volume.tar
+podman volume import aegis-seaweedfs-filer-data ./backups/seaweedfs-filer.tar
+
+# 6. Restart to pick up restored data
+make teardown
+make deploy PROFILE=full
+make validate
+```
+
+---
+
+## RTO/RPO Targets
+
+| Scenario | RTO (Recovery Time) | RPO (Data Loss Window) |
+|----------|----|----|
+| Single pod failure | < 5 minutes | Zero (persistent volumes) |
+| Host reboot | < 10 minutes | Zero (persistent volumes) |
+| Database corruption | 15-30 minutes | Last backup |
+| Secrets data loss | 15-30 minutes | Last backup + manual re-entry |
+| Full environment rebuild | 30-60 minutes | Last backup |
+
+---
+
+## See Also
+
+- [Backup & Restore](/docs/guides/backup-restore) — backup procedures and schedules
+- [Production Hardening](/docs/deployment/production-hardening) — prevention measures
+- [Troubleshooting](/docs/guides/troubleshooting) — diagnostic commands

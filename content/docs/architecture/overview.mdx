@@ -19,7 +19,7 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 | gRPC API | Tonic + Prost |
 | Database | PostgreSQL via SQLx |
 | Workflow durability | Temporal |
-| Container runtime | Docker / Podman (via bollard) — Firecracker planned for hardened production |
+| Container runtime | Docker / Podman (via bollard) for agent containers — Firecracker planned for later phase |
 | Container image distribution | OCI registries (Docker Hub, GHCR, private) |
 | Storage backend | SeaweedFS |
 | Storage transport | User-space NFSv3 (`nfsserve` crate) |
@@ -28,6 +28,11 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 | Agent tool protocol | MCP (Model Context Protocol) |
 | Agent security protocol | SMCP (Secure Model Context Protocol) |
 | Policy engine | Cedar |
+| Platform deployment | Podman Kube YAML + Makefile ([aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy)) |
+| Reverse proxy | Caddy (automatic TLS via ACME) |
+| Log aggregation | Loki + Promtail |
+| Distributed tracing | Jaeger (OTLP) |
+| Metrics & alerting | Prometheus + Grafana |
 
 ---
 

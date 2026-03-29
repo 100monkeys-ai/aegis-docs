@@ -2,16 +2,20 @@
     "title": "Deployment",
     "pages": [
         "infrastructure",
+        "profiles",
+        "pod-architecture",
         "configuration",
         "iam",
         "secrets",
         "docker",
         "podman",
+        "caddy-edge-proxy",
         "temporal",
         "seaweedfs",
         "firecracker",
         "container-registry",
         "multi-node",
-        "observability"
+        "observability",
+        "production-hardening"
     ]
 }

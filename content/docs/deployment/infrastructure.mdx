@@ -1,6 +1,6 @@
 ---
 title: Infrastructure Requirements
-description: Dependency matrix, hardware requirements, network topology, and the local development stack.
+description: Dependency matrix, hardware requirements, network topology, pod architecture, and the local development stack.
 ---
 
 # Infrastructure Requirements
@@ -13,51 +13,70 @@ This page defines the infrastructure components required to run AEGIS, their int
 
 | Component | Version | Role | Required |
 |---|---|---|---|
-| Docker Engine | 24.0+ | Agent container runtime (Phase 1) | ✓ (one of Docker or Podman) |
-| Podman | 4.0+ | Agent container runtime (rootless alternative to Docker) | ✓ (one of Docker or Podman) |
-| Docker Compose | 2.20+ | Dev/staging orchestration (or `podman compose`) | Dev only |
+| Docker Engine | 24.0+ | Agent container runtime, local development | ✓ (one of Docker or Podman) |
+| Podman | 4.0+ | Agent container runtime and production platform deployment | ✓ (one of Docker or Podman) |
 | PostgreSQL | 15+ | Primary data store (agents, executions, events) | ✓ |
 | Temporal | 1.22+ | Durable workflow execution | ✓ (if using workflows) |
 | SeaweedFS | 3.60+ | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓ |
 | OpenBao | 2.0+ | Secrets management | Recommended |
 | Keycloak | 24.0+ | OIDC identity provider | Recommended |
-| Linux kernel | 5.15+ | KVM support for Firecracker (Phase 2) | Phase 2 only |
+| Caddy | 2.9+ | Reverse proxy with automatic TLS | Production only |
+| Jaeger | 1.55+ | Distributed tracing (OTLP collector) | Recommended |
+| Prometheus | 2.51+ | Metrics collection and alerting | Recommended |
+| Grafana | 10.4+ | Dashboards and visualization | Recommended |
+| Loki | 3.0+ | Log aggregation | Recommended |
+| Linux kernel | 5.15+ | KVM support for Firecracker (planned later phase) | Later phase |
 
-Minimum viable deployment (no Temporal, no workflows, OpenBao, or Keycloak) requires only a container runtime (Docker or Podman), PostgreSQL, and SeaweedFS.
+Minimum viable deployment requires only a container runtime (Docker or Podman), PostgreSQL, and SeaweedFS. For the full platform deployment with Podman pods, see [Deployment Profiles](/docs/deployment/profiles).
 
 ---
 
 ## Network Architecture
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│  AEGIS Node                                                   │
-│                                                               │
-│  ┌────────────────┐                                           │
-│  │ AEGIS Daemon   │  :9090 (gRPC)                             │
-│  │                │  :8080 (HTTP/REST)                        │
-│  │                │  :2049 (NFS server for agent volumes)     │
-│  └───┬────────────┘                                           │
-│      │                                                        │
-│      ├──► PostgreSQL  :5432  (private network)                │
-│      ├──► SeaweedFS   :8333  (private network)                │
-│      ├──► Temporal    :7233  (private network)                │
-│      ├──► OpenBao     :8200  (private network, TLS)           │
-│      └──► Keycloak    :8443  (can be shared service)          │
-│                                                               │
-│  ┌────────────────────────────────────────────────────────┐   │
-│  │  Agent Containers (Docker/Podman bridge network)       │   │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐       │   │
-│  │  │ container1 │  │ container2 │  │ container3 │       │   │
-│  │  │  NFS mount │  │  NFS mount │  │  NFS mount │       │   │
-│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘       │   │
-│  └────────┼───────────────┼───────────────┼───────────────┘   │
-│           └───────────────┴───────────────┘                   │
-│           All NFS traffic → Daemon host (port 2049)           │
-└───────────────────────────────────────────────────────────────┘
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  Caddy Reverse Proxy (pod-zaru-edge)  :80 / :443                      │
+│  Routes: api.* → :8088  auth.* → :8180  grafana.* → :3300  etc.      │
+└───────┬────────────────────────────────────────────────────────────────┘
+        │
+        ▼  aegis-network (Podman bridge)
+┌───────────────────────────────────────────────────────────────────────┐
+│                                                                       │
+│  ┌─────────────────┐   ┌─────────────────┐   ┌────────────────────┐  │
+│  │ pod-core        │   │ pod-temporal     │   │ pod-database       │  │
+│  │ aegis-runtime   │   │ temporal :7233   │   │ postgres :5432     │  │
+│  │ :8088 :50051    │   │ temporal-ui :8233│   │ pg-exporter :9187  │  │
+│  │ :2049 :9091     │   │ worker :3000     │   │                    │  │
+│  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
+│                                                                       │
+│  ┌─────────────────┐   ┌─────────────────┐   ┌────────────────────┐  │
+│  │ pod-secrets     │   │ pod-iam         │   │ pod-storage        │  │
+│  │ openbao :8200   │   │ keycloak :8180  │   │ master :9333       │  │
+│  │                 │   │                 │   │ volume :8080       │  │
+│  │                 │   │                 │   │ filer :8888        │  │
+│  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
+│                                                                       │
+│  ┌─────────────────┐   ┌─────────────────┐                           │
+│  │ pod-observability│   │ pod-smcp-gateway│                           │
+│  │ jaeger :16686   │   │ gateway :8089   │                           │
+│  │ prometheus :9090│   │         :50055  │                           │
+│  │ grafana :3300   │   │                 │                           │
+│  │ loki :3100      │   │                 │                           │
+│  └─────────────────┘   └─────────────────┘                           │
+│                                                                       │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │  Agent Containers (spawned by aegis-runtime via bollard)       │   │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐               │   │
+│  │  │ container1 │  │ container2 │  │ container3 │               │   │
+│  │  │  NFS mount │  │  NFS mount │  │  NFS mount │               │   │
+│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘               │   │
+│  └────────┼───────────────┼───────────────┼───────────────────────┘   │
+│           └───────────────┴───────────────┘                           │
+│           All NFS traffic → pod-core (port 2049)                      │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
-Agent containers communicate **only** with the AEGIS daemon (via `/v1/dispatch-gateway` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, Keycloak, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
+Agent containers communicate **only** with the AEGIS orchestrator (via `/v1/dispatch-gateway` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, Keycloak, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
 
 ---
 
@@ -128,10 +147,28 @@ aegis daemon start --config ./aegis-config.yaml
 
 ## Ports
 
-| Port | Protocol | Service | Exposure |
-|---|---|---|---|
-| 8080 | HTTP | AEGIS REST API | Internal / load-balanced |
-| 9090 | gRPC | AEGIS gRPC API | Internal / load-balanced |
-| 2049 | TCP | NFS Server Gateway | Agent container LAN only |
+| Port | Protocol | Service | Pod | Exposure |
+|---|---|---|---|---|
+| 8088 | HTTP | AEGIS REST API | core | Internal / load-balanced |
+| 50051 | gRPC | AEGIS gRPC API | core | Internal / load-balanced |
+| 9091 | HTTP | Prometheus metrics | core | Internal (scrape target) |
+| 2049 | TCP | NFS Server Gateway | core | Agent container LAN only |
+| 5432 | TCP | PostgreSQL | database | Internal only |
+| 9187 | HTTP | PostgreSQL Exporter | database | Internal (scrape target) |
+| 7233 | gRPC | Temporal Server | temporal | Internal only |
+| 8233 | HTTP | Temporal UI | temporal | Internal / proxied |
+| 8200 | HTTP | OpenBao | secrets | Internal only |
+| 8180 | HTTP | Keycloak | iam | Internal / proxied |
+| 9333 | HTTP | SeaweedFS Master | storage | Internal only |
+| 8080 | HTTP | SeaweedFS Volume | storage | Internal only |
+| 8888 | HTTP | SeaweedFS Filer | storage | Internal only |
+| 16686 | HTTP | Jaeger UI | observability | Internal / proxied |
+| 4317 | gRPC | OTLP Collector | observability | Internal only |
+| 9090 | HTTP | Prometheus | observability | Internal / proxied |
+| 3300 | HTTP | Grafana | observability | Internal / proxied |
+| 3100 | HTTP | Loki | observability | Internal only |
+| 8089 | HTTP | SMCP Gateway | smcp-gateway | Internal / proxied |
+| 50055 | gRPC | SMCP Gateway gRPC | smcp-gateway | Internal only |
+| 80/443 | HTTP/TLS | Caddy Reverse Proxy | edge | Public |
 
-Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. It is intended for intra-host or intra-cluster communication only.
+Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. Public-facing traffic enters through Caddy on ports 80/443 only.

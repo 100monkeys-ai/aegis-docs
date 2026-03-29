@@ -1,0 +1,265 @@
+---
+title: Pod Architecture
+description: Complete pod topology for AEGIS platform deployment — containers, ports, health checks, persistent volumes, and inter-pod communication.
+---
+
+# Pod Architecture
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The AEGIS platform deploys as a set of Podman pods, each grouping related containers with shared networking. This page provides the complete reference for every pod, its containers, ports, health checks, and persistent volumes.
+
+---
+
+## Pod Topology
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    aegis-network (bridge)                     │
+│                                                               │
+│  pod-core          pod-temporal        pod-database           │
+│  ┌──────────────┐  ┌──────────────┐   ┌──────────────────┐  │
+│  │aegis-runtime │  │temporal      │   │postgres          │  │
+│  │:8088 :50051  │  │:7233         │   │:5432             │  │
+│  │:2049 :9091   │  │temporal-ui   │   │postgres-exporter │  │
+│  │              │  │:8233         │   │:9187             │  │
+│  │              │  │temporal-worker│   │                  │  │
+│  │              │  │:3000         │   │                  │  │
+│  └──────────────┘  └──────────────┘   └──────────────────┘  │
+│                                                               │
+│  pod-secrets       pod-iam            pod-storage             │
+│  ┌──────────────┐  ┌──────────────┐   ┌──────────────────┐  │
+│  │openbao       │  │keycloak      │   │seaweedfs-master  │  │
+│  │:8200         │  │:8180         │   │:9333 :19333 :9324│  │
+│  │              │  │              │   │seaweedfs-volume  │  │
+│  │              │  │              │   │:8080 :18080 :9325│  │
+│  │              │  │              │   │seaweedfs-filer   │  │
+│  │              │  │              │   │:8888 :9326       │  │
+│  │              │  │              │   │seaweedfs-webdav  │  │
+│  │              │  │              │   │:7333             │  │
+│  └──────────────┘  └──────────────┘   └──────────────────┘  │
+│                                                               │
+│  pod-observability                    pod-smcp-gateway        │
+│  ┌──────────────────────────────┐    ┌──────────────────┐   │
+│  │jaeger     :16686 :4317 :4318│    │smcp-gateway      │   │
+│  │prometheus :9090              │    │:8089 :50055      │   │
+│  │grafana    :3300              │    │                  │   │
+│  │loki       :3100              │    │                  │   │
+│  │promtail   :9080              │    │                  │   │
+│  └──────────────────────────────┘    └──────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="info">
+Proprietary add-on pods (Cortex, Zaru, Zaru Edge) are available under commercial license and are not shown here.
+</Callout>
+
+---
+
+## pod-core
+
+The central AEGIS orchestrator. Manages agent lifecycle, execution, tool routing, NFS gateway, and all core business logic.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| aegis-runtime | `ghcr.io/100monkeys-ai/aegis-runtime` | 8088 (HTTP), 50051 (gRPC), 2049 (NFS), 9091 (metrics) |
+
+**Health check:** HTTP GET `/health` on port 8088 (30s interval)
+
+**Volumes:**
+
+- `aegis-runtime-data` -> `/app/data` (agent execution outputs)
+- Podman socket (read-only) for spawning agent containers
+- `aegis-config.yaml` and `runtime-registry.yaml` mounted as config
+
+**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK`, `AEGIS_ORCHESTRATOR_URL`, `SMCP_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`
+
+---
+
+## pod-database
+
+PostgreSQL and its Prometheus metrics exporter.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| postgres | `postgres:15-alpine` | 5432 |
+| postgres-exporter | `prometheuscommunity/postgres-exporter:v0.19.1` | 9187 |
+
+**Health check:** `pg_isready -U aegis` (10s interval)
+
+**Volumes:**
+
+- `aegis-postgres-data` -> `/var/lib/postgresql/data`
+- Init scripts for database creation (`aegis`, `temporal`, `keycloak`)
+
+**Authentication:** SCRAM-SHA-256
+
+---
+
+## pod-temporal
+
+Temporal workflow engine with its web UI and the AEGIS workflow worker.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| temporal | `temporalio/auto-setup:1.23.0` | 7233 (gRPC) |
+| temporal-ui | `temporalio/ui:2.21.3` | 8233 (HTTP, mapped from 8080) |
+| temporal-worker | `ghcr.io/100monkeys-ai/aegis-temporal-worker` | 3000 (HTTP registration API) |
+
+**Health check:** `temporal operator cluster health` (10s interval)
+
+**Volumes:**
+
+- `aegis-temporal-worker-data` -> `/app/data`
+- Temporal dynamic config mounted
+
+**Key environment:** `TEMPORAL_ADDRESS`, `DATABASE_URL`, `AEGIS_RUNTIME_GRPC_URL`
+
+---
+
+## pod-secrets
+
+OpenBao secrets management (open-source Vault alternative).
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| openbao | `openbao/openbao:latest` | 8200 (HTTP) |
+
+**Health check:** `bao status` JSON query (10s interval)
+
+**Volumes:**
+
+- `aegis-openbao-data` -> `/openbao/data`
+- `openbao-config.hcl` mounted
+
+**Auth method:** AppRole (role_id + secret_id). Initialize with `make bootstrap-secrets`.
+
+---
+
+## pod-iam
+
+Keycloak OIDC identity provider.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| keycloak | `quay.io/keycloak/keycloak:24.0` | 8180 (HTTP) |
+
+**Health check:** HTTP GET `/health/ready` on port 8180 (15s interval)
+
+**Database:** PostgreSQL (`aegis-database:5432/keycloak`)
+
+**Key environment:** `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`, `KC_DB_URL`
+
+Initialize realms and clients with `make bootstrap-keycloak`.
+
+---
+
+## pod-storage
+
+SeaweedFS distributed storage with master, volume server, filer, and WebDAV.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| seaweedfs-master | `chrislusf/seaweedfs:latest` | 9333 (HTTP), 19333 (gRPC), 9324 (metrics) |
+| seaweedfs-volume | `chrislusf/seaweedfs:latest` | 8080 (HTTP), 18080 (gRPC), 9325 (metrics) |
+| seaweedfs-filer | `chrislusf/seaweedfs:latest` | 8888 (HTTP), 18888 (gRPC), 9326 (metrics) |
+| seaweedfs-webdav | `chrislusf/seaweedfs:latest` | 7333 (HTTP) |
+
+**Health checks:** HTTP on respective ports (10s interval)
+
+**Volumes:**
+
+- `aegis-seaweedfs-master-data` -> `/data`
+- `aegis-seaweedfs-volume-data` -> `/data`
+- `aegis-seaweedfs-filer-data` -> `/data`
+
+---
+
+## pod-observability
+
+Full monitoring stack: distributed tracing, metrics, dashboards, and log aggregation.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| jaeger | `jaegertracing/all-in-one:1.55` | 16686 (UI), 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
+| prometheus | `prom/prometheus:v2.51.0` | 9090 |
+| grafana | `grafana/grafana:10.4.0` | 3300 (mapped from 3000) |
+| loki | `grafana/loki:3.0.0` | 3100 |
+| promtail | `grafana/promtail:3.0.0` | 9080 |
+
+**Health checks:** HTTP on respective ports (10s interval)
+
+**Volumes:**
+
+- `aegis-prometheus-data` -> `/prometheus` (15-day retention)
+- `aegis-grafana-data` -> `/var/lib/grafana`
+- `aegis-loki-data` -> `/loki` (7-day retention)
+- Config mounts for Prometheus, Grafana datasources/dashboards, Loki, Promtail
+
+**Grafana access:** Port 3300, anonymous viewer access enabled by default.
+
+---
+
+## pod-smcp-gateway
+
+SMCP tooling gateway for REST workflow macros, API explorer, and ephemeral CLI tools.
+
+| Container | Image | Ports |
+|-----------|-------|-------|
+| smcp-gateway | `ghcr.io/100monkeys-ai/aegis-smcp-gateway` | 8089 (HTTP), 50055 (gRPC) |
+
+**Health check:** HTTP GET `/` on port 8089 (10s interval)
+
+**Volumes:**
+
+- `aegis-smcp-gateway-data` -> `/app/data` (SQLite database)
+- Podman socket (for ephemeral container execution)
+
+---
+
+## Persistent Volume Summary
+
+| Volume | Pod | Mount Point | Retention |
+|--------|-----|-------------|-----------|
+| `aegis-postgres-data` | database | `/var/lib/postgresql/data` | Permanent |
+| `aegis-runtime-data` | core | `/app/data` | Permanent |
+| `aegis-openbao-data` | secrets | `/openbao/data` | Permanent |
+| `aegis-prometheus-data` | observability | `/prometheus` | 15 days |
+| `aegis-grafana-data` | observability | `/var/lib/grafana` | Permanent |
+| `aegis-loki-data` | observability | `/loki` | 7 days |
+| `aegis-seaweedfs-master-data` | storage | `/data` | Permanent |
+| `aegis-seaweedfs-volume-data` | storage | `/data` | Permanent |
+| `aegis-seaweedfs-filer-data` | storage | `/data` | Permanent |
+| `aegis-smcp-gateway-data` | smcp-gateway | `/app/data` | Permanent |
+| `aegis-temporal-worker-data` | temporal | `/app/data` | Permanent |
+
+---
+
+## Inter-Pod Communication
+
+All pods share the `aegis-network` Podman bridge network. Containers within the same pod communicate via `localhost`. Cross-pod communication uses pod DNS names:
+
+| From | To | Protocol | Purpose |
+|------|----|----------|---------|
+| pod-core | pod-database | TCP :5432 | State persistence |
+| pod-core | pod-temporal | gRPC :7233 | Workflow execution |
+| pod-core | pod-secrets | HTTP :8200 | Credential resolution |
+| pod-core | pod-iam | HTTP :8180 | JWT validation |
+| pod-core | pod-storage | HTTP :8888 | Volume backend (SeaweedFS filer) |
+| pod-core | pod-observability | gRPC :4317 | OTLP trace/log export |
+| pod-temporal (worker) | pod-core | gRPC :50051 | Worker activity execution |
+| pod-temporal (worker) | pod-database | TCP :5432 | Workflow state |
+| pod-iam | pod-database | TCP :5432 | Realm/user persistence |
+| pod-observability (promtail) | pod-observability (loki) | HTTP :3100 | Log shipping |
+| pod-observability (prometheus) | All pods | HTTP (various) | Metrics scraping |
+| pod-observability (grafana) | pod-observability | HTTP :9090, :3100, :16686 | Data queries |
+| pod-smcp-gateway | pod-database | TCP :5432 | Tool registry |
+
+---
+
+## See Also
+
+- [Deployment Profiles](/docs/deployment/profiles) — which pods are included in each profile
+- [Podman Deployment](/docs/deployment/podman) — platform deployment guide
+- [Observability](/docs/deployment/observability) — monitoring stack details
+- [Infrastructure Requirements](/docs/deployment/infrastructure) — hardware and network requirements

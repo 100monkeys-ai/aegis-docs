@@ -7,7 +7,7 @@ description: AEGIS is an open-source orchestrator for running autonomous AI agen
 
 AEGIS is a self-hosted orchestrator that manages the full lifecycle of autonomous AI agents — from manifest deployment through iterative execution, workflow coordination, multi-agent swarms, and secure tool access.
 
-Agents are defined as declarative YAML manifests, executed inside isolated containers (Docker for development, Firecracker micro-VMs for production), and interact with external tools exclusively through the AEGIS orchestrator proxy. The orchestrator enforces security policies, manages credentials, routes tool calls, and handles storage — agents themselves are stateless compute processes.
+Agents are defined as declarative YAML manifests, executed inside isolated containers (Docker or Podman), and interact with external tools exclusively through the AEGIS orchestrator proxy. Firecracker micro-VM isolation is planned for a later phase. The orchestrator enforces security policies, manages credentials, routes tool calls, and handles storage — agents themselves are stateless compute processes.
 
 ---
 
@@ -45,8 +45,9 @@ Agents are defined as declarative YAML manifests, executed inside isolated conta
 
 **I'm deploying AEGIS to production**
 → [Infrastructure Overview](/docs/deployment/infrastructure) — dependencies, topology, hardware requirements.
+→ [Podman Deployment](/docs/deployment/podman) — platform deployment with Podman pods, profiles, and Makefile automation.
+→ [Deployment Profiles](/docs/deployment/profiles) — minimal, development, and full deployment profiles.
 → [Node Configuration Reference](/docs/deployment/configuration) — annotated `aegis-config.yaml`.
-→ [Firecracker Runtime](/docs/deployment/firecracker) — production-grade KVM isolation.
 
 **I need the API or CLI reference**
 → [CLI Reference](/docs/reference/cli) — all `aegis` subcommands and flags.
@@ -82,7 +83,7 @@ Agents are defined as declarative YAML manifests, executed inside isolated conta
 ┌──────────────────┐           ┌────────────────────────┐
 │  Agent Container │           │  CLI / Control Plane / │
 │  (Docker or      │           │  SDK Client            │
-│   Firecracker)   │           └────────────────────────┘
+│   Podman)        │           └────────────────────────┘
 └──────────────────┘
           │
           ▼

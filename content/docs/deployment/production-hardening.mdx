@@ -1,0 +1,192 @@
+---
+title: Production Hardening
+description: Security checklist and hardening guide for production AEGIS deployments — TLS, secrets rotation, resource limits, network segmentation, and access control.
+---
+
+# Production Hardening
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This page provides a checklist and guidance for hardening AEGIS platform deployments for production use.
+
+---
+
+## Pre-Deployment Checklist
+
+| Item | Action | Priority |
+|------|--------|----------|
+| Strong passwords | Replace all default passwords in `.env` (PostgreSQL, Keycloak, Grafana) | Critical |
+| SMCP keys | Generate unique Ed25519 keypair (`make generate-keys`) | Critical |
+| TLS termination | Deploy Caddy edge proxy with valid certificates | Critical |
+| Image pinning | Set `AEGIS_IMAGE_TAG` to a pinned semver, not `latest` | High |
+| Registry auth | Configure GHCR credentials (`make registry-login`) | High |
+| Firewall rules | Restrict all ports except 80/443 to internal network | High |
+| Secrets bootstrap | Initialize OpenBao (`make bootstrap-secrets`) | High |
+| IAM bootstrap | Configure Keycloak realms and clients (`make bootstrap-keycloak`) | High |
+| Log format | Set `AEGIS_LOG_FORMAT=json` for machine-parseable logs | Medium |
+| Monitoring alerts | Verify Prometheus alert rules are active | Medium |
+| Backup schedule | Configure automated backups for PostgreSQL and OpenBao | Medium |
+
+---
+
+## TLS Everywhere
+
+### External TLS
+
+Deploy the [Caddy edge proxy](/docs/deployment/caddy-edge-proxy) for automatic TLS on all public-facing endpoints. Caddy handles certificate issuance and renewal via ACME.
+
+### Internal TLS
+
+For high-security environments, enable TLS on internal pod communication:
+
+- **OpenBao**: Set `tls_disable = false` in `openbao-config.hcl` and provide certificate paths
+- **PostgreSQL**: Enable `ssl = on` in `postgresql.conf` with server certificates
+- **Keycloak**: Configure HTTPS on port 8443 with X.509 certificates
+
+<Callout type="info">
+Internal TLS is optional for single-node deployments where all pods share the same host. For multi-node clusters, TLS between nodes is strongly recommended.
+</Callout>
+
+---
+
+## Secrets Management
+
+### Credential Rotation
+
+Rotate credentials regularly:
+
+| Secret | Rotation Method | Recommended Interval |
+|--------|----------------|---------------------|
+| PostgreSQL passwords | Update `.env`, restart pod-database and dependents | 90 days |
+| OpenBao AppRole secret_id | Re-run `make bootstrap-secrets` | 90 days |
+| Keycloak admin password | Update via Keycloak admin UI or `.env` | 90 days |
+| SMCP signing keys | Regenerate with `make generate-keys`, restart pod-core | Annually |
+| GHCR token | Regenerate GitHub PAT, update `.env` | Annually |
+| LLM API keys | Rotate via provider dashboard, update `.env` or OpenBao | Per provider policy |
+
+### Avoiding Plaintext Secrets
+
+- Never commit `.env` files to version control
+- Use `env:VAR_NAME` or `secret:path` credential prefixes in `aegis-config.yaml`
+- Store sensitive values in OpenBao and reference them via the `secret:` prefix
+
+---
+
+## Resource Limits
+
+Configure container resource limits in pod YAML definitions to prevent resource exhaustion:
+
+```yaml
+resources:
+  limits:
+    memory: "4Gi"
+    cpu: "2000m"
+  requests:
+    memory: "1Gi"
+    cpu: "500m"
+```
+
+Recommended minimum limits per pod:
+
+| Pod | CPU Request | Memory Request | CPU Limit | Memory Limit |
+|-----|------------|---------------|-----------|-------------|
+| pod-core | 1000m | 2Gi | 4000m | 8Gi |
+| pod-database | 500m | 1Gi | 2000m | 4Gi |
+| pod-temporal | 500m | 1Gi | 2000m | 4Gi |
+| pod-observability | 500m | 2Gi | 2000m | 8Gi |
+| pod-storage | 250m | 512Mi | 1000m | 2Gi |
+| pod-secrets | 100m | 128Mi | 500m | 512Mi |
+| pod-iam | 500m | 512Mi | 1000m | 2Gi |
+| pod-smcp-gateway | 250m | 256Mi | 1000m | 1Gi |
+
+---
+
+## Network Segmentation
+
+### Firewall Rules
+
+Only the Caddy edge proxy should be exposed publicly:
+
+| Port | Protocol | Exposure | Purpose |
+|------|----------|----------|---------|
+| 80 | TCP | Public | HTTP redirect to HTTPS |
+| 443 | TCP | Public | HTTPS (Caddy) |
+| All others | TCP | Internal only | Inter-pod communication |
+
+### Podman Network
+
+All pods run on the `aegis-network` bridge. Agent containers spawned by the orchestrator also join this network for NFS access to port 2049.
+
+For multi-node deployments, use the cluster protocol (port 50056) with mTLS between nodes. See [Multi-Node Deployment](/docs/deployment/multi-node).
+
+---
+
+## Access Control
+
+### Keycloak Hardening
+
+- Disable the default `master` realm admin account after creating dedicated admin users
+- Enable brute-force detection on all realms
+- Configure session timeouts (recommended: 30-minute idle, 8-hour max)
+- Require MFA for admin accounts
+- Restrict CORS origins to your actual domain
+
+### Grafana Access
+
+By default, Grafana allows anonymous viewer access. For production:
+
+1. Disable anonymous access in Grafana configuration
+2. Configure Keycloak OIDC authentication for Grafana
+3. Set up role-based access control for dashboards
+
+### OpenBao Access
+
+- The OpenBao UI should not be exposed publicly (remove the `secrets.*` Caddy route)
+- Use AppRole authentication exclusively; avoid root tokens in production
+- Enable audit logging
+
+---
+
+## Image Security
+
+### Scanning
+
+Scan container images for vulnerabilities before deployment:
+
+```bash
+# Using Trivy
+trivy image ghcr.io/100monkeys-ai/aegis-runtime:1.2.3
+trivy image ghcr.io/100monkeys-ai/aegis-temporal-worker:1.2.3
+trivy image ghcr.io/100monkeys-ai/aegis-smcp-gateway:1.2.3
+```
+
+### Pinned Versions
+
+Always use pinned semver tags in production, never `:latest`:
+
+```bash
+# In .env
+AEGIS_IMAGE_TAG=1.2.3
+```
+
+---
+
+## Monitoring & Alerting
+
+Verify that all Prometheus alert rules are active:
+
+```bash
+# Check alert rules via Prometheus API
+curl http://localhost:9090/api/v1/rules | jq '.data.groups[].rules[].name'
+```
+
+Configure alert routing in Prometheus Alertmanager for your notification channels (PagerDuty, Slack, email).
+
+---
+
+## See Also
+
+- [Caddy Edge Proxy](/docs/deployment/caddy-edge-proxy) — TLS and domain routing
+- [Observability](/docs/deployment/observability) — monitoring and alerting
+- [Backup & Restore](/docs/guides/backup-restore) — data protection procedures
+- [Multi-Node Deployment](/docs/deployment/multi-node) — cluster security

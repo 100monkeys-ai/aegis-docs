@@ -179,6 +179,51 @@ AEGIS publishes domain events for all image operations. These events are availab
 
 ---
 
+## AEGIS Platform Images
+
+All AEGIS platform service images are published to the GitHub Container Registry under the `100monkeys-ai` organization.
+
+### Image Registry
+
+| Image | Repository | Description |
+|-------|-----------|-------------|
+| `aegis-runtime` | `ghcr.io/100monkeys-ai/aegis-runtime` | Core orchestrator |
+| `aegis-temporal-worker` | `ghcr.io/100monkeys-ai/aegis-temporal-worker` | Temporal workflow worker |
+| `aegis-smcp-gateway` | `ghcr.io/100monkeys-ai/aegis-smcp-gateway` | SMCP tooling gateway |
+
+### Tagging Strategy
+
+| Trigger | Tags Applied |
+|---------|-------------|
+| Push to `main` | `:latest`, `sha-<short-commit>` |
+| Semver tag (e.g., `v1.2.3`) | `1.2.3`, `1.2`, `1` |
+
+### Authenticating with GHCR
+
+```bash
+# Using the aegis-deploy Makefile
+make registry-login
+
+# Manual authentication
+echo $GHCR_TOKEN | podman login ghcr.io -u $GHCR_USERNAME --password-stdin
+
+# Or with Docker
+echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USERNAME --password-stdin
+```
+
+Requires a GitHub Personal Access Token (PAT) with `read:packages` scope. Set `GHCR_USERNAME` and `GHCR_TOKEN` in your `.env` file.
+
+### CI/CD Pipeline
+
+Images are built automatically via GitHub Actions on every push to `main` and on version tags. Each repository (`aegis-orchestrator`, `aegis-temporal-worker`, `aegis-smcp-gateway`) has its own `.github/workflows/docker-publish.yml` workflow that:
+
+1. Builds a multi-stage Docker image
+2. Tags with `:latest` and the short commit SHA
+3. Pushes to `ghcr.io/100monkeys-ai/`
+4. On semver tags, additionally tags with major, minor, and patch versions
+
+---
+
 ## See Also
 
 - [Standard Runtime Registry](/docs/reference/standard-runtime-registry) — Full language-version-to-image mapping table

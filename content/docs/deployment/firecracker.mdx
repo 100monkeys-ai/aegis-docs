@@ -8,7 +8,7 @@ description: KVM requirements, AgentRuntime trait abstraction, isolation model, 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 <Callout type="warn">
-Firecracker support is in active development and is not yet recommended for production use. The Docker and Podman runtimes are the stable Phase 1 deployment targets. This page documents the planned and in-progress Firecracker integration.
+Firecracker support is planned for a future release and is not yet available. The Docker and Podman runtimes are the current deployment targets. This page documents the planned Firecracker integration.
 </Callout>
 
 Firecracker is a microVM technology developed by AWS that provides kernel-level isolation for workloads. In AEGIS, Firecracker replaces Docker containers as the agent execution runtime, giving each agent its own micro-virtual machine rather than a shared-kernel container.

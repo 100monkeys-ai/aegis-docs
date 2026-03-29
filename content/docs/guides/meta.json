@@ -18,6 +18,10 @@
         "configuring-webhooks",
         "human-approvals",
         "configuring-security-contexts",
-        "multi-tenancy"
+        "multi-tenancy",
+        "backup-restore",
+        "disaster-recovery",
+        "upgrade-procedures",
+        "troubleshooting"
     ]
 }

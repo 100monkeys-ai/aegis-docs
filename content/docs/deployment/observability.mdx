@@ -1,13 +1,95 @@
 ---
 title: Observability
-description: Structured logging, log levels, log formats, OTLP external log export, and tracing for AEGIS deployments.
+description: Observability stack (Jaeger, Prometheus, Grafana, Loki), structured logging, OTLP export, alert rules, and metrics for AEGIS deployments.
 ---
 
 # Observability
 
-AEGIS emits structured logs via the Rust `tracing` crate. By default all events are written to stdout; external log aggregators (Loki, Datadog, Splunk, etc.) can consume them via their standard Docker/container log collection mechanisms.
+import { Callout } from 'fumadocs-ui/components/callout';
 
-For production deployments that need centralised log management, AEGIS also supports **native OTLP log export** — shipping structured log records directly to any OpenTelemetry-compatible backend without a log forwarder agent.
+AEGIS provides a comprehensive observability stack deployed as the `pod-observability` Podman pod, plus native structured logging and optional OTLP export from the orchestrator itself. This page covers both the deployed observability infrastructure and the orchestrator's telemetry output.
+
+---
+
+## Observability Stack
+
+The `pod-observability` pod in [aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy) bundles five components for production monitoring:
+
+| Component | Version | Port | Purpose |
+|-----------|---------|------|---------|
+| **Jaeger** | 1.55 | 16686 (UI), 4317 (OTLP gRPC), 4318 (OTLP HTTP) | Distributed tracing |
+| **Prometheus** | 2.51 | 9090 | Metrics collection and alerting |
+| **Grafana** | 10.4 | 3300 | Dashboards and visualization |
+| **Loki** | 3.0 | 3100 | Log aggregation |
+| **Promtail** | 3.0 | 9080 | Container log scraping |
+
+### Prometheus Scrape Targets
+
+Prometheus is pre-configured to scrape all AEGIS platform services:
+
+| Target | Port | Endpoint |
+|--------|------|----------|
+| aegis-runtime | 9091 | `/metrics` |
+| keycloak | 8180 | `/metrics` |
+| seaweedfs-master | 9324 | `/metrics` |
+| seaweedfs-volume | 9325 | `/metrics` |
+| seaweedfs-filer | 9326 | `/metrics` |
+| openbao | 8200 | `/v1/sys/metrics` |
+| temporal | 7233 | `/metrics` |
+| postgres-exporter | 9187 | `/metrics` |
+
+Global scrape interval: 15 seconds. Evaluation interval: 15 seconds. Retention: 15 days.
+
+### Alert Rules
+
+Pre-configured Prometheus alert rules shipped with `aegis-deploy`:
+
+**Critical (1–2 minute threshold):**
+
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| `AEGISRuntimeDown` | Runtime unreachable for 1 min | critical |
+| `PostgreSQLDown` | Database unreachable for 1 min | critical |
+| `TemporalDown` | Workflow engine unreachable for 2 min | critical |
+| `KeycloakDown` | IAM provider unreachable for 1 min | critical |
+
+**Warning (5 minute threshold):**
+
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| `HighExecutionFailureRate` | >25% execution failures | warning |
+| `HighHTTPErrorRate` | >5% HTTP 5xx responses | warning |
+| `HighAPILatency` | P95 latency >5 seconds | warning |
+| `EventBusLagHigh` | Lag rate >100 events/s | warning |
+| `SeaweedFSDown` | Storage unreachable for 5 min | warning |
+| `OpenBaoDown` | Secrets manager unreachable for 5 min | warning |
+| `HighPostgresConnections` | >80 active connections | warning |
+
+### Grafana Dashboards
+
+Three dashboards are auto-provisioned:
+
+**AEGIS Overview** — Active executions, execution rate by status, iteration rate, agent lifecycle operations, event bus throughput, HTTP/gRPC request rates and latency percentiles, node info.
+
+**Infrastructure** — Service up/down status for all components, PostgreSQL connections and cache hit ratio, Keycloak login events and sessions, SeaweedFS volume count and disk usage, Temporal workflow starts/completions/failures.
+
+**Logs Explorer** — Log volume by container, full log stream, error log volume and filtered error view. Uses Loki as datasource.
+
+Grafana is accessible at port 3300 with anonymous viewer access enabled by default. Datasources (Prometheus, Loki, Jaeger) are auto-configured.
+
+### Log Aggregation with Loki
+
+Promtail scrapes all Podman container logs from `/var/log/podman-containers/` and ships them to Loki. Logs are parsed using Docker log format, with container name labels extracted automatically.
+
+- **Retention**: 7 days (168 hours)
+- **Schema**: TSDB v13 with daily index periods
+- **Query**: Use Grafana's Explore view or the Logs Explorer dashboard
+
+```bash
+# View logs for a specific container via Grafana
+# Navigate to: http://localhost:3300 → Explore → Loki
+# Query: {container_name="aegis-runtime"}
+```
 
 ---
 
@@ -159,52 +241,38 @@ That work is recommended future instrumentation, not current runtime behavior.
 
 ---
 
-## Docker / Container Deployments
+## Container Log Collection
 
-No special configuration is needed. The AEGIS daemon writes all logs to stdout and stderr. Use your container runtime's standard logging:
+The AEGIS daemon writes all logs to stdout and stderr. In the Podman pod deployment, Promtail automatically collects these logs and ships them to Loki. For standalone setups:
 
 ```bash
+# Podman
+podman logs -f aegis-runtime
+
 # Docker
 docker logs -f aegis-daemon
-
-# Docker Compose
-docker compose logs -f orchestrator
-
-# Kubernetes
-kubectl logs -f deployment/aegis-orchestrator
 ```
 
-For log aggregation, configure your collector (Promtail, Fluentd, Datadog Agent) to read container stdout and set `AEGIS_LOG_FORMAT=json` so log lines are parseable.
+For additional log aggregation beyond the built-in Loki stack, configure your collector (Fluentd, Datadog Agent, etc.) to read container stdout and set `AEGIS_LOG_FORMAT=json` so log lines are parseable.
 
 ---
 
-## Health Check
+## Health Checks
 
-The REST API exposes a simple health endpoint:
+The REST API exposes health endpoints on port 8088:
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8088/health
 # → {"status":"ok"}
+
+curl http://localhost:8088/health/live
+# → liveness check
+
+curl http://localhost:8088/health/ready
+# → readiness check (all dependencies connected)
 ```
 
-Use this as the `healthcheck` target in Docker Compose or Kubernetes liveness/readiness probes:
-
-```yaml
-# Docker Compose
-healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-  interval: 30s
-  timeout: 5s
-  retries: 3
-
-# Kubernetes
-livenessProbe:
-  httpGet:
-    path: /health
-    port: 8080
-  initialDelaySeconds: 10
-  periodSeconds: 30
-```
+In the Podman pod deployment, health checks are configured automatically for every container. Use `make validate` to check all services at once.
 
 ---
 
@@ -479,5 +547,6 @@ The metrics endpoint is **unauthenticated** by design, following standard Promet
 - [Node Configuration Reference](/docs/reference/node-config#specobservability) — full `spec.observability` schema with all OTLP fields
 - [Configuration Reference](/docs/deployment/configuration) — `RUST_LOG` and `AEGIS_LOG_FORMAT` env vars
 - [Multi-Node Deployment](/docs/deployment/multi-node) — log aggregation across nodes
-- [Docker Deployment](/docs/deployment/docker) — container log setup
+- [Pod Architecture](/docs/deployment/pod-architecture) — complete pod topology and health check reference
+- [Podman Deployment](/docs/deployment/podman) — platform deployment with Podman pods
 - [REST API Reference](/docs/reference/rest-api) — `/health` endpoint

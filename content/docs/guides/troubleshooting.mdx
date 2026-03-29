@@ -1,0 +1,262 @@
+---
+title: Troubleshooting
+description: Diagnostic commands, common failure patterns, service dependency chains, and log analysis for AEGIS platform deployments.
+---
+
+# Troubleshooting
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This guide covers diagnostic procedures for common issues in AEGIS platform deployments.
+
+---
+
+## Diagnostic Commands
+
+### Quick Health Check
+
+```bash
+# Check all pod status
+make status
+
+# Validate all service health endpoints
+make validate
+
+# View overall system state
+podman pod ps
+podman ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+### Log Inspection
+
+```bash
+# Stream logs for a specific pod
+make logs POD=core
+make logs POD=database
+make logs POD=temporal
+
+# Tail specific container logs
+podman logs -f --tail 100 aegis-core-aegis-runtime
+podman logs -f --tail 100 aegis-database-postgres
+
+# Search logs for errors
+podman logs aegis-core-aegis-runtime 2>&1 | grep -i error
+```
+
+### Grafana Log Explorer
+
+For structured log searching, use the Grafana Logs Explorer dashboard at `http://localhost:3300`:
+
+1. Navigate to Explore, then select Loki datasource
+2. Query: `{container_name="aegis-runtime"} |= "error"`
+3. Filter by time range and log level
+
+---
+
+## Service Dependency Chain
+
+When troubleshooting startup failures, check dependencies in this order:
+
+```text
+1. pod-database (PostgreSQL)         <- Everything depends on this
+   +-- 2. pod-secrets (OpenBao)      <- Core needs secrets
+       +-- 3. pod-iam (Keycloak)     <- Needs PostgreSQL
+           +-- 4. pod-core           <- Needs DB, secrets, optionally IAM
+               |-- 5. pod-temporal   <- Worker needs core gRPC
+               |-- 6. pod-storage    <- Core connects to filer
+               +-- 7. pod-smcp-gateway <- Needs DB, Podman socket
+8. pod-observability                  <- Independent, but needs targets running
+```
+
+If pod-core fails to start, check pod-database and pod-secrets first.
+
+---
+
+## Common Failure Patterns
+
+### AEGIS Runtime Won't Start
+
+**Symptoms:** pod-core container exits immediately or enters restart loop.
+
+```bash
+# Check logs
+make logs POD=core
+
+# Common causes:
+# 1. Database unreachable
+podman exec aegis-database-postgres pg_isready -U aegis
+
+# 2. Invalid aegis-config.yaml
+# Look for YAML parse errors in logs
+
+# 3. SMCP keys not generated
+ls -la /path/to/smcp-keys/
+make generate-keys  # if missing
+```
+
+### Database Connection Refused
+
+**Symptoms:** `connection refused` errors in runtime logs.
+
+```bash
+# Check if database is running
+podman pod ps | grep database
+
+# Check PostgreSQL logs
+podman logs aegis-database-postgres
+
+# Test connectivity
+podman exec aegis-database-postgres pg_isready -U aegis
+
+# Common fix: ensure pod-database started before pod-core
+make redeploy POD=database
+sleep 10
+make redeploy POD=core
+```
+
+### Temporal Connection Failed
+
+**Symptoms:** `Failed to connect to Temporal` in runtime logs; workflows don't execute.
+
+```bash
+# Check Temporal health
+podman exec aegis-temporal-temporal temporal operator cluster health
+
+# Check Temporal logs
+podman logs aegis-temporal-temporal
+
+# Verify Temporal UI is accessible
+curl -s http://localhost:8233 | head -1
+```
+
+### Agent Containers Not Starting
+
+**Symptoms:** Executions fail with container creation errors.
+
+```bash
+# Check Podman socket
+ls -la /run/user/$(id -u)/podman/podman.sock
+
+# Verify socket is active
+systemctl --user status podman.socket
+
+# Check if images are available
+podman images | grep python
+
+# Test manual container creation
+podman run --rm python:3.11-slim python -c "print('ok')"
+
+# Check AEGIS network exists
+podman network ls | grep aegis
+```
+
+### NFS Mount Failures
+
+**Symptoms:** Agent containers fail to mount volumes; `mount.nfs: Connection refused`.
+
+```bash
+# Check NFS port is listening
+ss -tlnp | grep 2049
+
+# Verify from container perspective
+podman run --rm --network aegis-network alpine ping -c1 host.containers.internal
+
+# Check runtime logs for NFS errors
+make logs POD=core | grep -i nfs
+```
+
+### OpenBao Sealed
+
+**Symptoms:** Runtime fails to resolve secrets; `sealed` status from OpenBao.
+
+```bash
+# Check seal status
+curl -s http://localhost:8200/v1/sys/health | jq .sealed
+
+# If sealed, unseal with your keys
+# See: Disaster Recovery guide
+```
+
+### Keycloak Not Ready
+
+**Symptoms:** Authentication failures; `/health/ready` returns error.
+
+```bash
+# Check Keycloak logs
+podman logs aegis-iam-keycloak
+
+# Common cause: database not available when Keycloak started
+make redeploy POD=iam
+
+# Verify health
+curl -s http://localhost:8180/health/ready | jq
+```
+
+---
+
+## Network Debugging
+
+```bash
+# Check pod network connectivity
+podman exec aegis-core-aegis-runtime curl -s http://aegis-database:5432 || echo "expected - not HTTP"
+podman exec aegis-core-aegis-runtime curl -s http://aegis-temporal:7233 || echo "expected - not HTTP"
+
+# DNS resolution within pods
+podman exec aegis-core-aegis-runtime getent hosts aegis-database
+
+# Check network
+podman network inspect aegis-network
+```
+
+---
+
+## Resource Exhaustion
+
+```bash
+# Check disk usage
+df -h
+podman system df
+
+# Check memory usage per container
+podman stats --no-stream
+
+# Clean up unused images and containers
+podman system prune -f
+
+# Check PostgreSQL connections
+podman exec aegis-database-postgres psql -U aegis -c "SELECT count(*) FROM pg_stat_activity;"
+```
+
+---
+
+## Collecting Diagnostics for Support
+
+When reporting issues, collect:
+
+```bash
+# System info
+uname -a
+podman version
+podman info
+
+# Pod status
+make status > diagnostics.txt 2>&1
+
+# Recent logs (last 500 lines per service)
+for pod in core database temporal secrets iam storage observability smcp-gateway; do
+  echo "=== $pod ===" >> diagnostics.txt
+  make logs POD=$pod 2>&1 | tail -500 >> diagnostics.txt
+done
+
+# Health check results
+make validate >> diagnostics.txt 2>&1
+```
+
+---
+
+## See Also
+
+- [Disaster Recovery](/docs/guides/disaster-recovery) — recovery from failures
+- [Observability](/docs/deployment/observability) — monitoring and log analysis
+- [Pod Architecture](/docs/deployment/pod-architecture) — container and port reference
+- [Infrastructure Requirements](/docs/deployment/infrastructure) — dependency matrix

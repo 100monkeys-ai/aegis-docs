@@ -35,6 +35,24 @@ aegis init
 
 `aegis init` configures the local stack, writes config files, starts services, and can optionally deploy the hello-world example agent as a smoke test.
 
+### Alternative: Deploy with aegis-deploy
+
+For a full platform deployment with all services (database, Temporal, observability, etc.):
+
+```bash
+git clone https://github.com/100monkeys-ai/aegis-deploy.git
+cd aegis-deploy
+cp .env.example .env
+# Edit .env with your credentials
+
+make setup
+make registry-login
+make deploy PROFILE=development
+make validate
+```
+
+See [Podman Deployment](/docs/deployment/podman) for full details on profiles and Makefile targets.
+
 ---
 
 ## Deploy and Run the hello-world Agent
@@ -73,4 +91,3 @@ The agent will generate code, run validation, and either succeed or refine acros
 - **[The Execution Loop](/docs/concepts/execution)** — understand how the 100monkeys loop and inner tool interception work.
 - **[Agent Manifest Reference](/docs/reference/agent-manifest)** — every field in the manifest spec.
 - **[Deployment: Infrastructure Overview](/docs/deployment/infrastructure)** — moving to production.
-

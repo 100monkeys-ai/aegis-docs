@@ -1,0 +1,118 @@
+---
+title: Deployment Profiles
+description: Profile-based deployment for AEGIS — minimal, development, and full profiles with pod composition, use cases, and environment configuration.
+---
+
+# Deployment Profiles
+
+The [`aegis-deploy`](https://github.com/100monkeys-ai/aegis-deploy) repository uses deployment profiles to control which pods are started. Profiles let you deploy only the services you need, from a minimal agent execution setup to the full production stack.
+
+---
+
+## Profile Comparison
+
+| Pod | minimal | development | full |
+|-----|:-------:|:-----------:|:----:|
+| **pod-core** (aegis-runtime) | ✓ | ✓ | ✓ |
+| **pod-secrets** (OpenBao) | ✓ | ✓ | ✓ |
+| **pod-database** (PostgreSQL) | | ✓ | ✓ |
+| **pod-temporal** (Temporal + worker) | | ✓ | ✓ |
+| **pod-iam** (Keycloak) | | ✓ | ✓ |
+| **pod-observability** (Jaeger, Prometheus, Grafana, Loki) | | ✓ | ✓ |
+| **pod-storage** (SeaweedFS) | | | ✓ |
+| **pod-smcp-gateway** (SMCP Gateway) | | | ✓ |
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout type="info">
+Proprietary add-on pods (Cortex, Zaru, Zaru Edge) are available under commercial license and deployed via separate profiles not included in the public `aegis-deploy` repository.
+</Callout>
+
+---
+
+## Selecting a Profile
+
+```bash
+# Deploy with a specific profile
+make deploy PROFILE=minimal
+make deploy PROFILE=development
+make deploy PROFILE=full
+
+# Default profile (if PROFILE is omitted) is 'development'
+make deploy
+```
+
+---
+
+## minimal
+
+**Use case:** Bare-minimum agent execution for testing or resource-constrained environments.
+
+**Includes:** `pod-core` + `pod-secrets`
+
+The `minimal` profile starts only the AEGIS runtime and OpenBao. You must provide an external PostgreSQL instance and configure it in `.env`. Workflows, IAM, storage, and observability are not available.
+
+**Required external services:**
+
+- PostgreSQL 15+ (set `AEGIS_DB_HOST` and `POSTGRES_PASSWORD` in `.env`)
+
+---
+
+## development
+
+**Use case:** Local development, testing, and CI environments.
+
+**Includes:** `pod-core` + `pod-secrets` + `pod-database` + `pod-temporal` + `pod-iam` + `pod-observability`
+
+The `development` profile starts all core services including the full observability stack. Storage uses the local filesystem (no SeaweedFS). This is the recommended profile for development and testing.
+
+**What's missing vs full:**
+
+- No SeaweedFS (volumes use local storage)
+- No SMCP Gateway (direct tool routing only)
+
+---
+
+## full
+
+**Use case:** Production, staging, and enterprise deployments.
+
+**Includes:** All 8 public pods.
+
+The `full` profile starts every public service including distributed storage (SeaweedFS) and the SMCP tooling gateway. This is the recommended profile for production deployments.
+
+---
+
+## Environment Overrides
+
+All profiles read from the same `.env` file. Profile-specific behavior is controlled by which pods are started, not by different configuration values. However, you may want to adjust these variables per environment:
+
+| Variable | Development | Production |
+|----------|------------|------------|
+| `AEGIS_IMAGE_TAG` | `latest` | Pinned semver (e.g., `1.2.3`) |
+| `RUST_LOG` | `debug` or `info,aegis_orchestrator=debug` | `info` |
+| `AEGIS_LOG_FORMAT` | (unset, defaults to pretty) | `json` |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | Strong password |
+| `KEYCLOAK_ADMIN_PASSWORD` | `changeme` | Strong password |
+| `POSTGRES_PASSWORD` | `aegis` | Strong password |
+
+---
+
+## Custom Profiles
+
+To create a custom profile, add a new profile definition in the `aegis-deploy` Makefile or deploy pods individually:
+
+```bash
+# Deploy specific pods manually
+make deploy-pod POD=core
+make deploy-pod POD=database
+make deploy-pod POD=observability
+```
+
+---
+
+## See Also
+
+- [Podman Deployment](/docs/deployment/podman) — full platform deployment guide
+- [Pod Architecture](/docs/deployment/pod-architecture) — detailed pod topology
+- [Infrastructure Requirements](/docs/deployment/infrastructure) — hardware and dependency matrix

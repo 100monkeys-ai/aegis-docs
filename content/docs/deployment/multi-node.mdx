@@ -96,7 +96,7 @@ Use `type: hybrid` and `cluster.role: hybrid` for local development and small de
 │   Orchestrator Node                    │  spec.node.type: orchestrator
 │   (1–3 instances)                      │
 │                                        │
-│  API → gRPC :50051 → REST :8080        │
+│  API → gRPC :50051 → REST :8088        │
 │  Workflow engine                        │
 │  Temporal client                        │
 │  Secrets (OpenBao)                     │
@@ -383,7 +383,7 @@ The registration sequence after successful attestation:
 
 | Connection | Protocol | Port | Direction |
 |-----------|----------|------|-----------|
-| Client → Controller | HTTP REST | 8080 | Inbound to controller |
+| Client → Controller | HTTP REST | 8088 | Inbound to controller |
 | Client → Controller | gRPC (agent API) | 50051 | Inbound to controller |
 | Worker → Controller | gRPC (NodeClusterService) | 50056 | Outbound from worker |
 | Controller → Worker | gRPC (ForwardExecution) | 50051 | Outbound from controller |

@@ -1,15 +1,160 @@
 ---
 title: Podman Deployment
-description: Podman rootless deployment, systemd socket activation, bollard API compatibility, cgroup v2 delegation, NFS volume mounting, and differences from Docker.
+description: Production platform deployment with Podman pods, deployment profiles, Makefile automation, and Podman as the rootless agent container runtime.
 ---
 
 # Podman Deployment
 
-Podman is the daemonless, rootless container runtime supported by AEGIS as an alternative to Docker. The orchestrator communicates with Podman via the same **bollard** Rust library used for Docker — Podman exposes a Docker-compatible API over its Unix socket. This page covers rootless Podman deployment, socket configuration, container lifecycle, and the key differences from Docker.
+import { Callout } from 'fumadocs-ui/components/callout';
+
+AEGIS uses Podman in two ways: as the **platform deployment** orchestrator (Podman Kube YAML pods running all AEGIS services) and as the **agent container runtime** (spawning isolated containers for agent execution via the bollard API). This page covers both.
 
 ---
 
-## Prerequisites
+## Platform Deployment with Podman Pods
+
+For production and staging environments, AEGIS deploys as a set of Podman pods defined in the [`aegis-deploy`](https://github.com/100monkeys-ai/aegis-deploy) repository. Each pod groups related containers with shared networking, health checks, and persistent volumes.
+
+### Public Pod Topology
+
+| Pod | Containers | Key Ports | Purpose |
+|-----|-----------|-----------|---------|
+| **pod-core** | aegis-runtime | 8088 (HTTP), 50051 (gRPC), 2049 (NFS), 9091 (metrics) | Orchestrator, agent execution, NFS gateway |
+| **pod-database** | PostgreSQL 15, postgres-exporter | 5432, 9187 | Primary data store and metrics |
+| **pod-temporal** | Temporal 1.23, Temporal UI, aegis-temporal-worker | 7233, 8233, 3000 | Durable workflow execution |
+| **pod-secrets** | OpenBao | 8200 | Secrets management (AppRole auth) |
+| **pod-iam** | Keycloak 24 | 8180 | OIDC identity provider |
+| **pod-storage** | SeaweedFS master, volume, filer, WebDAV | 9333, 8080, 8888, 7333 | Distributed volume storage |
+| **pod-observability** | Jaeger, Prometheus, Grafana, Loki, Promtail | 16686, 9090, 3300, 3100 | Tracing, metrics, dashboards, logs |
+| **pod-smcp-gateway** | aegis-smcp-gateway | 8089, 50055 | Tool orchestration gateway |
+
+<Callout type="info">
+Proprietary add-on pods (Cortex, Zaru, Zaru Edge) are available under commercial license and are not included in the public `aegis-deploy` repository.
+</Callout>
+
+### Deployment Profiles
+
+Deploy only the pods you need using profiles:
+
+| Profile | Pods Included | Use Case |
+|---------|--------------|----------|
+| `minimal` | core, secrets | Bare-minimum agent execution |
+| `development` | core, secrets, database, temporal, iam, observability | Local development and testing |
+| `full` | All 8 public pods | Production and staging |
+
+```bash
+# Deploy the development profile
+make deploy PROFILE=development
+
+# Deploy the full stack
+make deploy PROFILE=full
+```
+
+### Quick Start
+
+```bash
+# Clone the deployment repo
+git clone https://github.com/100monkeys-ai/aegis-deploy.git
+cd aegis-deploy
+
+# Copy and edit environment configuration
+cp .env.example .env
+# Edit .env with your values (GHCR credentials, passwords, LLM API keys)
+
+# Install system dependencies (Ubuntu)
+make setup
+
+# Authenticate with GitHub Container Registry
+make registry-login
+
+# Generate SMCP signing keys
+make generate-keys
+
+# Deploy the full stack
+make deploy PROFILE=full
+
+# Validate all services are healthy
+make validate
+
+# Bootstrap secrets and IAM
+make bootstrap-secrets
+make bootstrap-keycloak
+```
+
+### Makefile Targets
+
+| Target | Description |
+|--------|-------------|
+| `make setup` | Install system dependencies (Podman, utilities) |
+| `make deploy PROFILE=<name>` | Deploy pods for the specified profile |
+| `make teardown` | Stop and remove all pods |
+| `make status` | Show pod and container status |
+| `make validate` | Health-check all running services |
+| `make registry-login` | Authenticate with GitHub Container Registry |
+| `make bootstrap-secrets` | Initialize OpenBao (AppRole auth, KV mount) |
+| `make bootstrap-keycloak` | Create Keycloak realms, clients, and users |
+| `make generate-keys` | Generate Ed25519 SMCP signing keypair |
+| `make redeploy POD=<name>` | Tear down and redeploy a single pod |
+| `make logs POD=<name>` | Stream logs for a specific pod |
+| `make clean` | Full teardown including volumes and networks |
+
+### Environment Configuration
+
+All configuration is driven by a `.env` file. Key variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AEGIS_ROOT` | Yes | Absolute path to the `aegis-deploy` directory |
+| `GHCR_USERNAME` | Yes | GitHub username for image pulls |
+| `GHCR_TOKEN` | Yes | GitHub PAT with `read:packages` scope |
+| `AEGIS_IMAGE_TAG` | No | Image tag (default: `latest`) |
+| `POSTGRES_PASSWORD` | Yes | PostgreSQL password |
+| `KEYCLOAK_ADMIN_PASSWORD` | Yes | Keycloak admin password |
+| `RUST_LOG` | No | Log level (default: `info`) |
+| `CONTAINER_SOCK` | No | Podman socket path (default: `/run/user/1000/podman/podman.sock`) |
+
+See `.env.example` in the `aegis-deploy` repository for the full variable reference.
+
+### Health Check Endpoints
+
+Every pod container exposes a health check. Use `make validate` to check all at once, or query individually:
+
+| Service | Endpoint | Type |
+|---------|----------|------|
+| AEGIS Runtime | `GET /health` on :8088 | HTTP |
+| PostgreSQL | `pg_isready` | exec |
+| Temporal | `temporal operator cluster health` | exec |
+| OpenBao | `bao status` | exec |
+| Keycloak | `GET /health/ready` on :8180 | HTTP |
+| SeaweedFS Master | `GET /cluster/status` on :9333 | HTTP |
+| Prometheus | `GET /-/ready` on :9090 | HTTP |
+| Grafana | `GET /api/health` on :3300 | HTTP |
+| Loki | `GET /ready` on :3100 | HTTP |
+| SMCP Gateway | `GET /` on :8089 | HTTP |
+
+### Persistent Volumes
+
+| Volume | Pod | Purpose |
+|--------|-----|---------|
+| `aegis-postgres-data` | database | PostgreSQL databases |
+| `aegis-runtime-data` | core | Agent execution outputs |
+| `aegis-openbao-data` | secrets | Encrypted secret storage |
+| `aegis-prometheus-data` | observability | Metrics (15-day retention) |
+| `aegis-grafana-data` | observability | Dashboards and config |
+| `aegis-loki-data` | observability | Log storage (7-day retention) |
+| `aegis-seaweedfs-master-data` | storage | SeaweedFS metadata |
+| `aegis-seaweedfs-volume-data` | storage | SeaweedFS block storage |
+| `aegis-seaweedfs-filer-data` | storage | SeaweedFS filesystem layer |
+| `aegis-smcp-gateway-data` | smcp-gateway | SQLite tool database |
+| `aegis-temporal-worker-data` | temporal | Workflow worker state |
+
+---
+
+## Agent Container Runtime
+
+The sections below cover Podman as the agent container runtime — how the AEGIS orchestrator spawns isolated containers for agent execution via the bollard Docker-compatible API.
+
+### Prerequisites
 
 - Podman 4.0+ installed and configured for rootless mode
 - systemd with user lingering enabled for the service account
@@ -20,7 +165,7 @@ Podman is the daemonless, rootless container runtime supported by AEGIS as an al
 
 ---
 
-## Socket Configuration
+### Socket Configuration
 
 Podman provides a Docker-compatible API socket via systemd socket activation. In rootless mode, the socket lives under the user's runtime directory.
 
@@ -68,7 +213,7 @@ export CONTAINER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
 
 ---
 
-## Container Lifecycle
+### Container Lifecycle
 
 The container lifecycle is identical to Docker. Bollard sends the same API calls to the Podman socket, and Podman handles them compatibly:
 
@@ -99,7 +244,7 @@ The reaper identifies orphans by listing all containers with the `aegis.managed=
 
 ---
 
-## Resource Limits
+### Resource Limits
 
 Manifest resource limits are translated to container constraints via the same Bollard API fields:
 
@@ -138,12 +283,12 @@ sudo systemctl daemon-reload
 
 ---
 
-## NFS Volume Mounting
+### NFS Volume Mounting
 
 Agent containers mount their volumes via the kernel NFS client to the orchestrator's NFS server gateway (port 2049). The mount configuration is identical to Docker:
 
-```
-# Example Bollard mount configuration produced by AEGIS for a volume named "workspace":
+```json
+// Example Bollard mount configuration produced by AEGIS for a volume named "workspace":
 {
   "Target": "/workspace",
   "Type": "volume",
@@ -175,7 +320,7 @@ In multi-host deployments, use the orchestrator host's external IP or hostname.
 
 ---
 
-## Network Configuration
+### Network Configuration
 
 ### Creating the AEGIS Network
 
@@ -220,7 +365,7 @@ The AEGIS daemon enforces network policy at the SMCP layer (per tool call), not 
 
 ---
 
-## Differences from Docker
+### Differences from Docker
 
 | Aspect | Docker | Podman |
 | ------ | ------ | ------ |
@@ -246,7 +391,7 @@ The container stats endpoint may return different fields depending on the cgroup
 
 ---
 
-## systemd Service Configuration
+### systemd Service Configuration
 
 For rootless Podman, the AEGIS daemon runs as a systemd **user** service:
 
@@ -296,7 +441,7 @@ User lingering must be enabled (see [Socket Configuration](#socket-configuration
 
 ---
 
-## Troubleshooting
+### Troubleshooting
 
 ### Socket Not Found
 
@@ -374,7 +519,7 @@ podman run --network=slirp4netns --rm alpine ping -c1 host.containers.internal
 
 ---
 
-## Health Checks
+### Health Checks
 
 The AEGIS daemon exposes the same health endpoints regardless of the container runtime:
 

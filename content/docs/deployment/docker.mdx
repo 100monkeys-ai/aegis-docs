@@ -8,10 +8,10 @@ description: Docker Engine setup, agent container lifecycle, bollard integration
 import { Callout } from 'fumadocs-ui/components/callout';
 
 <Callout type="info">
-For production deployments, consider [Podman rootless](/docs/deployment/podman) which provides the same container runtime API without a privileged daemon process.
+Docker is suitable for **local development** and single-node setups. For production platform deployment using Podman pods, see [Podman Deployment](/docs/deployment/podman). Both Docker and Podman are supported as agent container runtimes.
 </Callout>
 
-Docker is the Phase 1 container runtime for AEGIS. The orchestrator communicates with Docker via the **bollard** Rust library (Docker API over the Unix socket). This page covers production Docker deployment, container lifecycle, and the NFS volume mounting model.
+Docker is a supported container runtime for AEGIS agent execution. The orchestrator communicates with Docker via the **bollard** Rust library (Docker API over the Unix socket). This page covers Docker Engine setup for local development, agent container lifecycle, and the NFS volume mounting model.
 
 ---
 
@@ -211,4 +211,4 @@ curl http://localhost:8080/health/live
 curl http://localhost:8080/health/ready
 ```
 
-Use these in load balancer health check configuration or Kubernetes readiness probes.
+Use these in load balancer health check configuration or container orchestration readiness probes.
