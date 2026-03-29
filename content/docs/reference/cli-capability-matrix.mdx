@@ -70,6 +70,7 @@ Only part of the CLI has a direct MCP management-tool equivalent today. Local st
 | **Task Management** | | |
 | `aegis task execute <agent> [--version <semver>]` | `aegis.task.execute` | Execute an agent task |
 | `aegis task status <execution_id>` | `aegis.task.status` | Check execution progress and outcome |
+| `aegis task wait <execution_id> [--timeout <seconds>]` | `aegis.task.wait` | Block until execution reaches terminal state |
 | `aegis task list` | `aegis.task.list` | List recent task executions |
 | `aegis task logs <execution_id>` | `aegis.task.logs` | Retrieve task execution event log |
 | `aegis task cancel <execution_id>` | `aegis.task.cancel` | Stop a running execution |

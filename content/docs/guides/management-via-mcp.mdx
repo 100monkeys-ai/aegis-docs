@@ -22,7 +22,7 @@ All `aegis.*` tools are built directly into the Orchestrator as first-class buil
 | **Agent Lifecycle** | `aegis.agent.list`, `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.delete`, `aegis.agent.generate` |
 | **Agent Observability** | `aegis.agent.logs` |
 | **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, `aegis.workflow.remove` |
-| **Task Execution** | `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, `aegis.task.remove` |
+| **Task Execution** | `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, `aegis.task.remove` |
 | **System Introspection** | `aegis.system.info`, `aegis.system.config` |
 | **Schema & Validation** | `aegis.schema.get`, `aegis.schema.validate` |
 
@@ -146,7 +146,18 @@ To pin execution to a specific agent version:
 }
 ```
 
-### Step 2: Poll for Completion
+### Step 2: Wait for Completion
+
+Use `aegis.task.wait` to block until the execution reaches a terminal state instead of manually polling with `aegis.task.status`:
+
+```json
+// Tool Call: aegis.task.wait
+{ "execution_id": "6ba7b810-...", "timeout_seconds": 300 }
+```
+
+Returns the final status object once the execution completes, fails, or is cancelled. If the timeout is exceeded, returns `{ "status": "timed_out", ... }`.
+
+Alternatively, you can poll manually with `aegis.task.status`:
 
 ```json
 // Tool Call: aegis.task.status
