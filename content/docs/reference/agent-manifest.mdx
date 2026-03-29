@@ -49,8 +49,6 @@ spec:
 
   # Task definition (instructions for the agent)
   task:
-    agentskills:                  # optional; pre-built skill packages
-      - "code-review:python"
     instruction: |               # optional; high-level task guidance
       Write a Python solution to the given problem.
       Save the solution to /workspace/solution.py.
@@ -234,12 +232,13 @@ Supports two mutually exclusive runtime modes:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `agentskills` | `string[]` | | Pre-built skill packages. Format: `"namespace:skill-name"`. |
 | `instruction` | string | | High-level guidance for the agent (multi-line YAML `\|`). Auto-enables semantic validation. |
 | `prompt_template` | string | | Handlebars template for constructing LLM prompts. Default: `"{{instruction}}\n\nUser: {{input}}\nAssistant:"`. |
 | `input_data` | object | | Structured input parameters available at execution time. |
 
-**Prompt template variables:** `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{agentskills}}`, `{{context}}`.
+**Prompt template variables:** `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{context}}`.
+
+To import community skill definitions as agent baselines, use the built-in [`skill-import` workflow](/docs/guides/importing-skills).
 
 ### `spec.security`
 
@@ -351,6 +350,7 @@ If a non-`semantic` validator is present in `tool_validation`, it is ignored by 
 Tools can be declared in **simple** (string) or **detailed** (object) format.
 
 **Simple format:**
+
 ```yaml
 tools:
   - "mcp:filesystem"
@@ -463,7 +463,8 @@ For the full matrix including pre-installed toolchains, deprecation lifecycle, a
 
 **Where the mapping lives:** The canonical registry is defined in `runtime-registry.yaml` in the orchestrator repository. This file is committed and loaded at daemon startup.
 
-**Benefits:** 
+**Benefits:**
+
 - **Deterministic**: Same language+version always pulls the same vetted image
 - **Managed by AEGIS**: No arbitrary image choices; all runtimes are vetted for security and compatibility
 - **Fast**: Images are cached; only pulled once
@@ -482,6 +483,7 @@ Both paths use the orchestrator-provided bootstrap script for 100monkeys iterati
 #### Isolation Mode
 
 `isolation` specifies process isolation technology:
+
 - `inherit` (default): Use node configuration setting
 - `docker`: Run in a container managed by the configured container runtime (Phase 1)
 - `firecracker`: Firecracker microVM (Phase 2)
@@ -490,19 +492,6 @@ Both paths use the orchestrator-provided bootstrap script for 100monkeys iterati
 The `docker` isolation type uses the container runtime configured via `container_socket_path` in the node configuration. This works with both Docker and Podman — the runtime is auto-detected.
 
 ### `spec.task`
-
-#### `task.agentskills`
-
-Pre-built instruction packages from agentskills.io. Each skill is a `SKILL.md` file containing step-by-step guidance the agent reads as context. Format: `"namespace:skill-name"` (e.g., `"email:imap-reader"`).
-
-Skills provide the **HOW** (instructions); MCP tools provide the **WHAT** (execution capability).
-
-| Aspect | AgentSkills | MCP Tools |
-|---|---|---|
-| **Purpose** | Provide instructions (HOW) | Provide capabilities (WHAT) |
-| **Format** | `SKILL.md` package | MCP server function |
-| **Loaded as** | Context (read by agent) | Callable function |
-| **Example** | `"email:imap-reader"` | `"mcp:gmail"` |
 
 #### `task.instruction`
 
@@ -520,7 +509,6 @@ Handlebars template that controls how the LLM prompt is assembled.
 | `{{input}}` | JSON input supplied at execution time. |
 | `{{iteration_number}}` | Current iteration (1-based). |
 | `{{previous_error}}` | Validator failure output from the previous iteration; empty on iteration 1. |
-| `{{agentskills}}` | Concatenated content from loaded skill packages. |
 | `{{context}}` | Concatenated context attachments. |
 
 ### `spec.security`
@@ -918,6 +906,7 @@ For validation requiring multiple independent judges with consensus aggregation,
 ### When to Use StandardRuntime
 
 ✅ **Choose StandardRuntime if:**
+
 - Your agent only needs Python, Node.js, TypeScript, Rust, or Go
 - Standard system packages are sufficient (no OS binaries required)
 - You want AEGIS to manage image updates
@@ -926,6 +915,7 @@ For validation requiring multiple independent judges with consensus aggregation,
 ### When to Use CustomRuntime
 
 ✅ **Choose CustomRuntime if:**
+
 - You need OS-level packages (graphviz, imagemagick, system libraries)
 - You require a specialized language version not in StandardRuntime registry
 - You want to include custom dependencies in the image

@@ -26,7 +26,6 @@ The `spec.task.prompt_template` field in an agent manifest is rendered once per 
 | `{{input}}` | string | The execution input provided by the caller |
 | `{{iteration_number}}` | integer | Current iteration count (1-indexed) |
 | `{{previous_error}}` | string | Error message from the previous iteration, if any |
-| `{{agentskills}}` | string | Concatenated Cortex skill content injected by the orchestrator |
 | `{{context}}` | string | Concatenated context attachment strings |
 
 Variables that are `null` or not populated render as an empty string by default (strict mode is disabled). Referencing an undefined variable does not cause an error.

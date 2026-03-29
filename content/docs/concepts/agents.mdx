@@ -118,7 +118,7 @@ The table below covers the most common fields. For the complete field-by-field s
 |---|---|---|---|
 | `description` | string | | Human-readable description injected into the system prompt. |
 | `runtime` | object | ✓ | Language, version, and isolation mode. |
-| `task` | object | | Instruction, agentskills, and prompt template. |
+| `task` | object | | Instruction and prompt template. Community skills can be imported via the [`skill-import` workflow](/docs/guides/importing-skills). |
 | `security` | object | | Network policy, filesystem policy, resource limits (deny-by-default). |
 | `execution` | object | | Iteration mode, max iterations, and validation criteria. |
 | `tools` | object[] or string[] | | MCP tools the agent may invoke. |

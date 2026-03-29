@@ -1,0 +1,114 @@
+---
+title: "Importing Community Skills"
+description: "Use the built-in skill-import workflow to convert community SKILL.md definitions into AEGIS agent baselines"
+---
+
+## Overview
+
+The `skill-import` workflow automates the process of importing behavioral definitions from the [agentskills.io](https://agentskills.io) community ecosystem and converting them into fully configured AEGIS agent manifests.
+
+Rather than coupling agent definitions directly to an external registry at runtime, AEGIS treats skill import as an explicit, auditable pipeline with human review.
+
+## How It Works
+
+The workflow follows a six-state pipeline:
+
+```text
+FETCH → PARSE_AND_VALIDATE → COMPOSE_MANIFEST → REVIEW → REGISTER → COMPLETE
+```
+
+| State | Type | Purpose |
+|-------|------|---------|
+| **FETCH** | System | Downloads the SKILL.md from a URL |
+| **PARSE_AND_VALIDATE** | Agent | Extracts frontmatter, validates safety and coherence |
+| **COMPOSE_MANIFEST** | Agent | Generates a complete AEGIS agent manifest |
+| **REVIEW** | Human | Approval gate before registration |
+| **REGISTER** | System | Deploys the composed agent manifest |
+| **COMPLETE** | System | Confirms successful registration |
+
+## Running the Workflow
+
+```bash
+aegis workflow run skill-import --input '{
+  "skill_url": "https://raw.githubusercontent.com/anthropics/skills/main/doc-coauthoring/SKILL.md"
+}'
+```
+
+### Workflow Inputs
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `skill_url` | Yes | URL to a raw SKILL.md file (GitHub raw URL, registry URL, or any HTTP endpoint) |
+| `agent_name_override` | No | Override the agent name instead of using the skill's declared name |
+| `security_preset` | No | `"minimal"` (default) or `"permissive"` — controls the generated agent's security policy |
+
+### Security Presets
+
+**Minimal (default):**
+
+- Network: deny-all
+- Filesystem: read-only
+- Resources: 500m CPU, 256Mi memory, 5m timeout
+
+**Permissive:**
+
+- Network: allow with tool-declared hosts
+- Filesystem: read access to `/data`
+- Resources: 1000m CPU, 512Mi memory, 10m timeout
+
+## What Gets Generated
+
+The workflow produces a complete AEGIS agent manifest with:
+
+- **Metadata** derived from the SKILL.md frontmatter (name, description, labels)
+- **Labels** including `source: skill-import` and `skill-origin: community` for traceability
+- **Task instruction** set to the skill's full instruction body
+- **Tools** mapped from the skill's `allowed-tools` field to AEGIS MCP tool format
+- **Security policy** based on the selected preset
+- **Execution strategy** defaulting to one-shot mode
+
+## Safety Validation
+
+The `skill-validator` agent performs automated safety checks before the human review gate:
+
+- Detects prompt injection and jailbreak attempts
+- Flags instructions that request bypassing security controls
+- Identifies data exfiltration patterns
+- Checks for references to internal system paths
+- Rates instruction quality and coherence (must score above 0.7)
+
+Skills that fail safety validation are rejected before reaching the human review stage.
+
+## Examples
+
+### Import a Documentation Coauthoring Skill
+
+```bash
+aegis workflow run skill-import --input '{
+  "skill_url": "https://raw.githubusercontent.com/anthropics/skills/main/doc-coauthoring/SKILL.md",
+  "agent_name_override": "doc-writer"
+}'
+```
+
+### Import with Permissive Security
+
+```bash
+aegis workflow run skill-import --input '{
+  "skill_url": "https://raw.githubusercontent.com/org/skills/main/data-analysis/SKILL.md",
+  "security_preset": "permissive"
+}'
+```
+
+### Approve or Reject During Review
+
+When the workflow reaches the REVIEW state, you will be prompted to approve or reject:
+
+```bash
+aegis workflow signal <execution-id> --response "approve"
+```
+
+Or reject with feedback:
+
+```bash
+aegis workflow signal <execution-id> --response "reject"
+```

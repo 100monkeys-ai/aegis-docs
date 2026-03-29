@@ -285,10 +285,6 @@ spec:
     # gRPC endpoint URL for aegis-smcp-gateway
     url: "http://aegis-smcp-gateway:50055"
 
-  # ─── AgentSkills API ────────────────────────────────────────────────────────
-  agent_skills:
-    endpoint: "https://agentskills.io/api"
-
   # ─── Execution Limits ───────────────────────────────────────────────────────
   max_execution_list_limit: 1000
 
@@ -819,16 +815,6 @@ If omitted, orchestrator does not forward unknown/external tools to the gateway 
 
 ---
 
-### `spec.agent_skills`
-
-Optional. Configures the AgentSkills API endpoint.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `endpoint` | string | `"https://agentskills.io/api"` | Endpoint URL for AgentSkills API. |
-
----
-
 ### `spec.max_execution_list_limit`
 
 Optional. Upper bound on executions returned by a single `list_executions` request.
@@ -871,6 +857,7 @@ Optional. Configures this node's role in the multi-node cluster topology. If omi
 #### Node Attestation
 
 On startup, a `worker` node:
+
 1. Loads (or generates) its Ed25519 keypair from `node_keypair_path`
 2. Calls `AttestNode` on the controller
 3. Receives a `ChallengeNode` call — signs the challenge with its private key

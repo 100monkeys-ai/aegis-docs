@@ -5,6 +5,7 @@
         "configuring-tools",
         "custom-runtime-agents",
         "deploying-agents",
+        "importing-skills",
         "management-via-mcp",
         "building-workflows",
         "cicd-pipelines",
