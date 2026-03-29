@@ -1,6 +1,6 @@
 ---
 title: Python SDK
-description: AegisClient, ManifestBuilder, and the bootstrap.py Dispatch Protocol types for Python agent authors.
+description: AegisClient async HTTP client and bootstrap.py Dispatch Protocol types for Python agent authors.
 ---
 
 # Python SDK
@@ -13,7 +13,7 @@ pip install aegis-sdk
 
 The SDK consists of two distinct layers:
 
-- **`AegisClient`** — management plane: deploy agents, start executions, query status (runs on your machine or in CI)
+- **`AegisClient`** — async HTTP client: start executions, manage approvals, invoke SMCP tools, administer tenants and rate limits
 - **`bootstrap.py` / Dispatch Protocol types** — agent-side: the wire format exchanged between a custom bootstrap script and the orchestrator's `/v1/dispatch-gateway`
 
 ---
@@ -23,48 +23,58 @@ The SDK consists of two distinct layers:
 ```python
 from aegis import AegisClient
 
-client = AegisClient(
+async with AegisClient(
     base_url="https://your-aegis-node",
     api_key="your-keycloak-jwt",     # Optional; alternatively set AEGIS_API_KEY env var
-)
+) as client:
+    resp = await client.start_execution("agt-uuid", "Write a primality check in Python")
+    print(resp.execution_id)
 ```
 
-### Methods
+### Method Reference
 
-#### `deploy_agent(manifest)`
-
-Deploy an agent to the orchestrator.
-
-```python
-from aegis import AegisClient, AgentManifest
-
-async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
-    response = await client.deploy_agent(manifest)
-    print(response.agent_id)   # "agt-uuid"
-```
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `manifest` | `AgentManifest` | Validated agent manifest object |
-
-**Returns:** `DeploymentResponse` with `agent_id: str`.
+| Section | Method | Description |
+|---------|--------|-------------|
+| Execution | `start_execution(agent_id, input, context_overrides?)` | Start an agent execution |
+| Execution | `stream_execution(execution_id, token?)` | Stream execution events (SSE) |
+| Human Approvals | `list_pending_approvals()` | List all pending human-in-the-loop approvals |
+| Human Approvals | `get_pending_approval(approval_id)` | Get a single pending approval |
+| Human Approvals | `approve_request(approval_id, feedback?, approved_by?)` | Approve a pending request |
+| Human Approvals | `reject_request(approval_id, reason, rejected_by?)` | Reject a pending request |
+| SMCP | `attest_smcp(payload)` | Obtain an SMCP security attestation token |
+| SMCP | `invoke_smcp(payload)` | Invoke an SMCP tool |
+| SMCP | `list_smcp_tools(security_context?)` | List available SMCP tools |
+| Dispatch Gateway | `dispatch_gateway(payload)` | Send a dispatch gateway request |
+| Stimulus | `ingest_stimulus(payload)` | Ingest a stimulus event |
+| Stimulus | `send_webhook(source, payload)` | Send a webhook stimulus |
+| Workflow Logs | `get_workflow_execution_logs(execution_id, limit?, offset?)` | Fetch paginated workflow logs |
+| Workflow Logs | `stream_workflow_execution_logs(execution_id)` | Stream workflow logs (SSE) |
+| Admin: Tenants | `create_tenant(slug, display_name, tier?)` | Create a new tenant |
+| Admin: Tenants | `list_tenants()` | List all tenants |
+| Admin: Tenants | `suspend_tenant(slug)` | Suspend a tenant |
+| Admin: Tenants | `delete_tenant(slug)` | Delete a tenant |
+| Admin: Rate Limits | `list_rate_limit_overrides(tenant_id?, user_id?)` | List rate limit overrides |
+| Admin: Rate Limits | `create_rate_limit_override(payload)` | Create a rate limit override |
+| Admin: Rate Limits | `delete_rate_limit_override(override_id)` | Delete a rate limit override |
+| Admin: Rate Limits | `get_rate_limit_usage(scope_type, scope_id)` | Get rate limit usage records |
+| Health | `health_live()` | Liveness probe |
+| Health | `health_ready()` | Readiness probe |
 
 ---
 
-#### `execute_task(agent_id, task_input)`
+### Execution
 
-Start an agent execution.
+#### `start_execution(agent_id, input, context_overrides?)`
+
+Start an agent execution and receive an execution ID for streaming.
 
 ```python
-from aegis.types import TaskInput
-
-output = await client.execute_task(
-    agent_id="agt-uuid",
-    task_input=TaskInput(prompt="Write a primality check in Python"),
-)
-print(output.result)
+async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
+    resp = await client.start_execution(
+        agent_id="agt-uuid",
+        input="Write a primality check in Python",
+    )
+    print(resp.execution_id)  # "exec-uuid"
 ```
 
 **Parameters:**
@@ -72,78 +82,224 @@ print(output.result)
 | Name | Type | Description |
 |------|------|-------------|
 | `agent_id` | `str` | UUID of a deployed agent |
-| `task_input` | `TaskInput` | Task input including prompt and optional context |
+| `input` | `str` | Task prompt for the agent |
+| `context_overrides` | `Any` | Optional context overrides |
 
-**Returns:** `TaskOutput` with `result: str` and `logs: list[str]`.
+**Returns:** `StartExecutionResponse` with `execution_id: str`.
 
 ---
 
-#### `get_agent_status(agent_id)`
+#### `stream_execution(execution_id, token?)`
+
+Stream real-time execution events via SSE. Returns an async generator.
 
 ```python
-status = await client.get_agent_status("agt-uuid")
-print(status.state)   # "deployed" | "paused" | "archived"
+async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
+    resp = await client.start_execution("agt-uuid", "Solve the task")
+
+    async for event in client.stream_execution(resp.execution_id):
+        print(f"[{event.event_type}] {event.data}")
 ```
 
-**Returns:** `AgentStatus` with `state: str`, `agent_id: str`, `updated_at: str`.
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `execution_id` | `str` | UUID from `start_execution` |
+| `token` | `str` | Optional auth token override |
+
+**Returns:** `AsyncGenerator[ExecutionEvent, None]` — each event has `event_type: str` and `data: Dict[str, Any]`.
 
 ---
 
-#### `terminate_agent(agent_id)`
+### Human Approvals
+
+#### `list_pending_approvals()`
+
+List all pending human-in-the-loop approval requests.
 
 ```python
-await client.terminate_agent("agt-uuid")
+approvals = await client.list_pending_approvals()
+for a in approvals:
+    print(f"{a.id}: {a.prompt} (timeout: {a.timeout_seconds}s)")
 ```
 
-Terminates and archives the agent. Running executions are cancelled.
+**Returns:** `List[PendingApproval]` — each with `id`, `execution_id`, `prompt`, `created_at`, `timeout_seconds`.
 
 ---
 
-## `AgentManifest`
+#### `get_pending_approval(approval_id)`
 
-Construct an agent manifest programmatically:
+Fetch a single pending approval by ID.
+
+**Returns:** `PendingApproval`.
+
+---
+
+#### `approve_request(approval_id, feedback?, approved_by?)`
+
+Approve a pending request, optionally with feedback.
 
 ```python
-from aegis import AgentManifest
-
-manifest = AgentManifest(
-    name="code-reviewer",
-    version="1.0.0",
-    runtime={
-        "language": "python",
-        "version": "3.11",
-        "isolation": "docker",
-    },
-    task={
-        "instruction": "Review pull requests and output structured feedback.",
-    },
-    security={
-        "network": {
-            "mode": "allow",
-            "allowlist": ["api.github.com"],
-        },
-        "filesystem": {
-            "read": ["/workspace"],
-            "write": ["/workspace"],
-        },
-        "resources": {
-            "cpu": 1000,
-            "memory": "1Gi",
-            "timeout": "300s",
-        },
-    },
+resp = await client.approve_request(
+    approval_id="approval-uuid",
+    feedback="Looks good, proceed.",
+    approved_by="jeshua@100monkeys.ai",
 )
+print(resp.status)  # "approved"
 ```
 
-Alternatively, load from a YAML file:
+**Returns:** `ApprovalResponse` with `status: str`.
 
-```python
-import yaml
-from aegis import AgentManifest
+---
 
-with open("agent.yaml") as f:
-    manifest = AgentManifest.model_validate(yaml.safe_load(f))
-```
+#### `reject_request(approval_id, reason, rejected_by?)`
+
+Reject a pending request with a mandatory reason.
+
+**Returns:** `ApprovalResponse` with `status: str`.
+
+---
+
+### SMCP
+
+#### `attest_smcp(payload)`
+
+Obtain a security attestation token for SMCP tool invocation.
+
+**Returns:** `SmcpAttestationResponse` with `security_token: str`.
+
+---
+
+#### `invoke_smcp(payload)`
+
+Invoke an SMCP tool with an attested payload.
+
+**Returns:** `Dict[str, Any]` — tool-specific response.
+
+---
+
+#### `list_smcp_tools(security_context?)`
+
+List available SMCP tools, optionally filtered by security context.
+
+**Returns:** `SmcpToolsResponse` with `protocol`, `attestation_endpoint`, `invoke_endpoint`, `security_context`, and `tools: List[Any]`.
+
+---
+
+### Dispatch Gateway
+
+#### `dispatch_gateway(payload)`
+
+Send a raw dispatch gateway request. Used by custom bootstrap scripts.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Stimulus
+
+#### `ingest_stimulus(payload)`
+
+Ingest a stimulus event into the stimulus-response pipeline.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `send_webhook(source, payload)`
+
+Send a webhook-style stimulus from an external source.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Workflow Logs
+
+#### `get_workflow_execution_logs(execution_id, limit?, offset?)`
+
+Fetch paginated workflow execution logs.
+
+**Returns:** `WorkflowExecutionLogs` with `execution_id`, `events: List[Any]`, `count`, `limit`, `offset`.
+
+---
+
+#### `stream_workflow_execution_logs(execution_id)`
+
+Stream workflow execution logs in real time via SSE.
+
+**Returns:** `AsyncGenerator[ExecutionEvent, None]`.
+
+---
+
+### Admin: Tenant Management
+
+#### `create_tenant(slug, display_name, tier?)`
+
+Create a new tenant. Defaults to `"enterprise"` tier.
+
+**Returns:** `Tenant` with `slug`, `display_name`, `status`, `tier`, `keycloak_realm`, `openbao_namespace`, `quotas`, `created_at`, `updated_at`.
+
+---
+
+#### `list_tenants()`
+
+List all tenants.
+
+**Returns:** `List[Tenant]`.
+
+---
+
+#### `suspend_tenant(slug)` / `delete_tenant(slug)`
+
+Suspend or delete a tenant by slug.
+
+**Returns:** `Dict[str, str]`.
+
+---
+
+### Admin: Rate Limits
+
+#### `list_rate_limit_overrides(tenant_id?, user_id?)`
+
+List rate limit overrides, optionally filtered by tenant or user.
+
+**Returns:** `List[RateLimitOverride]` with `id`, `resource_type`, `bucket`, `limit_value`, `tenant_id`, `user_id`, `burst_value`, `created_at`, `updated_at`.
+
+---
+
+#### `create_rate_limit_override(payload)`
+
+Create a rate limit override.
+
+**Returns:** `RateLimitOverride`.
+
+---
+
+#### `delete_rate_limit_override(override_id)`
+
+Delete a rate limit override.
+
+**Returns:** `Dict[str, str]`.
+
+---
+
+#### `get_rate_limit_usage(scope_type, scope_id)`
+
+Get rate limit usage records for a given scope.
+
+**Returns:** `List[UsageRecord]` with `scope_type`, `scope_id`, `resource_type`, `bucket`, `window_start`, `counter`.
+
+---
+
+### Health
+
+#### `health_live()` / `health_ready()`
+
+Liveness and readiness probes.
+
+**Returns:** `Dict[str, str]`.
 
 ---
 
