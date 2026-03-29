@@ -40,7 +40,7 @@ The model assumes MCP tool servers are long-running processes per tool per tenan
 │  SMCP Tooling Gateway  (aegis-smcp-gateway)                 │
 │                                                             │
 │  ┌───────────────────────┐    ┌──────────────────────────┐  │
-│  │ Control Plane API     │    │ Auth & Policy Engine     │  │
+│  │ Management API        │    │ Auth & Policy Engine     │  │
 │  │ POST /v1/specs        │    │ SmcpMiddleware           │  │
 │  │ POST /v1/workflows    │    │ SecurityContext eval      │  │
   │  │ POST /v1/cli-tools    │    │ OpenBao JIT  (Path A)    │  │
@@ -75,7 +75,7 @@ The model assumes MCP tool servers are long-running processes per tool per tenan
 
 ### ToolWorkflow
 
-A `ToolWorkflow` is a named macro-tool manifest that maps a single compressed input schema to a sequence of REST calls. Developers author workflows in YAML or JSON and register them via the control plane API. Once registered, the workflow appears in `GET /v1/tools` as a single tool entry with a name and description.
+A `ToolWorkflow` is a named macro-tool manifest that maps a single compressed input schema to a sequence of REST calls. Developers author workflows in YAML or JSON and register them via the gateway management API. Once registered, the workflow appears in `GET /v1/tools` as a single tool entry with a name and description.
 
 ```yaml
 name: create_repository_with_teams
@@ -153,7 +153,7 @@ registry_credential_path:
 
 ### Path 2 — API Explorer (Workflow Authoring Mode)
 
-The API Explorer is not exposed to agents in production runs. It is activated in a dedicated `workflow-authoring` session for engineers or agents building new `ToolWorkflow` manifests. In the current implementation, explorer endpoints require **operator auth** on both HTTP and gRPC control-plane surfaces.
+The API Explorer is not exposed to agents in production runs. It is activated in a dedicated `workflow-authoring` session for engineers or agents building new `ToolWorkflow` manifests. In the current implementation, explorer endpoints require **operator auth** on both HTTP and gRPC management surfaces.
 
 The agent provides a `fields` array of JSONPath selectors. The gateway executes the requested API call, filters the response to include only the requested fields (**Response Slicing**), and optionally injects `_hints` metadata (next page URL, related operations) to guide exploration without returning verbose raw responses.
 
@@ -215,9 +215,9 @@ The gateway never holds static credentials. All credentials are resolved at invo
 
 ---
 
-## Control Plane API
+## Management API
 
-The control plane is authenticated via Bearer JWT (Keycloak `aegis-system` realm, `AegisRole::Operator` or higher). Agents use their `SecurityToken`; human operators use their Keycloak JWT.
+The management API is authenticated via Bearer JWT (Keycloak `aegis-system` realm, `AegisRole::Operator` or higher). Agents use their `SecurityToken`; human operators use their Keycloak JWT.
 
 ```
 # Spec management
@@ -267,7 +267,7 @@ Use `SMCP_GATEWAY_UI_ENABLED=false` to disable all UI routes.
 | **SMCP** | Full `SmcpEnvelope` verification on every invocation. Gateway is a full SMCP participant — not a bypass. |
 | **AegisFSAL / Storage Gateway** | Ephemeral CLI containers mount agent volumes via the same FSAL security boundary used by all other file operations. No direct bind mounts — no authorization bypass. |
 | **OpenBao** | Keymaster Pattern preserved. JIT dynamic secrets for system identities. Image registry credentials fetched per-invocation from OpenBao KV. |
-| **Keycloak** | Token exchange for human-delegated auth. Control plane endpoint authentication via `aegis-system` realm JWTs. |
+| **Keycloak** | Token exchange for human-delegated auth. Management endpoint authentication via `aegis-system` realm JWTs. |
 | **Cortex** | `WorkflowInvocationCompleted` and `CliToolInvocationCompleted` events contribute to Trajectory Patterns — successful macro-tool sequences become learnable patterns. |
 | **Semantic Judge** | Pre-invocation CLI validation. Plugs into the same Semantic Judge mechanism used for inner-loop tool validation. |
 | **Tool routing** | The gateway is **additive**, not a replacement. Built-in tools (`fs.*`, `web.*`, `cmd.run`) continue to route through Path 1/2/3 in the orchestrator. The gateway handles third-party REST integrations and unmanaged CLI tools. |
@@ -295,7 +295,7 @@ The gateway can also be deployed independently of AEGIS Orchestrator for organiz
 
 | Threat | Mitigation |
 |---|---|
-| Prompt injection via workflow authoring | Control plane requires `AegisRole::Operator` JWT. Standard agents cannot register workflows. |
+| Prompt injection via workflow authoring | Management API requires `AegisRole::Operator` JWT. Standard agents cannot register workflows. |
 | CLI semantic escalation (e.g., `terraform apply -destroy`) | Two-layer defense: static `allowed_subcommands` + Semantic Judge. Container never created on rejection. |
 | Credential leakage | `SensitiveString` wrapper on all resolved credentials. Credentials never appear in `GatewayEvent` payloads or logs. |
 | Volume path traversal | AegisFSAL enforces `PathCanonicalization` server-side. No host mounts outside agent volume. |

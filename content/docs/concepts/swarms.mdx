@@ -69,7 +69,7 @@ This prevents privilege escalation via spawned children. A parent holding a rest
 
 ### ZaruSession Invariant
 
-The **ZaruSession** (the user's active session in the Control Plane) maintains an invariant where it tracks exactly one **root execution** at a time. While a swarm can create many concurrent child executions, they are all subordinates to the single active root execution.
+The **ZaruSession** (the user's active session in the Zaru client) maintains an invariant where it tracks exactly one **root execution** at a time. While a swarm can create many concurrent child executions, they are all subordinates to the single active root execution.
 
 The **Glass Laboratory** renders this hierarchy as a coherent multi-agent execution tree, showing child progress as nested iteration panels within the root execution's view.
 

@@ -45,15 +45,17 @@ In the Keycloak Admin console, create a new realm named `aegis-system`.
 ### 2. Create the AEGIS Client
 
 Create an OpenID Connect client:
+
 - **Client ID**: `aegis-orchestrator`
 - **Client authentication**: ON (confidential)
-- **Valid redirect URIs**: `http://localhost:*` (dev), your production Control Plane URL
+- **Valid redirect URIs**: `http://localhost:*` (dev), your production Zaru client URL
 - **Standard flow**: ON (for human operators via browser)
 - **Service accounts**: ON (for M2M clients)
 
 ### 3. Create Client Roles
 
 In the `aegis-orchestrator` client, create three roles:
+
 - `aegis:admin`
 - `aegis:operator`
 - `aegis:readonly`
@@ -61,6 +63,7 @@ In the `aegis-orchestrator` client, create three roles:
 ### 4. Add Protocol Mapper
 
 Add a roles protocol mapper to include client roles in the JWT:
+
 - Mapper type: `User Client Role`
 - Client ID: `aegis-orchestrator`
 - Token claim name: `aegis_role`
@@ -93,6 +96,7 @@ For SDK clients and CI/CD pipelines that need programmatic API access:
 ### Create a Service Account Client
 
 In Keycloak, create a new client:
+
 - **Client ID**: `my-sdk-client`
 - **Client authentication**: ON
 - **Service accounts**: ON

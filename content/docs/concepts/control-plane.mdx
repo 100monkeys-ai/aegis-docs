@@ -1,32 +1,40 @@
 ---
-title: Control Plane (UX)
-description: The human-friendly interfaces for managing the AEGIS orchestrator.
+title: Zaru Client Admin Console
+description: The unified operator and consumer interface for managing the AEGIS orchestrator, delivered through the Zaru client.
 ---
 
-# Control Plane (UX)
+import { Callout } from 'fumadocs-ui/components/callout';
 
-The **AEGIS Control Plane** (`aegis-control-plane`) is a Next.js-based web application providing the primary operational and developer interface for the system. It abstracts the raw declarative YAML manifests and gRPC APIs into a visual, intent-driven experience.
+# Zaru Client Admin Console
+
+<Callout type="warn">
+The standalone Control Plane (`aegis-control-plane`) has been superseded. All operator UX capabilities are now part of the **Zaru client** (`zaru-client`) per [ADR-071](/docs/adrs/071-zaru-client-architecture) and [ADR-073](/docs/adrs/073-control-plane-merge). The `aegis-control-plane` repository is archived.
+</Callout>
+
+The **Zaru client** (`zaru-client`) provides the unified operator and consumer interface for the AEGIS platform. It combines the consumer-facing conversational experience with full administrative capabilities, eliminating the need for a separate operator dashboard.
 
 ---
 
 ## Core Components
 
-The Control Plane is divided into three major functional areas designed to support the complete agent lifecycle, from conception to observation.
+The Zaru client admin console is organized into three major functional areas designed to support the complete agent lifecycle, from conception to observation.
 
 ### 1. The Architect
 
 The Architect is the entry point for creating new agent workloads. Instead of writing Kubernetes-style `AgentManifest` YAML manually, users provide a natural language **Intent** (e.g., *"Create an agent that monitors the staging database for slow queries and emails a report daily"*).
 
 The Architect parses this intent and automatically generates a complete manifest, configuring:
+
 - The appropriate standard or custom runtime.
 - A structurally sound `SecurityPolicy` (including precise network and filesystem allowlists).
 - The necessary `ResourceLimits` and role assignments.
 
 ### 2. The Synapse
 
-The Synapse is the real-time execution visualizer. Once an agent execution begins, The Synapse connects to the orchestrator's event stream to render the 100monkeys iterative refinement loop (`Execute → Evaluate → Refine`) live.
+The Synapse is the real-time execution visualizer. Once an agent execution begins, The Synapse connects to the orchestrator's event stream to render the 100monkeys iterative refinement loop (`Execute -> Evaluate -> Refine`) live.
 
 **Transparent Iteration** is the foundational UX principle of The Synapse. Unlike traditional chat interfaces that hide the intermediate reasoning steps and only present the final result, The Synapse exposes:
+
 - Every tool invocation and its resulting output (e.g., `cmd.run`, `fs.read`).
 - Validation scores and judge feedback for each iteration.
 - The precise code diffs or strategy changes applied during the `Refine` phase.
@@ -37,6 +45,7 @@ This transparency allows operators to understand *how* an agent arrived at a sol
 ### 3. The Cortex Explorer
 
 The Cortex Explorer is a memory browser that visualizes the system's learned intelligence. While the orchestrator handles the mechanics of communicating with Cortex (or running in memoryless mode), the Explorer provides the human interface to:
+
 - Browse learned **Patterns** and the specific error signatures that trigger them.
 - Track the evolution of higher-level **Skills**.
 - View confidence metrics (`SuccessScore`) and memory decay status.
@@ -45,11 +54,11 @@ The Cortex Explorer is a memory browser that visualizes the system's learned int
 
 ## Integration with the Orchestrator
 
-The Control Plane communicates with the AEGIS Orchestrator exclusively via the public gRPC and HTTP APIs. It does not have direct access to the orchestrator's internal state, databases, or the underlying container runtimes.
+The Zaru client communicates with the AEGIS Orchestrator exclusively via the public gRPC and HTTP APIs. It does not have direct access to the orchestrator's internal state, databases, or the underlying container runtimes.
 
 ```typescript
-// Conceptual API surface consumed by the Control Plane
-interface ControlPlaneAPI {
+// Conceptual API surface consumed by the Zaru client
+interface ZaruClientAPI {
   parseIntent(intent: UserIntent): Promise<ParsedIntent>;
   generateManifest(intent: ParsedIntent): Promise<AgentManifest>;
   deployAgent(manifest: AgentManifest): Promise<AgentId>;
@@ -57,4 +66,4 @@ interface ControlPlaneAPI {
 }
 ```
 
-Authentication between the Control Plane and the Orchestrator is handled via OIDC tokens issued by the central IAM system (Keycloak), ensuring that operators only see and control the agents within their authorized tenant boundary.
+Authentication between the Zaru client and the Orchestrator is handled via OIDC tokens issued by the central IAM system (Keycloak), ensuring that operators only see and control the agents within their authorized tenant boundary.

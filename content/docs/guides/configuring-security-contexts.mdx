@@ -68,7 +68,7 @@ spec:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | ✓ | Unique identifier. Referenced in agent manifests as `spec.security_context`. |
-| `description` | string | ✓ | Human-readable purpose, shown in the Control Plane UI. |
+| `description` | string | ✓ | Human-readable purpose, shown in the Zaru client admin console. |
 | `capabilities` | array | ✓ | Ordered list of permission entries. Evaluated sequentially; first match wins. |
 | `deny_list` | array | — | Tool names that are always rejected, regardless of capabilities. |
 

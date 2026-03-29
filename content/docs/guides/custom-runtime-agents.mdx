@@ -117,7 +117,7 @@ docker push myregistry/my-agent:latest
 `bootstrap.py` is the in-container entrypoint. It implements the **Aegis Dispatch Protocol** — a bidirectional loop over `POST /v1/dispatch-gateway` that the orchestrator uses to drive the LLM conversation and dispatch in-container commands.
 
 <Callout type="warn">
-Do **not** import `aegis-sdk` inside a custom bootstrap script. The SDK is a control-plane client for deploying agents from outside the runtime. A custom bootstrap must be **stdlib-only** (Python) or equivalent, to avoid a pip-install dependency before the container is ready. Use the `aegis.bootstrap` module types from the SDK only as a local reference during development — do not ship the import.
+Do **not** import `aegis-sdk` inside a custom bootstrap script. The SDK is an API client for deploying agents from outside the runtime. A custom bootstrap must be **stdlib-only** (Python) or equivalent, to avoid a pip-install dependency before the container is ready. Use the `aegis.bootstrap` module types from the SDK only as a local reference during development — do not ship the import.
 </Callout>
 
 The protocol has three message types:

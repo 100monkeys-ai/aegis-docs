@@ -69,9 +69,11 @@ AEGIS uses a **shared schema** model where a `tenant_id` column is added to all 
 Each tenant is assigned a dedicated OpenBao namespace for their credentials, tool API keys, and webhook secrets.
 
 ### Namespace Pattern
+
 `tenant-{slug}/`
 
 ### Policy Enforcement
+
 The AEGIS Orchestrator uses its AppRole to access these namespaces. The `CredentialResolver` automatically routes secret lookups to the appropriate namespace based on the `TenantId` of the requesting execution.
 
 ```yaml
@@ -88,7 +90,7 @@ spec:
 
 ### Provisioning a Tenant
 
-Tenant provisioning is handled by the `TenantOnboardingService` (triggered via the Control Plane or CLI). The sequence is atomic:
+Tenant provisioning is handled by the `TenantOnboardingService` (triggered via the Zaru client admin console or CLI). The sequence is atomic:
 
 1. **Create Keycloak Realm**: `tenant-{slug}`
 2. **Create OpenBao Namespace**: `tenant-{slug}/`
