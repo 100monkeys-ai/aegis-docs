@@ -84,7 +84,7 @@ Lists all currently deployed agents in the registry.
 
 ### `aegis.agent.search`
 
-Performs semantic search over deployed agents, returning results ranked by relevance to a natural-language query. This is an **enterprise feature** — if the discovery service is not configured on the node, calls return an error.
+Performs semantic search over deployed agents, returning results ranked by relevance to a natural-language query. Requires a Cortex connection (included in Zaru SaaS). If Cortex is not configured, calls return an error.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -115,7 +115,7 @@ Performs semantic search over deployed agents, returning results ranked by relev
 }
 ```
 
-**Errors:** Returns an error with `"discovery service not configured"` if the node does not have the `discovery` section in its configuration.
+**Errors:** Returns an error with `"Cortex not configured"` if the node does not have a Cortex connection configured.
 
 ### `aegis.agent.logs`
 
@@ -418,7 +418,7 @@ Lists all currently registered workflows.
 
 ### `aegis.workflow.search`
 
-Performs semantic search over registered workflows, returning results ranked by relevance to a natural-language query. This is an **enterprise feature** — if the discovery service is not configured on the node, calls return an error.
+Performs semantic search over registered workflows, returning results ranked by relevance to a natural-language query. Requires a Cortex connection (included in Zaru SaaS). If Cortex is not configured, calls return an error.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -449,7 +449,7 @@ Performs semantic search over registered workflows, returning results ranked by 
 }
 ```
 
-**Errors:** Returns an error with `"discovery service not configured"` if the node does not have the `discovery` section in its configuration.
+**Errors:** Returns an error with `"Cortex not configured"` if the node does not have a Cortex connection configured.
 
 ---
 

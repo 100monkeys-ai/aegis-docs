@@ -298,17 +298,7 @@ spec:
   # ─── Cortex ─────────────────────────────────────────────────────────────────
   cortex:
     grpc_url: "http://cortex:50052"
-
-  # ─── Discovery (Enterprise) ────────────────────────────────────────────────
-  # Optional. Enables semantic search over agents and workflows, and
-  # similarity-based deduplication during generative authoring.
-  # Requires a running Qdrant vector store and embedding service.
-  # Omit this section entirely to disable discovery features.
-  discovery:
-    qdrant_url: "env:QDRANT_URL"                  # Qdrant gRPC endpoint
-    embedding_url: "env:EMBEDDING_SERVICE_URL"     # Embedding service gRPC endpoint
-    deduplication_threshold: 0.85                   # Similarity threshold for generation dedup
-    backfill_on_startup: true                       # Index existing resources at startup
+    api_key: "env:CORTEX_API_KEY"  # Required for Zaru SaaS; absent = memoryless mode
 
   # ─── External SMCP Tooling Gateway ───────────────────────────────
   smcp_gateway:
@@ -823,36 +813,21 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `grpc_url` | string | null | Cortex gRPC service URL. Supports `env:`. |
+| `api_key` | string | null | API key for 100monkeys hosted Cortex (Zaru SaaS). Supports `env:` and `secret:` prefixes. When absent, the orchestrator connects without authentication (local/open cortex). |
 
 **Example:**
 
 ```yaml
 cortex:
-  grpc_url: "http://cortex:50052"
+  grpc_url: "env:CORTEX_GRPC_URL"
+  api_key: "env:CORTEX_API_KEY"  # Required for Zaru SaaS
 ```
 
 ---
 
 ### `spec.discovery`
 
-Optional. Enterprise feature. Enables semantic search over agents and workflows via `aegis.agent.search` and `aegis.workflow.search`, and provides similarity-based deduplication during generative authoring (`aegis.agent.generate`, `aegis.workflow.generate`). Requires a running Qdrant vector store and an embedding service. Omit this section entirely to disable discovery features.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `qdrant_url` | string | — | Qdrant gRPC endpoint URL. Supports `env:`. |
-| `embedding_url` | string | — | Embedding service gRPC endpoint URL. Supports `env:`. |
-| `deduplication_threshold` | f64 | `0.85` | Similarity score threshold (0.0–1.0) used during generative authoring to detect near-duplicate agents or workflows before creating them. |
-| `backfill_on_startup` | bool | `true` | When `true`, the daemon indexes all existing agents and workflows into Qdrant at startup. Set to `false` on large registries if startup latency is a concern. |
-
-**Example:**
-
-```yaml
-discovery:
-  qdrant_url: "env:QDRANT_URL"
-  embedding_url: "env:EMBEDDING_SERVICE_URL"
-  deduplication_threshold: 0.85
-  backfill_on_startup: true
-```
+**Discovery** — Semantic agent and workflow search (`aegis.agent.search`, `aegis.workflow.search`) is powered by the Cortex service. When `spec.cortex` is configured with a valid `grpc_url` and `api_key`, discovery is available automatically. No separate `spec.discovery` configuration is required.
 
 ---
 
@@ -1143,7 +1118,8 @@ spec:
     namespace: "default"
     task_queue: "aegis-agents"
   cortex:
-    grpc_url: "http://cortex:50052"
+    grpc_url: "env:CORTEX_GRPC_URL"
+    api_key: "env:CORTEX_API_KEY"  # Required for Zaru SaaS
   observability:
     logging:
       level: info

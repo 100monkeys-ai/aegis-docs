@@ -577,24 +577,14 @@ temporal:
 
 # ─── Cortex ───────────────────────────────────────────────────────────────────
 # Optional. If omitted or grpc_url is null the daemon runs in memoryless mode.
+# When configured, discovery (aegis.agent.search, aegis.workflow.search) is
+# available automatically — no separate discovery section is required.
 cortex:
   # Cortex gRPC service URL. Supports env:.
-  grpc_url: "http://cortex:50052"
-
-# ─── Discovery (Enterprise) ──────────────────────────────────────────────────
-# Optional. Enables semantic search over agents and workflows, and
-# similarity-based deduplication during generative authoring.
-# Requires a running Qdrant vector store and embedding service.
-# Omit this section entirely to disable discovery features.
-discovery:
-  # Qdrant gRPC endpoint URL. Supports env: prefix.
-  qdrant_url: "env:QDRANT_URL"
-  # Embedding service gRPC endpoint URL. Supports env: prefix.
-  embedding_url: "env:EMBEDDING_SERVICE_URL"
-  # Similarity threshold for generation dedup. Default: 0.85
-  deduplication_threshold: 0.85
-  # Index existing resources at startup. Default: true
-  backfill_on_startup: true
+  grpc_url: "env:CORTEX_GRPC_URL"
+  # API key for 100monkeys hosted Cortex (Zaru SaaS). Supports env: and secret:.
+  # Omit for local or open cortex deployments (connects without authentication).
+  api_key: "env:CORTEX_API_KEY"
 
 # ─── External SMCP Tooling Gateway ─────────────────────────────────
 # Optional. Omit to keep external tool routing disabled.
@@ -961,19 +951,13 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `grpc_url` | string | null | Cortex gRPC service URL. Supports `env:`. |
+| `api_key` | string | null | API key for 100monkeys hosted Cortex (Zaru SaaS). Supports `env:` and `secret:` prefixes. When absent, the orchestrator connects without authentication (local/open cortex). |
 
 ---
 
 ### `spec.discovery`
 
-Optional. Enterprise feature. Enables semantic search over agents and workflows (`aegis.agent.search`, `aegis.workflow.search`) and similarity-based deduplication during generative authoring. Requires a running Qdrant vector store and an embedding service accessible over gRPC. Omit this section entirely to disable discovery.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `qdrant_url` | string | — | Qdrant gRPC endpoint URL. Supports `env:`. |
-| `embedding_url` | string | — | Embedding service gRPC endpoint URL. Supports `env:`. |
-| `deduplication_threshold` | f64 | `0.85` | Similarity score threshold (0.0–1.0) for detecting near-duplicate agents or workflows during generation. |
-| `backfill_on_startup` | bool | `true` | Index all existing agents and workflows into Qdrant at startup. |
+**Discovery** — Semantic agent and workflow search (`aegis.agent.search`, `aegis.workflow.search`) is powered by the Cortex service. When `spec.cortex` is configured with a valid `grpc_url` and `api_key`, discovery is available automatically. No separate `spec.discovery` configuration is required.
 
 ---
 
