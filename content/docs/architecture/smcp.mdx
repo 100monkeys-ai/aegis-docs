@@ -174,11 +174,13 @@ The Gateway verifies that `workload_id` maps to a currently running execution in
 The `security_token` is a JWT signed by the Gateway's root key (via OpenBao Transit Engine — the key never leaves the HSM).
 
 **JWT header:**
+
 ```json
 { "alg": "EdDSA", "typ": "JWT" }
 ```
 
 **JWT claims:**
+
 ```json
 {
   "sub":  "exec-abc123",       // workload_id
@@ -237,6 +239,7 @@ canonical_message = UTF8(JSON_sorted_keys_no_whitespace({
 ```
 
 Rules:
+
 - Keys sorted alphabetically at **all nesting levels**
 - No whitespace (no spaces, no newlines)
 - `timestamp` as an integer (Unix seconds), not the ISO string

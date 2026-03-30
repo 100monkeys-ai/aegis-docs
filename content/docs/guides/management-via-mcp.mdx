@@ -19,9 +19,9 @@ All `aegis.*` tools are built directly into the Orchestrator as first-class buil
 
 | Capability | Tools |
 |---|---|
-| **Agent Lifecycle** | `aegis.agent.list`, `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.delete`, `aegis.agent.generate` |
+| **Agent Lifecycle** | `aegis.agent.list`, `aegis.agent.search`, `aegis.agent.create`, `aegis.agent.update`, `aegis.agent.export`, `aegis.agent.delete`, `aegis.agent.generate` |
 | **Agent Observability** | `aegis.agent.logs` |
-| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, `aegis.workflow.remove` |
+| **Workflow Lifecycle** | `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, `aegis.workflow.remove` |
 | **Task Execution** | `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, `aegis.task.remove` |
 | **System Introspection** | `aegis.system.info`, `aegis.system.config` |
 | **Schema & Validation** | `aegis.schema.get`, `aegis.schema.validate` |
@@ -271,6 +271,33 @@ Returns the node version, health status (`healthy | unhealthy`), and the full li
 ```
 
 Returns the full `node-config.yaml` as a string — useful for agents performing self-diagnostic checks or configuration audits.
+
+---
+
+## Pattern: Semantic Discovery (Enterprise)
+
+When the discovery service is configured, agents and workflows can be found by natural-language intent rather than exact name. This is useful for agent factories that need to check whether a suitable agent already exists before creating a new one, and for orchestrator agents selecting the right workflow for a user's request.
+
+```json
+// Tool Call: aegis.agent.search
+{
+  "query": "review pull requests for security vulnerabilities",
+  "limit": 5,
+  "min_score": 0.7
+}
+```
+
+Returns a ranked list of agents whose descriptions semantically match the query. Similarly, `aegis.workflow.search` finds workflows by intent:
+
+```json
+// Tool Call: aegis.workflow.search
+{
+  "query": "deploy Node.js application to Kubernetes",
+  "labels": { "category": "deployment" }
+}
+```
+
+Discovery is an enterprise feature. If the node does not have the `discovery` section configured, these tools return an error. Use `aegis.agent.list` and `aegis.workflow.list` as the universal fallback.
 
 ---
 

@@ -98,6 +98,7 @@ All incoming paths are canonicalized before reaching the `StorageProvider`:
 4. Strip the volume's root prefix to produce a path relative to the SeaweedFS bucket.
 
 Example:
+
 ```
 Incoming:    /workspace/../etc/passwd
 Step 2:      ".." detected
@@ -141,6 +142,7 @@ Quota accounting is maintained in-memory per execution and persisted to PostgreS
 ---
 
 ## Storage Routing
+
 The `StorageRouter` acts as a proxy for the `AegisFSAL`, allowing operations on volumes using distinct backends (like OpenDAL or LocalHost). Every POSIX operation requests the `StorageRouter` to find the correct `StorageProvider` for the specified `volume_id` in the `FileHandle`.
 
 For more in-depth operational mechanisms regarding diverse storage modes, see [Storage Backends](/docs/architecture/storage-backends).

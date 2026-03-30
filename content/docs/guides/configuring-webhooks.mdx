@@ -31,6 +31,7 @@ export AEGIS_WEBHOOK_SECRET_MY_CI="third-secret"
 ```
 
 The mapping is:
+
 - Source `github` → `AEGIS_WEBHOOK_SECRET_GITHUB`
 - Source `my-ci` → `AEGIS_WEBHOOK_SECRET_MY_CI`
 - Source `my.service` → `AEGIS_WEBHOOK_SECRET_MY_SERVICE`
@@ -138,7 +139,7 @@ A successful response:
 
 Prevent duplicate workflow executions from retried webhook deliveries by including an idempotency key. Most webhook providers supply one automatically:
 
-| Provider | Header to forward | 
+| Provider | Header to forward |
 |----------|-------------------|
 | GitHub | `X-GitHub-Delivery` |
 | Stripe | `Stripe-Signature` (already unique per event) |

@@ -24,6 +24,7 @@ Future agents assigned similar tasks will receive these successful trajectories 
 When an agent encounters an error or requires refinement during the 100monkeys iterative loop, the orchestrator indexes these events. Cortex analyzes the execution history to extract **Patterns** (error-solution pairs) and organizes them into higher-level **Skills**.
 
 By connecting to Cortex, your orchestrator can:
+
 - **Retrieve known solutions:** Automatically provide agents with proven fixes for specific error signatures before they attempt to solve them from scratch.
 - **Contribute to collective intelligence:** Send successful refinement trajectories back to the central graph, improving the system for all connected nodes.
 - **Enable holographic memory:** Access a weighted graph of solutions that dynamically updates based on the continuous success and decay of patterns.
@@ -62,6 +63,7 @@ cortex:
 ### Behavior in Memoryless Mode
 
 When Cortex is disabled:
+
 - **No Pattern Retrieval:** Agents will rely entirely on their intrinsic foundational model intelligence and whatever context is provided in their base prompts. They will not receive injected "hints" or known solutions from previous runs.
 - **No Telemetry Export:** The orchestrator will not transmit any execution trajectories, error signatures, or successful code diffs externally.
 - **Standard Iteration:** The 100monkeys loop (`Execute → Evaluate → Refine`) functions normally, but the loop starts from a blank slate on every execution.

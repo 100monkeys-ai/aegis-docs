@@ -207,6 +207,7 @@ If `model` is omitted, it defaults to `"default"`.
 To change which model backs a given alias:
 
 1. Update `aegis-config.yaml`:
+
    ```yaml
    spec:
      llm_providers:
@@ -219,6 +220,7 @@ To change which model backs a given alias:
    ```
 
 2. Restart the AEGIS daemon:
+
    ```bash
    aegis daemon stop
    aegis daemon start --config aegis-config.yaml

@@ -81,6 +81,7 @@ validation:
 ```
 
 The judge agent receives the iteration's output and the `criteria` text, then returns a JSON object:
+
 ```json
 { "score": 0.82, "confidence": 0.91, "reasoning": "..." }
 ```
@@ -118,6 +119,7 @@ validation:
 While the `validation` blocks above operate on the outer execution iteration (end of run), agents can also be checked *during* execution just before they invoke a tool. This prevents agents from calling potentially unsafe tools or wasting time on hallucinations.
 
 Unlike outer validators, the inner `tool_validation` acts synchronously and pre-execution:
+
 1. The agent proposes a tool call, such as `cmd.run`.
 2. The orchestrator intercepts the call and evaluates the configured semantic judge before dispatch.
 3. The judge receives the proposed call, the available tools, the current criteria, and the worker mount context.

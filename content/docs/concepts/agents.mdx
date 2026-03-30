@@ -173,6 +173,10 @@ aegis agent show <id>
 aegis agent remove <id>
 ```
 
+### Semantic Discovery (Enterprise)
+
+On nodes with the discovery service configured, deployed agents are automatically indexed for semantic search. This allows agents and operators to find existing agents by natural-language intent (e.g. "review code for security issues") rather than by exact name, using the `aegis.agent.search` MCP tool. This is an enterprise feature; nodes without discovery configured use `aegis.agent.list` for enumeration.
+
 ---
 
 ## Runtime Selection

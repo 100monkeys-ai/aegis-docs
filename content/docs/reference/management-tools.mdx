@@ -9,7 +9,7 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
-The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The agent management surface also includes `aegis.agent.logs` for retrieving agent-level activity logs. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog.
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The agent management surface also includes `aegis.agent.search` for semantic search and `aegis.agent.logs` for retrieving agent-level activity logs. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog.
 
 ## Versioning and Safety
 
@@ -81,6 +81,41 @@ Lists all currently deployed agents in the registry.
 **Parameters:** None.
 
 **Returns:** A list of agent summaries including `id`, `name`, `version`, `status`, and `labels`.
+
+### `aegis.agent.search`
+
+Performs semantic search over deployed agents, returning results ranked by relevance to a natural-language query. This is an **enterprise feature** — if the discovery service is not configured on the node, calls return an error.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | `string` | ✅ | — | Natural-language search query describing the desired agent capability. |
+| `limit` | `integer` | ❌ | `10` | Maximum number of results to return. |
+| `min_score` | `number` | ❌ | `0.0` | Minimum similarity score threshold (0.0–1.0). |
+| `labels` | `object` | ❌ | — | Label filter — only return agents matching all specified key-value pairs. |
+| `status` | `string` | ❌ | — | Filter by agent status (e.g. `"deployed"`, `"paused"`). |
+| `include_platform_templates` | `boolean` | ❌ | `false` | Include built-in platform template agents in results. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.agent.search",
+  "query": "review pull requests for security issues",
+  "results": [
+    {
+      "id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+      "name": "security-reviewer",
+      "version": "1.2.0",
+      "description": "Reviews code changes for security vulnerabilities and best practices.",
+      "labels": { "team": "security", "category": "review" },
+      "score": 0.91
+    }
+  ],
+  "total": 1
+}
+```
+
+**Errors:** Returns an error with `"discovery service not configured"` if the node does not have the `discovery` section in its configuration.
 
 ### `aegis.agent.logs`
 
@@ -380,6 +415,41 @@ Lists all currently registered workflows.
 **Parameters:** None.
 
 **Returns:** A list of workflow summaries including `id`, `name`, `version`, and `initial_state`.
+
+### `aegis.workflow.search`
+
+Performs semantic search over registered workflows, returning results ranked by relevance to a natural-language query. This is an **enterprise feature** — if the discovery service is not configured on the node, calls return an error.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | `string` | ✅ | — | Natural-language search query describing the desired workflow capability. |
+| `limit` | `integer` | ❌ | `10` | Maximum number of results to return. |
+| `min_score` | `number` | ❌ | `0.0` | Minimum similarity score threshold (0.0–1.0). |
+| `labels` | `object` | ❌ | — | Label filter — only return workflows matching all specified key-value pairs. |
+| `status` | `string` | ❌ | — | Filter by workflow status. |
+| `include_platform_templates` | `boolean` | ❌ | `false` | Include built-in platform template workflows in results. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.workflow.search",
+  "query": "deploy Node.js to Kubernetes",
+  "results": [
+    {
+      "id": "a1b2c3d4-5678-9abc-def0-123456789abc",
+      "name": "nodejs-k8s-deploy",
+      "version": "2.0.0",
+      "description": "Builds, tests, and deploys a Node.js application to a Kubernetes cluster.",
+      "labels": { "category": "deployment", "runtime": "nodejs" },
+      "score": 0.88
+    }
+  ],
+  "total": 1
+}
+```
+
+**Errors:** Returns an error with `"discovery service not configured"` if the node does not have the `discovery` section in its configuration.
 
 ---
 

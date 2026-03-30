@@ -581,6 +581,21 @@ cortex:
   # Cortex gRPC service URL. Supports env:.
   grpc_url: "http://cortex:50052"
 
+# ─── Discovery (Enterprise) ──────────────────────────────────────────────────
+# Optional. Enables semantic search over agents and workflows, and
+# similarity-based deduplication during generative authoring.
+# Requires a running Qdrant vector store and embedding service.
+# Omit this section entirely to disable discovery features.
+discovery:
+  # Qdrant gRPC endpoint URL. Supports env: prefix.
+  qdrant_url: "env:QDRANT_URL"
+  # Embedding service gRPC endpoint URL. Supports env: prefix.
+  embedding_url: "env:EMBEDDING_SERVICE_URL"
+  # Similarity threshold for generation dedup. Default: 0.85
+  deduplication_threshold: 0.85
+  # Index existing resources at startup. Default: true
+  backfill_on_startup: true
+
 # ─── External SMCP Tooling Gateway ─────────────────────────────────
 # Optional. Omit to keep external tool routing disabled.
 smcp_gateway:
@@ -946,6 +961,19 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `grpc_url` | string | null | Cortex gRPC service URL. Supports `env:`. |
+
+---
+
+### `spec.discovery`
+
+Optional. Enterprise feature. Enables semantic search over agents and workflows (`aegis.agent.search`, `aegis.workflow.search`) and similarity-based deduplication during generative authoring. Requires a running Qdrant vector store and an embedding service accessible over gRPC. Omit this section entirely to disable discovery.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `qdrant_url` | string | — | Qdrant gRPC endpoint URL. Supports `env:`. |
+| `embedding_url` | string | — | Embedding service gRPC endpoint URL. Supports `env:`. |
+| `deduplication_threshold` | f64 | `0.85` | Similarity score threshold (0.0–1.0) for detecting near-duplicate agents or workflows during generation. |
+| `backfill_on_startup` | bool | `true` | Index all existing agents and workflows into Qdrant at startup. |
 
 ---
 

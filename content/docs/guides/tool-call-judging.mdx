@@ -33,10 +33,13 @@ If the judge rejects the call, the tool is blocked synchronously and the inner l
 In the system architecture, Judge agents are not restricted to "thought-only" evaluation. They can declare and use tools to semantically verify the state of the worker's environment before approving a tool call.
 
 ### Read-Only Volume Injection
+
 When a Judge is spawned to evaluate a tool call, the Orchestrator dynamically injects **read-only** volume mounts into the Judge runtime for every volume mounted by the worker agent. These mounts are available at the same canonical paths (e.g., `/workspace`).
 
 ### Semantic Verification Tools
+
 Judges can use tools like `cmd.run` or `ast_grep.search` to inspect the worker's filesystem. For example, a Judge can:
+
 - Run `pytest` inside its isolated container to verify that a proposed code change doesn't break existing tests.
 - Use `ast-grep` to ensure a proposed refactor adheres to architectural invariants.
 - Inspect a generated SQLite database or build artifact.
@@ -51,6 +54,7 @@ spec:
 ```
 
 ### Pre-execution Gatekeeping
+
 This mechanism is specifically used to gatekeep dangerous or complex CLI commands. For example, before allowing an agent to run `terraform apply`, a Semantic Judge can mount the workspace, run `terraform plan`, and semantically review the plan output to ensure no unauthorized resources are being destroyed.
 
 ---
@@ -160,4 +164,3 @@ Recommended judge manifests are narrow and defensive:
 - Scope filesystem access to the minimal inherited mounts required for review.
 
 In enterprise deployments, treat the tool-call judge as a semantic control layer that complements hard policy enforcement. SMCP still enforces identity and capability boundaries; the judge adds intent-level review before action.
-

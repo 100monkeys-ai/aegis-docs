@@ -17,6 +17,19 @@ This guide walks through creating a multi-agent workflow using the AEGIS workflo
 
 ---
 
+## Before You Start: Check for Existing Workflows
+
+If your node has the discovery service configured (enterprise feature), search for existing workflows that might already cover your use case before writing a new one:
+
+```json
+// Tool Call: aegis.workflow.search
+{ "query": "code review pipeline with human approval" }
+```
+
+This avoids creating duplicate workflows and helps you build on proven patterns. On nodes without discovery, use `aegis workflow list` to browse the registry manually.
+
+---
+
 ## Step 1: Write the Workflow Manifest
 
 Create `my-pipeline.yaml`:

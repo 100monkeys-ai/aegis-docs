@@ -45,7 +45,9 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `web.search` | `true` | Read-only external lookup |
 | `web.fetch` | `true` | Read-only HTTP fetch |
 | `aegis.agent.list` | `true` | Read-only registry lookup |
+| `aegis.agent.search` | `true` | Read-only semantic search |
 | `aegis.workflow.list` | `true` | Read-only registry lookup |
+| `aegis.workflow.search` | `true` | Read-only semantic search |
 | `aegis.schema.get` | `true` | Read-only schema lookup |
 | `aegis.schema.validate` | `true` | Read-only validation |
 | `aegis.agent.export` | `true` | Read-only manifest lookup |
@@ -118,6 +120,7 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `aegis.agent.create`, `aegis.agent.update` | `manifest_yaml` |
 | `aegis.agent.export` | `name` |
 | `aegis.agent.delete`, `aegis.task.execute` | `agent_id` |
+| `aegis.agent.search`, `aegis.workflow.search` | `query` |
 | `aegis.agent.generate`, `aegis.workflow.generate` | `input` |
 | `aegis.workflow.create`, `aegis.workflow.update` | `manifest_yaml` |
 | `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run` | `name` |
@@ -138,7 +141,7 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `web.search` | `query` |
 | `web.fetch` | `url` |
 
-Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`) accept any object including `{}`. `aegis.tools.search` accepts an optional `query` string but has no required fields.
+Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`) accept any object including `{}`. `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string.
 
 ---
 

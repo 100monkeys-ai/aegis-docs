@@ -55,6 +55,10 @@ aegis workflow list --visible
 
 Direct jumps between User and Global are not allowed — you must promote through Tenant first to enforce a review step.
 
+### Semantic Discovery (Enterprise)
+
+On nodes with the discovery service configured, registered workflows are automatically indexed for semantic search. Agents and operators can find workflows by natural-language intent (e.g. "deploy Node.js to Kubernetes") using the `aegis.workflow.search` MCP tool, rather than browsing the full list. This is an enterprise feature; nodes without discovery configured use `aegis.workflow.list` for enumeration.
+
 ---
 
 ## Manifest Structure

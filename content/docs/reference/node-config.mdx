@@ -299,6 +299,17 @@ spec:
   cortex:
     grpc_url: "http://cortex:50052"
 
+  # ─── Discovery (Enterprise) ────────────────────────────────────────────────
+  # Optional. Enables semantic search over agents and workflows, and
+  # similarity-based deduplication during generative authoring.
+  # Requires a running Qdrant vector store and embedding service.
+  # Omit this section entirely to disable discovery features.
+  discovery:
+    qdrant_url: "env:QDRANT_URL"                  # Qdrant gRPC endpoint
+    embedding_url: "env:EMBEDDING_SERVICE_URL"     # Embedding service gRPC endpoint
+    deduplication_threshold: 0.85                   # Similarity threshold for generation dedup
+    backfill_on_startup: true                       # Index existing resources at startup
+
   # ─── External SMCP Tooling Gateway ───────────────────────────────
   smcp_gateway:
     # gRPC endpoint URL for aegis-smcp-gateway
@@ -818,6 +829,29 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 ```yaml
 cortex:
   grpc_url: "http://cortex:50052"
+```
+
+---
+
+### `spec.discovery`
+
+Optional. Enterprise feature. Enables semantic search over agents and workflows via `aegis.agent.search` and `aegis.workflow.search`, and provides similarity-based deduplication during generative authoring (`aegis.agent.generate`, `aegis.workflow.generate`). Requires a running Qdrant vector store and an embedding service. Omit this section entirely to disable discovery features.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `qdrant_url` | string | — | Qdrant gRPC endpoint URL. Supports `env:`. |
+| `embedding_url` | string | — | Embedding service gRPC endpoint URL. Supports `env:`. |
+| `deduplication_threshold` | f64 | `0.85` | Similarity score threshold (0.0–1.0) used during generative authoring to detect near-duplicate agents or workflows before creating them. |
+| `backfill_on_startup` | bool | `true` | When `true`, the daemon indexes all existing agents and workflows into Qdrant at startup. Set to `false` on large registries if startup latency is a concern. |
+
+**Example:**
+
+```yaml
+discovery:
+  qdrant_url: "env:QDRANT_URL"
+  embedding_url: "env:EMBEDDING_SERVICE_URL"
+  deduplication_threshold: 0.85
+  backfill_on_startup: true
 ```
 
 ---

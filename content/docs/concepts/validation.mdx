@@ -13,7 +13,7 @@ AEGIS validates every iteration's output before deciding whether to accept it or
 
 A binary validator can only tell the orchestrator *that* output failed. A gradient score tells it *how badly* — which the refinement prompt can use to modulate how much the agent needs to change.
 
-A score of `0.85` with the reasoning _"logic is correct but error handling is absent"_ produces a precise, targeted refinement prompt. A score of `0.15` with the reasoning _"completely wrong approach"_ produces a different one — prompting a rewrite rather than a small patch. The Cortex learning layer also uses these scores to weight which error-solution patterns are reliably successful.
+A score of `0.85` with the reasoning *"logic is correct but error handling is absent"* produces a precise, targeted refinement prompt. A score of `0.15` with the reasoning *"completely wrong approach"* produces a different one — prompting a rewrite rather than a small patch. The Cortex learning layer also uses these scores to weight which error-solution patterns are reliably successful.
 
 ---
 
