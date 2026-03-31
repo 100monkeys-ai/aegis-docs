@@ -11,7 +11,7 @@ A **Swarm** is a group of agent executions that share a common parent root execu
 
 ## Swarm Topology
 
-```
+```text
 Root Execution (parent)
 ├── Child Execution A  (depth 1)
 │   ├── Child Execution A1  (depth 2)
@@ -71,7 +71,7 @@ This prevents privilege escalation via spawned children. A parent holding a rest
 
 The **ZaruSession** (the user's active session in the Zaru client) maintains an invariant where it tracks exactly one **root execution** at a time. While a swarm can create many concurrent child executions, they are all subordinates to the single active root execution.
 
-The **Glass Laboratory** renders this hierarchy as a coherent multi-agent execution tree, showing child progress as nested iteration panels within the root execution's view.
+The **Glass Laboratory** renders this hierarchy as a coherent multi-agent execution tree, surfacing child agent progress as delegation bubbles inline in the conversation thread via `ExecutionNarrative`.
 
 ### OpenBao Credential Isolation
 
@@ -168,7 +168,7 @@ The cancellation reason is recorded in `SwarmDissolved` and per-child cancellati
 
 ## Swarm Lifecycle
 
-```
+```text
 Created ──▶ Active ──▶ Dissolving ──▶ Dissolved
                           ▲
                           │
