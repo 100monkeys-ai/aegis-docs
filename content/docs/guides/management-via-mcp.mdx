@@ -43,6 +43,24 @@ The factory should first check what agents already exist to avoid duplication.
 {}
 ```
 
+The response includes `description`, `labels`, and `tags` for each agent, enabling the factory to
+assess capability fit without running a full semantic search:
+
+```json
+// aegis.agent.list — example response
+{
+  "agents": [
+    {
+      "name": "python-code-reviewer",
+      "version": "1.0.0",
+      "description": "Reviews Python code for style, bugs, and security issues.",
+      "labels": { "role": "worker", "category": "code-review" },
+      "tags": ["code-review", "python", "security-review", "static-analysis"]
+    }
+  ]
+}
+```
+
 ### Step 2: Retrieve the Schema
 
 To write a valid manifest, the agent retrieves the current canonical schema.
@@ -297,7 +315,22 @@ Returns a ranked list of agents whose descriptions semantically match the query.
 }
 ```
 
-Discovery is an enterprise feature. If the node does not have the `discovery` section configured, these tools return an error. Use `aegis.agent.list` and `aegis.workflow.list` as the universal fallback.
+Discovery is an enterprise feature. If the node does not have the `discovery` section configured, these tools return an error. Use `aegis.agent.list` and `aegis.workflow.list` as the universal fallback. Both list tools include `description`, `labels`, and `tags` in each result so that callers can assess capability fit even without semantic search:
+
+```json
+// aegis.workflow.list — example response
+{
+  "workflows": [
+    {
+      "name": "dev-pipeline",
+      "version": "1.0.0",
+      "description": "Requirements analysis, implementation, and code review pipeline.",
+      "labels": { "category": "development", "team": "platform" },
+      "tags": ["code-review", "ci-cd", "human-in-the-loop", "software-development"]
+    }
+  ]
+}
+```
 
 ---
 

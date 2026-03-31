@@ -30,6 +30,37 @@ This avoids creating duplicate workflows and helps you build on proven patterns.
 
 ---
 
+## Workflow Metadata: description and tags
+
+Every workflow manifest should include `metadata.description` and `metadata.tags`.
+
+The `description` field is a human-readable summary of what the workflow accomplishes. It is the
+primary input to the semantic embedding used by the discovery service — write it to capture intent
+and capability, not implementation steps.
+
+The `tags` field is a free-form string array of lowercase hyphenated capability descriptors. Use 3
+to 5 tags that classify the workflow's domain (e.g., `ci-cd`, `data-processing`, `code-review`,
+`kubernetes-deployment`, `api-integration`). Tags are indexed for filtering in
+`aegis.workflow.search` and `aegis.workflow.list` responses, and they are included in the embedding
+text to improve semantic search recall.
+
+```yaml
+metadata:
+  name: my-pipeline
+  version: "1.0.0"
+  description: "Builds, tests, and deploys a Node.js service to Kubernetes on every merge."
+  labels:
+    category: deployment
+    team: platform
+  tags:
+    - ci-cd
+    - nodejs
+    - kubernetes-deployment
+    - automated-testing
+```
+
+---
+
 ## Step 1: Write the Workflow Manifest
 
 Create `my-pipeline.yaml`:
@@ -40,6 +71,15 @@ kind: Workflow
 metadata:
   name: dev-pipeline
   version: "1.0.0"
+  description: "Requirements analysis, human approval, implementation, and code review pipeline."
+  labels:
+    category: development
+    team: platform
+  tags:
+    - code-review
+    - ci-cd
+    - human-in-the-loop
+    - software-development
 spec:
   context:
     language: python
@@ -150,7 +190,7 @@ Use `--force` when you are re-deploying the same workflow name and version pair.
 
 Expected output:
 
-```
+```text
 Deployed workflow "dev-pipeline" (id: wf-a1b2c3d4-0000-...)
 ```
 
@@ -171,7 +211,7 @@ aegis workflow run dev-pipeline \
 
 Expected output:
 
-```
+```text
 Workflow execution started: wfx-a1b2c3d4-1111-...
 ```
 
@@ -186,7 +226,7 @@ the execution status, blackboard, and persisted metadata.
 
 Example output:
 
-```
+```text
 Execution ID: wfx-a1b2c3d4-1111-...
 Workflow:     dev-pipeline
 Status:       running
