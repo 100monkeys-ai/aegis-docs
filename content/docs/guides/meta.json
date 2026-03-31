@@ -1,6 +1,7 @@
 {
     "title": "Guides",
     "pages": [
+        "execute-mode",
         "writing-agents",
         "configuring-tools",
         "custom-runtime-agents",

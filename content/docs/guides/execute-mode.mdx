@@ -1,0 +1,187 @@
+---
+title: Running Code with Execute Mode
+description: Use Execute mode in Zaru to describe a computation in plain English, provide typed inputs, and get back a result — no workflow authoring required.
+---
+
+# Running Code with Execute Mode
+
+Execute mode is Zaru's single-shot code execution mode. You describe what you want to compute
+in plain English, optionally provide typed inputs, and Zaru generates the code, runs it in a
+secure isolated container, and returns the result directly in chat.
+
+---
+
+## Switching to Execute Mode
+
+Use the mode selector at the top of the conversation to choose **Execute** before sending your
+first message. The mode is locked once the first message is sent.
+
+> The mode selector is available on all tiers. Execute mode requires no workflow authoring,
+> no agent deployment, and no volume configuration.
+
+---
+
+## Motivating Example
+
+Type your intent into the chat:
+
+```text
+add 2 numbers together
+```
+
+With inputs:
+
+```json
+{ "a": 1, "b": 1 }
+```
+
+Zaru returns:
+
+```text
+Result: 2
+```
+
+The Glass Lab panel shows a four-stage progress view as the pipeline runs:
+**Discover / Generate Agent → Generate Code → Execute → Format Result**.
+
+---
+
+## How It Works
+
+Execute mode runs a built-in four-state pipeline behind the scenes:
+
+| Stage | What happens |
+|---|---|
+| **Discover or generate** | Searches for an existing code-writing agent. Creates one if no close match is found. |
+| **Generate code** | The agent writes the solution to an isolated workspace. |
+| **Execute** | The solution runs in a sandboxed container with no internet access and no persistent storage. Only stdout and the exit code return. |
+| **Format result** | A single-shot formatter converts the raw output into a clean natural language response. |
+
+---
+
+## Supported Languages
+
+| Language | Default | Container image | File extension |
+|---|---|---|---|
+| Python | Yes | `python:3.11-slim` | `.py` |
+| JavaScript | No | `node:20-slim` | `.js` |
+| Bash | No | `ubuntu:22.04` | `.sh` |
+
+Python is used when no language is specified. To request a specific language, mention it in
+your intent: "write a JavaScript function that…"
+
+---
+
+## Providing Inputs
+
+Pass typed inputs as a JSON object alongside your intent. Scalar values are embedded directly
+into the generated code — you do not need to write any parameter-passing logic.
+
+**Scalar inputs:**
+
+```json
+{ "a": 42, "b": 7 }
+```
+
+**String inputs:**
+
+```json
+{ "text": "hello world", "delimiter": " " }
+```
+
+**Array inputs:**
+
+```json
+{ "numbers": [1, 2, 3, 4, 5] }
+```
+
+**Object inputs:**
+
+```json
+{ "config": { "width": 800, "height": 600 } }
+```
+
+For complex types (arrays, nested objects), the inputs are also written to a `params.json`
+file in the workspace. The generated code can read from this file if direct embedding is
+not appropriate.
+
+---
+
+## Workspace and Storage
+
+By default, Execute mode uses an **ephemeral workspace**: a temporary volume created at
+pipeline start and destroyed immediately when execution finishes. No data persists between
+runs.
+
+Pro and higher tiers can pass a `volume_id` to write results to a persistent volume:
+
+```json
+{ "intent": "generate a CSV report of monthly totals", "volume_id": "vol-abc123" }
+```
+
+| Tier | Ephemeral workspace | Persistent results (`volume_id`) |
+|---|---|---|
+| Free | Yes | No |
+| Pro | Yes | Yes |
+| Business | Yes | Yes |
+| Enterprise | Yes | Yes |
+
+---
+
+## Tier Limits
+
+| Tier | Available | Execution timeout | Persistent results |
+|---|---|---|---|
+| Free | Yes | 30 seconds | No |
+| Pro | Yes | 2 minutes | Yes |
+| Business | Yes | 10 minutes | Yes |
+| Enterprise | Yes | Configurable | Yes |
+
+---
+
+## Security
+
+Code executes inside a container with the following restrictions applied unconditionally —
+these are not configuration options:
+
+- **No internet access** — the container has `network: none`
+- **Read-only workspace** — the generated file is mounted read-only; the container cannot
+  modify it
+- **Read-only root filesystem** — no writes to any path on the host
+- **Unprivileged user** — runs as `nobody` (uid 65534); no privilege escalation
+- **No SMCP session** — no access to AEGIS tools or the orchestrator API
+- **No LLM access** — no calls to any language model from inside the container
+
+Only stdout, stderr (each capped at 1 MB), and the exit code cross the container boundary.
+The AEGIS membrane ensures your code cannot access other users' data or the host system.
+
+---
+
+## Common Use Cases
+
+- Quick math or unit conversions
+- Data transformation and reshaping
+- String processing and parsing
+- Algorithm prototyping
+- Sorting, filtering, and aggregating arrays
+- File generation (Pro and higher, using a persistent volume)
+
+---
+
+## Limitations
+
+- No internet access inside the execution container
+- Standard library only — `pip install`, `npm install`, and similar package managers are
+  not available
+- Execution time is capped per tier (see tier limits above)
+- Code must be self-contained — no interactive stdin
+- Free tier cannot use persistent volumes
+
+---
+
+## Related
+
+- [Zaru Integration](/docs/concepts/zaru) — conversation modes, tier routing, and the Glass
+  Laboratory UX
+- [Configuring Storage](/docs/guides/configuring-storage) — managing persistent workspace
+  volumes (Pro and higher)
