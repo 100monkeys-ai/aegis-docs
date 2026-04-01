@@ -56,7 +56,9 @@ The Glass Lab panel shows a four-stage progress view as the pipeline runs:
 
 ## How It Works
 
-Execute mode runs a built-in four-state pipeline behind the scenes:
+Execute mode runs a built-in four-state pipeline behind the scenes. The Zaru client uses
+`aegis.workflow.wait` (aliased as `aegis.execute.wait`) to block server-side until the
+pipeline reaches a terminal state, rather than polling `aegis.execute.status` in a loop.
 
 | Stage | What happens |
 |---|---|

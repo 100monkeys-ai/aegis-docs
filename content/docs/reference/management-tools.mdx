@@ -9,7 +9,7 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
-The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The execute surface includes `aegis.execute.intent` and `aegis.execute.status` for the intent-to-execution pipeline. The agent management surface also includes `aegis.agent.search` for semantic search and `aegis.agent.logs` for retrieving agent-level activity logs. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog.
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.wait`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The execute surface includes `aegis.execute.intent` and `aegis.execute.status` for the intent-to-execution pipeline. The agent management surface also includes `aegis.agent.search` for semantic search and `aegis.agent.logs` for retrieving agent-level activity logs. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog.
 
 ## Versioning and Safety
 
@@ -350,6 +350,43 @@ On failure:
   "error": "execution not found or already in terminal state"
 }
 ```
+
+### `aegis.workflow.wait`
+
+Blocks server-side until a workflow execution reaches a terminal state (completed, failed, or cancelled) and returns the final result. This is the workflow equivalent of `aegis.task.wait`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `execution_id` | string | Yes | UUID of the workflow execution to wait for |
+| `poll_interval_seconds` | integer | No | Seconds between internal polls (default: 5) |
+| `timeout_seconds` | integer | No | Maximum wait time in seconds (default: 300) |
+
+**Returns on completion:**
+
+```json
+{
+  "execution_id": "...",
+  "workflow_id": "...",
+  "status": "completed",
+  "current_state": "FORMAT_RESULT",
+  "blackboard": { "final_result": "..." },
+  "started_at": "...",
+  "last_transition_at": "..."
+}
+```
+
+**Returns on timeout:**
+
+```json
+{
+  "execution_id": "...",
+  "status": "running",
+  "current_state": "GENERATE_CODE",
+  "timed_out": true
+}
+```
+
+`aegis.execute.wait` is an alias for `aegis.workflow.wait`, available for use in Execute mode.
 
 ### `aegis.workflow.signal`
 
