@@ -609,7 +609,7 @@ input: |
 
 **Missing key behavior:** if a template references a key that doesn't exist in the Blackboard at render time, the engine renders a descriptive placeholder rather than crashing the workflow:
 
-```
+```text
 {{{{ ERROR: missing key 'GENERATE.output' — state GENERATE has not yet completed }}}}
 ```
 
@@ -926,9 +926,10 @@ metadata:
 spec:
   initial_state: GENERATE
 
-  volumes:
-    - name: workspace
-      persistent: true
+  storage:
+    shared_volumes:
+      - name: workspace
+        persistent: true
 
   states:
     GENERATE:

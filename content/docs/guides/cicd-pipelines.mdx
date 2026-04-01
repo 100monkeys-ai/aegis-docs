@@ -37,7 +37,7 @@ All states in a workflow share the same volumes. An agent writes code to `/works
 
 Container step outputs land on the [Blackboard](/docs/concepts/workflows#the-blackboard) under the state name, accessible by subsequent states:
 
-```
+```text
 {{BUILD.output.exit_code}}    # 0 on success
 {{BUILD.output.stdout}}       # captured stdout (up to 1 MB)
 {{BUILD.output.stderr}}       # captured stderr (up to 1 MB)
@@ -45,7 +45,7 @@ Container step outputs land on the [Blackboard](/docs/concepts/workflows#the-bla
 
 For `ParallelContainerRun`, each step is keyed by its `name`:
 
-```
+```text
 {{TEST.output.unit-tests.stdout}}
 {{TEST.output.lint.stderr}}
 ```
@@ -66,9 +66,10 @@ metadata:
 spec:
   initial_state: GENERATE
 
-  volumes:
-    - name: workspace
-      persistent: false
+  storage:
+    shared_volumes:
+      - name: workspace
+        persistent: false
 
   states:
 
@@ -293,9 +294,10 @@ metadata:
 spec:
   initial_state: GENERATE_CODE
 
-  volumes:
-    - name: workspace
-      persistent: true
+  storage:
+    shared_volumes:
+      - name: workspace
+        persistent: true
 
   states:
 
