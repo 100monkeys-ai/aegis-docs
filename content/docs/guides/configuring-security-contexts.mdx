@@ -211,6 +211,8 @@ The `aegis-system-operator` SecurityContext grants platform operators access to 
         npm: [install, run, test, build, ci]
         python: ["-m"]
     - tool_pattern: "web.*"
+    # Execute pipeline commands
+    - tool_pattern: "aegis.execute.*"
     # Destructive commands (operator-only)
     - tool_pattern: "aegis.agent.delete"
     - tool_pattern: "aegis.workflow.delete"
@@ -227,7 +229,7 @@ Tools exposed by the SMCP gateway are classified into three categories:
 
 | Category | Description | Availability |
 |----------|-------------|-------------|
-| **Safe commands** | Read operations, agent creation, workflow execution, file/command tools | All tiers (Free through Enterprise) and operators |
+| **Safe commands** | Read operations, agent creation, workflow execution, execute pipeline, file/command tools | All tiers (Free through Enterprise) and operators |
 | **Destructive commands** | Permanent deletions — `aegis.agent.delete`, `aegis.workflow.delete`, `aegis.task.remove` | Operator-only |
 | **Orchestrator commands** | System introspection and configuration — `aegis.system.info`, `aegis.system.config` | Operator-only |
 

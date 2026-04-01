@@ -76,6 +76,8 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.workflow.cancel` | `false` | State-mutating — terminates a running workflow execution |
 | `aegis.workflow.signal` | `false` | State-mutating — delivers human input to a paused workflow |
 | `aegis.workflow.remove` | `false` | Destructive — deletes a workflow execution record |
+| `aegis.execute.intent` | `false` | Execution trigger — spawns intent-to-execution pipeline |
+| `aegis.execute.status` | `true` | Read-only pipeline status query |
 | `aegis.tools.list` | `true` | Read-only tool discovery |
 | `aegis.tools.search` | `true` | Read-only tool search |
 | `aegis.system.info` | `true` | Read-only node status query |
@@ -117,6 +119,8 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | Tool | Required parameters |
 |------|---------------------|
 | `aegis.execute` | `prompt` |
+| `aegis.execute.intent` | `intent` |
+| `aegis.execute.status` | `pipeline_execution_id` |
 | `aegis.agent.create`, `aegis.agent.update` | `manifest_yaml` |
 | `aegis.agent.export` | `name` |
 | `aegis.agent.delete`, `aegis.task.execute` | `agent_id` |
