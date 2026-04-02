@@ -108,7 +108,7 @@ On success, you are redirected to the agent detail page. On failure, validation 
 3. Modify fields in either structured form or YAML mode
 4. Click **Update Agent**
 
-The update sends `POST /v1/agents?force=true`, which overwrites the existing agent with the same name and version. There is no version history — the previous manifest is replaced.
+The update sends `POST /v1/agents?force=true`, which overwrites the existing agent with the same name and version. The previous version snapshot is updated, but the version entry is preserved in the version history.
 
 ---
 
@@ -163,3 +163,18 @@ Security is deny-by-default. You must explicitly declare:
 - `validation` — ordered list of validators (exit code, JSON schema, semantic judge)
 
 See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the full specification.
+
+---
+
+## Version History
+
+Every time you deploy an agent, the previous version is preserved in the version history. This gives you a complete audit trail of how an agent has evolved over time.
+
+To view past versions:
+
+1. Navigate to the agent detail page
+2. Click the **Versions** tab
+3. The list shows all deployed versions with their timestamps
+4. Click any version to open a read-only manifest viewer showing that version's configuration
+
+Redeploying the same version (via `force=true`) updates the snapshot for that version entry. Deploying with a new version string creates a new entry in the version history.

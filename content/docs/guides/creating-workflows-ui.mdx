@@ -134,7 +134,7 @@ Scope management is not available on the consumer dashboard surface.
 4. Use the Visualization tab to verify the updated FSM topology
 5. Click **Update Workflow**
 
-The update uses `POST /v1/workflows?force=true`, overwriting the existing workflow with the same name and version. There is no version history.
+The update uses `POST /v1/workflows?force=true`, overwriting the existing workflow with the same name and version. The version snapshot is updated, but the version entry is preserved in the version history.
 
 ---
 
@@ -200,3 +200,27 @@ spec:
 ```
 
 See the [Workflow Manifest Reference](/docs/reference/workflow-manifest) for the complete field specification.
+
+---
+
+## Version History
+
+Multiple workflow versions coexist in the database. Deploying a workflow with a different version string creates a new version entry rather than overwriting the existing one.
+
+To view all versions:
+
+1. Navigate to the workflow detail page
+2. Click the **Versions** tab
+3. The list shows all versions with their scope indicators (User, Tenant, or Global)
+4. Click any version to view its manifest
+
+---
+
+## Execution History
+
+The workflow detail page includes an **Executions** tab that shows all executions spawned by that workflow, filtered by workflow name.
+
+1. Navigate to the workflow detail page
+2. Click the **Executions** tab
+3. Each row shows the execution status, start time, and duration
+4. Click any execution to view the full Glass Lab narrative replay
