@@ -15,7 +15,7 @@ Proto source files are in the [`aegis-proto`](https://github.com/100monkeys-ai/a
 
 gRPC auth is configured via `spec.grpc_auth` in `aegis-config.yaml`. When enabled, all methods except the configured `exempt_methods` require a Bearer JWT (Keycloak-issued) in the `authorization` metadata key:
 
-```
+```text
 authorization: Bearer <keycloak-issued-jwt>
 ```
 
@@ -317,9 +317,11 @@ Invoke a tool on behalf of an agent via orchestrator mediation. Agents do not ca
 rpc InvokeTool(InvokeToolRequest) returns (InvokeToolResponse);
 
 message InvokeToolRequest {
-  string security_token = 1; // JWT from AttestAgentResponse
-  string signature      = 2; // Ed25519 signature of inner_mcp bytes (base64)
-  bytes  inner_mcp      = 3; // JSON-RPC payload for the MCP tool call
+  string protocol       = 1; // Always "seal/v1"
+  string security_token = 2; // JWT from AttestAgentResponse
+  string signature      = 3; // Ed25519 signature of payload bytes (base64)
+  bytes  payload        = 4; // JSON-RPC payload for the MCP tool call
+  string timestamp      = 5; // ISO 8601 UTC timestamp of envelope creation
 }
 
 message InvokeToolResponse {
@@ -329,10 +331,10 @@ message InvokeToolResponse {
 
 **Notes:**
 
-- `inner_mcp` is a standard MCP JSON-RPC `call_tool` request serialized to bytes.
-- `signature` must be the Ed25519 signature over `inner_mcp`, produced with the ephemeral private key registered during `AttestAgent`.
+- `payload` is a standard MCP JSON-RPC `call_tool` request serialized to bytes.
+- `signature` must be the Ed25519 signature over `payload`, produced with the ephemeral private key registered during `AttestAgent`.
 - The orchestrator verifies the signature, checks the `security_token`, evaluates the SecurityContext policy, then routes the call to the appropriate tool server.
-- Also available over REST at `POST /v1/seal/invoke`.
+- Available over REST at `POST /v1/seal/invoke` (spec-compliant path) and `POST /v1/invoke` (convenience alias).
 - Returns `PERMISSION_DENIED` if the SecurityContext denies the tool call.
 
 ---
@@ -440,7 +442,7 @@ service NodeClusterService {
 
 Before a worker node can participate in the cluster, it must attest its identity to the controller:
 
-```
+```text
 Worker                              Controller
   │                                      │
   │  AttestNode(node_id, public_key_pem) │

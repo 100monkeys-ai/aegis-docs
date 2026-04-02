@@ -65,7 +65,7 @@ Each `data:` line is a JSON-encoded `ExecutionEvent` object. Events match the ty
 
 **Example stream:**
 
-```
+```text
 data: {"execution_started":{"execution_id":"exec-uuid","agent_id":"agt-uuid","started_at":"2026-03-05T14:00:00Z"}}
 
 data: {"iteration_started":{"execution_id":"exec-uuid","iteration_number":1,"action":"Write a primality check","started_at":"2026-03-05T14:00:01Z"}}
@@ -224,7 +224,9 @@ See [SEAL Architecture](/docs/architecture/seal) for the full attestation flow.
 
 ### `POST /v1/seal/invoke`
 
-SEAL-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is an `SealEnvelope` containing a signed MCP tool call.
+SEAL-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is a `SealEnvelope` containing a signed MCP tool call.
+
+`POST /v1/seal/invoke` is the spec-compliant path (ADR-088). `POST /v1/invoke` is also registered as a convenience alias and remains fully functional.
 
 See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths and wire format.
 
