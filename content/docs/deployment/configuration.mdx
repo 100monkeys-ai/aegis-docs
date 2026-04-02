@@ -46,8 +46,8 @@ AEGIS supports a distributed **Controller-Worker topology** for high availabilit
 Key features of the cluster topology include:
 
 - **Distributed Scheduling**: Controllers route agent executions to the most suitable available workers.
-- **Node Identity**: Each node maintains a stable identity via a persistent Ed25519 keypair, used for secure attestation and SmcpNodeEnvelope signing.
-- **Secure Communication**: Inter-node traffic is protected by mTLS and SMCP-derived security tokens.
+- **Node Identity**: Each node maintains a stable identity via a persistent Ed25519 keypair, used for secure attestation and SealNodeEnvelope signing.
+- **Secure Communication**: Inter-node traffic is protected by mTLS and SEAL-derived security tokens.
 - **Seamless Scaling**: New workers can be added to the cluster by pointing them at the controller endpoint and providing valid certificates.
 
 ---
@@ -361,13 +361,13 @@ mcp_servers:
       cpu_millicores: 1000        # 1000 = 1 CPU core
       memory_mb: 512
 
-# ─── SMCP (Secure Model Context Protocol) ────────────────────────────────────
+# ─── SEAL (Signed Envelope Attestation Layer) ────────────────────────────────────
 # Optional. Required in production to enable cryptographic agent authorization.
-smcp:
+seal:
   # RSA private key PEM used to sign SecurityToken JWTs issued at attestation.
-  private_key_path: "/etc/aegis/smcp/private.pem"
+  private_key_path: "/etc/aegis/seal/private.pem"
   # RSA public key PEM used to verify SecurityToken JWTs on tool calls.
-  public_key_path: "/etc/aegis/smcp/public.pem"
+  public_key_path: "/etc/aegis/seal/public.pem"
   # JWT iss claim. Default: aegis-orchestrator
   issuer: "aegis-orchestrator"
   # JWT aud claim values. Default: [aegis-agents]
@@ -485,7 +485,7 @@ builtin_dispatchers:
       - AEGIS_TOKEN
       - OPENAI_API_KEY
       - ANTHROPIC_API_KEY
-      - SMCP_PRIVATE_KEY
+      - SEAL_PRIVATE_KEY
       - AWS_SECRET_ACCESS_KEY
       - GOOGLE_API_KEY
 
@@ -587,11 +587,11 @@ cortex:
   # Omit for local or open cortex deployments (connects without authentication).
   api_key: "env:CORTEX_API_KEY"
 
-# ─── External SMCP Tooling Gateway ─────────────────────────────────
+# ─── External SEAL Tooling Gateway ─────────────────────────────────
 # Optional. Omit to keep external tool routing disabled.
-smcp_gateway:
-  # gRPC endpoint URL for aegis-smcp-gateway.
-  url: "http://aegis-smcp-gateway:50055"
+seal_gateway:
+  # gRPC endpoint URL for aegis-seal-gateway.
+  url: "http://aegis-seal-gateway:50055"
 
 # ─── Observability ────────────────────────────────────────────────────────────
 # Optional.
@@ -817,9 +817,9 @@ Optional array. Each entry defines an external MCP Tool Server process.
 
 ---
 
-### `spec.smcp`
+### `spec.seal`
 
-Optional. Enables cryptographic agent authorization via SMCP. Required in production.
+Optional. Enables cryptographic agent authorization via SEAL. Required in production.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -962,13 +962,13 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 
 ---
 
-### `spec.smcp_gateway`
+### `spec.seal_gateway`
 
-Optional. Configures forwarding of external tool invocations to the standalone SMCP tooling gateway.
+Optional. Configures forwarding of external tool invocations to the standalone SEAL tooling gateway.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `url` | string | null | gRPC endpoint URL of `aegis-smcp-gateway` (example: `http://aegis-smcp-gateway:50055`). |
+| `url` | string | null | gRPC endpoint URL of `aegis-seal-gateway` (example: `http://aegis-seal-gateway:50055`). |
 
 If omitted, orchestrator does not forward unknown/external tools to the gateway and continues with built-in routing only.
 

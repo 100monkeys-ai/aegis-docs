@@ -1,11 +1,11 @@
 ---
 title: MCP Tool Routing
-description: The three tool routing paths — FSAL host file operations, SMCP External host MCP servers, and Dispatch Protocol in-container execution.
+description: The three tool routing paths — FSAL host file operations, SEAL External host MCP servers, and Dispatch Protocol in-container execution.
 ---
 
 # MCP Tool Routing
 
-The AEGIS orchestrator mediates every tool call an agent makes. No tool call travels directly from the agent container to a tool server. Instead, the `SmcpMiddleware` receives all tool call envelopes, verifies them, and routes them via one of three paths based on the tool's type.
+The AEGIS orchestrator mediates every tool call an agent makes. No tool call travels directly from the agent container to a tool server. Instead, the `SealMiddleware` receives all tool call envelopes, verifies them, and routes them via one of three paths based on the tool's type.
 
 ---
 
@@ -19,7 +19,7 @@ The **Orchestrator Proxy Pattern** provides three hard guarantees regardless of 
 
 **Full audit trail** — Every invocation, routing decision, and policy violation is published as a domain event on the internal event bus, giving the Cortex learning system and your external audit infrastructure a complete, tamper-resistant record of agent actions.
 
-**Semantic pre-dispatch review** — When `execution.tool_validation` is configured for a tool, the orchestrator runs that judge before the call enters the routing pipeline. The judge is a semantic gate, not a replacement for authorization: approved calls still pass through SMCP and policy enforcement, while rejected calls are blocked synchronously without side effects.
+**Semantic pre-dispatch review** — When `execution.tool_validation` is configured for a tool, the orchestrator runs that judge before the call enters the routing pipeline. The judge is a semantic gate, not a replacement for authorization: approved calls still pass through SEAL and policy enforcement, while rejected calls are blocked synchronously without side effects.
 
 If an operator explicitly disables the judge with `skip_judge`, the tool still remains subject to the normal policy-before-action path. The bypass only removes the semantic review step; it does not weaken routing or authorization checks.
 
@@ -31,11 +31,11 @@ If an operator explicitly disables the judge with `skip_judge`, the tool still r
 Agent Container                  Orchestrator Host                   External
     │                                   │                              │
     │  POST /v1/dispatch-gateway        │                              │
-    │  (SmcpEnvelope wrapping           │                              │
+    │  (SealEnvelope wrapping           │                              │
     │   tool call in messages[])        │                              │
     │──────────────────────────────────►│                              │
     │                                   │                              │
-    │                         SmcpMiddleware                           │
+    │                         SealMiddleware                           │
     │                           1. Verify Ed25519 signature            │
     │                           2. Validate SecurityToken (JWT)        │
     │                           3. PolicyEngine: check capabilities    │
@@ -44,7 +44,7 @@ Agent Container                  Orchestrator Host                   External
     │                    ┌──────────────┼──────────────┐               │
     │                    │              │              │               │
     │               PATH 1:        PATH 2:        PATH 3:              │
-    │               FSAL           SMCP           Dispatch             │
+    │               FSAL           SEAL           Dispatch             │
     │               Host File      External       Protocol             │
     │               Ops            Host MCP                            │
     │                    │              │              │               │
@@ -113,8 +113,8 @@ Agent LLM output:
              arguments: {path: "/workspace/solution.py", content: "..."}}
          │
          ▼
-SmcpMiddleware
-  · Verify SmcpEnvelope (Ed25519 signature, SecurityToken JWT, expiry)
+SealMiddleware
+  · Verify SealEnvelope (Ed25519 signature, SecurityToken JWT, expiry)
   · PolicyEngine: is /workspace/solution.py in path_allowlist? YES
          │
          ▼
@@ -143,7 +143,7 @@ For full details on the NFS Server Gateway and storage backend, see [Storage Gat
 
 ---
 
-## Path 2: SMCP External — Host MCP Servers
+## Path 2: SEAL External — Host MCP Servers
 
 **Used for:** `web.fetch`, `web.search`, `email.send`, `email.read`, and any other tool that requires external network access
 
@@ -154,8 +154,8 @@ Agent tool call:
   {name: "web.fetch", arguments: {url: "https://api.github.com/repos/..."}}
          │
          ▼
-SmcpMiddleware
-  · Verify SmcpEnvelope
+SealMiddleware
+  · Verify SealEnvelope
   · PolicyEngine: is domain api.github.com in domain_allowlist? YES
   · Rate limit: under 30 calls/60s? YES
          │
@@ -253,7 +253,7 @@ subcommand_allowlist check:
   "publish" not in list
          │
          ▼
-Reject: SmcpViolationType::SubcommandNotAllowed
+Reject: SealViolationType::SubcommandNotAllowed
 Publish: CommandExecutionEvent::CommandPolicyViolation
 Return 403 to agent
 ```
@@ -303,12 +303,12 @@ When a tool call is rejected, the orchestrator returns a structured error to the
 
 ## Tool Routing Decision Table
 
-| Tool pattern | SMCP policy check | Routing path | Executor |
+| Tool pattern | SEAL policy check | Routing path | Executor |
 |---|---|---|---|
 | `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list` | Filesystem path allowlist + traversal check | Path 1 — FSAL | `AegisFSAL` on orchestrator host; writes visible via NFS mount |
 | `cmd.run` | `subcommand_allowlist` | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py` |
-| `web.fetch`, `web.search` | Domain allowlist + rate limit | Path 2 — SMCP External | `web-search` Tool Server on host |
-| `email.send`, `email.read` | Domain and account allowlist | Path 2 — SMCP External | `gmail-tools` Tool Server on host |
+| `web.fetch`, `web.search` | Domain allowlist + rate limit | Path 2 — SEAL External | `web-search` Tool Server on host |
+| `email.send`, `email.read` | Domain and account allowlist | Path 2 — SEAL External | `gmail-tools` Tool Server on host |
 | Any unregistered tool | — | Rejected before routing | `ToolPolicyViolation` event emitted, 403 returned |
 
 ---
@@ -319,7 +319,7 @@ Every routing decision publishes a domain event on the internal event bus. These
 
 | Event | Trigger |
 |---|---|
-| `MCPToolEvent::InvocationRequested` | `SmcpMiddleware` accepts and validates an envelope |
+| `MCPToolEvent::InvocationRequested` | `SealMiddleware` accepts and validates an envelope |
 | `MCPToolEvent::InvocationCompleted` | Tool result returned to agent |
 | `MCPToolEvent::InvocationFailed` | Tool server error or subprocess non-zero exit |
 | `MCPToolEvent::ToolPolicyViolation` | `PolicyEngine` denies the call before routing |
@@ -331,14 +331,14 @@ Every routing decision publishes a domain event on the internal event bus. These
 | `StorageEvent::FileRead` | `AegisFSAL` completes a read from a volume |
 | `StorageEvent::PathTraversalBlocked` | `AegisFSAL` rejects a `..`-containing path |
 | `StorageEvent::UnauthorizedVolumeAccess` | File handle `execution_id` does not match caller |
-| `SmcpEvent::PolicyViolationBlocked` | `SecurityContext` policy blocks a tool call |
-| `SmcpEvent::SignatureVerificationFailed` | Ed25519 signature on envelope is invalid |
+| `SealEvent::PolicyViolationBlocked` | `SecurityContext` policy blocks a tool call |
+| `SealEvent::SignatureVerificationFailed` | Ed25519 signature on envelope is invalid |
 
 ---
 
 ## Related Pages
 
-- [Secure Model Context Protocol (SMCP)](/docs/architecture/smcp) — cryptographic envelope format, attestation flow, `SecurityContext` design
+- [Signed Envelope Attestation Layer (SEAL)](/docs/architecture/seal) — cryptographic envelope format, attestation flow, `SecurityContext` design
 - [Storage Gateway](/docs/architecture/storage-gateway) — `AegisFSAL`, `AegisFileHandle` encoding, NFSv3 transport, UID/GID squashing
 - [Event Bus](/docs/architecture/event-bus) — event publishing, consumer subscriptions, persistence
 - [Node Configuration Reference](/docs/reference/node-config) — `mcp_servers`, `builtin_dispatchers`, `security_contexts` fields

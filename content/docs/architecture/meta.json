@@ -4,7 +4,7 @@
         "overview",
         "execution-engine",
         "workflow-engine",
-        "smcp",
+        "seal",
         "tool-routing",
         "tooling-gateway",
         "storage-gateway",

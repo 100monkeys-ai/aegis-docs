@@ -173,7 +173,7 @@ bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[..
             │    1. Route only if the judge passes:                     │
             │       fs.* calls   → AegisFSAL (host, direct)             │
             │       cmd.run      → Dispatch Protocol (in-container)     │
-            │       web.*, etc.  → SMCP External (host MCP server)      │
+            │       web.*, etc.  → SEAL External (host MCP server)      │
             │                                                            │
             │   cmd.run → return {type:"dispatch", dispatch_id, ...}     │
             │        bootstrap.py receives dispatch message              │

@@ -57,7 +57,7 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 │  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
 │                                                                       │
 │  ┌─────────────────┐   ┌─────────────────┐                           │
-│  │ pod-observability│   │ pod-smcp-gateway│                           │
+│  │ pod-observability│   │ pod-seal-gateway│                           │
 │  │ jaeger :16686   │   │ gateway :8089   │                           │
 │  │ prometheus :9090│   │         :50055  │                           │
 │  │ grafana :3300   │   │                 │                           │
@@ -167,8 +167,8 @@ aegis daemon start --config ./aegis-config.yaml
 | 9090 | HTTP | Prometheus | observability | Internal / proxied |
 | 3300 | HTTP | Grafana | observability | Internal / proxied |
 | 3100 | HTTP | Loki | observability | Internal only |
-| 8089 | HTTP | SMCP Gateway | smcp-gateway | Internal / proxied |
-| 50055 | gRPC | SMCP Gateway gRPC | smcp-gateway | Internal only |
+| 8089 | HTTP | SEAL Gateway | seal-gateway | Internal / proxied |
+| 50055 | gRPC | SEAL Gateway gRPC | seal-gateway | Internal only |
 | 80/443 | HTTP/TLS | Caddy Reverse Proxy | edge | Public |
 
 Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. Public-facing traffic enters through Caddy on ports 80/443 only.

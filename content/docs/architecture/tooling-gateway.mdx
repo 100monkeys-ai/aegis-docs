@@ -1,11 +1,11 @@
 ---
-title: SMCP Tooling Gateway
-description: Standalone Rust gateway that compresses REST APIs and CLI tools into semantic macro-tools for agents, with SMCP security and dynamic credential injection.
+title: SEAL Tooling Gateway
+description: Standalone Rust gateway that compresses REST APIs and CLI tools into semantic macro-tools for agents, with SEAL security and dynamic credential injection.
 ---
 
-# SMCP Tooling Gateway
+# SEAL Tooling Gateway
 
-The SMCP Tooling Gateway (`aegis-smcp-gateway`) is a standalone, AGPL-licensed Rust binary that provides the tool orchestration layer for AEGIS agents and for the broader MCP ecosystem. It sits between the orchestrator's inner loop and the external world — REST APIs, SaaS platforms, and CLI tools — enforcing SMCP security on every invocation while hiding API complexity from the LLM's context window.
+The SEAL Tooling Gateway (`aegis-seal-gateway`) is a standalone, AGPL-licensed Rust binary that provides the tool orchestration layer for AEGIS agents and for the broader MCP ecosystem. It sits between the orchestrator's inner loop and the external world — REST APIs, SaaS platforms, and CLI tools — enforcing SEAL security on every invocation while hiding API complexity from the LLM's context window.
 
 ---
 
@@ -32,16 +32,16 @@ The model assumes MCP tool servers are long-running processes per tool per tenan
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  AEGIS Orchestrator (Inner Loop)                            │
-│  Wraps LLM tool calls in SmcpEnvelope                       │
+│  Wraps LLM tool calls in SealEnvelope                       │
 └────────────────────────────┬────────────────────────────────┘
-                             │ SMCP (signed + verified)
+                             │ SEAL (signed + verified)
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  SMCP Tooling Gateway  (aegis-smcp-gateway)                 │
+│  SEAL Tooling Gateway  (aegis-seal-gateway)                 │
 │                                                             │
 │  ┌───────────────────────┐    ┌──────────────────────────┐  │
 │  │ Management API        │    │ Auth & Policy Engine     │  │
-│  │ POST /v1/specs        │    │ SmcpMiddleware           │  │
+│  │ POST /v1/specs        │    │ SealMiddleware           │  │
 │  │ POST /v1/workflows    │    │ SecurityContext eval      │  │
   │  │ POST /v1/cli-tools    │    │ OpenBao JIT  (Path A)    │  │
   │  │ POST /v1/security-... │    │ Session capability eval  │  │
@@ -145,8 +145,8 @@ registry_credential_path:
 
 ### Path 1 — REST Workflow Engine
 
-1. Agent invokes a registered `ToolWorkflow` via SMCP-wrapped JSON-RPC.
-2. Gateway verifies the `SmcpEnvelope`, loads the `SecurityContext`, checks the workflow name against `Capability` constraints.
+1. Agent invokes a registered `ToolWorkflow` via SEAL-wrapped JSON-RPC.
+2. Gateway verifies the `SealEnvelope`, loads the `SecurityContext`, checks the workflow name against `Capability` constraints.
 3. Gateway resolves credentials (see [Credential Resolution](#credential-resolution)).
 4. Gateway executes steps sequentially — renders Handlebars templates, calls the upstream API, applies JSONPath extractors to pass state to the next step.
 5. Returns the final step's output to the orchestrator.
@@ -194,7 +194,7 @@ Docker: destroy container immediately
 Return result to orchestrator
 ```
 
-**Semantic Judging:** The gateway integrates with the Semantic Judge mechanism from [Advanced Judge Capabilities](/docs/architecture/smcp) to catch semantically dangerous commands that pass the static allowlist. For example, `terraform apply -destroy` passes a lexical check for `apply` but a Semantic Judge configured for a read-only `SecurityContext` will reject it before any container is created. A `CliToolSemanticRejected` event is emitted for audit purposes.
+**Semantic Judging:** The gateway integrates with the Semantic Judge mechanism from [Advanced Judge Capabilities](/docs/architecture/seal) to catch semantically dangerous commands that pass the static allowlist. For example, `terraform apply -destroy` passes a lexical check for `apply` but a Semantic Judge configured for a read-only `SecurityContext` will reject it before any container is created. A `CliToolSemanticRejected` event is emitted for audit purposes.
 
 When invoking CLI tools internally, the orchestrator passes the full mount set as `fsal_mounts[]` (`volume_id`, `mount_path`, `read_only`), not a single volume identifier.
 
@@ -207,7 +207,7 @@ The gateway never holds static credentials. All credentials are resolved at invo
 | Path | When used | Mechanism |
 |---|---|---|
 | **SystemJit** | Background agents, autonomous executions | JIT dynamic secret from OpenBao. Short-lived credential issued per execution. |
-| **HumanDelegated** | Zaru sessions acting on behalf of a user | Keycloak token exchange: agent's SMCP token → human user's OAuth token for the target service. Upstream API sees the real user's identity and enforces their RBAC. |
+| **HumanDelegated** | Zaru sessions acting on behalf of a user | Keycloak token exchange: agent's SEAL token → human user's OAuth token for the target service. Upstream API sees the real user's identity and enforces their RBAC. |
 | **Auto** | Mixed system/user contexts | Selects `HumanDelegated` when a Zaru user token is present; otherwise falls back to `SystemJit`. |
 | **StaticRef** | Integrations without OAuth (e.g., self-hosted tooling) | Static secret fetched from OpenBao KV, wrapped in `SensitiveString` (never logged). |
 
@@ -256,7 +256,7 @@ The gateway ships with a built-in operator web UI:
 - `GET /` — dashboard shell
 - `GET /ui/app.js` and `GET /ui/styles.css` — bundled assets
 
-Use `SMCP_GATEWAY_UI_ENABLED=false` to disable all UI routes.
+Use `SEAL_GATEWAY_UI_ENABLED=false` to disable all UI routes.
 
 ---
 
@@ -264,7 +264,7 @@ Use `SMCP_GATEWAY_UI_ENABLED=false` to disable all UI routes.
 
 | Component | Integration |
 |---|---|
-| **SMCP** | Full `SmcpEnvelope` verification on every invocation. Gateway is a full SMCP participant — not a bypass. |
+| **SEAL** | Full `SealEnvelope` verification on every invocation. Gateway is a full SEAL participant — not a bypass. |
 | **AegisFSAL / Storage Gateway** | Ephemeral CLI containers mount agent volumes via the same FSAL security boundary used by all other file operations. No direct bind mounts — no authorization bypass. |
 | **OpenBao** | Keymaster Pattern preserved. JIT dynamic secrets for system identities. Image registry credentials fetched per-invocation from OpenBao KV. |
 | **Keycloak** | Token exchange for human-delegated auth. Management endpoint authentication via `aegis-system` realm JWTs. |
@@ -281,11 +281,11 @@ The gateway is a standalone binary following the same deployment pattern as `aeg
 ```yaml
 # aegis-config.yaml — orchestrator node config
 spec:
-  smcp_gateway:
-    url: "http://aegis-smcp-gateway:50055"          # gateway gRPC endpoint
+  seal_gateway:
+    url: "http://aegis-seal-gateway:50055"          # gateway gRPC endpoint
 ```
 
-When `spec.smcp_gateway.url` is configured, the orchestrator routes SMCP envelopes for registered external tool names to the gateway over gRPC. When it is absent, the orchestrator's internal tool router handles all tools (built-in only — no workflows or ephemeral CLI tools).
+When `spec.seal_gateway.url` is configured, the orchestrator routes SEAL envelopes for registered external tool names to the gateway over gRPC. When it is absent, the orchestrator's internal tool router handles all tools (built-in only — no workflows or ephemeral CLI tools).
 
 The gateway can also be deployed independently of AEGIS Orchestrator for organizations using standard MCP.
 
@@ -300,5 +300,5 @@ The gateway can also be deployed independently of AEGIS Orchestrator for organiz
 | Credential leakage | `SensitiveString` wrapper on all resolved credentials. Credentials never appear in `GatewayEvent` payloads or logs. |
 | Volume path traversal | AegisFSAL enforces `PathCanonicalization` server-side. No host mounts outside agent volume. |
 | Container escape | Containers run `no-new-privileges`, `cap_drop: ALL`, read-only root filesystem. No `CAP_SYS_ADMIN`. |
-| Token spoofing / replay | Full SMCP protocol: Ed25519 signature verification, `SecurityToken` JWT expiry, `SmcpSession` status check. |
+| Token spoofing / replay | Full SEAL protocol: Ed25519 signature verification, `SecurityToken` JWT expiry, `SealSession` status check. |
 | Upstream privilege escalation | Human-delegated token exchange via Keycloak scopes the token to exactly what the human user possesses. |

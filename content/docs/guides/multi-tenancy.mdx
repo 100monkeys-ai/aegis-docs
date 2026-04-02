@@ -16,7 +16,7 @@ AEGIS enforces tenant isolation at four complementary layers. Each layer must ho
 | Layer | Mechanism | Implementation |
 |-------|-----------|----------------|
 | **1. Identity** | Keycloak Realms | Each tenant has a dedicated Keycloak realm. `TenantId` is derived from the JWT issuer URL. |
-| **2. Authorization** | SMCP Contexts | `SecurityContext` names are namespaced (e.g., `tenant-acme-corp-research`). |
+| **2. Authorization** | SEAL Contexts | `SecurityContext` names are namespaced (e.g., `tenant-acme-corp-research`). |
 | **3. Data** | PostgreSQL Scoping | All core tables (`agents`, `executions`, `workflows`) are scoped by a `tenant_id` column. |
 | **4. Secrets** | OpenBao Namespaces | Each tenant has a dedicated OpenBao namespace: `tenant-{slug}/`. |
 
@@ -40,7 +40,7 @@ To onboard a new tenant, an operator must create a corresponding realm in Keyclo
 
 ---
 
-## Layer 2: Authorization (SMCP SecurityContext)
+## Layer 2: Authorization (SEAL SecurityContext)
 
 To prevent cross-tenant capability name collisions, all enterprise tenant `SecurityContext` names must follow a strict naming convention:
 

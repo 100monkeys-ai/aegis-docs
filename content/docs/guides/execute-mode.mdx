@@ -159,7 +159,7 @@ these are not configuration options:
   modify it
 - **Read-only root filesystem** — no writes to any path on the host
 - **Unprivileged user** — runs as `nobody` (uid 65534); no privilege escalation
-- **No SMCP session** — no access to AEGIS tools or the orchestrator API
+- **No SEAL session** — no access to AEGIS tools or the orchestrator API
 - **No LLM access** — no calls to any language model from inside the container
 
 Only stdout, stderr (each capped at 1 MB), and the exit code cross the container boundary.

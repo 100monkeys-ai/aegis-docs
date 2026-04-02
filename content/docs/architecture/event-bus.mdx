@@ -36,7 +36,7 @@ pub enum DomainEvent {
     Storage(StorageEvent),
     McpTool(MCPToolEvent),
     Command(CommandExecutionEvent),
-    Smcp(SmcpEvent),
+    Seal(SealEvent),
     Stimulus(StimulusEvent),
     Swarm(SwarmEvent),
     Workflow(WorkflowEvent),
@@ -89,7 +89,7 @@ Published by `AegisFSAL` for every file operation:
 
 ### MCP Tool Events
 
-Published by the `SmcpMiddleware` and tool routing layer:
+Published by the `SealMiddleware` and tool routing layer:
 
 `InvocationRequested`, `InvocationStarted`, `InvocationCompleted`, `InvocationFailed`, `ToolPolicyViolation`
 
@@ -99,9 +99,9 @@ Published by the `BuiltinDispatcher`:
 
 `CommandExecutionStarted`, `CommandExecutionCompleted`, `CommandExecutionFailed`, `CommandPolicyViolation`
 
-### SMCP Events
+### SEAL Events
 
-Published by `AttestationService` and `SmcpMiddleware`:
+Published by `AttestationService` and `SealMiddleware`:
 
 `SessionCreated`, `AttestationSucceeded`, `AttestationFailed`, `ToolCallAuthorized`, `PolicyViolationBlocked`, `SignatureVerificationFailed`, `SecurityTokenExpired`, `SecurityTokenRefreshed`, `SessionRevoked`, `SessionExpired`
 
@@ -129,7 +129,7 @@ Published to the `"stimulus"` topic by the Stimulus-Response routing pipeline. C
 | Subscriber | Events Consumed | Purpose |
 |---|---|---|
 | `gRPC streaming handler` | All Execution, Swarm events | Push to connected SDK/UI clients in real-time |
-| `Audit logger` | All SMCP, Policy, Command events | Structured log entries with signatures |
+| `Audit logger` | All SEAL, Policy, Command events | Structured log entries with signatures |
 | `PostgreSQL event recorder` | All events | Persist to `domain_events` table for history |
 | `Metrics collector` | Execution, Iteration, Tool events | Prometheus counters/histograms |
 | `TTL reaper` | VolumeCreated | Register ephemeral volumes for auto-deletion |
@@ -176,7 +176,7 @@ tokio::spawn(async move {
             DomainEvent::Execution(ExecutionEvent::ExecutionCompleted { execution_id, .. }) => {
                 // React to execution completion
             }
-            DomainEvent::Smcp(SmcpEvent::PolicyViolationBlocked { agent_id, tool_name, .. }) => {
+            DomainEvent::Seal(SealEvent::PolicyViolationBlocked { agent_id, tool_name, .. }) => {
                 // Log security violation
             }
             _ => {}

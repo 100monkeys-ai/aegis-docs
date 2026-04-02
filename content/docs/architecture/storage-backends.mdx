@@ -1,6 +1,6 @@
 ---
 title: Storage Backends
-description: Comprehensive guide to the storage backends supported by AEGIS, including SeaweedFS, OpenDAL, Local Host mounts, and SMCP remote volumes.
+description: Comprehensive guide to the storage backends supported by AEGIS, including SeaweedFS, OpenDAL, Local Host mounts, and SEAL remote volumes.
 ---
 
 # Storage Backends
@@ -90,14 +90,14 @@ volumes:
 
 ---
 
-## 4. SMCP Remote Volumes
+## 4. SEAL Remote Volumes
 
-Secure Model Context Protocol (SMCP) provides secure, identity-verified node-to-node communication. For storage, it allows an agent running on Node A to interact with a volume physically managed by Node B.
+Signed Envelope Attestation Layer (SEAL) provides secure, identity-verified node-to-node communication. For storage, it allows an agent running on Node A to interact with a volume physically managed by Node B.
 
 ### Mechanism
 
-- **Provider**: `SmcpStorageProvider`
-- **Security**: POSIX operations (e.g., `read_at`) are wrapped into signed `SmcpEnvelope` API requests. The receiving orchestrator (Node B) verifies Node A's cryptographic Identity and Cedar policies before applying the read to its own local `AegisFSAL` layers.
+- **Provider**: `SealStorageProvider`
+- **Security**: POSIX operations (e.g., `read_at`) are wrapped into signed `SealEnvelope` API requests. The receiving orchestrator (Node B) verifies Node A's cryptographic Identity and Cedar policies before applying the read to its own local `AegisFSAL` layers.
 - **Use Case**: Swarm coordination, cross-node pipeline execution without relying on a centralized storage backbone.
 
 ### Agent Manifest Example
@@ -105,7 +105,7 @@ Secure Model Context Protocol (SMCP) provides secure, identity-verified node-to-
 ```yaml
 volumes:
   - name: remote-pipeline-data
-    type: smcp
+    type: seal
     config:
       node_id: "node-b-uuid-1234"
       remote_volume_id: "vol-9876-abc"

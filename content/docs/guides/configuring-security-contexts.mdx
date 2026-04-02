@@ -5,7 +5,7 @@ description: Define named SecurityContext boundaries to control which MCP tools 
 
 # Configuring Security Contexts
 
-A **SecurityContext** is a named set of capability rules that controls exactly which MCP tools an agent may invoke — and with what arguments. Every agent execution runs within exactly one SecurityContext. If a tool call is not permitted by the context, it is blocked by the SMCP gateway before reaching any tool server.
+A **SecurityContext** is a named set of capability rules that controls exactly which MCP tools an agent may invoke — and with what arguments. Every agent execution runs within exactly one SecurityContext. If a tool call is not permitted by the context, it is blocked by the SEAL gateway before reaching any tool server.
 
 SecurityContexts are defined in your `aegis-config.yaml` under `spec.security_contexts` and referenced by name from your agent manifest.
 
@@ -225,7 +225,7 @@ The `aegis-system-operator` SecurityContext grants platform operators access to 
 
 ### Tool Categories
 
-Tools exposed by the SMCP gateway are classified into three categories:
+Tools exposed by the SEAL gateway are classified into three categories:
 
 | Category | Description | Availability |
 |----------|-------------|-------------|
@@ -243,7 +243,7 @@ The five operator-only tools are:
 
 ### Why the `aegis-system-` Prefix?
 
-The operator context uses the `aegis-system-` prefix rather than `zaru-` to avoid SMCP middleware parameter stripping. For contexts prefixed with `zaru-`, the SMCP middleware automatically strips `force` and `version` parameters from tool calls — a safety measure for consumer-facing requests. Operator sessions need these parameters to reach the orchestrator unmodified, so they use the `aegis-system-` prefix which bypasses that stripping logic.
+The operator context uses the `aegis-system-` prefix rather than `zaru-` to avoid SEAL middleware parameter stripping. For contexts prefixed with `zaru-`, the SEAL middleware automatically strips `force` and `version` parameters from tool calls — a safety measure for consumer-facing requests. Operator sessions need these parameters to reach the orchestrator unmodified, so they use the `aegis-system-` prefix which bypasses that stripping logic.
 
 ---
 
@@ -259,5 +259,5 @@ For example: a parent running under `"coder-unrestricted"` may spawn children us
 
 - [Security Model](/docs/concepts/security-model) — security architecture overview
 - [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.security_context` field
-- [SMCP Architecture](/docs/architecture/smcp) — full protocol specification
+- [SEAL Architecture](/docs/architecture/seal) — full protocol specification
 - [Node Configuration Reference](/docs/reference/node-config) — `spec.security_contexts` schema

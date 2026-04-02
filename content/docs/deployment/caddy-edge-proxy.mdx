@@ -27,7 +27,7 @@ Caddy routes incoming requests to internal pod services based on the domain name
 | `prometheus.<domain>` | aegis-observability:9090 | Prometheus UI |
 | `jaeger.<domain>` | aegis-observability:16686 | Jaeger tracing UI |
 | `temporal.<domain>` | aegis-temporal:8233 | Temporal workflow UI |
-| `smcp.<domain>` | aegis-smcp-gateway:8089 | SMCP Gateway |
+| `seal.<domain>` | aegis-seal-gateway:8089 | SEAL Gateway |
 | `secrets.<domain>` | aegis-secrets:8200 | OpenBao UI |
 
 All domains are configurable via environment variables (e.g., `DOMAIN_API`, `DOMAIN_AUTH`, etc.) with `.localhost` defaults for development.
@@ -126,7 +126,7 @@ Each route block:
 
 **Health checking:** Caddy provides automatic health checking of upstreams. If a backend pod is down, Caddy returns a 502 error.
 
-**WebSocket support:** Caddy automatically supports WebSocket upgrades, which is required for Temporal UI, Grafana live dashboards, and SMCP streaming connections.
+**WebSocket support:** Caddy automatically supports WebSocket upgrades, which is required for Temporal UI, Grafana live dashboards, and SEAL streaming connections.
 
 **Rate limiting:** Caddy supports rate limiting via the `rate_limit` directive if you need to throttle external API access at the proxy layer.
 

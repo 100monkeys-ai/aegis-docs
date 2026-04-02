@@ -172,10 +172,10 @@ spec:
         cpu_millicores: 1000
         memory_mb: 512
 
-  # ─── SMCP ───────────────────────────────────────────────────────────────────
-  smcp:
-    private_key_path: "/etc/aegis/smcp/private.pem"
-    public_key_path: "/etc/aegis/smcp/public.pem"
+  # ─── SEAL ───────────────────────────────────────────────────────────────────
+  seal:
+    private_key_path: "/etc/aegis/seal/private.pem"
+    public_key_path: "/etc/aegis/seal/public.pem"
     issuer: "aegis-orchestrator"
     audiences: ["aegis-agents"]
     token_ttl_seconds: 3600
@@ -301,10 +301,10 @@ spec:
     grpc_url: "http://cortex:50052"
     api_key: "env:CORTEX_API_KEY"  # Required for Zaru SaaS; absent = memoryless mode
 
-  # ─── External SMCP Tooling Gateway ───────────────────────────────
-  smcp_gateway:
-    # gRPC endpoint URL for aegis-smcp-gateway
-    url: "http://aegis-smcp-gateway:50055"
+  # ─── External SEAL Tooling Gateway ───────────────────────────────
+  seal_gateway:
+    # gRPC endpoint URL for aegis-seal-gateway
+    url: "http://aegis-seal-gateway:50055"
 
   # ─── Execution Limits ───────────────────────────────────────────────────────
   max_execution_list_limit: 1000
@@ -631,13 +631,13 @@ Each `CapabilityConfig` entry:
 | `name` | string | — | Tool name exposed to agents (e.g. `"web.search"`, `"gmail.read"`) |
 | `skip_judge` | bool | `false` | When `true`, the orchestrator bypasses the inner-loop semantic pre-execution judge for this tool even if `spec.execution.tool_validation` is enabled in the agent manifest. Set `true` only for read-only or otherwise idempotent tools. Set `false` for any state-mutating tool. |
 
-`skip_judge` is an operator override. It does not disable SMCP authentication, SecurityContext policy, argument validation, or routing. It only removes the extra semantic review step before dispatch.
+`skip_judge` is an operator override. It does not disable SEAL authentication, SecurityContext policy, argument validation, or routing. It only removes the extra semantic review step before dispatch.
 
 ---
 
-### `spec.smcp`
+### `spec.seal`
 
-Optional. Enables cryptographic agent authorization via SMCP. Required in production.
+Optional. Enables cryptographic agent authorization via SEAL. Required in production.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -832,13 +832,13 @@ cortex:
 
 ---
 
-### `spec.smcp_gateway`
+### `spec.seal_gateway`
 
-Optional. Configures forwarding of external tool invocations to the standalone SMCP tooling gateway.
+Optional. Configures forwarding of external tool invocations to the standalone SEAL tooling gateway.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `url` | string | null | gRPC endpoint URL of `aegis-smcp-gateway` (example: `http://aegis-smcp-gateway:50055`). |
+| `url` | string | null | gRPC endpoint URL of `aegis-seal-gateway` (example: `http://aegis-seal-gateway:50055`). |
 
 If omitted, orchestrator does not forward unknown/external tools to the gateway and continues with built-in routing only.
 

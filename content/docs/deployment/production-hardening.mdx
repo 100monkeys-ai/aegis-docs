@@ -16,7 +16,7 @@ This page provides a checklist and guidance for hardening AEGIS platform deploym
 | Item | Action | Priority |
 |------|--------|----------|
 | Strong passwords | Replace all default passwords in `.env` (PostgreSQL, Keycloak, Grafana) | Critical |
-| SMCP keys | Generate unique Ed25519 keypair (`make generate-keys`) | Critical |
+| SEAL keys | Generate unique Ed25519 keypair (`make generate-keys`) | Critical |
 | TLS termination | Deploy Caddy edge proxy with valid certificates | Critical |
 | Image pinning | Set `AEGIS_IMAGE_TAG` to a pinned semver, not `latest` | High |
 | Registry auth | Configure GHCR credentials (`make registry-login`) | High |
@@ -60,7 +60,7 @@ Rotate credentials regularly:
 | PostgreSQL passwords | Update `.env`, restart pod-database and dependents | 90 days |
 | OpenBao AppRole secret_id | Re-run `make bootstrap-secrets` | 90 days |
 | Keycloak admin password | Update via Keycloak admin UI or `.env` | 90 days |
-| SMCP signing keys | Regenerate with `make generate-keys`, restart pod-core | Annually |
+| SEAL signing keys | Regenerate with `make generate-keys`, restart pod-core | Annually |
 | GHCR token | Regenerate GitHub PAT, update `.env` | Annually |
 | LLM API keys | Rotate via provider dashboard, update `.env` or OpenBao | Per provider policy |
 
@@ -97,7 +97,7 @@ Recommended minimum limits per pod:
 | pod-storage | 250m | 512Mi | 1000m | 2Gi |
 | pod-secrets | 100m | 128Mi | 500m | 512Mi |
 | pod-iam | 500m | 512Mi | 1000m | 2Gi |
-| pod-smcp-gateway | 250m | 256Mi | 1000m | 1Gi |
+| pod-seal-gateway | 250m | 256Mi | 1000m | 1Gi |
 
 ---
 
@@ -157,7 +157,7 @@ Scan container images for vulnerabilities before deployment:
 # Using Trivy
 trivy image ghcr.io/100monkeys-ai/aegis-runtime:1.2.3
 trivy image ghcr.io/100monkeys-ai/aegis-temporal-worker:1.2.3
-trivy image ghcr.io/100monkeys-ai/aegis-smcp-gateway:1.2.3
+trivy image ghcr.io/100monkeys-ai/aegis-seal-gateway:1.2.3
 ```
 
 ### Pinned Versions

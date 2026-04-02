@@ -64,7 +64,7 @@ When troubleshooting startup failures, check dependencies in this order:
            +-- 4. pod-core           <- Needs DB, secrets, optionally IAM
                |-- 5. pod-temporal   <- Worker needs core gRPC
                |-- 6. pod-storage    <- Core connects to filer
-               +-- 7. pod-smcp-gateway <- Needs DB, Podman socket
+               +-- 7. pod-seal-gateway <- Needs DB, Podman socket
 8. pod-observability                  <- Independent, but needs targets running
 ```
 
@@ -89,8 +89,8 @@ podman exec aegis-database-postgres pg_isready -U aegis
 # 2. Invalid aegis-config.yaml
 # Look for YAML parse errors in logs
 
-# 3. SMCP keys not generated
-ls -la /path/to/smcp-keys/
+# 3. SEAL keys not generated
+ls -la /path/to/seal-keys/
 make generate-keys  # if missing
 ```
 
@@ -243,7 +243,7 @@ podman info
 make status > diagnostics.txt 2>&1
 
 # Recent logs (last 500 lines per service)
-for pod in core database temporal secrets iam storage observability smcp-gateway; do
+for pod in core database temporal secrets iam storage observability seal-gateway; do
   echo "=== $pod ===" >> diagnostics.txt
   make logs POD=$pod 2>&1 | tail -500 >> diagnostics.txt
 done

@@ -1,6 +1,6 @@
 ---
 title: TypeScript SDK
-description: AegisClient for TypeScript and Node.js — execution, approvals, SMCP, stimulus, admin, and more.
+description: AegisClient for TypeScript and Node.js — execution, approvals, SEAL, stimulus, admin, and more.
 ---
 
 # TypeScript SDK
@@ -140,34 +140,34 @@ await client.rejectRequest('approval-uuid', {
 
 ---
 
-## SMCP
+## SEAL
 
-### `attestSmcp(payload)`
+### `attestSeal(payload)`
 
-Request an SMCP security token via attestation.
+Request an SEAL security token via attestation.
 
-**Returns:** `Promise<SmcpAttestationResponse>`
+**Returns:** `Promise<SealAttestationResponse>`
 
 ```typescript
-interface SmcpAttestationResponse {
+interface SealAttestationResponse {
   security_token: string;
 }
 ```
 
-### `invokeSmcp(payload)`
+### `invokeSeal(payload)`
 
-Invoke an SMCP tool with a signed payload.
+Invoke an SEAL tool with a signed payload.
 
 **Returns:** `Promise<any>`
 
-### `listSmcpTools(securityContext?)`
+### `listSealTools(securityContext?)`
 
-List available SMCP tools, optionally filtered by security context.
+List available SEAL tools, optionally filtered by security context.
 
-**Returns:** `Promise<SmcpToolsResponse>`
+**Returns:** `Promise<SealToolsResponse>`
 
 ```typescript
-interface SmcpToolsResponse {
+interface SealToolsResponse {
   protocol: string;
   attestation_endpoint: string;
   invoke_endpoint: string;

@@ -12,7 +12,7 @@ const features = [
       'Docker containers for local development. Firecracker micro-VMs for production — kernel-level isolation with sub-second cold starts and no shared kernel attack surface.',
   },
   {
-    title: 'Secure Tool Access (SMCP)',
+    title: 'Secure Tool Access (SEAL)',
     description:
       'All MCP tool calls are proxied through the orchestrator with Ed25519-signed envelopes. Agents never hold credentials. Cedar-based policy rules enforced per call.',
   },

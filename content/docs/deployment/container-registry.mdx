@@ -189,7 +189,7 @@ All AEGIS platform service images are published to the GitHub Container Registry
 |-------|-----------|-------------|
 | `aegis-runtime` | `ghcr.io/100monkeys-ai/aegis-runtime` | Core orchestrator |
 | `aegis-temporal-worker` | `ghcr.io/100monkeys-ai/aegis-temporal-worker` | Temporal workflow worker |
-| `aegis-smcp-gateway` | `ghcr.io/100monkeys-ai/aegis-smcp-gateway` | SMCP tooling gateway |
+| `aegis-seal-gateway` | `ghcr.io/100monkeys-ai/aegis-seal-gateway` | SEAL tooling gateway |
 
 ### Tagging Strategy
 
@@ -215,7 +215,7 @@ Requires a GitHub Personal Access Token (PAT) with `read:packages` scope. Set `G
 
 ### CI/CD Pipeline
 
-Images are built automatically via GitHub Actions on every push to `main` and on version tags. Each repository (`aegis-orchestrator`, `aegis-temporal-worker`, `aegis-smcp-gateway`) has its own `.github/workflows/docker-publish.yml` workflow that:
+Images are built automatically via GitHub Actions on every push to `main` and on version tags. Each repository (`aegis-orchestrator`, `aegis-temporal-worker`, `aegis-seal-gateway`) has its own `.github/workflows/docker-publish.yml` workflow that:
 
 1. Builds a multi-stage Docker image
 2. Tags with `:latest` and the short commit SHA

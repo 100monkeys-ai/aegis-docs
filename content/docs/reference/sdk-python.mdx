@@ -13,7 +13,7 @@ pip install aegis-sdk
 
 The SDK consists of two distinct layers:
 
-- **`AegisClient`** — async HTTP client: start executions, manage approvals, invoke SMCP tools, administer tenants and rate limits
+- **`AegisClient`** — async HTTP client: start executions, manage approvals, invoke SEAL tools, administer tenants and rate limits
 - **`bootstrap.py` / Dispatch Protocol types** — agent-side: the wire format exchanged between a custom bootstrap script and the orchestrator's `/v1/dispatch-gateway`
 
 ---
@@ -41,9 +41,9 @@ async with AegisClient(
 | Human Approvals | `get_pending_approval(approval_id)` | Get a single pending approval |
 | Human Approvals | `approve_request(approval_id, feedback?, approved_by?)` | Approve a pending request |
 | Human Approvals | `reject_request(approval_id, reason, rejected_by?)` | Reject a pending request |
-| SMCP | `attest_smcp(payload)` | Obtain an SMCP security attestation token |
-| SMCP | `invoke_smcp(payload)` | Invoke an SMCP tool |
-| SMCP | `list_smcp_tools(security_context?)` | List available SMCP tools |
+| SEAL | `attest_seal(payload)` | Obtain an SEAL security attestation token |
+| SEAL | `invoke_seal(payload)` | Invoke an SEAL tool |
+| SEAL | `list_seal_tools(security_context?)` | List available SEAL tools |
 | Dispatch Gateway | `dispatch_gateway(payload)` | Send a dispatch gateway request |
 | Stimulus | `ingest_stimulus(payload)` | Ingest a stimulus event |
 | Stimulus | `send_webhook(source, payload)` | Send a webhook stimulus |
@@ -161,29 +161,29 @@ Reject a pending request with a mandatory reason.
 
 ---
 
-### SMCP
+### SEAL
 
-#### `attest_smcp(payload)`
+#### `attest_seal(payload)`
 
-Obtain a security attestation token for SMCP tool invocation.
+Obtain a security attestation token for SEAL tool invocation.
 
-**Returns:** `SmcpAttestationResponse` with `security_token: str`.
+**Returns:** `SealAttestationResponse` with `security_token: str`.
 
 ---
 
-#### `invoke_smcp(payload)`
+#### `invoke_seal(payload)`
 
-Invoke an SMCP tool with an attested payload.
+Invoke an SEAL tool with an attested payload.
 
 **Returns:** `Dict[str, Any]` — tool-specific response.
 
 ---
 
-#### `list_smcp_tools(security_context?)`
+#### `list_seal_tools(security_context?)`
 
-List available SMCP tools, optionally filtered by security context.
+List available SEAL tools, optionally filtered by security context.
 
-**Returns:** `SmcpToolsResponse` with `protocol`, `attestation_endpoint`, `invoke_endpoint`, `security_context`, and `tools: List[Any]`.
+**Returns:** `SealToolsResponse` with `protocol`, `attestation_endpoint`, `invoke_endpoint`, `security_context`, and `tools: List[Any]`.
 
 ---
 

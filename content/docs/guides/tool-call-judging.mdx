@@ -7,7 +7,7 @@ description: How AEGIS performs inner-loop semantic pre-execution review for too
 
 AEGIS can place a semantic judge in front of a tool call before the call is dispatched. This is an inner-loop control: it evaluates the agent's intent to use a tool, not the output of a completed tool execution.
 
-That distinction matters in production. A pre-execution judge can stop a dangerous write, delete, or external request before it reaches a side effect boundary. It is a safety and reliability layer, not a replacement for SMCP, policy enforcement, or argument validation.
+That distinction matters in production. A pre-execution judge can stop a dangerous write, delete, or external request before it reaches a side effect boundary. It is a safety and reliability layer, not a replacement for SEAL, policy enforcement, or argument validation.
 
 ---
 
@@ -143,7 +143,7 @@ The orchestrator checks built-in dispatchers first, then MCP server capabilities
 
 Use `skip_judge` only for read-only or otherwise idempotent tools where the semantic judge adds latency but little or no safety value. Do not use it for state-mutating or destructive tools.
 
-`skip_judge` does not bypass SMCP signature verification, SecurityContext policy, tool argument validation, or routing. It only removes the inner-loop semantic pre-execution review for the marked tool.
+`skip_judge` does not bypass SEAL signature verification, SecurityContext policy, tool argument validation, or routing. It only removes the inner-loop semantic pre-execution review for the marked tool.
 
 ---
 
@@ -163,4 +163,4 @@ Recommended judge manifests are narrow and defensive:
 - Return strict JSON only.
 - Scope filesystem access to the minimal inherited mounts required for review.
 
-In enterprise deployments, treat the tool-call judge as a semantic control layer that complements hard policy enforcement. SMCP still enforces identity and capability boundaries; the judge adds intent-level review before action.
+In enterprise deployments, treat the tool-call judge as a semantic control layer that complements hard policy enforcement. SEAL still enforces identity and capability boundaries; the judge adds intent-level review before action.

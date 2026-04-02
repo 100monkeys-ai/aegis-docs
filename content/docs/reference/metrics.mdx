@@ -41,15 +41,15 @@ All metric names are prefixed with `aegis_`.
 
 ---
 
-## Security & SMCP (BC-4)
+## Security & SEAL (BC-4)
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `aegis_smcp_attestations_total` | Counter | `result` | Cumulative attestation attempts (`success`, `failure`). |
-| `aegis_smcp_sessions_active` | Gauge | — | Number of active SMCP sessions. |
-| `aegis_smcp_policy_violations_total` | Counter | `violation_type` | Cumulative policy violations by type. |
-| `aegis_smcp_token_refreshes_total` | Counter | `result` | Cumulative SecurityToken refresh attempts. |
-| `aegis_smcp_signature_failures_total` | Counter | — | Cumulative SmcpEnvelope signature verification failures. |
+| `aegis_seal_attestations_total` | Counter | `result` | Cumulative attestation attempts (`success`, `failure`). |
+| `aegis_seal_sessions_active` | Gauge | — | Number of active SEAL sessions. |
+| `aegis_seal_policy_violations_total` | Counter | `violation_type` | Cumulative policy violations by type. |
+| `aegis_seal_token_refreshes_total` | Counter | `result` | Cumulative SecurityToken refresh attempts. |
+| `aegis_seal_signature_failures_total` | Counter | — | Cumulative SealEnvelope signature verification failures. |
 
 ---
 
@@ -143,8 +143,8 @@ To provide comprehensive visibility into the AEGIS platform, we recommend implem
 
 | Dashboard | Key Panels |
 |-----------|------------|
-| **AEGIS Overview** | Active executions gauge, execution throughput (rate), P99 duration heatmap, active SMCP sessions, and event bus drop rate. |
-| **Security & Policy** | SMCP attestation success/failure ratio, policy violations by type (e.g., `ToolExplicitlyDenied`), and NFS path traversal attempts. |
+| **AEGIS Overview** | Active executions gauge, execution throughput (rate), P99 duration heatmap, active SEAL sessions, and event bus drop rate. |
+| **Security & Policy** | SEAL attestation success/failure ratio, policy violations by type (e.g., `ToolExplicitlyDenied`), and NFS path traversal attempts. |
 | **Storage (NFS)** | I/O operations/sec by type, latency percentiles, throughput (MB/s), and active volume count by storage class. |
 | **Execution Deep Dive** | Iteration count distribution, terminal status breakdown, and resource utilization (CPU/Mem) per execution node. |
 | **Cortex & Knowledge** | Pattern indexed/pruned rate, search latency, and embedding cache hit/miss ratio. |
@@ -160,13 +160,13 @@ groups:
   - name: aegis_alerts
     rules:
       # Alert on high rate of security policy violations
-      - alert: HighSmcpPolicyViolations
-        expr: rate(aegis_smcp_policy_violations_total[5m]) > 0.1
+      - alert: HighSealPolicyViolations
+        expr: rate(aegis_seal_policy_violations_total[5m]) > 0.1
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "High rate of SMCP policy violations on {{ $labels.instance }}"
+          summary: "High rate of SEAL policy violations on {{ $labels.instance }}"
           description: "AEGIS blocked more than 0.1 violations/sec over the last 5m. This may indicate a misconfigured agent or a prompt injection attempt."
 
       # Alert on dropped events (indicates subscriber lag or buffer exhaustion)
@@ -180,12 +180,12 @@ groups:
           description: "The internal event bus for {{ $labels.subscriber }} is full. This usually indicates that the subscriber is too slow to process incoming events."
 
       # Alert on attestation failures
-      - alert: SmcpAttestationFailure
-        expr: rate(aegis_smcp_attestations_total{result="failure"}[5m]) > 0.05
+      - alert: SealAttestationFailure
+        expr: rate(aegis_seal_attestations_total{result="failure"}[5m]) > 0.05
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Elevated SMCP attestation failures"
+          summary: "Elevated SEAL attestation failures"
           description: "Attestation is failing at a rate of {{ $value }}/sec. Check node clock skew or expired NodeSecurityTokens."
 ```

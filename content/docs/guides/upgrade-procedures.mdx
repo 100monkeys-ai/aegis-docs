@@ -33,7 +33,7 @@ make registry-login
 # Pull updated images
 podman pull ghcr.io/100monkeys-ai/aegis-runtime:1.3.0
 podman pull ghcr.io/100monkeys-ai/aegis-temporal-worker:1.3.0
-podman pull ghcr.io/100monkeys-ai/aegis-smcp-gateway:1.3.0
+podman pull ghcr.io/100monkeys-ai/aegis-seal-gateway:1.3.0
 ```
 
 ### Step 3: Redeploy
@@ -42,7 +42,7 @@ podman pull ghcr.io/100monkeys-ai/aegis-smcp-gateway:1.3.0
 # Redeploy individual pods (preferred for minimal downtime)
 make redeploy POD=core
 make redeploy POD=temporal
-make redeploy POD=smcp-gateway
+make redeploy POD=seal-gateway
 
 # Or full teardown and redeploy
 make teardown
@@ -93,7 +93,7 @@ make redeploy POD=core
 make redeploy POD=temporal
 
 # 4. Other pods as needed
-make redeploy POD=smcp-gateway
+make redeploy POD=seal-gateway
 make redeploy POD=observability
 ```
 

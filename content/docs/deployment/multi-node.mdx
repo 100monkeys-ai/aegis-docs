@@ -53,14 +53,14 @@ A common production pairing: the API-facing machine is `type: orchestrator, clus
 After a worker successfully attests to a controller, the controller issues a **NodeSecurityToken**: an RS256 JWT signed by the controller's OpenBao Transit key. This token:
 
 - Has a **1-hour TTL** and is auto-refreshed before expiry
-- Is analogous to the agent `SecurityToken` from the SMCP protocol, but scoped to node identity
+- Is analogous to the agent `SecurityToken` from the SEAL protocol, but scoped to node identity
 - Contains `node_id`, `role`, `capabilities_hash`, `iat`, and `exp`
-- Is included in every subsequent cluster RPC wrapped in a `SmcpNodeEnvelope`
+- Is included in every subsequent cluster RPC wrapped in a `SealNodeEnvelope`
 
 All inter-node gRPC calls use this envelope:
 
 ```
-SmcpNodeEnvelope {
+SealNodeEnvelope {
   node_security_token: <NodeSecurityToken JWT>,
   signature: <Ed25519 signature over inner_payload>,
   inner_payload: <serialized RPC request bytes>
@@ -128,7 +128,7 @@ This topology adds the **NodeClusterService** layer for authenticated, capabilit
 │   gRPC :50051  ←  agent API (external clients)                      │
 │   gRPC :50056  ←  NodeClusterService (workers only)                 │
 └──────────────────────────────┬───────────────────────────────────────┘
-                               │ SmcpNodeEnvelope over gRPC :50056
+                               │ SealNodeEnvelope over gRPC :50056
                ┌───────────────┼───────────────┐
                ▼               ▼               ▼
         ┌──────────┐    ┌──────────┐    ┌──────────┐
@@ -309,7 +309,7 @@ Worker                                      Controller
   │◄─── NodeSecurityToken (RS256 JWT) ───────────│  5. Issues token (1-hour TTL)
   │                                              │     via OpenBao Transit signing
   │  6. Wraps all future RPCs in               │
-  │     SmcpNodeEnvelope {                      │
+  │     SealNodeEnvelope {                      │
   │       node_security_token,                  │
   │       signature,                            │
   │       inner_payload                         │
@@ -338,7 +338,7 @@ The `NodeSecurityToken` is automatically refreshed before its 1-hour expiry via 
 
 ## NodeClusterService RPC Reference
 
-The `NodeClusterService` exposes 10 RPCs on port 50056. All RPCs except `AttestNode` and `ChallengeNode` require a valid `NodeSecurityToken` in the `authorization` metadata key and an `SmcpNodeEnvelope` wrapping the payload. `AttestNode` is unauthenticated (it is the first call a new worker makes).
+The `NodeClusterService` exposes 10 RPCs on port 50056. All RPCs except `AttestNode` and `ChallengeNode` require a valid `NodeSecurityToken` in the `authorization` metadata key and an `SealNodeEnvelope` wrapping the payload. `AttestNode` is unauthenticated (it is the first call a new worker makes).
 
 | RPC | Direction | Description |
 |-----|-----------|-------------|
@@ -454,7 +454,7 @@ For all orchestrator instances in either phase, share the same PostgreSQL databa
 
 ## Day-2 Operations: mTLS Certificate Rotation
 
-In production environments, AEGIS requires mutual TLS (mTLS) for all inter-node communication on port `50056`. This ensures that only nodes possessing a certificate signed by the platform CA can even attempt the SMCP attestation flow.
+In production environments, AEGIS requires mutual TLS (mTLS) for all inter-node communication on port `50056`. This ensures that only nodes possessing a certificate signed by the platform CA can even attempt the SEAL attestation flow.
 
 ### Rotating the Platform CA
 
@@ -525,9 +525,9 @@ When an agent executing on Worker Node A needs to access a volume that resides o
 
 ### How It Works
 
-1. The `StorageRouter` on Node A inspects the file path. Paths prefixed with `/aegis/smcp/{node_id}/{volume_id}/...` are routed to the `SmcpStorageProvider`.
-2. `SmcpStorageProvider` extracts the target `node_id` from the path, looks up the node's gRPC address in the `NodeClusterRepository`, and establishes (or reuses) a gRPC channel.
-3. Each RPC call is wrapped in an `SmcpNodeEnvelope` carrying the node's Ed25519 signature and `NodeSecurityToken`.
+1. The `StorageRouter` on Node A inspects the file path. Paths prefixed with `/aegis/seal/{node_id}/{volume_id}/...` are routed to the `SealStorageProvider`.
+2. `SealStorageProvider` extracts the target `node_id` from the path, looks up the node's gRPC address in the `NodeClusterRepository`, and establishes (or reuses) a gRPC channel.
+3. Each RPC call is wrapped in an `SealNodeEnvelope` carrying the node's Ed25519 signature and `NodeSecurityToken`.
 4. The target node's `RemoteStorageServiceHandler` verifies the envelope, performs authoritative `AegisFSAL` access checks, and delegates to its local `StorageProvider`.
 5. The response is returned to the requesting node and surfaced through the standard `StorageProvider` trait.
 
@@ -547,10 +547,10 @@ All POSIX-style file operations are supported over the wire:
 Remote volume paths follow this convention:
 
 ```text
-/aegis/smcp/{target_node_id}/{volume_id}/{path/within/volume}
+/aegis/seal/{target_node_id}/{volume_id}/{path/within/volume}
 ```
 
-The `StorageRouter` detects the `/aegis/smcp/` prefix and dispatches to `SmcpStorageProvider`. All other `/aegis/volumes/...` paths route to the default backend (SeaweedFS/OpenDAL), and bare absolute paths (`/opt/data/...`) route to the local host filesystem.
+The `StorageRouter` detects the `/aegis/seal/` prefix and dispatches to `SealStorageProvider`. All other `/aegis/volumes/...` paths route to the default backend (SeaweedFS/OpenDAL), and bare absolute paths (`/opt/data/...`) route to the local host filesystem.
 
 ---
 

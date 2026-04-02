@@ -16,7 +16,7 @@ AEGIS agents require three structurally different categories of tool execution. 
 | Path | Category | Example | Execution Context |
 |---|---|---|---|
 | **Path 1: FSAL** | File Operations | `fs.read`, `fs.write` | Orchestrator host via Storage Gateway |
-| **Path 2: SMCP External** | Remote Tools | `web.search`, `github.issue` | Orchestrator host via SMCP Gateway |
+| **Path 2: SEAL External** | Remote Tools | `web.search`, `github.issue` | Orchestrator host via SEAL Gateway |
 | **Path 3: Dispatch Protocol** | **In-Container** | `cargo build`, `cmd.run` | **Inside the agent container** |
 
 In-container execution is required for tools that depend on the container's installed toolchain (`rustc`, `npm`, `python`), its environment variables (`PATH`, `LD_LIBRARY_PATH`), or that produce side effects inside the container process tree.

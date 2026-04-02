@@ -1,23 +1,23 @@
 ---
-title: Secure Model Context Protocol (SMCP)
+title: Signed Envelope Attestation Layer (SEAL)
 description: Ed25519 signed envelopes, agent attestation, Cedar policy evaluation, SecurityContext architecture, threat model, and SDK usage.
 ---
 
-# Secure Model Context Protocol (SMCP)
+# Signed Envelope Attestation Layer (SEAL)
 
-SMCP is the cryptographic security layer that governs every tool call an agent makes. It extends the standard [Model Context Protocol (MCP)](https://modelcontextprotocol.io) with signed envelopes, agent identity attestation, and Cedar-based policy evaluation — without requiring any changes to existing MCP tool servers.
+SEAL is the cryptographic security layer that governs every tool call an agent makes. It extends the standard [Model Context Protocol (MCP)](https://modelcontextprotocol.io) with signed envelopes, agent identity attestation, and Cedar-based policy evaluation — without requiring any changes to existing MCP tool servers.
 
-Standard MCP has no authentication: any client that can reach a tool server can invoke any tool. SMCP closes this gap by:
+Standard MCP has no authentication: any client that can reach a tool server can invoke any tool. SEAL closes this gap by:
 
 1. **Attesting agent identity** before any tools are callable — one-time handshake issues a signed JWT.
 2. **Signing every tool call** with the agent's ephemeral Ed25519 key — binding each request to the issuing execution.
 3. **Evaluating each call** against a named `SecurityContext` at the Gateway — deny-list first, then capabilities, default deny.
 
-The full protocol specification is maintained as an RFC in the [`secure-model-context-protocol`](https://github.com/100monkeys-ai/secure-model-context-protocol) repository.
+The full protocol specification is maintained as an RFC in the [`seal-protocol`](https://github.com/100monkeys-ai/seal-protocol) repository.
 
 ---
 
-## Why SMCP Exists
+## Why SEAL Exists
 
 Standard MCP was designed for functionality, not security. It provides no:
 
@@ -26,11 +26,11 @@ Standard MCP was designed for functionality, not security. It provides no:
 - **Integrity protection** — messages can be tampered in transit
 - **Non-repudiation** — no audit trail proving who performed an action
 
-This creates critical gaps in autonomous AI systems. SMCP addresses all four.
+This creates critical gaps in autonomous AI systems. SEAL addresses all four.
 
 ### The Confused Deputy Problem
 
-The most important attack class SMCP prevents:
+The most important attack class SEAL prevents:
 
 ```
 1. User provides input: "Summarize this article: https://evil.com/inject.txt"
@@ -38,7 +38,7 @@ The most important attack class SMCP prevents:
 3. Agent's LLM interprets this as a legitimate command
 4. Agent calls: tool("fs.delete", {"path": "/workspace/*"})
 5. [Standard MCP] Tool server has no context — executes the command. BREACH.
-6. [SMCP] Agent's SecurityContext has no "fs.delete" capability — Gateway blocks it. SAFE.
+6. [SEAL] Agent's SecurityContext has no "fs.delete" capability — Gateway blocks it. SAFE.
 ```
 
 Even if prompt injection succeeds in changing the agent's *intention*, it cannot escape the agent's cryptographically bounded `SecurityContext`.
@@ -47,35 +47,35 @@ Even if prompt injection succeeds in changing the agent's *intention*, it cannot
 
 ## Architecture
 
-### Where SMCP Sits in the Stack
+### Where SEAL Sits in the Stack
 
-SMCP operates at the **protocol layer**, on top of the physical Orchestrator Proxy boundary already provided by AEGIS:
+SEAL operates at the **protocol layer**, on top of the physical Orchestrator Proxy boundary already provided by AEGIS:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Agent Container                        │
-│  SMCP SDK: generate keypair → attest → sign envelopes       │
+│  SEAL SDK: generate keypair → attest → sign envelopes       │
 └──────────────────────────┬──────────────────────────────────┘
-                           │  SmcpEnvelope (over TLS)
+                           │  SealEnvelope (over TLS)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Orchestrator — SmcpMiddleware                  │
+│              Orchestrator — SealMiddleware                  │
 │                                                             │
 │  Physical layer: Orchestrator Proxy Pattern                 │
 │    All agent tool calls physically route through here       │
 │    Internal tools → Runtime exec()                          │
 │                                                             │
-│  Protocol layer: SMCP                                       │
+│  Protocol layer: SEAL                                       │
 │    AttestationService: verify workload, issue JWT           │
-│    SmcpMiddleware: verify signature + JWT                   │
+│    SealMiddleware: verify signature + JWT                   │
 │    PolicyEngine (Cedar): evaluate SecurityContext           │
-│    Unwrap → route to internal tool OR SMCP Gateway          │
+│    Unwrap → route to internal tool OR SEAL Gateway          │
 └──────────────┬──────────────────────────────┬───────────────┘
                │                              │
-               │ Standard MCP                 │ SMCP (Signed)
+               │ Standard MCP                 │ SEAL (Signed)
                ▼                              ▼
 ┌──────────────────────────────┐  ┌───────────────────────────┐
-│       Internal Tools         │  │    SMCP Tooling Gateway   │
+│       Internal Tools         │  │    SEAL Tooling Gateway   │
 │   (fs.*, web.*, cmd.run)     │  │  (SaaS APIs, Macro-Tools) │
 └──────────────────────────────┘  └──────────────┬────────────┘
                                                  │ Standard MCP
@@ -86,17 +86,17 @@ SMCP operates at the **protocol layer**, on top of the physical Orchestrator Pro
                                   └───────────────────────────┘
 ```
 
-The physical proxy layer ensures credentials are never in agent containers. SMCP adds protocol-level identity and authorization. Both layers are required.
+The physical proxy layer ensures credentials are never in agent containers. SEAL adds protocol-level identity and authorization. Both layers are required.
 
 ### Components
 
 | Component | Role |
 |---|---|
 | `AttestationService` | Issues `SecurityToken` JWTs after verifying workload identity. |
-| `SmcpMiddleware` | Intercepts all inbound `SmcpEnvelope`s; verifies signature, JWT, and timestamp. |
+| `SealMiddleware` | Intercepts all inbound `SealEnvelope`s; verifies signature, JWT, and timestamp. |
 | `PolicyEngine` | Cedar-based evaluator; deny-list → capabilities → default deny. |
 | `SecurityContext` | Named permission boundary (Aggregate Root); defines capabilities and deny list. |
-| `SmcpSession` | Aggregate root tracking one agent's full session: attestation → tool calls → expiry/revocation. |
+| `SealSession` | Aggregate root tracking one agent's full session: attestation → tool calls → expiry/revocation. |
 
 ### Trust Model
 
@@ -122,7 +122,7 @@ Agent                          Gateway                          KMS
   │     Ed25519 keypair           │                               │
   │     (in-memory only)          │                               │
   │                               │                               │
-  │─── 2. POST /v1/smcp/attest ──►│                               │
+  │─── 2. POST /v1/seal/attest ──►│                               │
   │   {                           │                               │
   │     "public_key": "<B64>",    │                               │
   │     "workload_id": "<exec>",  │                               │
@@ -146,7 +146,7 @@ Agent                          Gateway                          KMS
 
 ### Attestation Request
 
-`POST /v1/smcp/attest`
+`POST /v1/seal/attest`
 
 ```json
 {
@@ -165,7 +165,7 @@ The Gateway verifies that `workload_id` maps to a currently running execution in
   "status": "attested",
   "security_token": "<JWT>",
   "expires_at": "2026-02-23T11:00:00Z",
-  "session_id": "<SmcpSession UUID>"
+  "session_id": "<SealSession UUID>"
 }
 ```
 
@@ -196,13 +196,13 @@ The `alg: "EdDSA"` header explicitly prevents algorithm confusion attacks. Agent
 
 ---
 
-## SmcpEnvelope
+## SealEnvelope
 
-Every tool call after attestation is wrapped in a `SmcpEnvelope`. This is an **immutable value object** — modifying any field after construction invalidates the signature.
+Every tool call after attestation is wrapped in a `SealEnvelope`. This is an **immutable value object** — modifying any field after construction invalidates the signature.
 
 ```json
 {
-  "protocol":       "smcp/v1",
+  "protocol":       "seal/v1",
   "security_token": "<JWT from AttestationService>",
   "signature":      "<Base64 Ed25519 signature>",
   "payload": {
@@ -220,7 +220,7 @@ Every tool call after attestation is wrapped in a `SmcpEnvelope`. This is an **i
 
 | Field | Required | Description |
 |---|---|---|
-| `protocol` | ✅ | Always `"smcp/v1"`. Enables version negotiation. |
+| `protocol` | ✅ | Always `"seal/v1"`. Enables version negotiation. |
 | `security_token` | ✅ | JWT from attestation. Binds agent to `SecurityContext`. |
 | `signature` | ✅ | Ed25519 signature over the canonical message (see below). |
 | `payload` | ✅ | Standard MCP JSON-RPC payload, passed through unchanged to the Tool Server. |
@@ -252,13 +252,13 @@ This ensures cross-language implementations produce identical bytes, enabling te
 ## Per-Call Authorization Flow
 
 ```
-SmcpMiddleware receives SmcpEnvelope
+SealMiddleware receives SealEnvelope
   │
-  ├── 1. Check protocol field = "smcp/v1"
+  ├── 1. Check protocol field = "seal/v1"
   ├── 2. Decode security_token → parse JWT claims (sub, scp, iat, exp)
   ├── 3. Verify JWT signature against Gateway's root public key
   ├── 4. Check token expiry (exp claim vs. server clock)
-  ├── 5. Retrieve agent's registered Ed25519 public key (from SmcpSession by sub)
+  ├── 5. Retrieve agent's registered Ed25519 public key (from SealSession by sub)
   ├── 6. Reconstruct canonical message from (security_token, payload, timestamp)
   ├── 7. Verify envelope.signature against public key + canonical message
   ├── 8. Check timestamp: |server_time - envelope.timestamp| ≤ 30 seconds
@@ -392,7 +392,7 @@ Rate limits defined in the root execution's `SecurityContext` apply collectively
 
 Ed25519 was chosen for the following properties:
 
-- **Performance:** Signature generation and verification ~50μs each on modern hardware — well under the 5ms P99 budget for the full SMCP verification path.
+- **Performance:** Signature generation and verification ~50μs each on modern hardware — well under the 5ms P99 budget for the full SEAL verification path.
 - **Security:** 128-bit security level. Constant-time implementations in all major libraries (resistant to timing side-channels).
 - **Simplicity:** Fixed 32-byte public keys, 64-byte signatures. No parameter choices.
 - **Ephemeral by design:** Keys are generated per-execution, never persisted to disk, erased from memory at session end.
@@ -432,7 +432,7 @@ For stricter environments, the Gateway can additionally maintain a short-lived J
 
 ## Error Codes
 
-SMCP uses structured error codes in HTTP 4xx responses:
+SEAL uses structured error codes in HTTP 4xx responses:
 
 ### Envelope Verification Errors (1xxx)
 
@@ -443,7 +443,7 @@ SMCP uses structured error codes in HTTP 4xx responses:
 | `1002` | `EXPIRED_TOKEN` | JWT `exp` claim is in the past |
 | `1003` | `INVALID_TOKEN` | JWT signature invalid or claims malformed |
 | `1004` | `REPLAY_DETECTED` | Envelope timestamp outside ±30s window |
-| `1005` | `UNKNOWN_SESSION` | `sub` claim does not match any active `SmcpSession` |
+| `1005` | `UNKNOWN_SESSION` | `sub` claim does not match any active `SealSession` |
 
 ### Policy Violation Errors (2xxx)
 
@@ -469,11 +469,11 @@ SMCP uses structured error codes in HTTP 4xx responses:
 
 ## Audit Trail
 
-Every SMCP operation publishes a domain event for the audit trail. These are consumed by event bus subscribers and compliance reporting systems:
+Every SEAL operation publishes a domain event for the audit trail. These are consumed by event bus subscribers and compliance reporting systems:
 
 | Event | Trigger |
 |---|---|
-| `AttestationSucceeded` | Agent attested; `SmcpSession` created |
+| `AttestationSucceeded` | Agent attested; `SealSession` created |
 | `AttestationFailed` | Attestation rejected (workload unknown, bad scope, etc.) |
 | `ToolCallAuthorized` | Call passed `PolicyEngine`; forwarded to Tool Server |
 | `PolicyViolationBlocked` | Call rejected; violation type and tool name logged with signature |
@@ -486,7 +486,7 @@ The Ed25519 signature in every envelope provides **non-repudiation**: an agent c
 
 ### Compliance Mapping
 
-| Framework | Requirement | SMCP mechanism |
+| Framework | Requirement | SEAL mechanism |
 |---|---|---|
 | SOC 2 CC6.1 | Logical access controls | `SecurityContext` capabilities restrict tool access per agent class |
 | SOC 2 CC6.6 | Access review | `SecurityContext` definitions are versioned YAML in source control |
@@ -509,16 +509,16 @@ Short-lived tokens limit blast radius: a stolen JWT is useless without the corre
 
 ## Transport Agnosticism
 
-SMCP is transport-agnostic. The `SmcpEnvelope` contains all identity and authorization information needed for stateless verification regardless of how it was delivered:
+SEAL is transport-agnostic. The `SealEnvelope` contains all identity and authorization information needed for stateless verification regardless of how it was delivered:
 
 - **Phase 1 (Docker):** Agent communicates with Gateway over TCP/TLS.
-- **Phase 2 (Firecracker):** Same `SmcpEnvelope` format and endpoints, transmitted over VSOCK (virtual socket between MicroVM and host). No agent-side changes required.
+- **Phase 2 (Firecracker):** Same `SealEnvelope` format and endpoints, transmitted over VSOCK (virtual socket between MicroVM and host). No agent-side changes required.
 
 ---
 
-## SMCP vs Standard MCP
+## SEAL vs Standard MCP
 
-| Feature | Standard MCP | SMCP |
+| Feature | Standard MCP | SEAL |
 |---|---|---|
 | Authentication | ❌ None | ✅ Ephemeral Ed25519 keypair + JWT |
 | Per-call authorization | ❌ None | ✅ Cedar-based `PolicyEngine` |
@@ -533,19 +533,19 @@ SMCP is transport-agnostic. The `SmcpEnvelope` contains all identity and authori
 
 ## SDK Usage
 
-SMCP SDKs are available for Python and TypeScript. In AEGIS, `bootstrap.py` uses the Python SDK internally — you do not call SMCP directly when writing agents. The SDK reference below is relevant when integrating SMCP into your own orchestration layer.
+SEAL SDKs are available for Python and TypeScript. In AEGIS, `bootstrap.py` uses the Python SDK internally — you do not call SEAL directly when writing agents. The SDK reference below is relevant when integrating SEAL into your own orchestration layer.
 
 ### Python
 
 ```bash
-pip install smcp
+pip install seal
 ```
 
 ```python
-from smcp import SMCPClient
+from seal import SEALClient
 
 # 1. Create client — generates ephemeral keypair immediately, no network call
-client = SMCPClient(
+client = SEALClient(
     gateway_url="https://your-aegis-host:8080",
     workload_id="exec-abc123",
     security_scope="research-safe",
@@ -565,13 +565,13 @@ del client
 ### TypeScript
 
 ```bash
-npm install @100monkeys/smcp
+npm install @100monkeys/seal
 ```
 
 ```typescript
-import { SMCPClient } from "@100monkeys/smcp";
+import { SEALClient } from "@100monkeys/seal";
 
-const client = new SMCPClient(
+const client = new SEALClient(
   "https://your-aegis-host:8080",
   "exec-abc123",
   "research-safe",
@@ -588,11 +588,11 @@ try {
 }
 ```
 
-### What a `SmcpEnvelope` looks like on the wire
+### What a `SealEnvelope` looks like on the wire
 
 ```json
 {
-  "protocol": "smcp/v1",
+  "protocol": "seal/v1",
   "security_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJleGVjLWFiYzEyMyIsInNjcCI6InJlc2VhcmNoLXNhZmUiLCJ3aWQiOiJkb2NrZXI6Ly84YTlmN2IzYyIsImlhdCI6MTc0MDAwMDAwMCwiZXhwIjoxNzQwMDAzNjAwfQ.<gateway-signature>",
   "signature": "<Base64 Ed25519 signature over canonical message>",
   "payload": {
@@ -612,9 +612,9 @@ try {
 
 ## Further Reading
 
-- [SMCP RFC v1.0](https://github.com/100monkeys-ai/secure-model-context-protocol/blob/main/RFC/smcp-v1-specification.md) — full protocol specification including test vectors and compliance mapping
-- [SMCP Concepts](https://github.com/100monkeys-ai/secure-model-context-protocol/blob/main/docs/concepts.md) — domain model reference
-- [SMCP Integration Guide](https://github.com/100monkeys-ai/secure-model-context-protocol/blob/main/docs/integration-guide.md) — deploying a Gateway, defining `SecurityContext`s
-- [SMCP SDK Reference](https://github.com/100monkeys-ai/secure-model-context-protocol/blob/main/docs/sdk-reference.md) — complete Python and TypeScript API docs
-- [Tool Routing Architecture](/docs/architecture/tool-routing) — how SMCP composes with the three-path Tool Router
-- [Security Model](/docs/concepts/security-model) — the two-layer security model (infrastructure isolation + SMCP)
+- [SEAL RFC v1.0](https://github.com/100monkeys-ai/seal-protocol/blob/main/RFC/seal-v1-specification.md) — full protocol specification including test vectors and compliance mapping
+- [SEAL Concepts](https://github.com/100monkeys-ai/seal-protocol/blob/main/docs/concepts.md) — domain model reference
+- [SEAL Integration Guide](https://github.com/100monkeys-ai/seal-protocol/blob/main/docs/integration-guide.md) — deploying a Gateway, defining `SecurityContext`s
+- [SEAL SDK Reference](https://github.com/100monkeys-ai/seal-protocol/blob/main/docs/sdk-reference.md) — complete Python and TypeScript API docs
+- [Tool Routing Architecture](/docs/architecture/tool-routing) — how SEAL composes with the three-path Tool Router
+- [Security Model](/docs/concepts/security-model) — the two-layer security model (infrastructure isolation + SEAL)

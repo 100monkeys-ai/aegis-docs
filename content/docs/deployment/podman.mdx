@@ -26,7 +26,7 @@ For production and staging environments, AEGIS deploys as a set of Podman pods d
 | **pod-iam** | Keycloak 24 | 8180 | OIDC identity provider |
 | **pod-storage** | SeaweedFS master, volume, filer, WebDAV | 9333, 8080, 8888, 7333 | Distributed volume storage |
 | **pod-observability** | Jaeger, Prometheus, Grafana, Loki, Promtail | 16686, 9090, 3300, 3100 | Tracing, metrics, dashboards, logs |
-| **pod-smcp-gateway** | aegis-smcp-gateway | 8089, 50055 | Tool orchestration gateway |
+| **pod-seal-gateway** | aegis-seal-gateway | 8089, 50055 | Tool orchestration gateway |
 
 <Callout type="info">
 Proprietary add-on pods (Cortex, Zaru, Zaru Edge) are available under commercial license and are not included in the public `aegis-deploy` repository.
@@ -67,7 +67,7 @@ make setup
 # Authenticate with GitHub Container Registry
 make registry-login
 
-# Generate SMCP signing keys
+# Generate SEAL signing keys
 make generate-keys
 
 # Deploy the full stack
@@ -93,7 +93,7 @@ make bootstrap-keycloak
 | `make registry-login` | Authenticate with GitHub Container Registry |
 | `make bootstrap-secrets` | Initialize OpenBao (AppRole auth, KV mount) |
 | `make bootstrap-keycloak` | Create Keycloak realms, clients, and users |
-| `make generate-keys` | Generate Ed25519 SMCP signing keypair |
+| `make generate-keys` | Generate Ed25519 SEAL signing keypair |
 | `make redeploy POD=<name>` | Tear down and redeploy a single pod |
 | `make logs POD=<name>` | Stream logs for a specific pod |
 | `make clean` | Full teardown including volumes and networks |
@@ -130,7 +130,7 @@ Every pod container exposes a health check. Use `make validate` to check all at 
 | Prometheus | `GET /-/ready` on :9090 | HTTP |
 | Grafana | `GET /api/health` on :3300 | HTTP |
 | Loki | `GET /ready` on :3100 | HTTP |
-| SMCP Gateway | `GET /` on :8089 | HTTP |
+| SEAL Gateway | `GET /` on :8089 | HTTP |
 
 ### Persistent Volumes
 
@@ -145,7 +145,7 @@ Every pod container exposes a health check. Use `make validate` to check all at 
 | `aegis-seaweedfs-master-data` | storage | SeaweedFS metadata |
 | `aegis-seaweedfs-volume-data` | storage | SeaweedFS block storage |
 | `aegis-seaweedfs-filer-data` | storage | SeaweedFS filesystem layer |
-| `aegis-smcp-gateway-data` | smcp-gateway | SQLite tool database |
+| `aegis-seal-gateway-data` | seal-gateway | SQLite tool database |
 | `aegis-temporal-worker-data` | temporal | Workflow worker state |
 
 ---
@@ -345,7 +345,7 @@ Podman maps `host.containers.internal` to the host by default. AEGIS also adds `
 }
 ```
 
-Both names resolve to the host IP from within agent containers, so NFS mount addresses and SMCP callbacks work regardless of which runtime is in use.
+Both names resolve to the host IP from within agent containers, so NFS mount addresses and SEAL callbacks work regardless of which runtime is in use.
 
 ### Network Policy Enforcement
 
@@ -361,7 +361,7 @@ spec:
         - api.github.com
 ```
 
-The AEGIS daemon enforces network policy at the SMCP layer (per tool call), not via container network rules.
+The AEGIS daemon enforces network policy at the SEAL layer (per tool call), not via container network rules.
 
 ---
 

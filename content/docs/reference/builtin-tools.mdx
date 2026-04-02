@@ -15,7 +15,7 @@ Built-in tools are divided into two main categories:
 <Callout type="info">
   `skip_judge` applies **only to agents executing inside the 100monkeys inner loop** (i.e. calls
   routed through `bootstrap.py` via the Dispatch Protocol). External agents calling
-  `/v1/smcp/invoke` directly are subject to SMCP authentication, policy, and argument validation
+  `/v1/seal/invoke` directly are subject to SEAL authentication, policy, and argument validation
   (see [Argument Validation](#argument-validation) below) but are **never** sent to the semantic
   judge.
 </Callout>
@@ -24,7 +24,7 @@ When an agent manifest enables `spec.execution.tool_validation`, the orchestrato
 
 For **read-only tools** the judge often adds latency without meaningful safety value - the file contents or search results are deterministic and carry no write-side risk. Operators can set `skip_judge: true` on individual tools in `spec.builtin_dispatchers[].capabilities` or `spec.mcp_servers[].capabilities` in the [Node Configuration](/docs/reference/node-config#specbuiltin_dispatchers) to bypass the inner-loop judge for those specific tools.
 
-The judge only applies to inner-loop tool calls routed through the orchestrator's tool invocation path. It is not the same as outer-loop iteration validation, and it is not part of direct SMCP authentication or policy enforcement.
+The judge only applies to inner-loop tool calls routed through the orchestrator's tool invocation path. It is not the same as outer-loop iteration validation, and it is not part of direct SEAL authentication or policy enforcement.
 
 The canonical explanation of this control is in [Tool-Call Judging](/docs/guides/tool-call-judging).
 
@@ -92,9 +92,9 @@ These defaults can be overridden per-tool in the node configuration. `skip_judge
 
 ## Argument Validation
 
-Before any tool call is dispatched — on **both** the inner-loop path and the external SMCP path — the orchestrator validates that all required parameters are present and non-null.  If validation fails the call is rejected immediately with an `InvalidArguments` error; no execution target is allocated and no judge is invoked.
+Before any tool call is dispatched — on **both** the inner-loop path and the external SEAL path — the orchestrator validates that all required parameters are present and non-null.  If validation fails the call is rejected immediately with an `InvalidArguments` error; no execution target is allocated and no judge is invoked.
 
-**External SMCP callers** (`POST /v1/smcp/invoke`) receive a standard MCP JSON-RPC error response:
+**External SEAL callers** (`POST /v1/seal/invoke`) receive a standard MCP JSON-RPC error response:
 
 ```json
 {
@@ -107,7 +107,7 @@ Before any tool call is dispatched — on **both** the inner-loop path and the e
 }
 ```
 
-The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
+The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
 
 | Condition | HTTP status | JSON-RPC code |
 |-----------|-------------|---------------|

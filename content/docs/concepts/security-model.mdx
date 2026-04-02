@@ -1,13 +1,13 @@
 ---
 title: Security Model
-description: The two-layer AEGIS security model — infrastructure policy enforcement and SMCP protocol-level security.
+description: The two-layer AEGIS security model — infrastructure policy enforcement and SEAL protocol-level security.
 ---
 
 # Security Model
 
-AEGIS enforces security at two independent layers that work in concert: **infrastructure-level policy** (declared in the agent manifest) and **SMCP** (Secure Model Context Protocol, enforced at the tool call level). Both layers must be satisfied for any agent operation to proceed.
+AEGIS enforces security at two independent layers that work in concert: **infrastructure-level policy** (declared in the agent manifest) and **SEAL** (Signed Envelope Attestation Layer, enforced at the tool call level). Both layers must be satisfied for any agent operation to proceed.
 
-Some deployments also enable `execution.tool_validation`, a semantic pre-dispatch judge for selected tool calls. This is a safety control, not a third hard-security boundary. It can block a low-quality or dangerous tool intent before side effects occur, but it does not grant access, expand capabilities, or replace manifest policy or SMCP authorization.
+Some deployments also enable `execution.tool_validation`, a semantic pre-dispatch judge for selected tool calls. This is a safety control, not a third hard-security boundary. It can block a low-quality or dangerous tool intent before side effects occur, but it does not grant access, expand capabilities, or replace manifest policy or SEAL authorization.
 
 ---
 
@@ -61,9 +61,9 @@ security:
 
 ---
 
-## Layer 2: SMCP (Secure Model Context Protocol)
+## Layer 2: SEAL (Signed Envelope Attestation Layer)
 
-SMCP is the protocol-level security layer that governs all MCP tool calls. Every tool invocation from an agent is wrapped in a cryptographically signed `SmcpEnvelope`. The orchestrator verifies the signature and evaluates the call against the agent's assigned `SecurityContext` before forwarding to any tool server.
+SEAL is the protocol-level security layer that governs all MCP tool calls. Every tool invocation from an agent is wrapped in a cryptographically signed `SealEnvelope`. The orchestrator verifies the signature and evaluates the call against the agent's assigned `SecurityContext` before forwarding to any tool server.
 
 ### Key Concepts
 
@@ -71,7 +71,7 @@ SMCP is the protocol-level security layer that governs all MCP tool calls. Every
 |---|---|
 | **`SecurityContext`** | A named set of permitted tool capabilities defined in node config (e.g., `"default"`, `"restricted"`, `"privileged"`). |
 | **`SecurityToken`** | A short-lived JWT issued by the orchestrator at attestation time, scoping the agent to its `SecurityContext`. |
-| **`SmcpEnvelope`** | Every tool call is wrapped in an envelope containing the `SecurityToken`, an Ed25519 signature, and the inner MCP payload. |
+| **`SealEnvelope`** | Every tool call is wrapped in an envelope containing the `SecurityToken`, an Ed25519 signature, and the inner MCP payload. |
 | **`PolicyEngine`** | Cedar-based rule evaluator that checks each tool call against the `SecurityContext` capabilities. |
 
 ### Attestation Flow
@@ -87,7 +87,7 @@ At agent startup, `bootstrap.py` performs a one-time attestation:
 
 On every tool call:
 
-1. `SmcpMiddleware` in the orchestrator receives the `SmcpEnvelope`.
+1. `SealMiddleware` in the orchestrator receives the `SealEnvelope`.
 2. It verifies the Ed25519 signature against the public key registered at attestation.
 3. It decodes the `SecurityToken` and verifies it is not expired and matches the current `execution_id`.
 4. It passes the tool name and parameters to the `PolicyEngine`.
@@ -100,7 +100,7 @@ On every tool call:
 
 ### Credential Isolation
 
-Agents **never receive** API keys, database credentials, or other secrets. The orchestrator resolves credentials from OpenBao (see [Secrets Management](/docs/deployment/secrets)) and injects them directly into outbound tool call requests — invisible to the agent process. This is enforced architecturally: the credential resolution happens in the orchestrator host process after the `SmcpEnvelope` is verified.
+Agents **never receive** API keys, database credentials, or other secrets. The orchestrator resolves credentials from OpenBao (see [Secrets Management](/docs/deployment/secrets)) and injects them directly into outbound tool call requests — invisible to the agent process. This is enforced architecturally: the credential resolution happens in the orchestrator host process after the `SealEnvelope` is verified.
 
 ### Non-Repudiation
 
@@ -176,7 +176,7 @@ Platform operators use the `aegis-system-operator` SecurityContext, which provid
 - `aegis.system.info`
 - `aegis.system.config`
 
-Tools are classified into three categories at the SMCP gateway level:
+Tools are classified into three categories at the SEAL gateway level:
 
 | Category | Consumer tiers | Operator |
 |----------|---------------|----------|

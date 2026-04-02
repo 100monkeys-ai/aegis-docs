@@ -210,7 +210,7 @@ The TypeScript worker never executes agent code directly. All compute-heavy work
 | `executeParallelContainerRunActivity` | `AegisRuntime.ExecuteContainerRun` × N | `Promise.allSettled` + aggregation | Dispatches N concurrent `executeContainerRunActivity` calls; aggregates results per `ParallelCompletionStrategy`. |
 | `executeSubworkflowActivity` | Temporal Child Workflow API | child workflow | Starts a child workflow execution via Temporal's native child workflow support. In `blocking` mode, awaits the child's completion and returns the final Blackboard. In `fire_and_forget` mode, starts the child and returns immediately with the child execution ID. |
 
-The gRPC server runs on port 50051 (configurable via `AEGIS_RUNTIME_GRPC_URL`). Security policy enforcement, SMCP attestation, and container lifecycle remain entirely in Rust — the TypeScript worker has no direct access to agent containers or the Docker socket.
+The gRPC server runs on port 50051 (configurable via `AEGIS_RUNTIME_GRPC_URL`). Security policy enforcement, SEAL attestation, and container lifecycle remain entirely in Rust — the TypeScript worker has no direct access to agent containers or the Docker socket.
 
 After each state transition the worker POSTs a structured event to `POST /v1/temporal-events` on the Rust orchestrator. The `TemporalEventListener` maps these to typed `WorkflowEvent` domain objects, appends them to the `WorkflowExecution` event store in PostgreSQL, and publishes them to the internal `EventBus`.
 

@@ -140,7 +140,7 @@ The key architectural advantage: `AegisFSAL` is the same code regardless of tran
 
 ## Network Isolation in Firecracker
 
-Each Firecracker microVM gets its own network interface via a tap device on the host. Outbound traffic from the microVM is routed through the orchestrator proxy (SMCP), not directly to the internet. The tap interface is destroyed when the microVM stops.
+Each Firecracker microVM gets its own network interface via a tap device on the host. Outbound traffic from the microVM is routed through the orchestrator proxy (SEAL), not directly to the internet. The tap interface is destroyed when the microVM stops.
 
 ---
 

@@ -39,9 +39,9 @@ The AEGIS platform deploys as a set of Podman pods, each grouping related contai
 │  │              │  │              │   │:7333             │  │
 │  └──────────────┘  └──────────────┘   └──────────────────┘  │
 │                                                               │
-│  pod-observability                    pod-smcp-gateway        │
+│  pod-observability                    pod-seal-gateway        │
 │  ┌──────────────────────────────┐    ┌──────────────────┐   │
-│  │jaeger     :16686 :4317 :4318│    │smcp-gateway      │   │
+│  │jaeger     :16686 :4317 :4318│    │seal-gateway      │   │
 │  │prometheus :9090              │    │:8089 :50055      │   │
 │  │grafana    :3300              │    │                  │   │
 │  │loki       :3100              │    │                  │   │
@@ -72,7 +72,7 @@ The central AEGIS orchestrator. Manages agent lifecycle, execution, tool routing
 - Podman socket (read-only) for spawning agent containers
 - `aegis-config.yaml` and `runtime-registry.yaml` mounted as config
 
-**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK`, `AEGIS_ORCHESTRATOR_URL`, `SMCP_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`
+**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK`, `AEGIS_ORCHESTRATOR_URL`, `SEAL_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`
 
 ---
 
@@ -200,19 +200,19 @@ Full monitoring stack: distributed tracing, metrics, dashboards, and log aggrega
 
 ---
 
-## pod-smcp-gateway
+## pod-seal-gateway
 
-SMCP tooling gateway for REST workflow macros, API explorer, and ephemeral CLI tools.
+SEAL tooling gateway for REST workflow macros, API explorer, and ephemeral CLI tools.
 
 | Container | Image | Ports |
 |-----------|-------|-------|
-| smcp-gateway | `ghcr.io/100monkeys-ai/aegis-smcp-gateway` | 8089 (HTTP), 50055 (gRPC) |
+| seal-gateway | `ghcr.io/100monkeys-ai/aegis-seal-gateway` | 8089 (HTTP), 50055 (gRPC) |
 
 **Health check:** HTTP GET `/` on port 8089 (10s interval)
 
 **Volumes:**
 
-- `aegis-smcp-gateway-data` -> `/app/data` (SQLite database)
+- `aegis-seal-gateway-data` -> `/app/data` (SQLite database)
 - Podman socket (for ephemeral container execution)
 
 ---
@@ -230,7 +230,7 @@ SMCP tooling gateway for REST workflow macros, API explorer, and ephemeral CLI t
 | `aegis-seaweedfs-master-data` | storage | `/data` | Permanent |
 | `aegis-seaweedfs-volume-data` | storage | `/data` | Permanent |
 | `aegis-seaweedfs-filer-data` | storage | `/data` | Permanent |
-| `aegis-smcp-gateway-data` | smcp-gateway | `/app/data` | Permanent |
+| `aegis-seal-gateway-data` | seal-gateway | `/app/data` | Permanent |
 | `aegis-temporal-worker-data` | temporal | `/app/data` | Permanent |
 
 ---
@@ -253,7 +253,7 @@ All pods share the `aegis-network` Podman bridge network. Containers within the 
 | pod-observability (promtail) | pod-observability (loki) | HTTP :3100 | Log shipping |
 | pod-observability (prometheus) | All pods | HTTP (various) | Metrics scraping |
 | pod-observability (grafana) | pod-observability | HTTP :9090, :3100, :16686 | Data queries |
-| pod-smcp-gateway | pod-database | TCP :5432 | Tool registry |
+| pod-seal-gateway | pod-database | TCP :5432 | Tool registry |
 
 ---
 

@@ -13,15 +13,15 @@ A **Workflow** in AEGIS is a declarative finite state machine (FSM) defined in Y
 
 It is critical to distinguish between the two types of "Workflows" in the AEGIS ecosystem to avoid namespace collisions and conceptual errors.
 
-| Feature | Temporal Workflows (`Workflow`) | SMCP ToolWorkflows (`Macro-Tools`) |
+| Feature | Temporal Workflows (`Workflow`) | SEAL ToolWorkflows (`Macro-Tools`) |
 |---|---|---|
 | **Purpose** | Async CI/CD pipelines, long-running multi-agent choreography. | Sync REST API macro-tools, context window compression. |
-| **Backend** | Temporal (Durable, stateful, persistent). | SMCP Tooling Gateway (Stateless, sub-second). |
+| **Backend** | Temporal (Durable, stateful, persistent). | SEAL Tooling Gateway (Stateless, sub-second). |
 | **Primitives** | `Agent`, `ContainerRun`, `HumanApproval`. | Sequential REST calls with JSONPath extractors. |
 | **Duration** | Minutes to weeks. | Milliseconds to seconds. |
 | **Invoked By** | Operator or system trigger. | Agent LLM (via standard `tools/call`). |
 
-This page documents **Temporal Workflows**. For documentation on REST macro-tools, see the [SMCP Tooling Gateway](/docs/architecture/tooling-gateway) architecture.
+This page documents **Temporal Workflows**. For documentation on REST macro-tools, see the [SEAL Tooling Gateway](/docs/architecture/tooling-gateway) architecture.
 
 ---
 

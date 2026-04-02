@@ -191,11 +191,11 @@ Reject a pending request and transition the workflow to the rejection path.
 
 ---
 
-## SMCP Endpoints
+## SEAL Endpoints
 
-### `POST /v1/smcp/attest`
+### `POST /v1/seal/attest`
 
-Attestation handshake — used by `bootstrap.py` at the start of each agent execution to establish an SMCP session.
+Attestation handshake — used by `bootstrap.py` at the start of each agent execution to establish an SEAL session.
 
 **Request:**
 
@@ -218,13 +218,13 @@ Attestation handshake — used by `bootstrap.py` at the start of each agent exec
 }
 ```
 
-See [SMCP Architecture](/docs/architecture/smcp) for the full attestation flow.
+See [SEAL Architecture](/docs/architecture/seal) for the full attestation flow.
 
 ---
 
-### `POST /v1/smcp/invoke`
+### `POST /v1/seal/invoke`
 
-SMCP-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is an `SmcpEnvelope` containing a signed MCP tool call.
+SEAL-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is an `SealEnvelope` containing a signed MCP tool call.
 
 See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths and wire format.
 
@@ -392,4 +392,4 @@ Liveness probe. Returns `200 OK` when the orchestrator is running.
 - [gRPC API Reference](/docs/reference/grpc-api) — Temporal-worker-facing streaming transport
 - [Configuring Webhooks](/docs/guides/configuring-webhooks) — setting up HMAC secrets and routes
 - [Human Approvals](/docs/guides/human-approvals) — using the approval gate in workflows
-- [SMCP Architecture](/docs/architecture/smcp) — signed tool invocation protocol
+- [SEAL Architecture](/docs/architecture/seal) — signed tool invocation protocol

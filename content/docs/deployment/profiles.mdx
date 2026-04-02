@@ -20,7 +20,7 @@ The [`aegis-deploy`](https://github.com/100monkeys-ai/aegis-deploy) repository u
 | **pod-iam** (Keycloak) | | ✓ | ✓ |
 | **pod-observability** (Jaeger, Prometheus, Grafana, Loki) | | ✓ | ✓ |
 | **pod-storage** (SeaweedFS) | | | ✓ |
-| **pod-smcp-gateway** (SMCP Gateway) | | | ✓ |
+| **pod-seal-gateway** (SEAL Gateway) | | | ✓ |
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
@@ -69,7 +69,7 @@ The `development` profile starts all core services including the full observabil
 **What's missing vs full:**
 
 - No SeaweedFS (volumes use local storage)
-- No SMCP Gateway (direct tool routing only)
+- No SEAL Gateway (direct tool routing only)
 
 ---
 
@@ -79,7 +79,7 @@ The `development` profile starts all core services including the full observabil
 
 **Includes:** All 8 public pods.
 
-The `full` profile starts every public service including distributed storage (SeaweedFS) and the SMCP tooling gateway. This is the recommended profile for production deployments.
+The `full` profile starts every public service including distributed storage (SeaweedFS) and the SEAL tooling gateway. This is the recommended profile for production deployments.
 
 ---
 

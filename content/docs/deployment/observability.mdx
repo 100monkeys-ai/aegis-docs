@@ -102,7 +102,7 @@ AEGIS uses Rust's `RUST_LOG` environment variable, which accepts a comma-separat
 | `error` | Unrecoverable failures (operation panics, infrastructure unavailability) |
 | `warn` | Recoverable issues: missing optional config, NFS deregistration lag, LLM provider degraded |
 | `info` | Normal lifecycle events: server started, execution completed, volume cleaned up |
-| `debug` | Per-request details: tool routing decisions, SMCP validation, storage path resolution |
+| `debug` | Per-request details: tool routing decisions, SEAL validation, storage path resolution |
 | `trace` | Verbose internal state: usually too noisy for production |
 
 ### Recommended Settings
@@ -120,8 +120,8 @@ RUST_LOG=info,aegis_orchestrator_core::infrastructure::tool_router=debug
 # Debug tool-call judging
 RUST_LOG=info,aegis_orchestrator_core::application::tool_invocation_service=debug,aegis_orchestrator_core::application::validation_service=debug
 
-# Verbose SMCP audit
-RUST_LOG=info,aegis_orchestrator_core::infrastructure::smcp=debug
+# Verbose SEAL audit
+RUST_LOG=info,aegis_orchestrator_core::infrastructure::seal=debug
 
 # Development (everything)
 RUST_LOG=debug
@@ -211,12 +211,12 @@ AEGIS publishes structured domain events to its internal event bus. These events
 | `"Failed to connect to Temporal"` | ERROR | Temporal workflow engine unreachable |
 | `"Failed to start some MCP servers"` | ERROR | One or more MCP tool servers failed to start |
 
-### SMCP / Security Events
+### SEAL / Security Events
 
-SMCP policy violations always produce `WARN` log entries with structured fields including `execution_id`, `tool_name`, and the violation type. These are produced by `SmcpAudit`:
+SEAL policy violations always produce `WARN` log entries with structured fields including `execution_id`, `tool_name`, and the violation type. These are produced by `SealAudit`:
 
 ```json
-{"level":"WARN","target":"aegis_orchestrator_core::infrastructure::smcp::audit","fields":{"execution_id":"a1b2...","tool_name":"fs.delete","violation":"ToolExplicitlyDenied"},"message":"SMCP tool call blocked"}
+{"level":"WARN","target":"aegis_orchestrator_core::infrastructure::seal::audit","fields":{"execution_id":"a1b2...","tool_name":"fs.delete","violation":"ToolExplicitlyDenied"},"message":"SEAL tool call blocked"}
 ```
 
 ### Tool-Call Judging
@@ -227,7 +227,7 @@ The runtime documentation and verified logging surface do not currently expose a
 |---|---|
 | Execution lifecycle logs | Whether the parent execution started, refined, completed, or failed. |
 | Inner-loop generation logs | Whether the model returned a final response or hit a generation error. |
-| SMCP audit logs | Whether a tool call was blocked by policy before routing. |
+| SEAL audit logs | Whether a tool call was blocked by policy before routing. |
 | Tool routing debug logs | Which routing path a tool took when debug logging is enabled. |
 | Child execution logs | Whether a judge execution was spawned and how it completed, if you correlate by execution ID. |
 
@@ -529,7 +529,7 @@ scrape_configs:
 AEGIS provides a wide range of metrics across different subsystems:
 
 - **Executions**: Active execution count, total completions/failures, and duration histograms.
-- **SMCP Security**: Policy violations, attestation success/failure rates, and session counts.
+- **SEAL Security**: Policy violations, attestation success/failure rates, and session counts.
 - **Storage (NFS)**: File operation counts, latencies, and total bytes read/written.
 - **Workflows**: Active workflow executions and state transition counters.
 - **System**: Node uptime and static version/identity information.
