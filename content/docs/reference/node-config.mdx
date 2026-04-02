@@ -605,6 +605,16 @@ Optional. Default: `false`.
 
 ---
 
+### `spec.force_deploy_builtins`
+
+Optional. Default: disabled.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `force_deploy_builtins` | string | — | Force re-register all built-in agents and workflows on startup. Accepts `"true"` or `"env:VAR_NAME"`. Use after upgrades to flush stale definitions. |
+
+---
+
 ### `spec.mcp_servers`
 
 Optional array. Each entry defines an external MCP Tool Server process.

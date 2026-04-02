@@ -330,6 +330,13 @@ storage:
 # Default: false
 deploy_builtins: false
 
+# ─── Force Deploy Built-In Templates ─────────────────────────────────────────
+# Force re-registration of all built-in agents and workflows on startup, even if
+# already registered. Use after a platform upgrade when built-in agent UUIDs or
+# definitions have changed and stale registrations need to be flushed.
+# Accepts: "true" | "false" | "env:VAR_NAME". Optional. Default: disabled.
+force_deploy_builtins: "false"
+
 # ─── MCP Tool Servers ─────────────────────────────────────────────────────────
 # External MCP server processes. Optional array.
 mcp_servers:
