@@ -62,8 +62,8 @@ All inter-node gRPC calls use this envelope:
 ```
 SealNodeEnvelope {
   node_security_token: <NodeSecurityToken JWT>,
-  signature: <Ed25519 signature over inner_payload>,
-  inner_payload: <serialized RPC request bytes>
+  signature: <Ed25519 signature over payload>,
+  payload: <serialized RPC request bytes>
 }
 ```
 
@@ -312,7 +312,7 @@ Worker                                      Controller
   │     SealNodeEnvelope {                      │
   │       node_security_token,                  │
   │       signature,                            │
-  │       inner_payload                         │
+  │       payload                                │
   │     }                                       │
   │                                              │
   │──── RegisterNode(capabilities) ────────────►│  7. Advertises NodeCapabilityAdvertisement

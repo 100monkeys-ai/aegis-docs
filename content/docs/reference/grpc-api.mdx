@@ -476,8 +476,8 @@ The `NodeSecurityToken` is an RS256 JWT (1-hour TTL) signed by the controller's 
 ```protobuf
 message SealNodeEnvelope {
   string node_security_token = 1; // NodeSecurityToken JWT
-  bytes  signature           = 2; // Ed25519 signature over inner_payload
-  bytes  inner_payload       = 3; // Serialized request message
+  bytes  signature           = 2; // Ed25519 signature over payload
+  bytes  payload             = 3; // Serialized request message
 }
 ```
 

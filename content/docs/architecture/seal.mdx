@@ -126,12 +126,12 @@ Agent                          Gateway                          KMS
   │   {                           │                               │
   │     "public_key": "<B64>",    │                               │
   │     "workload_id": "<exec>",  │                               │
-  │     "requested_scope": "..."  │                               │
+  │     "requested_context": "..."  │                               │
   │   }                           │                               │
   │                               │─── 3. Verify workload_id ────►│
   │                               │     (container runtime API)   │
   │                               │                               │
-  │                               │─── 4. Sign JWT (EdDSA) ──────►│
+  │                               │─── 4. Sign JWT (RS256) ───────►│
   │                               │◄── 5. Signed SecurityToken ───│
   │                               │                               │
   │◄── 6. Attestation response ───│                               │
@@ -152,7 +152,7 @@ Agent                          Gateway                          KMS
 {
   "public_key": "<Base64-encoded Ed25519 public key (32 bytes)>",
   "workload_id": "<execution UUID or container ID>",
-  "requested_scope": "default"
+  "requested_context": "default"
 }
 ```
 
@@ -162,7 +162,7 @@ The Gateway verifies that `workload_id` maps to a currently running execution in
 
 ```json
 {
-  "status": "attested",
+  "status": "success",
   "security_token": "<JWT>",
   "expires_at": "2026-02-23T11:00:00Z",
   "session_id": "<SealSession UUID>"
@@ -176,23 +176,23 @@ The `security_token` is a JWT signed by the Gateway's root key (via OpenBao Tran
 **JWT header:**
 
 ```json
-{ "alg": "EdDSA", "typ": "JWT" }
+{ "alg": "RS256", "typ": "JWT" }
 ```
 
 **JWT claims:**
 
 ```json
 {
-  "sub":  "exec-abc123",       // workload_id
-  "scp":  "research-safe",     // SecurityContext name
-  "wid":  "docker://8a9f7b3c", // container identity
+  "sub":  "agent-8a9f7b3c",    // agent_id
+  "scp":  "research-safe",     // SecurityContext name (REQUIRED)
+  "wid":  "docker://8a9f7b3c", // container identity (REQUIRED)
   "iat":  1740000000,          // issued at (Unix)
   "exp":  1740003600,          // expires at (1 hour later)
   "jti":  "session-9d8f2e1c"  // session ID for revocation
 }
 ```
 
-The `alg: "EdDSA"` header explicitly prevents algorithm confusion attacks. Agents cannot forge or modify the token — doing so invalidates the Gateway's signature.
+The `alg: "RS256"` header explicitly prevents algorithm confusion attacks. Agents cannot forge or modify the token — doing so invalidates the Gateway's signature.
 
 ---
 
@@ -297,20 +297,17 @@ A `SecurityContext` is a named permission boundary — an Aggregate Root in the 
 name: default
 capabilities:
   - tool_pattern: "fs.*"
-    constraints:
-      path_allowlist:
-        - /workspace
+    path_allowlist:
+      - /workspace
   - tool_pattern: "cmd.run"
-    constraints:
-      subcommand_allowlist:
-        python: ["-m"]
-        npm: [install, run, test]
+    subcommand_allowlist:
+      python: ["-m"]
+      npm: [install, run, test]
   - tool_pattern: "web.fetch"
-    constraints:
-      domain_allowlist:
-        - pypi.org
-        - api.github.com
-      rate_limit: { calls: 20, per_seconds: 60 }
+    domain_allowlist:
+      - pypi.org
+      - api.github.com
+    rate_limit: { calls: 20, per_seconds: 60 }
 deny_list: []
 ```
 
@@ -320,19 +317,16 @@ deny_list: []
 name: read-only-research
 capabilities:
   - tool_pattern: "web_search"
-    constraints:
-      domain_allowlist:
-        - "*.wikipedia.org"
-        - "*.arxiv.org"
-        - "*.scholar.google.com"
+    domain_allowlist:
+      - "*.wikipedia.org"
+      - "*.arxiv.org"
+      - "*.scholar.google.com"
   - tool_pattern: "filesystem.read"
-    constraints:
-      path_allowlist:
-        - /workspace
+    path_allowlist:
+      - /workspace
   - tool_pattern: "filesystem.list"
-    constraints:
-      path_allowlist:
-        - /workspace
+    path_allowlist:
+      - /workspace
 deny_list:
   - filesystem.write
   - filesystem.delete
@@ -345,14 +339,12 @@ deny_list:
 name: code-assistant
 capabilities:
   - tool_pattern: "filesystem.*"
-    constraints:
-      path_allowlist:
-        - /workspace/project
+    path_allowlist:
+      - /workspace/project
   - tool_pattern: "cmd.run"
-    constraints:
-      subcommand_allowlist:
-        npm: [test]
-        cargo: [test, build]
+    subcommand_allowlist:
+      npm: [test]
+      cargo: [test, build]
 deny_list:
   - filesystem.delete
 ```
@@ -397,9 +389,9 @@ Ed25519 was chosen for the following properties:
 - **Simplicity:** Fixed 32-byte public keys, 64-byte signatures. No parameter choices.
 - **Ephemeral by design:** Keys are generated per-execution, never persisted to disk, erased from memory at session end.
 
-### JWT with EdDSA
+### JWT with RS256
 
-The `security_token` is signed with `alg: "EdDSA"` (JWT RFC 7519 + RFC 8037). The explicit algorithm header prevents algorithm confusion attacks. The Gateway public key can be fetched from a well-known endpoint or distributed out-of-band.
+The `security_token` is signed with `alg: "RS256"` (JWT RFC 7519). RS256 is RECOMMENDED for JWT signing — it uses the Gateway's RSA key managed by the OpenBao Transit Engine. The explicit algorithm header prevents algorithm confusion attacks. The Gateway public key can be fetched from a well-known endpoint or distributed out-of-band.
 
 ### Key Management (Keymaster Pattern)
 
@@ -408,7 +400,7 @@ In production, the Gateway signs JWTs via the **OpenBao Transit Engine** (Encryp
 ```
 AttestationService → Transit Engine sign API → OpenBao (KMS)
                                                 │
-                                                └── Ed25519 key
+                                                └── RSA key (RS256)
                                                     never leaves HSM
 ```
 
@@ -462,7 +454,7 @@ SEAL uses structured error codes in HTTP 4xx responses:
 | Code | Name | Description |
 |---|---|---|
 | `3000` | `UNKNOWN_WORKLOAD` | `workload_id` not found in active executions |
-| `3001` | `SCOPE_NOT_FOUND` | `requested_scope` does not name a known `SecurityContext` |
+| `3001` | `SCOPE_NOT_FOUND` | `requested_context` does not name a known `SecurityContext` |
 | `3002` | `WORKLOAD_VERIFICATION_FAILED` | Container runtime could not confirm workload identity |
 
 ---
@@ -548,7 +540,7 @@ from seal import SEALClient
 client = SEALClient(
     gateway_url="https://your-aegis-host:8080",
     workload_id="exec-abc123",
-    security_scope="research-safe",
+    security_context="research-safe",
 )
 
 # 2. Attest — one-time handshake, stores JWT internally
@@ -593,7 +585,7 @@ try {
 ```json
 {
   "protocol": "seal/v1",
-  "security_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJleGVjLWFiYzEyMyIsInNjcCI6InJlc2VhcmNoLXNhZmUiLCJ3aWQiOiJkb2NrZXI6Ly84YTlmN2IzYyIsImlhdCI6MTc0MDAwMDAwMCwiZXhwIjoxNzQwMDAzNjAwfQ.<gateway-signature>",
+  "security_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZ2VudC04YTlmN2IzYyIsInNjcCI6InJlc2VhcmNoLXNhZmUiLCJ3aWQiOiJkb2NrZXI6Ly84YTlmN2IzYyIsImlhdCI6MTc0MDAwMDAwMCwiZXhwIjoxNzQwMDAzNjAwfQ.<gateway-signature>",
   "signature": "<Base64 Ed25519 signature over canonical message>",
   "payload": {
     "jsonrpc": "2.0",
