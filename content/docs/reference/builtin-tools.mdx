@@ -41,6 +41,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `fs.edit` | `false` | State-mutating |
 | `fs.multi_edit` | `false` | State-mutating |
 | `fs.create_dir` | `false` | State-mutating |
+| `fs.create.dir` | `false` | Alias for `fs.create_dir` |
 | `fs.delete` | `false` | State-mutating — destructive |
 | `web.search` | `true` | Read-only external lookup |
 | `web.fetch` | `true` | Read-only HTTP fetch |
@@ -140,7 +141,7 @@ The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
 | `aegis.schema.get` | `key` |
 | `aegis.schema.validate` | `kind`, `manifest_yaml` |
 | `cmd.run` | `command` (must be a non-empty string) |
-| `fs.read`, `fs.list`, `fs.create_dir`, `fs.delete` | `path` |
+| `fs.read`, `fs.list`, `fs.create_dir`, `fs.create.dir`, `fs.delete` | `path` |
 | `fs.write` | `path`, `content` |
 | `fs.edit` | `path`, `target_content`, `replacement_content` |
 | `fs.multi_edit` | `path`, `edits` |
