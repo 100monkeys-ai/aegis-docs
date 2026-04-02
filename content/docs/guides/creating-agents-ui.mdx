@@ -1,0 +1,165 @@
+---
+title: Creating Agents via the UI
+description: Step-by-step guide to creating, editing, and deleting agents using the Zaru web interface.
+---
+
+# Creating Agents via the UI
+
+The Zaru web interface provides a structured UI for creating, editing, and managing agents. This complements the CLI and conversational (Architect mode) creation paths with a visual, form-driven experience.
+
+Two surfaces are available:
+
+- **Admin console** (`/admin/agents`) — operators manage all agents across tenants
+- **Dashboard** (`/dashboard/agents`) — users manage their own agents
+
+Both surfaces share the same form and editing components. The instructions below apply to either surface.
+
+---
+
+## Prerequisites
+
+- A Zaru account with an active session
+- For admin access: an `aegis:admin` or `aegis:operator` Keycloak role
+
+---
+
+## Creating an Agent
+
+### Step 1: Navigate to the Agent List
+
+- **Admin**: Click **Agents** in the admin sidebar
+- **Dashboard**: Click **Agents** in the dashboard navigation
+
+### Step 2: Click "New Agent"
+
+The create button appears in the toolbar above the agent list. On the admin surface, this button is only visible to users with `admin` or `operator` roles.
+
+### Step 3: Choose an Editing Mode
+
+The create page offers two editing modes, toggled via a switch at the top of the form:
+
+**Structured form** (default) — fill in fields with validation feedback:
+
+- Metadata (name, version, description, labels, tags)
+- Runtime configuration (language + version or custom Docker image)
+- Task definition (instruction and prompt template)
+- Security policy (network mode, filesystem paths, resource limits)
+- Execution strategy (one-shot vs. iterative, max iterations, validators)
+- Tool bindings
+- Environment variables
+
+**YAML editor** — write or paste the full agent manifest in YAML:
+
+- Syntax highlighting and line numbers via CodeMirror 6
+- Parse errors shown inline as you type
+- Toggle back to structured form at any time; the form fields populate from the YAML
+
+You can switch between modes freely. When switching from form to YAML, the current form state is serialized. When switching from YAML to form, the YAML is parsed and loaded into form fields.
+
+### Step 4: Fill in the Manifest
+
+At minimum, you need:
+
+| Field | Example | Notes |
+|---|---|---|
+| `name` | `python-coder` | Lowercase, alphanumeric, hyphens. Must be unique. |
+| `version` | `1.0.0` | Semantic version string. |
+| `runtime.language` | `python` | Or use `runtime.image` for a custom Docker image. |
+| `runtime.version` | `3.11` | Required when using `language`. |
+
+A minimal agent manifest in YAML mode:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: python-coder
+  version: "1.0.0"
+  description: "Writes Python solutions to programming tasks."
+spec:
+  runtime:
+    language: python
+    version: "3.11"
+  task:
+    instruction: |
+      Write a Python solution to the given problem.
+      Save the solution to /workspace/solution.py.
+```
+
+See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the complete field specification.
+
+### Step 5: Submit
+
+Click **Create Agent**. The manifest is sent to the orchestrator, which:
+
+1. Validates the manifest against the domain schema
+2. Resolves the runtime image (standard or custom)
+3. Registers the agent in the agent registry
+4. Returns success or detailed validation errors
+
+On success, you are redirected to the agent detail page. On failure, validation errors are displayed inline.
+
+---
+
+## Editing an Agent
+
+1. Navigate to the agent detail page (click the agent name in the list)
+2. Click **Edit** (visible only if you have mutation permissions)
+3. Modify fields in either structured form or YAML mode
+4. Click **Update Agent**
+
+The update sends `POST /v1/agents?force=true`, which overwrites the existing agent with the same name and version. There is no version history — the previous manifest is replaced.
+
+---
+
+## Deleting an Agent
+
+1. Navigate to the agent detail page
+2. Click the **Delete** button
+3. Confirm in the dialog
+
+Deletion removes the agent from the registry. Running executions are not affected, but no new executions can be started for the deleted agent.
+
+On the admin surface, `admin` and `operator` roles can delete any agent. On the dashboard, users can only delete agents they created.
+
+---
+
+## Running an Agent
+
+From the agent detail page or the agent list, click **Execute** to open the execution dialog:
+
+1. Enter the task input (plain text or JSON)
+2. Click **Run**
+3. You are redirected to the execution detail view
+
+---
+
+## Key Manifest Fields
+
+### Runtime
+
+Two mutually exclusive modes:
+
+- **StandardRuntime**: `language` + `version` — the orchestrator resolves the official Docker image
+- **CustomRuntime**: `image` — a fully-qualified Docker image reference (e.g., `ghcr.io/org/agent:v1.0`)
+
+### Task
+
+- `instruction` — high-level guidance for the agent (what it should accomplish)
+- `prompt_template` — Handlebars template for constructing LLM prompts; supports `{{instruction}}`, `{{input}}`, `{{previous_error}}`, `{{iteration_number}}`
+
+### Security
+
+Security is deny-by-default. You must explicitly declare:
+
+- `network.mode` — `allow` (use allowlist), `deny`, or `none` (no network)
+- `filesystem.read` / `filesystem.write` — permitted container paths
+- `resources` — CPU, memory, disk, and timeout limits
+
+### Execution
+
+- `mode` — `one-shot` (single attempt) or `iterative` (refine until validation passes)
+- `max_iterations` — maximum refinement loops (1-20, default 10)
+- `validation` — ordered list of validators (exit code, JSON schema, semantic judge)
+
+See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the full specification.

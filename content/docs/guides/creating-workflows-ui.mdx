@@ -1,0 +1,202 @@
+---
+title: Creating Workflows via the UI
+description: Step-by-step guide to creating, editing, and managing workflows using the Zaru web interface, including scope management and FSM visualization.
+---
+
+# Creating Workflows via the UI
+
+The Zaru web interface provides structured forms and a YAML editor for creating and managing workflows. Workflows define finite state machines (FSMs) that coordinate agents, system commands, container steps, and human approval gates into durable, restartable sequences.
+
+Two surfaces are available:
+
+- **Admin console** (`/admin/workflows`) — operators manage all workflows across tenants, including scope changes
+- **Dashboard** (`/dashboard/workflows`) — users manage their own workflows
+
+---
+
+## Prerequisites
+
+- A Zaru account with an active session
+- For admin access: an `aegis:admin` or `aegis:operator` Keycloak role
+- Agents referenced in the workflow must already be deployed
+
+---
+
+## Creating a Workflow
+
+### Step 1: Navigate to the Workflow List
+
+- **Admin**: Click **Workflows** in the admin sidebar
+- **Dashboard**: Click **Workflows** in the dashboard navigation
+
+### Step 2: Click "New Workflow"
+
+On the admin surface, this button is only visible to users with `admin` or `operator` roles.
+
+### Step 3: Choose an Editing Mode
+
+Toggle between **Structured Form** and **YAML Editor** at the top of the page.
+
+The structured form guides you through each section of the workflow manifest. The YAML editor gives direct access to the full manifest with syntax highlighting.
+
+### Step 4: Define the Workflow
+
+#### Metadata
+
+| Field | Example | Notes |
+|---|---|---|
+| `name` | `dev-pipeline` | Lowercase, alphanumeric, hyphens. Must be unique. |
+| `version` | `1.0.0` | Semantic version string. |
+| `description` | `Iterative code gen with review` | Used for discovery search. |
+| `labels` | `category: development` | Key-value pairs for filtering. |
+| `tags` | `ci-cd`, `code-review` | Used for discovery and search. |
+
+#### Initial State
+
+Set `spec.initial_state` to the name of the first state the workflow enters when executed.
+
+#### States
+
+Each state in the FSM has:
+
+- **Name** — unique identifier within the workflow (e.g., `GENERATE`, `VALIDATE`, `COMPLETE`)
+- **Kind** — determines what the state does:
+
+  | Kind | Purpose |
+  |---|---|
+  | `Agent` | Run a deployed agent with templated input |
+  | `System` | Execute a shell command |
+  | `Human` | Wait for human approval or input |
+  | `ContainerRun` | Run a Docker container (CI/CD step) |
+  | `ParallelAgents` | Run multiple agents concurrently with consensus |
+  | `ParallelContainerRun` | Run multiple containers concurrently |
+  | `Subworkflow` | Invoke another workflow as a nested FSM |
+
+- **Kind-specific fields** — e.g., `agent` name for Agent kind, `command` for System kind, `prompt` for Human kind
+- **Transitions** — ordered list of condition/target pairs defining where the FSM moves next
+
+#### Transitions
+
+Each transition has:
+
+- `condition` — when to take this transition (`always`, `exit_code_zero`, `exit_code_non_zero`, `score_above`, `score_below`, `consensus`, `input_equals_yes`, `input_equals_no`, `custom`)
+- `target` — the state name to transition to
+- `threshold` — (for score/consensus conditions) numeric threshold
+- `feedback` — (optional) Handlebars template passed to the target state as error context
+
+A state with an empty `transitions: []` array is a terminal state — the workflow ends when it is reached.
+
+### Step 5: Submit
+
+Click **Create Workflow**. The orchestrator validates the manifest, checks that referenced agents exist, and registers the workflow. Validation errors are shown inline.
+
+---
+
+## The FSM Visualization Tab
+
+The workflow detail and edit pages include a **Visualization** tab that renders the state machine as an interactive graph. See [Workflow Visualization](/docs/guides/workflow-visualization) for details on reading the graph.
+
+The visualization updates live as you edit the YAML, providing immediate feedback on your workflow topology.
+
+---
+
+## Workflow Scope
+
+Workflows have a scope that controls visibility:
+
+| Scope | Visibility |
+|---|---|
+| **User** | Only the creating user can see and execute the workflow |
+| **Tenant** | All users in the same tenant can see and execute the workflow |
+| **Global** | All users across all tenants can see and execute the workflow |
+
+Workflows created via the dashboard are **User**-scoped by default.
+
+### Changing Scope (Admin Only)
+
+On the admin surface, the workflow detail page shows a **Scope** badge (User, Tenant, or Global). Operators can click the badge to open the scope change dialog and promote or demote the workflow:
+
+1. Click the scope badge on the workflow detail page
+2. Select the new scope (User, Tenant, or Global)
+3. Confirm the change
+
+Scope changes are immediate. Promoting a User workflow to Tenant makes it visible to all tenant members. Promoting to Global makes it platform-wide.
+
+Scope management is not available on the consumer dashboard surface.
+
+---
+
+## Editing a Workflow
+
+1. Navigate to the workflow detail page (click the workflow name in the list)
+2. Click **Edit**
+3. Modify fields in structured form or YAML mode
+4. Use the Visualization tab to verify the updated FSM topology
+5. Click **Update Workflow**
+
+The update uses `POST /v1/workflows?force=true`, overwriting the existing workflow with the same name and version. There is no version history.
+
+---
+
+## Deleting a Workflow
+
+1. Navigate to the workflow detail page
+2. Click **Delete**
+3. Confirm in the dialog
+
+Running workflow executions are not affected by deletion, but no new executions can be started.
+
+On the admin surface, `admin` and `operator` roles can delete any workflow. On the dashboard, users can only delete workflows they created.
+
+---
+
+## Running a Workflow
+
+From the workflow detail page or list, click **Execute** to open the execution dialog:
+
+1. Enter the workflow input (plain text or JSON matching the workflow's expected input schema)
+2. Click **Run**
+3. You are redirected to the execution detail view
+
+---
+
+## Minimal Example
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Workflow
+metadata:
+  name: simple-pipeline
+  version: "1.0.0"
+  description: "Generate code and validate it."
+  tags:
+    - code-generation
+spec:
+  initial_state: GENERATE
+  states:
+    GENERATE:
+      kind: Agent
+      agent: python-coder
+      input: "{{workflow.task}}"
+      transitions:
+        - condition: always
+          target: VALIDATE
+    VALIDATE:
+      kind: Agent
+      agent: output-judge
+      input: "Evaluate: {{GENERATE.output}}"
+      transitions:
+        - condition: score_above
+          threshold: 0.9
+          target: COMPLETE
+        - condition: score_below
+          threshold: 0.9
+          target: GENERATE
+          feedback: "{{VALIDATE.output.reasoning}}"
+    COMPLETE:
+      kind: System
+      command: "echo done"
+      transitions: []
+```
+
+See the [Workflow Manifest Reference](/docs/reference/workflow-manifest) for the complete field specification.

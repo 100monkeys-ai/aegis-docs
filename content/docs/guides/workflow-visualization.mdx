@@ -1,0 +1,81 @@
+---
+title: Workflow Visualization
+description: How to read the FSM state machine graph, including color coding, initial state highlighting, and transition labels.
+---
+
+# Workflow Visualization
+
+The Zaru web interface renders workflow state machines as interactive directed graphs. This visualization is available on the workflow detail page (Visualization tab) and updates live during editing.
+
+---
+
+## Reading the Graph
+
+Each **node** in the graph represents a state in the workflow FSM. Each **edge** (arrow) represents a transition between states.
+
+### Node Layout
+
+Nodes display two lines of text:
+
+- **Top line**: The state name (e.g., `GENERATE`, `VALIDATE`, `COMPLETE`)
+- **Bottom line**: The state kind (e.g., `Agent`, `System`, `Human`)
+
+The graph is laid out automatically from top to bottom using the dagre layout algorithm. The initial state appears near the top, and terminal states (no outgoing transitions) appear near the bottom.
+
+---
+
+## Color Coding
+
+Each node is colored by its state kind:
+
+| Kind | Color | Description |
+|---|---|---|
+| **Agent** | Blue (`#3b82f6`) | Runs a deployed agent with LLM-driven execution |
+| **ContainerRun** | Green (`#22c55e`) | Executes a Docker container (CI/CD step) |
+| **System** | Gray (`#6b7280`) | Runs a shell command |
+| **Human** | Orange (`#f97316`) | Waits for human approval or input |
+| **ParallelAgents** | Purple (`#8b5cf6`) | Runs multiple agents concurrently with consensus |
+| **ParallelContainerRun** | Teal (`#14b8a6`) | Runs multiple containers concurrently |
+| **Subworkflow** | Cyan (`#06b6d4`) | Invokes another workflow as a nested FSM |
+
+---
+
+## Initial State Highlight
+
+The initial state (defined by `spec.initial_state` in the manifest) is highlighted with a **3px gold border** (`#fbbf24`). All other states have a thin semi-transparent border. This makes it immediately clear where the workflow begins execution.
+
+---
+
+## Transitions
+
+Transitions are shown as smooth-step edges (arrows with rounded corners) connecting source and target states.
+
+Each edge displays a **label** showing the transition condition:
+
+- `always` — unconditional transition
+- `exit_code_zero` — taken when the state's command exits with code 0
+- `exit_code_non_zero` — taken when the command exits with a non-zero code
+- `score_above` — taken when the validation score exceeds the threshold
+- `score_below` — taken when the validation score is below the threshold
+- `consensus` — taken when parallel agents reach consensus
+- `input_equals_yes` / `input_equals_no` — taken based on human input
+- `custom` — a Handlebars expression evaluated at runtime
+
+When a state has multiple transitions, the edges fan out from the node. The first matching transition wins at runtime, but the graph shows all possible paths.
+
+---
+
+## Interactive Controls
+
+The visualization provides standard graph interaction controls:
+
+- **Pan**: Click and drag the background to move the viewport
+- **Zoom**: Scroll wheel or pinch to zoom in and out
+- **Fit to View**: Click the fit-to-view button in the controls panel to center the entire graph
+- **Zoom In/Out**: Use the +/- buttons in the controls panel
+
+---
+
+## When No States Are Found
+
+If the workflow manifest has no parseable states (e.g., the YAML is incomplete or malformed), the visualization area shows a placeholder message instead of a graph. Fix the manifest in the form or YAML editor, and the graph will update automatically.
