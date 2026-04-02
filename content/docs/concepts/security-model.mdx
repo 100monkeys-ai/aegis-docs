@@ -188,6 +188,29 @@ Operator identity is resolved from `aegis-system` realm JWTs carrying `aegis_rol
 
 ---
 
+## Chat Surface vs. Execution Surface
+
+AEGIS applies security contexts across two independent surfaces. The context in effect depends on *where* the tool call is being made, not who triggered the chain.
+
+### Chat / MCP surface
+
+When a user interacts via the Zaru client or any MCP client, their tool calls are evaluated against their **tier context** (`zaru-free`, `zaru-pro`, `zaru-business`, or `zaru-enterprise`). These contexts control which aegis tools the user may invoke — for example, whether they can call `aegis.task.execute`, signal a workflow, or access the agent registry. Zaru tier contexts deliberately do not grant filesystem or shell access; they are scoped to the orchestration API surface only.
+
+### Execution surface
+
+When a user calls `aegis.task.execute` (or any tool that spawns an agent container), the resulting container does **not** run under the caller's tier context. It runs under the **`agent-runtime`** context — a built-in context that grants:
+
+- `fs.*` scoped to `/workspace` via `path_allowlist`
+- `cmd.run` — shell command execution inside the container
+- `web.*` — outbound web access
+- `aegis` read and execution tools (`aegis.agent.get`, `aegis.workflow.list`, `aegis.task.execute`, etc.)
+
+This separation is the core of the two-surface model: the user's tier governs what they can ask the platform to do; `agent-runtime` governs what agent containers are allowed to do on the user's behalf. A Free-tier user whose context blocks direct shell access can still have an agent container run shell commands in `/workspace` — because those commands execute under `agent-runtime`, not `zaru-free`.
+
+The `agent-runtime` context is a platform built-in. It does not need to be defined in `aegis-config.yaml`.
+
+---
+
 ## Agent Generation and Context Escalation
 
 When a consumer triggers `aegis.agent.generate`, the resulting agent-creator-agent execution always runs in the `default` security context — not the caller's tier context. This is intentional: the generation workflow requires unrestricted tool access (`tool_pattern: "*"`) to author, validate, and register the new agent manifest. The caller's tier determines whether they are permitted to invoke `aegis.agent.generate` at all, but it does not constrain the execution context of the generation agent itself.

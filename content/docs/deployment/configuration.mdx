@@ -440,6 +440,29 @@ security_contexts:
           calls: 60
           per_seconds: 60
 
+  # agent-runtime is a platform built-in — shown here for reference only.
+  # Do NOT copy this block into your aegis-config.yaml; it is registered automatically.
+  - name: agent-runtime
+    description: "Execution surface for agent containers. Grants filesystem, shell, and web access scoped to /workspace."
+    capabilities:
+      - tool_pattern: "fs.*"
+        path_allowlist:
+          - /workspace
+      - tool_pattern: "cmd.run"
+      - tool_pattern: "web.*"
+      - tool_pattern: "aegis.agent.get"
+      - tool_pattern: "aegis.agent.list"
+      - tool_pattern: "aegis.workflow.get"
+      - tool_pattern: "aegis.workflow.list"
+      - tool_pattern: "aegis.workflow.signal"
+      - tool_pattern: "aegis.task.execute"
+    deny_list:
+      - "aegis.agent.delete"
+      - "aegis.workflow.delete"
+      - "aegis.task.remove"
+      - "aegis.system.info"
+      - "aegis.system.config"
+
   - name: aegis-system-operator
     description: "Platform operator — all safe tools plus destructive and orchestrator commands"
     capabilities:

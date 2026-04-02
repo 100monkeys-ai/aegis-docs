@@ -653,6 +653,20 @@ Optional. Enables cryptographic agent authorization via SEAL. Required in produc
 
 Optional array. Named permission boundaries assigned to agents at execution time.
 
+The platform ships with the following built-in contexts that are registered automatically and do not need to be defined in `aegis-config.yaml`:
+
+| Name | Surface | Description |
+|------|---------|-------------|
+| `agent-runtime` | Execution | Agent containers — `fs.*` scoped to `/workspace`, `cmd.run`, `web.*`, aegis read/execution tools |
+| `default` | Authoring | Platform authoring agents — unrestricted tool access for manifest authoring and validation |
+| `zaru-free` | Chat/MCP | Zaru Free tier chat surface |
+| `zaru-pro` | Chat/MCP | Zaru Pro tier chat surface |
+| `zaru-business` | Chat/MCP | Zaru Business tier chat surface |
+| `zaru-enterprise` | Chat/MCP | Zaru Enterprise tier chat surface |
+| `aegis-system-operator` | Operator | Platform operators — all safe tools plus destructive and orchestrator commands |
+
+Entries in `spec.security_contexts` define **operator-provided** contexts that supplement the built-in list. Built-in context names cannot be redefined here.
+
 Each entry (`SecurityContextDefinition`):
 
 | Key | Type | Default | Description |

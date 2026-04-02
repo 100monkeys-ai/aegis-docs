@@ -11,6 +11,92 @@ SecurityContexts are defined in your `aegis-config.yaml` under `spec.security_co
 
 ---
 
+## The Two-Surface Model
+
+AEGIS applies security contexts across two distinct surfaces. Understanding which context applies where is critical for correct policy design.
+
+### Chat / MCP Surface
+
+The **chat surface** is what the Zaru client (or any MCP client) sees when a user is interacting in a conversation. The context applied here is the user's **tier context** — `zaru-free`, `zaru-pro`, `zaru-business`, or `zaru-enterprise`. These contexts control what the chat client can invoke: which aegis tools the user may call, workflow signals, and so on. They do **not** grant filesystem or shell access — Zaru tier contexts deliberately exclude `fs.*`, `cmd.run`, and broad `web.*` access.
+
+### Execution Surface
+
+The **execution surface** governs what agent containers can do once they are running. When a user triggers `aegis.task.execute` (or any tool that spawns an agent container), the spawned container does **not** inherit the caller's tier context. Instead, it runs under the **`agent-runtime`** context.
+
+This separation is intentional: the user's tier context is about what the user can ask the platform to do; `agent-runtime` is about what the platform's agent containers are allowed to do on the user's behalf.
+
+---
+
+## The `agent-runtime` Built-In Context
+
+`agent-runtime` is a platform-provided security context that ships with AEGIS. It does not need to be defined in `aegis-config.yaml` — the orchestrator registers it automatically at startup.
+
+### What `agent-runtime` grants
+
+| Capability | Scope |
+|------------|-------|
+| `fs.*` | All filesystem tools, scoped to `/workspace` via `path_allowlist` |
+| `cmd.run` | Shell command execution inside the container |
+| `web.*` | Outbound web access (search, fetch) |
+| `aegis.agent.*` (read/list) | Introspect the agent registry |
+| `aegis.workflow.*` (read/list/signal) | Introspect and signal workflows |
+| `aegis.task.execute` | Spawn child executions (subject to swarm ceiling rules) |
+
+### What `agent-runtime` excludes
+
+- Destructive platform operations (`aegis.agent.delete`, `aegis.workflow.delete`, `aegis.task.remove`)
+- Orchestrator commands (`aegis.system.info`, `aegis.system.config`)
+- Any tool not explicitly listed above
+
+### Configuration example
+
+Because `agent-runtime` is built in, you do not define it in `aegis-config.yaml`. The orchestrator's compiled-in definition is equivalent to:
+
+```yaml
+- name: "agent-runtime"
+  description: "Execution surface for agent containers. Grants filesystem, shell, and web access scoped to /workspace."
+  capabilities:
+    - tool_pattern: "fs.*"
+      path_allowlist:
+        - /workspace
+    - tool_pattern: "cmd.run"
+    - tool_pattern: "web.*"
+    - tool_pattern: "aegis.agent.get"
+    - tool_pattern: "aegis.agent.list"
+    - tool_pattern: "aegis.workflow.get"
+    - tool_pattern: "aegis.workflow.list"
+    - tool_pattern: "aegis.workflow.signal"
+    - tool_pattern: "aegis.task.execute"
+  deny_list:
+    - "aegis.agent.delete"
+    - "aegis.workflow.delete"
+    - "aegis.task.remove"
+    - "aegis.system.info"
+    - "aegis.system.config"
+```
+
+The `path_allowlist` on `fs.*` means that all filesystem tools — reads, writes, edits, deletes — are restricted to paths under `/workspace`. Attempts to access `/etc`, `/agent`, or any other path are rejected by the SEAL gateway before the tool server is reached.
+
+---
+
+## Built-In Contexts
+
+The following contexts ship with the platform and do not require operator configuration:
+
+| Context | Surface | Description |
+|---------|---------|-------------|
+| `agent-runtime` | Execution | Agent containers — `fs.*` scoped to `/workspace`, `cmd.run`, `web.*`, aegis read/execution tools |
+| `default` | Authoring | Platform authoring agents (e.g., agent-creator-agent) — unrestricted tool access for manifest authoring and validation |
+| `zaru-free` | Chat/MCP | Zaru Free tier chat surface — no shell, no web, ephemeral volumes only |
+| `zaru-pro` | Chat/MCP | Zaru Pro tier chat surface — full aegis tool set, rate-limited web access |
+| `zaru-business` | Chat/MCP | Zaru Business tier chat surface — same tool set as Pro with org features |
+| `zaru-enterprise` | Chat/MCP | Zaru Enterprise tier chat surface — same tool set, all limits customizable |
+| `aegis-system-operator` | Operator | Platform operators — all safe tools plus destructive and orchestrator commands |
+
+Operator-defined contexts in `aegis-config.yaml` supplement this list but cannot redefine built-in names.
+
+---
+
 ## How Policy Evaluation Works
 
 Every tool call an agent makes is evaluated against its SecurityContext using this algorithm, in order:
