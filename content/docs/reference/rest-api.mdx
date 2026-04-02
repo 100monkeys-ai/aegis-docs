@@ -226,7 +226,7 @@ See [SEAL Architecture](/docs/architecture/seal) for the full attestation flow.
 
 SEAL-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is a `SealEnvelope` containing a signed MCP tool call.
 
-`POST /v1/seal/invoke` is the spec-compliant path (ADR-088). `POST /v1/invoke` is also registered as a convenience alias and remains fully functional.
+`POST /v1/seal/invoke` is the spec-compliant path. `POST /v1/invoke` is also registered as a convenience alias and remains fully functional.
 
 See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths and wire format.
 
