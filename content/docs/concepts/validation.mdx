@@ -21,7 +21,7 @@ A score of `0.85` with the reasoning *"logic is correct but error handling is ab
 
 At the end of every iteration, the orchestrator populates a `ValidationResults` record with one or more sub-results depending on which validators are configured in the agent manifest:
 
-```
+```text
 ValidationResults
 ├── system       — exit code and stderr from the container process
 ├── output       — deterministic structural checks (JSON schema, regex)
@@ -38,7 +38,7 @@ ValidationResults
 
 The `ExecutionSupervisor` runs validators sequentially after the inner loop completes. The effective score for the iteration is the **lowest score across all configured validators**. If that minimum score is below any validator's `min_score`, the iteration transitions to `Refining` instead of `Success`.
 
-```
+```text
      All validators pass      ┌──────────┐
      (min score ≥ threshold)  │ Running  │
   ┌──────────────────────────▶│          │
@@ -61,6 +61,17 @@ The `ExecutionSupervisor` runs validators sequentially after the inner loop comp
 ```
 
 Validators are evaluated in the order they are declared. Expensive LLM judges are only reached if the cheaper deterministic validators (exit code, JSON schema, regex) pass first — making it cost-effective to chain them. See [Configuring Agent Validation](/docs/guides/validation) for ordering strategies.
+
+### Policy Violations in Validation Context
+
+The `ValidationContext` passed to each iteration includes a `policy_violations` field — a list of tool names that were blocked by platform policy during that iteration's inner loop. When a tool call is denied at the policy enforcement layer (not by the semantic judge, but by the security policy itself), the tool name is appended to this list.
+
+The `SemanticAgentValidator` includes `policy_violations` in the payload sent to each judge. This gives judges the information they need to distinguish two otherwise identical-looking outcomes:
+
+- The agent never attempted a particular tool.
+- The agent attempted the tool but was blocked by platform policy.
+
+Without `policy_violations`, a judge reasoning about tool usage gaps cannot tell whether the gap reflects a design choice or a denied attempt. With it, a judge can acknowledge that the agent followed the correct intent but was constrained by the platform, and score accordingly.
 
 ### Confidence Gating
 
@@ -106,7 +117,7 @@ Use execution APIs and logs to inspect judge executions spawned by a parent.
 
 Because judges are full executions, a judge agent could theoretically declare its own `multi_judge` validator — spawning further child executions. This is intentionally supported for composing specialized judges, but unbounded recursion is prevented by a hard cap:
 
-```
+```text
 MAX_RECURSIVE_DEPTH = 3
 ```
 

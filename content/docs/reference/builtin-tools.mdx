@@ -55,7 +55,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.agent.create` | `false` | Mutation — judge evaluates manifest quality |
 | `aegis.agent.update` | `false` | Mutation — judge evaluates manifest quality |
 | `aegis.agent.delete` | `false` | Destructive — removes agent from registry |
-| `aegis.agent.generate` | `false` | Creates new agent via inner authoring loop |
+| `aegis.agent.generate` | `false` | Creates new agent via inner authoring loop. The agent-creator-agent always executes in the `default` security context, regardless of the caller's tier. |
 | `aegis.workflow.create` | `false` | Mutation — internally semantically validated |
 | `aegis.workflow.update` | `false` | Mutation — judge evaluates manifest quality |
 | `aegis.workflow.delete` | `false` | Destructive — removes workflow from registry |

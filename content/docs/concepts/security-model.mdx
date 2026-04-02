@@ -188,6 +188,14 @@ Operator identity is resolved from `aegis-system` realm JWTs carrying `aegis_rol
 
 ---
 
+## Agent Generation and Context Escalation
+
+When a consumer triggers `aegis.agent.generate`, the resulting agent-creator-agent execution always runs in the `default` security context — not the caller's tier context. This is intentional: the generation workflow requires unrestricted tool access (`tool_pattern: "*"`) to author, validate, and register the new agent manifest. The caller's tier determines whether they are permitted to invoke `aegis.agent.generate` at all, but it does not constrain the execution context of the generation agent itself.
+
+This means the agent-creator-agent can reach any tool permitted by the `default` context, regardless of whether the consumer that triggered it would normally have access to those tools.
+
+---
+
 ## Runtime Isolation
 
 The security model is strengthened by the underlying container runtime. AEGIS supports three isolation tiers, selectable per node via `default_isolation` in the node configuration:

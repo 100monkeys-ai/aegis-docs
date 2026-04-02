@@ -152,8 +152,11 @@ The tool judge sees a semantic payload rather than raw output:
 | `worker_mounts` | The inherited mount context available to the judge execution. |
 | `criteria` | The rubric text configured by the operator or agent author. |
 | `validation_context` | A marker that identifies the inner-loop pre-execution judge path. |
+| `policy_violations` | List of tool names blocked by platform policy earlier in this iteration. Empty if none were blocked. |
 
 The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares both thresholds before allowing the tool to execute.
+
+Judges can use `policy_violations` to reason about what the agent attempted versus what the platform permitted. For example, if the agent's workflow required calling a tool that was policy-blocked, the judge can reflect that in its `reasoning` and score the attempt charitably rather than penalizing the agent for a tool gap caused by platform constraints.
 
 ---
 

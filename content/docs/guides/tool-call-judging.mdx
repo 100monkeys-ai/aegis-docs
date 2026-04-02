@@ -108,10 +108,13 @@ The payload includes:
 - `output`
 - `criteria`
 - `validation_context`
+- `policy_violations`
 
 The `output` key is a compatibility field name. For tool-call judging it contains a serialized preview of the proposed tool call, not the output of a completed tool run.
 
 The `validation_context` value is fixed by the runtime to `semantic_judge_pre_execution_inner_loop`. Use that string as a cue when debugging execution traces or judge prompts.
+
+The `policy_violations` field is a list of tool names that were blocked by platform policy earlier in the same iteration. If no tool calls were policy-blocked, the list is empty. Judges can use this field to distinguish "agent attempted a tool but was denied by policy" from "agent never tried to call this tool at all."
 
 The judge must return a `GradientResult`-shaped JSON object:
 
