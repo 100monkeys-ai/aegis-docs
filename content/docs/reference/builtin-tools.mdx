@@ -73,6 +73,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.task.cancel` | `false` | State-mutating — terminates a running execution |
 | `aegis.task.remove` | `false` | Destructive — deletes an execution record |
 | `aegis.agent.logs` | `true` | Read-only agent activity log query |
+| `aegis.agent.wait` | `true` | Alias for `aegis.task.wait` |
 | `aegis.workflow.wait` | `true` | Read-only blocking poll until terminal state |
 | `aegis.execute.wait` | `true` | Alias for `aegis.workflow.wait` |
 | `aegis.workflow.cancel` | `false` | State-mutating — terminates a running workflow execution |
@@ -132,7 +133,7 @@ The full HTTP status-to-error-code mapping for `/v1/smcp/invoke` is:
 | `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run` | `name` |
 | `aegis.workflow.logs`, `aegis.task.logs` | `execution_id` |
 | `aegis.workflow.status`, `aegis.workflow.executions.get` | `execution_id` |
-| `aegis.task.status`, `aegis.task.wait`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
+| `aegis.task.status`, `aegis.task.wait`, `aegis.agent.wait`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
 | `aegis.workflow.cancel`, `aegis.workflow.wait`, `aegis.execute.wait`, `aegis.workflow.remove` | `execution_id` |
 | `aegis.workflow.signal` | `execution_id`, `response` |
 | `aegis.agent.logs` | `agent_id` |
