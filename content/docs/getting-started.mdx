@@ -25,6 +25,26 @@ aegis --version
 
 ---
 
+## Authenticate
+
+Before running any commands against a remote AEGIS environment, authenticate:
+
+```bash
+aegis auth login
+```
+
+This uses `dev.100monkeys.ai` by default. To target a different environment:
+
+```bash
+aegis auth login --env prod.100monkeys.ai
+```
+
+The CLI will display a one-time code and URL. Open the URL in your browser, enter the code, and the CLI will confirm when authentication is complete.
+
+For CI/CD pipelines, use an API key instead — see [Authentication](/docs/guides/authentication).
+
+---
+
 ## Initialize the Local Stack
 
 Run the guided setup:
@@ -69,7 +89,7 @@ If you skipped example deployment in `aegis init`, run `aegis init` again and en
 
 The `--follow` flag streams iteration events to the terminal as they happen. You'll see output similar to:
 
-```
+```text
 2026-02-25T13:56:43.091943Z  INFO Delegating to daemon API
 Executing agent 88b73d1b-0da0-4b92-9376-fd744b9cafbf...
 ✓ Execution started: f668f593-370f-4c19-b043-0487e9bd1ae5

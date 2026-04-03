@@ -50,6 +50,71 @@ Supported structured-output commands include agent, task, workflow, node, config
 
 ---
 
+## Authentication
+
+Manage authentication sessions and profiles.
+
+### `aegis auth login`
+
+Authenticate with an AEGIS environment using the browser-based Device Authorization Grant.
+
+```bash
+aegis auth login [OPTIONS]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--env <hostname>` | `dev.100monkeys.ai` | Environment hostname. Auth URL is derived as `https://auth.<env>`. |
+| `--non-interactive` | — | Exit non-zero if not already authenticated (for CI/CD). |
+
+**Example:**
+
+```bash
+aegis auth login --env prod.100monkeys.ai
+```
+
+---
+
+### `aegis auth logout`
+
+Revoke the current session and clear local credentials.
+
+```bash
+aegis auth logout
+```
+
+---
+
+### `aegis auth status`
+
+Show the current authentication state.
+
+```bash
+aegis auth status [--output <text|json|yaml>]
+```
+
+---
+
+### `aegis auth switch`
+
+Switch to a different stored profile.
+
+```bash
+aegis auth switch <profile>
+```
+
+---
+
+### `aegis auth token`
+
+Print the current access key to stdout. Useful for scripting:
+
+```bash
+export AEGIS_KEY=$(aegis auth token)
+```
+
+---
+
 ## `aegis daemon`
 
 Manage the daemon lifecycle.

@@ -1,0 +1,217 @@
+---
+title: Authentication
+description: Authenticate the AEGIS CLI with your environment using aegis auth, and generate API keys for programmatic access.
+---
+
+# Authentication
+
+Before using the AEGIS CLI against a remote environment, you must authenticate. The CLI supports two authentication methods:
+
+- **Interactive login** — browser-based Device Authorization Grant via `aegis auth login`
+- **API keys** — long-lived, scope-limited keys generated via the Zaru UI for CI/CD and automation
+
+---
+
+## Interactive Login
+
+Authenticate against an AEGIS environment:
+
+```bash
+aegis auth login --env dev.100monkeys.ai
+```
+
+The CLI derives service endpoints from the hostname you provide:
+
+| Service | Derived URL |
+|---------|-------------|
+| Auth (Keycloak) | `https://auth.dev.100monkeys.ai` |
+| Orchestrator API | `https://api.dev.100monkeys.ai` |
+
+The login flow prints a one-time code and a URL. Open the URL in your browser, enter the code, and complete authentication. The CLI polls until you finish.
+
+```text
+» Authenticating with dev.100monkeys.ai...
+
+! First copy your one-time code: ABCD-1234
+
+  Open this URL in your browser:
+  https://auth.dev.100monkeys.ai/realms/aegis-system/device?user_code=ABCD-1234
+
+  Waiting for authentication...
+
+✓ Authenticated. Profile: dev.100monkeys.ai (aegis:operator)
+```
+
+The default environment is `dev.100monkeys.ai`. To authenticate against a different environment:
+
+```bash
+aegis auth login --env prod.100monkeys.ai
+```
+
+---
+
+## Auth Status
+
+Check your current session:
+
+```bash
+aegis auth status
+```
+
+```text
+Profile:       dev.100monkeys.ai
+Environment:   dev.100monkeys.ai
+Roles:         aegis:operator
+Expires:       2026-04-03T08:00:00Z
+Scopes:        3
+```
+
+Structured output is also supported:
+
+```bash
+aegis auth status --output json
+```
+
+---
+
+## Logout
+
+Revoke the current session and clear local credentials:
+
+```bash
+aegis auth logout
+```
+
+---
+
+## Multiple Profiles
+
+Each `aegis auth login --env <hostname>` creates a named profile. Switch between profiles with:
+
+```bash
+aegis auth switch prod.100monkeys.ai
+```
+
+---
+
+## CI/CD: Non-Interactive Authentication
+
+For CI/CD pipelines, use one of these approaches:
+
+### Option 1: API Key (recommended)
+
+Generate an API key in the Zaru UI at `/settings/api-keys` (see [API Keys](#api-keys) below), then set it as an environment variable:
+
+```bash
+export AEGIS_KEY=aegis_a1b2c3d4...
+aegis agent list
+```
+
+`AEGIS_KEY` takes precedence over any stored profile and bypasses all interactive flows.
+
+### Option 2: Non-interactive flag
+
+```bash
+aegis auth login --env dev.100monkeys.ai --non-interactive
+```
+
+Exits with a non-zero status if no valid session exists. Use this as a guard step in pipelines that require a pre-existing session.
+
+### Option 3: Print current key
+
+```bash
+export AEGIS_KEY=$(aegis auth token)
+```
+
+Prints the current access key to stdout. Useful for passing to other tools.
+
+---
+
+## Environment Variable Reference
+
+| Variable | Description |
+|----------|-------------|
+| `AEGIS_KEY` | Bearer key used for all CLI commands. Bypasses stored profiles. |
+| `AEGIS_ENV` | Default environment hostname (e.g. `dev.100monkeys.ai`). |
+| `AEGIS_AUTH_KEY` | Encryption key for `~/.aegis/auth.json`. Falls back to system keyring, then a machine-local key. |
+
+---
+
+## Session Storage
+
+Session state is stored in `~/.aegis/auth.json`, encrypted with AES-256-GCM. The encryption key is sourced from (in order):
+
+1. The system keyring (`aegis-cli` service, `auth-store-key` entry)
+2. `AEGIS_AUTH_KEY` environment variable
+3. A machine-local key derived from the system hostname
+
+Access keys are short-lived (15 minutes). The CLI silently refreshes them using the stored refresh key (valid for 24 hours) on every invocation. When the refresh key expires, you will be prompted to run `aegis auth login` again.
+
+---
+
+## API Keys
+
+API keys are long-lived, scope-limited credentials for automation and programmatic access. Generate them in the Zaru UI at **Settings → API Keys** (`/settings/api-keys`).
+
+### Creating an API Key
+
+1. Navigate to `/settings/api-keys`
+2. Click **New API Key**
+3. Enter a name (e.g. `ci-pipeline`, `monitoring-bot`)
+4. Select an expiry (7 days, 30 days, 90 days, 1 year, or no expiry†)
+5. Choose a scope preset or select individual scopes:
+
+| Preset | Included scopes |
+|--------|----------------|
+| **Read-only** | `agent:read`, `agent:list`, `workflow:read`, `workflow:list`, `execution:read`, `execution:list`, `execution:logs`, `swarm:read`, `swarm:list`, `node:read`, `node:list` |
+| **Execution** | Read-only + `agent:execute`, `agent:logs`, `workflow:run`, `workflow:logs`, `workflow:signal`, `workflow:cancel`, `execution:stream`, `execution:cancel`, `swarm:cancel`, `approval:*` |
+| **Developer** | Execution + `agent:deploy`, `agent:generate`, `agent:delete`, `workflow:deploy`, `workflow:validate`, `workflow:generate`, `workflow:delete`, `execution:remove`, `credential:read`, `credential:list`, `credential:create`, `stimulus:ingest`, `key:*` |
+| **Full access** | All scopes (capped at your own role level) |
+
+After selecting a preset, you can adjust individual scopes before creating the key.
+
+6. Click **Create** — the full key value is shown **once**. Copy it immediately.
+
+† No-expiry keys require the `aegis:admin` role.
+
+### Scope Reference
+
+| Resource | Actions | Notes |
+|----------|---------|-------|
+| `agent` | `deploy`, `read`, `list`, `execute`, `generate`, `logs`, `delete` | `generate` = natural language → manifest |
+| `workflow` | `deploy`, `read`, `list`, `run`, `validate`, `generate`, `logs`, `signal`, `cancel`, `delete` | `signal` = FSM event |
+| `execution` | `read`, `list`, `stream`, `logs`, `cancel`, `remove` | `stream` = SSE event feed |
+| `swarm` | `read`, `list`, `cancel` | |
+| `secret` | `read`, `write`, `list`, `delete`, `rotate` | OpenBao KV2 secrets |
+| `credential` | `read`, `list`, `create`, `delete`, `rotate`, `grant` | OAuth credential bindings |
+| `approval` | `read`, `list`, `approve`, `reject` | Human-in-the-loop queue |
+| `stimulus` | `ingest` | Webhook ingestion |
+| `node` | `read`, `list`, `register`, `deregister`, `drain`, `shutdown` | `register`+ requires `aegis:admin` |
+| `stack` | `read`, `up`, `down`, `restart`, `update`, `uninstall` | `up`+ requires `aegis:admin` |
+| `key` | `read`, `list`, `create`, `revoke` | API key self-management |
+| `tenant` | `read`, `list`, `onboard`, `provision` | `onboard`+ requires `aegis:admin` |
+
+A key can never be minted with scopes exceeding your own role permissions.
+
+### Using an API Key
+
+```bash
+# Environment variable (recommended)
+export AEGIS_KEY=aegis_a1b2c3d4e5f6g7h8...
+aegis agent list
+
+# Inline
+AEGIS_KEY=aegis_a1b2c3d4... aegis workflow run my-workflow --input '{}'
+```
+
+### Revoking a Key
+
+Navigate to `/settings/api-keys`, find the key, and click **Revoke**. Revoked keys are rejected immediately.
+
+---
+
+## What's Next
+
+- [Writing Agents](/docs/guides/writing-agents) — deploy your first agent
+- [CI/CD Pipelines](/docs/guides/cicd-pipelines) — automate agent workflows
+- [CLI Reference](/docs/reference/cli) — full command documentation
