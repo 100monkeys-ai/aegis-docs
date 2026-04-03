@@ -9,6 +9,25 @@ This page defines the infrastructure components required to run AEGIS, their int
 
 ---
 
+## Deployment Paths
+
+AEGIS provides two distinct deployment paths depending on your use case:
+
+| Path | Use Case | IAM | Secrets | TLS |
+|------|----------|-----|---------|-----|
+| `aegis init` | Local testing & evaluation | None (unauthenticated) | In-memory | None |
+| `aegis-deploy` | Production | Keycloak 24 (OIDC) | OpenBao | Caddy ACME |
+
+**`aegis init`** bootstraps a minimal local stack suitable for experimenting with agents and
+workflows. It does not deploy Keycloak, OpenBao, or a TLS edge proxy. It is not suitable for
+production use.
+
+**`aegis-deploy`** ([github.com/100monkeys-ai/aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy))
+is the recommended production deployment path. It deploys all platform services as Podman pods with
+proper IAM, secrets management, and TLS termination.
+
+---
+
 ## Dependency Matrix
 
 | Component | Version | Role | Required |

@@ -3,6 +3,14 @@ title: Getting Started
 description: Install AEGIS, start the local stack, and run your first agent execution.
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout type="warn">
+  `aegis init` is designed for local testing and evaluation only. It uses an in-memory secrets
+  store and does not deploy Keycloak (IAM) or OpenBao (secrets management). For production
+  deployments, use the [aegis-deploy repository](https://github.com/100monkeys-ai/aegis-deploy).
+</Callout>
+
 # Getting Started
 
 AEGIS manages the full lifecycle of AI agents — from manifest deployment through iterative execution, secure tool access, workflow coordination, and multi-agent swarms. Agents run in isolated containers, tools are proxied through a signed security layer, and every execution is observed, scored, and learned from.
@@ -100,6 +108,17 @@ Executing agent 88b73d1b-0da0-4b92-9376-fd744b9cafbf...
 ```
 
 The agent will generate code, run validation, and either succeed or refine across multiple iterations until it produces a working solution.
+
+---
+
+## Going to Production?
+
+`aegis init` is not suitable for production use. When you're ready to deploy for real users, use
+[aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy) — the official production deployment
+repository that includes Keycloak IAM, OpenBao secrets management, TLS via Caddy, and full
+observability.
+
+See the [Production Deployment Guide](/docs/deployment/podman) for full details.
 
 ---
 

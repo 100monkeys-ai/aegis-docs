@@ -7,13 +7,19 @@ description: Production platform deployment with Podman pods, deployment profile
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
+<Callout type="warn">
+  `aegis-deploy` is the recommended production deployment path. It includes Keycloak (IAM), OpenBao
+  (secrets management), TLS via Caddy, and full observability. `aegis init` does **NOT** deploy IAM
+  or secrets management and is intended for local testing and evaluation only.
+</Callout>
+
 AEGIS uses Podman in two ways: as the **platform deployment** orchestrator (Podman Kube YAML pods running all AEGIS services) and as the **agent container runtime** (spawning isolated containers for agent execution via the bollard API). This page covers both.
 
 ---
 
 ## Platform Deployment with Podman Pods
 
-For production and staging environments, AEGIS deploys as a set of Podman pods defined in the [`aegis-deploy`](https://github.com/100monkeys-ai/aegis-deploy) repository. Each pod groups related containers with shared networking, health checks, and persistent volumes.
+For production and staging environments, AEGIS deploys as a set of Podman pods defined in the [`aegis-deploy`](https://github.com/100monkeys-ai/aegis-deploy) repository. Unlike `aegis init` (which is for local testing and evaluation only), `aegis-deploy` provides a complete, production-ready deployment with IAM, secrets management, and TLS. Each pod groups related containers with shared networking, health checks, and persistent volumes.
 
 ### Public Pod Topology
 
