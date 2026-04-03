@@ -9,7 +9,7 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
-The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.wait`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The execute surface includes `aegis.execute.intent` and `aegis.execute.status` for the intent-to-execution pipeline. The agent management surface also includes `aegis.agent.search` for semantic search, `aegis.agent.logs` for retrieving agent-level activity logs, and `aegis.agent.wait` (alias for `aegis.task.wait`) for blocking until an agent execution completes. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog.
+The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.wait`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The execute surface includes `aegis.execute.intent` and `aegis.execute.status` for the intent-to-execution pipeline. The agent management surface also includes `aegis.agent.search` for semantic search, `aegis.agent.logs` for retrieving agent-level activity logs, and `aegis.agent.wait` (alias for `aegis.task.wait`) for blocking until an agent execution completes. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog. The runtime discovery surface includes `aegis.runtime.list` for enumerating the valid entries in the `StandardRuntimeRegistry` — agents that create or update manifests should call this tool before writing `spec.runtime` fields.
 
 ## Versioning and Safety
 
@@ -777,3 +777,83 @@ Validates a manifest YAML string against its canonical schema without deploying 
 | `manifest_yaml` | `string` | ✅ | — | The manifest YAML text to validate. |
 
 **Returns:** A JSON object with `valid` (boolean) and an optional `errors` array listing any validation failures.
+
+---
+
+## Runtime Discovery
+
+### `aegis.runtime.list`
+
+Returns all supported standard runtime environments from the `StandardRuntimeRegistry`. Use this tool before setting `spec.runtime` in an agent manifest to ensure the target `language` and `version` combination is valid and not deprecated. Available in the `agent-runtime` security context — no additional configuration required.
+
+This tool is read-only; `skip_judge` defaults to `true`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `language` | `string` | ❌ | — | Filter results to a single language (e.g. `"python"`, `"go"`). When omitted, all supported runtimes are returned. |
+
+**Returns:**
+
+```json
+{
+  "tool": "aegis.runtime.list",
+  "runtimes": [
+    {
+      "language": "python",
+      "version": "3.11",
+      "image": "python:3.11-slim",
+      "description": "Python 3.11 with slim Debian base",
+      "deprecated": false
+    },
+    {
+      "language": "python",
+      "version": "3.9",
+      "image": "python:3.9-slim",
+      "description": "Python 3.9 with slim Debian base",
+      "deprecated": true
+    },
+    {
+      "language": "go",
+      "version": "1.21",
+      "image": "golang:1.21-alpine",
+      "description": "Go 1.21 with Alpine base",
+      "deprecated": false
+    }
+  ],
+  "custom_runtime_supported": true
+}
+```
+
+Each entry in `runtimes` includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `language` | `string` | Language name (e.g. `"python"`, `"go"`, `"rust"`) |
+| `version` | `string` | Version string as it appears in the registry (e.g. `"3.11"`, `"1.21"`) |
+| `image` | `string` | Resolved Docker image reference |
+| `description` | `string` | Human-readable description of the image and base OS |
+| `deprecated` | `boolean` | `true` if this version is past upstream EOL; manifests using it will log a deprecation warning at execution time |
+
+The top-level `custom_runtime_supported` field indicates whether the node accepts `spec.runtime.image` (CustomRuntime) as an alternative to StandardRuntime.
+
+**Example — filter by language:**
+
+```json
+{ "language": "python" }
+```
+
+```json
+{
+  "tool": "aegis.runtime.list",
+  "runtimes": [
+    { "language": "python", "version": "3.11", "image": "python:3.11-slim", "description": "Python 3.11 with slim Debian base", "deprecated": false },
+    { "language": "python", "version": "3.10", "image": "python:3.10-slim", "description": "Python 3.10 with slim Debian base", "deprecated": false },
+    { "language": "python", "version": "3.9",  "image": "python:3.9-slim",  "description": "Python 3.9 with slim Debian base",  "deprecated": true  }
+  ],
+  "custom_runtime_supported": true
+}
+```
+
+**Usage pattern for agent-creator agents:** Before writing or updating a manifest that includes `spec.runtime`, call `aegis.runtime.list` (optionally filtered by the target language) to confirm the intended `language`+`version` pair exists and is not deprecated. Specifying an unrecognized combination is rejected at execution validation time with no fallback.
+
+See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) for the full runtime matrix, lifecycle status, and pre-installed toolchains.

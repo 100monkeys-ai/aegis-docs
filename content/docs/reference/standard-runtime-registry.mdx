@@ -59,6 +59,42 @@ spec:
 
 ---
 
+## Programmatic Runtime Discovery
+
+Agents that create or update other agent manifests can enumerate the registry at execution time by calling the built-in `aegis.runtime.list` tool. This prevents hallucinated language-version combinations from being written into manifests.
+
+**Tool call — list all runtimes:**
+
+```json
+{}
+```
+
+**Tool call — filter by language:**
+
+```json
+{ "language": "python" }
+```
+
+**Response shape:**
+
+```json
+{
+  "tool": "aegis.runtime.list",
+  "runtimes": [
+    { "language": "python", "version": "3.11", "image": "python:3.11-slim", "description": "Python 3.11 with slim Debian base", "deprecated": false },
+    { "language": "python", "version": "3.10", "image": "python:3.10-slim", "description": "Python 3.10 with slim Debian base", "deprecated": false },
+    { "language": "python", "version": "3.9",  "image": "python:3.9-slim",  "description": "Python 3.9 with slim Debian base",  "deprecated": true  }
+  ],
+  "custom_runtime_supported": true
+}
+```
+
+The `deprecated: true` flag indicates versions that are past upstream EOL. Manifests using deprecated versions still execute but emit a warning in the execution log — prefer a supported version.
+
+`aegis.runtime.list` is available in the `agent-runtime` security context with no additional configuration. See the [Management Tools reference](/docs/reference/management-tools#aegisruntimelist) for the full parameter and response schema.
+
+---
+
 ## Manifest Usage
 
 ```yaml

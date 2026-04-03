@@ -86,6 +86,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.tools.search` | `true` | Read-only tool search |
 | `aegis.system.info` | `true` | Read-only node status query |
 | `aegis.system.config` | `true` | Read-only configuration access |
+| `aegis.runtime.list` | `true` | Read-only runtime listing |
 
 These defaults can be overridden per-tool in the node configuration. `skip_judge` is an **operator-level** flag — agents cannot influence it.
 
@@ -149,7 +150,7 @@ The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
 | `web.search` | `query` |
 | `web.fetch` | `url` |
 
-Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`) accept any object including `{}`. `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string.
+Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string.
 
 ---
 

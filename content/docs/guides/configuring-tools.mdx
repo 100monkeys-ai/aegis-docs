@@ -263,6 +263,14 @@ Resolved values are injected as environment variables into the server process an
 
 ---
 
+## Built-in System Tools
+
+The `aegis.*` namespace tools — including `aegis.runtime.list`, `aegis.agent.list`, `aegis.tools.search`, `aegis.schema.get`, and the rest of the management surface — are part of the orchestrator itself. They require no entry in `mcp_servers`, no `executor` declaration, and no node-level configuration. They are available to any agent whose `SecurityContext` permits them.
+
+See the [Management Tools reference](/docs/reference/management-tools) for the full list and parameter schemas.
+
+---
+
 ## Related Pages
 
 - [MCP Tool Routing](/docs/architecture/tool-routing) — how the three routing paths work internally
