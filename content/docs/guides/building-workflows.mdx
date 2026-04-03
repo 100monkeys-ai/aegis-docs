@@ -357,7 +357,7 @@ spec:
     SECURITY_SCAN:
       kind: Agent
       agent: security-scanner
-      input: "{{workflow.task}}"
+      input: "{{intent}}"
       timeout: 300s
       transitions:
         - condition: on_success
@@ -414,7 +414,7 @@ spec:
     GENERATE_CODE:
       kind: Agent
       agent: coder-v2
-      input: "{{workflow.task}}"
+      input: "{{intent}}"
       timeout: 600s
       transitions:
         - condition: on_success
@@ -427,7 +427,7 @@ spec:
       workflow_id: validation-pipeline
       mode: blocking
       result_key: validation_result
-      input: "Validate code generated for: {{workflow.task}}"
+      input: "Validate code generated for: {{intent}}"
       timeout: 1800s
       transitions:
         - condition: on_success

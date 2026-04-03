@@ -60,7 +60,7 @@ spec:
         Error: {{state.feedback}}
         Fix the code.
         {{else}}
-        {{workflow.task}}
+        {{intent}}
         {{/if}}
       volumes:                     # optional volume mounts for this state
         - volume: "{{workflow.storage.workspace}}"
@@ -87,7 +87,7 @@ spec:
       kind: Agent
       agent: judge-v1
       input: |
-        Task: {{workflow.task}}
+        Task: {{intent}}
         Output: {{EXECUTE.output.stdout}}
         Evaluate correctness and return JSON with score, confidence and reasoning.
       transitions:
@@ -220,7 +220,56 @@ metadata:
       - environment
 ```
 
-Inputs declared in `input_schema` are available to workflow states via `{{input.FIELD}}` Handlebars templates. Undeclared fields in the caller's payload are passed through unchanged; schema validation only rejects payloads that violate declared constraints.
+The following JSON Schema property types are supported. The Zaru client context panel renders each type as a specific UI element:
+
+| JSON Schema type | Zaru UI control |
+|---|---|
+| `string` | Text input |
+| `number` / `integer` | Number spinner |
+| `boolean` | Checkbox |
+| `enum` | Dropdown select |
+| `object` | Nested form group |
+| `array` | Repeatable row builder |
+
+When `input_schema` is present, the orchestrator validates the caller's input payload before creating the `WorkflowExecution`. A payload that fails schema validation is rejected with HTTP 422; no workflow execution is created. When `input_schema` is absent, any payload is accepted.
+
+The validated payload is stored as `WorkflowExecution.input` and is immutable for the lifetime of the execution. It is exposed to all workflow states via the `{{input.KEY}}` Handlebars namespace — not just the first state.
+
+> **`input_schema` vs `spec.context`:** `spec.context` holds author-time constants declared in the manifest, accessible via `{{workflow.context.KEY}}`. `metadata.input_schema` declares caller-supplied runtime values, accessible via `{{input.KEY}}`. These are separate namespaces — context is static, input is dynamic.
+
+**Richer example with multiple field types:**
+
+```yaml
+metadata:
+  name: invoice-pipeline
+  description: "Processes and validates invoice documents."
+  input_schema:
+    type: object
+    required:
+      - document_text
+      - vendor_id
+    properties:
+      document_text:
+        type: string
+        description: "Raw invoice text to process."
+      vendor_id:
+        type: string
+        description: "Vendor identifier for routing."
+      currency:
+        type: string
+        enum: ["USD", "EUR", "GBP"]
+        description: "Currency for amount normalization. Default: USD."
+      strict_validation:
+        type: boolean
+        description: "Whether to apply strict validation rules. Default: false."
+```
+
+**CLI invocation:**
+
+```bash
+aegis workflow run invoice-pipeline \
+  --input '{"document_text": "Invoice #1234...", "vendor_id": "acme-corp", "currency": "USD"}'
+```
 
 > **Scope:** Workflows are deployed at Tenant scope by default. Use `--scope user` for personal workflows or `--scope global` for platform-wide workflows (requires operator role). After deployment, use `aegis workflow promote` and `aegis workflow demote` to change scope. Scope is not a manifest field — it is controlled via the CLI `--scope` flag or API parameter at deploy time.
 
@@ -265,7 +314,7 @@ Inputs declared in `input_schema` are available to workflow states via `{{input.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `agent` | string | ✓ | Deployed agent name or UUID. |
-| `input` | string | | Handlebars template rendered as the agent's task input. Supports `{{workflow.task}}`, `{{STATE.output}}`, `{{blackboard.KEY}}`, `{{state.feedback}}`. |
+| `input` | string | | Handlebars template rendered as the agent's task input. Supports `{{intent}}`, `{{input.KEY}}`, `{{STATE.output}}`, `{{blackboard.KEY}}`, `{{state.feedback}}`. |
 | `isolation` | `inherit` \| `firecracker` \| `docker` \| `process` | | Override isolation mode. Default: `inherit` (from node config). |
 
 When the agent completes, the Blackboard is updated under the state name:
@@ -587,7 +636,8 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 
 | Variable | Available In | Description |
 |---|---|---|
-| `{{workflow.task}}` | All states | `task` key from the workflow start `--input` payload. |
+| `{{intent}}` | All states | The caller's natural-language intent string passed at workflow start. |
+| `{{input.KEY}}` | All states | Key from the workflow start `--input` payload (validated against `metadata.input_schema`). |
 | `{{workflow.context.KEY}}` | All states | Value from `spec.context`. |
 | `{{workflow.storage.workspace}}` | `volumes[].volume` | Reference to the shared workspace volume. |
 | `{{workflow.storage.shared_volumes.NAME}}` | `volumes[].volume` | Reference to a named shared volume. |
@@ -610,8 +660,52 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 | `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state. |
 | `{{state.feedback}}` | All states | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | After Human states | Additional feedback text from the `signal --feedback` argument. |
-| `{{input.KEY}}` | All states | Key from the workflow start `--input` payload. |
 | `{{execution.id}}` | All states | Workflow execution UUID. |
+
+#### Blackboard
+
+The Blackboard is a live `string → JSON value` map shared across all states in a workflow execution. It is owned and managed by the Temporal worker for the duration of the execution.
+
+**Lifecycle:**
+
+1. **Seed:** Before the first state runs, the Blackboard is seeded with all `spec.context` constants. Callers may additionally supply `--blackboard` key-value pairs at invocation time; these merge in at the same moment.
+2. **Mutation:** As each state completes, its output is written to the Blackboard under the state name key. `System` states, `ContainerRun` states, and the `update_context` built-in all write structured JSON into the Blackboard.
+3. **Snapshot:** When the workflow completes, the final Blackboard state is captured and stored in PostgreSQL for audit and debugging.
+
+**Template access:**
+
+- `{{blackboard.KEY}}` — resolves from the live Blackboard, updated after each state transition.
+- `{{input.KEY}}` — resolves from `WorkflowExecution.input`, which is immutable and **not** part of the Blackboard.
+
+These two namespaces are distinct: `input` is what the caller provided at invocation; `blackboard` is the accumulated state built up during execution.
+
+**Example:** A three-state workflow where each state reads from the previous:
+
+```yaml
+spec:
+  context:
+    base_currency: "USD"
+  states:
+    extract:
+      kind: agent
+      agent: invoice-extractor
+      input_template: '{"text": "{{input.document_text}}", "currency": "{{workflow.context.base_currency}}"}'
+      transitions:
+        - on: success
+          next: validate
+    validate:
+      kind: agent
+      agent: quality-gate
+      input_template: '{"artifact": "{{blackboard.extract}}", "criteria": ["amounts-balance", "vendor-exists"]}'
+      transitions:
+        - on: success
+          next: complete
+    complete:
+      kind: system
+      command: "echo done"
+```
+
+In this example, `{{input.document_text}}` is the caller-supplied input (immutable); `{{blackboard.extract}}` is the output written by the `extract` state (mutable, grows with each state).
 
 Handlebars conditionals, loops, and built-in helpers are fully supported:
 
@@ -620,7 +714,7 @@ input: |
   {{#if blackboard.iteration_number}}
   Attempt {{blackboard.iteration_number}} failed: {{state.feedback}}
   {{else}}
-  {{workflow.task}}
+  {{intent}}
   {{/if}}
 ```
 
@@ -631,7 +725,7 @@ input: |
 | Helper | Example | Description |
 |---|---|---|
 | `{{length array}}` | `{{length AUDIT.agents}}` | Number of elements in an array. |
-| `{{upper string}}` | `{{upper workflow.task}}` | Convert to upper case. |
+| `{{upper string}}` | `{{upper input.task}}` | Convert to upper case. |
 | `{{lower string}}` | `{{lower STATE.status}}` | Convert to lower case. |
 | `{{trim string}}` | `{{trim STATE.output}}` | Strip leading/trailing whitespace. |
 | `{{json object}}` | `{{json AUDIT.agents.0.output}}` | Pretty-print an object as a JSON string. |
@@ -702,7 +796,7 @@ spec:
   states:
     GENERATE:
       kind: Agent
-      agent: "{{workflow.agent_id}}"
+      agent: "{{input.agent_id}}"
       input: |
         {{#if blackboard.iteration_number}}
         Iteration {{blackboard.iteration_number}} — previous attempt failed.
@@ -715,7 +809,7 @@ spec:
 
         Fix the code.
         {{else}}
-        {{workflow.task}}
+        {{intent}}
         {{/if}}
       transitions:
         - condition: always
@@ -723,7 +817,7 @@ spec:
 
     EXECUTE:
       kind: System
-      command: "{{workflow.command}}"
+      command: "{{input.command}}"
       env:
         CODE: "{{GENERATE.output}}"
       transitions:
@@ -735,9 +829,9 @@ spec:
 
     VALIDATE:
       kind: Agent
-      agent: "{{workflow.judge_id}}"
+      agent: "{{input.judge_id}}"
       input: |
-        Task: {{workflow.task}}
+        Task: {{intent}}
         Output: {{EXECUTE.output.stdout}}
 
         Validate and respond with JSON:
@@ -809,8 +903,8 @@ spec:
       kind: Agent
       agent: requirements-ai-v1
       input: |
-        User request: {{workflow.user_request}}
-        Codebase: {{workflow.codebase}}
+        User request: {{input.user_request}}
+        Codebase: {{input.codebase}}
         Generate requirements (functional, non-functional, acceptance criteria).
       transitions:
         - condition: always
@@ -967,7 +1061,7 @@ spec:
       kind: Agent
       agent: coder-v2
       input: |
-        {{workflow.task}}
+        {{intent}}
       volumes:
         - name: workspace
           mount_path: /workspace

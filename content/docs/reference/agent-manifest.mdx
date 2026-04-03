@@ -237,7 +237,7 @@ Supports two mutually exclusive runtime modes:
 | `prompt_template` | string | | Handlebars template for constructing LLM prompts. Default: `"{{instruction}}\n\nUser: {{input}}\nAssistant:"`. |
 | `input_data` | object | | Structured input parameters available at execution time. |
 
-**Prompt template variables:** `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{context}}`.
+**Prompt template variables:** `{{intent}}`, `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{context}}`.
 
 To import community skill definitions as agent baselines, use the built-in [`skill-import` workflow](/docs/guides/importing-skills).
 
@@ -249,23 +249,65 @@ An optional JSON Schema object describing the named inputs this agent accepts at
 |---|---|---|---|
 | `input_schema` | JSON Schema object | | Describes the named inputs accepted at execution time. Must be a JSON Schema object with `type: object`. |
 
+The following JSON Schema property types are supported. The Zaru client context panel renders each type as a specific UI element:
+
+| JSON Schema type | Zaru UI control |
+|---|---|
+| `string` | Text input |
+| `number` / `integer` | Number spinner |
+| `boolean` | Checkbox |
+| `enum` | Dropdown select |
+| `object` | Nested form group |
+| `array` | Repeatable row builder |
+
+#### `intent` and `input`
+
+Every agent invocation accepts two optional fields on the execution request:
+
+- **`intent`** — natural-language steering. Describes what the caller wants the agent to achieve. Always available as `{{intent}}` in prompt templates (empty string when absent).
+- **`input`** — structured data for the execution. When `input_schema` is declared, `input` must conform to it (validated before dispatch; rejection = HTTP 422). Available as `{{input}}` (full JSON blob) and `{{input.KEY}}` (dot-notation when the value is an object).
+
+These are complementary, not alternatives — `intent` steers the LLM with natural language; `input` supplies typed data.
+
+| `intent` | `input` | Rendered prompt |
+|---|---|---|
+| Present | Present (object) | `{{intent}}` available; `{{input.KEY}}` dot-notation available. |
+| Present | Absent / empty | `{{intent}}` available; `{{input}}` is empty. |
+| Absent | Present (object) | `{{intent}}` is empty; `{{input.KEY}}` dot-notation available. |
+| Absent | Absent | Both empty; prompt rendered from `spec.task.instruction` only. |
+| Any | Present (string) | `{{input}}` is the raw string value; no dot-notation. |
+
 **Example:**
 
 ```yaml
 spec:
   input_schema:
     type: object
-    properties:
-      repo_url:
-        type: string
-        description: GitHub repository URL to analyze
-      dry_run:
-        type: boolean
     required:
-      - repo_url
+      - document_url
+      - output_format
+    properties:
+      document_url:
+        type: string
+        description: "URL of the document to process."
+      output_format:
+        type: string
+        enum: ["json", "markdown", "html"]
+        description: "Desired output format."
+      max_pages:
+        type: integer
+        description: "Maximum number of pages to process. Default: all pages."
+      include_metadata:
+        type: boolean
+        description: "Whether to include document metadata in the output. Default: false."
 ```
 
-When `input_schema` is declared, callers pass inputs as a JSON object to `--input` (or the equivalent API field). The orchestrator validates the payload against the schema before dispatching the execution.
+```bash
+aegis agent run document-processor \
+  --input '{"document_url": "https://example.com/report.pdf", "output_format": "json", "max_pages": 10}'
+```
+
+> **Note:** `spec.input_schema` is a schema descriptor — it declares what inputs the agent accepts and validates them at invocation time. It is distinct from `spec.task.input_data`, which is a map of default runtime values injected into the container environment at startup and is not validated.
 
 ### `spec.security`
 
@@ -532,6 +574,7 @@ Handlebars template that controls how the LLM prompt is assembled.
 
 | Variable | Description |
 |---|---|
+| `{{intent}}` | Natural-language steering from the caller's execution request. Empty string when absent. |
 | `{{instruction}}` | The `task.instruction` text. |
 | `{{input}}` | JSON input supplied at execution time. |
 | `{{iteration_number}}` | Current iteration (1-based). |
