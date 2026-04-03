@@ -178,6 +178,165 @@ interface SealToolsResponse {
 
 ---
 
+## SEAL Protocol
+
+The `@100monkeys-ai/aegis-sdk` package exports a low-level SEAL module for workloads that need to self-attest and call SEAL tools directly — without going through `AegisClient`. Useful for custom bootstrap scripts and server-side envelope verification.
+
+### Import
+
+```typescript
+import { SEALClient, Ed25519Key, createSealEnvelope, verifySealEnvelope } from '@100monkeys-ai/aegis-sdk';
+```
+
+---
+
+### `SEALClient`
+
+High-level client: generates a keypair, attests, and calls tools.
+
+```typescript
+import { SEALClient } from '@100monkeys-ai/aegis-sdk';
+
+const seal = new SEALClient(
+  'https://your-aegis-node',
+  'my-workload',
+  'default',
+);
+
+try {
+  const result = await seal.attest();
+  console.log(result.security_token);
+
+  const output = await seal.callTool('read_file', { path: '/workspace/main.ts' });
+  console.log(output);
+} finally {
+  seal.dispose();  // zeroes the in-memory private key
+}
+```
+
+**Constructor:**
+
+```typescript
+new SEALClient(gatewayUrl: string, workloadId: string, securityScope: string)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `gatewayUrl` | `string` | Base URL of the SEAL gateway |
+| `workloadId` | `string` | Identifier for this workload |
+| `securityScope` | `string` | Security context / scope label |
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `attest()` | `Promise<AttestationResult>` | Generates a keypair, attests, returns a security token |
+| `callTool(toolName, argumentsObj)` | `Promise<unknown>` | Calls a SEAL tool after attestation |
+| `dispose()` | `void` | Zeroes the private key from memory |
+
+**`AttestationResult`:**
+
+```typescript
+type AttestationResult = {
+  security_token: string;
+  expires_at: string;
+  session_id?: string;
+}
+```
+
+---
+
+### `Ed25519Key`
+
+Low-level Ed25519 keypair for manual envelope construction.
+
+```typescript
+import { Ed25519Key } from '@100monkeys-ai/aegis-sdk';
+
+const key = Ed25519Key.generate();
+const signatureB64 = key.signBase64(new TextEncoder().encode('my message'));
+const pubKeyB64 = key.getPublicKeyBase64();
+key.erase();  // zeroes the private key when done
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Ed25519Key.generate()` | `Ed25519Key` | Generate a new random keypair |
+| `sign(message: Uint8Array)` | `Uint8Array` | Sign bytes, return raw signature |
+| `signBase64(message: Uint8Array)` | `string` | Sign bytes, return base64-encoded signature |
+| `getPublicKeyBytes()` | `Uint8Array` | Raw 32-byte public key |
+| `getPublicKeyBase64()` | `string` | Base64-encoded public key |
+| `erase()` | `void` | Zeroes the private key from memory |
+
+---
+
+### Envelope utilities
+
+#### `createSealEnvelope(securityToken, mcpPayload, privateKey)`
+
+Construct a signed SEAL envelope.
+
+```typescript
+import { createSealEnvelope, Ed25519Key } from '@100monkeys-ai/aegis-sdk';
+
+const key = Ed25519Key.generate();
+const envelope = createSealEnvelope(
+  '<security-token>',
+  { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_file', arguments: {} } },
+  key,
+);
+// Pass envelope to AegisClient.invokeSeal() or the raw SEAL endpoint
+```
+
+#### `verifySealEnvelope(envelope, publicKeyBytes, maxAgeSeconds?)`
+
+Server-side verification. Throws on invalid signature or expired timestamp; returns the inner MCP payload on success.
+
+```typescript
+import { verifySealEnvelope } from '@100monkeys-ai/aegis-sdk';
+
+const payload = verifySealEnvelope(
+  envelopeObject,
+  registeredPublicKeyBytes,
+  30,   // max age in seconds (default: 30)
+);
+```
+
+#### `createCanonicalMessage(securityToken, payload, timestampUnix)`
+
+Low-level helper that produces the canonical `Uint8Array` that is signed.
+
+```typescript
+import { createCanonicalMessage } from '@100monkeys-ai/aegis-sdk';
+
+const msgBytes = createCanonicalMessage('<token>', mcpPayload, Math.floor(Date.now() / 1000));
+```
+
+---
+
+### SEAL types
+
+```typescript
+interface McpPayload {
+  jsonrpc: string;
+  id: string | number;
+  method: string;
+  params?: Record<string, unknown>;
+}
+
+interface SealEnvelope {
+  protocol: string;
+  security_token: string;
+  signature: string;
+  payload: McpPayload;
+  timestamp: string;
+}
+
+class SEALError extends Error {}
+```
+
+---
+
 ## Dispatch Gateway
 
 ### `dispatchGateway(payload)`
@@ -395,7 +554,93 @@ See [SSE stream format](/docs/reference/rest-api#get-v1executionsidstream) for t
 
 ## Agent Manifests
 
-Agent manifest types are available in the SDK's manifest module. See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the complete field specification.
+The `@100monkeys-ai/aegis-sdk` package exports manifest types and a fluent builder for constructing agent manifest YAML files programmatically.
+
+```typescript
+import { AgentManifestBuilder, ImagePullPolicy } from '@100monkeys-ai/aegis-sdk';
+```
+
+---
+
+### `AgentManifestBuilder`
+
+Fluent builder — the recommended API for creating manifests in code.
+
+```typescript
+import { AgentManifestBuilder, ImagePullPolicy } from '@100monkeys-ai/aegis-sdk';
+
+const manifest = new AgentManifestBuilder('my-agent', 'typescript')
+  .withDescription('Analyses TypeScript repos for security issues')
+  .withInstruction('You are a security auditor. Analyse the code and report CVEs.')
+  .withExecutionMode('iterative', 15)
+  .withImagePullPolicy(ImagePullPolicy.IfNotPresent)
+  .withNetworkAllow(['api.github.com', 'registry.npmjs.org'])
+  .withTool('read_file')
+  .withTool('run_command')
+  .withEnv('LOG_LEVEL', 'debug')
+  .build();
+```
+
+**Constructor:**
+
+```typescript
+new AgentManifestBuilder(name: string, language?: string, version?: string)
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `withDescription(description)` | Set the manifest description |
+| `withLabel(key, value)` | Add a metadata label |
+| `withInstruction(instruction)` | Set the agent system instruction |
+| `withExecutionMode(mode, maxIterations?)` | Set `"one-shot"` or `"iterative"` mode |
+| `withImage(image)` | Set a custom Docker image |
+| `withImagePullPolicy(policy)` | Set the image pull policy (`ImagePullPolicy` enum) |
+| `withBootstrapPath(path)` | Path to a custom bootstrap script inside the image |
+| `withNetworkAllow(domains)` | Allowlist of hostnames the agent may reach |
+| `withTool(tool)` | Add a SEAL tool name to the agent's tool list |
+| `withEnv(key, value)` | Add an environment variable |
+| `build()` | Returns a validated `AgentManifest` |
+
+---
+
+### `ImagePullPolicy`
+
+```typescript
+enum ImagePullPolicy {
+  Always = 'Always',
+  IfNotPresent = 'IfNotPresent',
+  Never = 'Never',
+}
+```
+
+---
+
+### Manifest utility functions
+
+| Function | Description |
+|----------|-------------|
+| `loadManifest(path)` | Load and validate a manifest from a YAML file |
+| `saveManifest(manifest, path)` | Serialise and write the manifest to a YAML file |
+| `validateManifest(manifest)` | Validate the manifest; throws on invalid |
+
+---
+
+### Key manifest types
+
+| Interface | Purpose |
+|-----------|--------|
+| `AgentManifest` | Root manifest: `apiVersion`, `kind`, `metadata`, `spec` |
+| `ManifestMetadata` | `name`, `version`, `description`, `tags`, `labels`, `annotations` |
+| `RuntimeConfig` | `language`, `version`, `image`, `image_pull_policy`, `isolation`, `model` |
+| `TaskConfig` | `instruction`, `prompt_template`, `input_data` |
+| `ExecutionStrategy` | `mode`, `max_iterations`, `llm_timeout_seconds` |
+| `SecurityConfig` | `network`, `filesystem`, `resources` |
+| `AdvancedConfig` | `warm_pool_size`, `swarm_enabled`, `startup_script`, `bootstrap_path` |
+| `AgentSpec` | Root spec combining all of the above |
+
+For the full field reference, see the [Agent Manifest Reference](/docs/reference/agent-manifest).
 
 ---
 

@@ -303,6 +303,260 @@ Liveness and readiness probes.
 
 ---
 
+## SEAL Protocol
+
+The `aegis.seal` subpackage provides low-level cryptographic primitives and client utilities for workloads that need to self-attest and call SEAL tools directly — without going through `AegisClient`. Useful for custom bootstrap scripts and server-side envelope verification.
+
+### Import paths
+
+```python
+from aegis.seal import SEALClient, Ed25519Key
+from aegis.seal.envelope import create_seal_envelope, verify_seal_envelope, create_canonical_message
+```
+
+---
+
+### `SEALClient`
+
+A high-level client that handles key generation, attestation, and tool invocation in one object.
+
+```python
+from aegis.seal import SEALClient
+
+client = SEALClient(
+    gateway_url="https://your-aegis-node",
+    workload_id="my-workload",
+    security_scope="default",
+)
+
+try:
+    result = await client.attest()
+    print(result.security_token)
+
+    output = await client.call_tool("read_file", {"path": "/workspace/main.py"})
+    print(output)
+finally:
+    client.erase()   # zeroes the in-memory private key
+```
+
+**Constructor:**
+
+```python
+SEALClient(gateway_url: str, workload_id: str, security_scope: str)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `gateway_url` | `str` | Base URL of the SEAL gateway |
+| `workload_id` | `str` | Identifier for this workload |
+| `security_scope` | `str` | Security context / scope label |
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `await attest()` | `AttestationResult` | Generates an Ed25519 keypair, attests to the gateway, returns a security token |
+| `await call_tool(tool_name, arguments)` | `Dict[str, Any]` | Calls a SEAL tool after attestation |
+| `erase()` | `None` | Zeroes the private key from memory |
+
+**`AttestationResult`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `security_token` | `str` | Bearer token for SEAL tool invocations |
+| `expires_at` | `str` | ISO-8601 expiry timestamp |
+| `session_id` | `str \| None` | Optional session identifier |
+
+---
+
+### `Ed25519Key`
+
+Low-level Ed25519 keypair for manual envelope construction.
+
+```python
+from aegis.seal import Ed25519Key
+
+key = Ed25519Key.generate()
+signature_b64 = key.sign_base64(b"my message")
+pub_key_b64 = key.get_public_key_base64()
+key.erase()  # zero the private key when done
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Ed25519Key.generate()` | `Ed25519Key` | Generate a new random keypair |
+| `sign(message: bytes)` | `bytes` | Sign raw bytes, return raw signature |
+| `sign_base64(message: bytes)` | `str` | Sign raw bytes, return base64-encoded signature |
+| `get_public_key_bytes()` | `bytes` | Raw 32-byte public key |
+| `get_public_key_base64()` | `str` | Base64-encoded public key |
+| `erase()` | `None` | Zeroes the private key from memory |
+
+---
+
+### Envelope utilities
+
+For server-side workloads (e.g. a gateway plugin) that need to construct or verify SEAL envelopes manually.
+
+#### `create_seal_envelope(security_token, mcp_payload, private_key)`
+
+Construct a signed SEAL envelope from a security token, an MCP payload dict, and an `Ed25519Key`.
+
+```python
+from aegis.seal.envelope import create_seal_envelope
+from aegis.seal import Ed25519Key
+
+key = Ed25519Key.generate()
+envelope = create_seal_envelope(
+    security_token="<token>",
+    mcp_payload={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {...}},
+    private_key=key,
+)
+# envelope: Dict[str, Any] — pass to AegisClient.invoke_seal() or the raw SEAL endpoint
+```
+
+#### `verify_seal_envelope(envelope, public_key_bytes, max_age_seconds?)`
+
+Server-side verification. Raises on invalid signature or expired timestamp.
+
+```python
+from aegis.seal.envelope import verify_seal_envelope
+
+payload = verify_seal_envelope(
+    envelope=envelope_dict,
+    public_key_bytes=bytes.fromhex(registered_public_key_hex),
+    max_age_seconds=30,   # default: 30
+)
+# Returns the inner MCP payload Dict[str, Any] on success
+```
+
+#### `create_canonical_message(security_token, payload, timestamp_unix)`
+
+Low-level helper that produces the canonical bytes that are signed.
+
+```python
+from aegis.seal.envelope import create_canonical_message
+
+msg_bytes = create_canonical_message(
+    security_token="<token>",
+    payload={"jsonrpc": "2.0", ...},
+    timestamp_unix=1743600000,
+)
+```
+
+---
+
+## Agent Manifests
+
+The `aegis.manifest` module provides Pydantic models and a fluent builder for constructing agent manifest YAML files programmatically.
+
+```python
+from aegis.manifest import AgentManifestBuilder, AgentManifest, ImagePullPolicy
+```
+
+---
+
+### `AgentManifestBuilder`
+
+Fluent builder — the recommended API for creating manifests in code.
+
+```python
+from aegis.manifest import AgentManifestBuilder, ImagePullPolicy
+
+manifest = (
+    AgentManifestBuilder(name="my-agent", language="python", version="3.12")
+    .with_description("Analyses Python repos for security issues")
+    .with_instruction("You are a security auditor. Analyse the code and report CVEs.")
+    .with_execution_mode("iterative", max_iterations=15)
+    .with_image_pull_policy(ImagePullPolicy.IF_NOT_PRESENT)
+    .with_network_allow(["api.github.com", "pypi.org"])
+    .with_tool("read_file")
+    .with_tool("run_command")
+    .with_env("LOG_LEVEL", "debug")
+    .build()
+)
+
+manifest.to_yaml_file("./my-agent.yaml")
+```
+
+**Constructor:**
+
+```python
+AgentManifestBuilder(
+    name: str,
+    language: Optional[str] = None,
+    version: Optional[str] = None,
+    image: Optional[str] = None,
+)
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `with_description(description)` | Set the manifest description |
+| `with_label(key, value)` | Add a metadata label |
+| `with_instruction(instruction)` | Set the agent system instruction |
+| `with_execution_mode(mode, max_iterations?)` | Set `"one-shot"` or `"iterative"` mode |
+| `with_image(image)` | Set a custom Docker image (overrides `language`/`version`) |
+| `with_image_pull_policy(policy)` | Set the image pull policy (`ImagePullPolicy` enum) |
+| `with_bootstrap_path(path)` | Path to a custom bootstrap script inside the image |
+| `with_network_allow(domains)` | Allowlist of hostnames the agent may reach |
+| `with_tool(tool)` | Add a SEAL tool name to the agent's tool list |
+| `with_env(key, value)` | Add an environment variable |
+| `build()` | Returns a validated `AgentManifest` |
+
+---
+
+### `AgentManifest`
+
+The root manifest model. Serialises to the AEGIS agent manifest YAML format.
+
+```python
+class AgentManifest(BaseModel):
+    apiVersion: str      # "100monkeys.ai/v1"
+    kind: str            # "Agent"
+    metadata: ManifestMetadata
+    spec: AgentSpec
+```
+
+**Class methods:**
+
+| Method | Description |
+|--------|-------------|
+| `AgentManifest.from_yaml_file(path)` | Load and validate a manifest from a YAML file |
+| `manifest.to_yaml_file(path)` | Serialise and write the manifest to a YAML file |
+| `manifest.validate_manifest()` | Validate the manifest; returns `bool` |
+
+---
+
+### `ImagePullPolicy`
+
+```python
+from aegis.manifest import ImagePullPolicy
+
+ImagePullPolicy.ALWAYS          # "Always"
+ImagePullPolicy.IF_NOT_PRESENT  # "IfNotPresent"
+ImagePullPolicy.NEVER           # "Never"
+```
+
+---
+
+### Key manifest types
+
+| Class | Purpose |
+|-------|---------|
+| `ManifestMetadata` | `name`, `version`, `description`, `tags`, `labels`, `annotations` |
+| `RuntimeConfig` | `language`, `version`, `image`, `image_pull_policy`, `isolation`, `model` |
+| `TaskConfig` | `instruction`, `prompt_template`, `input_data` |
+| `ExecutionStrategy` | `mode`, `max_iterations`, `llm_timeout_seconds`, `validation` |
+| `SecurityConfig` | `network` (`NetworkPolicy`), `filesystem` (`FilesystemPolicy`), `resources` (`ResourceLimits`) |
+| `AdvancedConfig` | `warm_pool_size`, `swarm_enabled`, `startup_script`, `bootstrap_path` |
+| `AgentSpec` | Root spec combining all of the above |
+
+For the full field reference, see the [Agent Manifest Reference](/docs/reference/agent-manifest).
+
+---
+
 ## Dispatch Protocol Types
 
 When writing a **custom bootstrap script** (`spec.advanced.bootstrap_path` in the agent manifest), import these types to build and parse the protocol payloads in a type-safe way.
