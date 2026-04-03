@@ -4,6 +4,7 @@
         "authentication",
         "execute-mode",
         "writing-agents",
+        "agents-as-functions",
         "configuring-tools",
         "custom-runtime-agents",
         "creating-agents-ui",
