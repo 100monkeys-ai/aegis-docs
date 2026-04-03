@@ -148,6 +148,26 @@ metadata:
     - static-analysis
 ```
 
+### Declaring structured inputs with `input_schema`
+
+If your agent accepts structured inputs — named fields beyond a free-form string — declare them in `spec.input_schema`. This tells callers exactly what to pass and lets the orchestrator validate the input before the agent runs.
+
+```yaml
+spec:
+  input_schema:
+    type: object
+    properties:
+      repo_url:
+        type: string
+        description: GitHub repository URL to analyze
+      dry_run:
+        type: boolean
+    required:
+      - repo_url
+```
+
+Callers then pass `--input '{"repo_url": "https://github.com/org/repo", "dry_run": false}'` instead of a plain string. See the [Agent Manifest Reference](/docs/reference/agent-manifest#specinput_schema) for the full field specification.
+
 ---
 
 ## Step 3: Deploy the Agent

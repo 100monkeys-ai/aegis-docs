@@ -192,6 +192,7 @@ spec:
 |---|---|---|---|
 | `runtime` | object | ✓ | Runtime configuration. |
 | `task` | object | | Task definition (instructions for the agent). |
+| `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`spec.input_schema`](#specinput_schema). |
 | `security` | object | | Security policy (deny-by-default). |
 | `volumes` | `object[]` | | Volume mount declarations. |
 | `execution` | object | | Execution strategy and acceptance criteria. |
@@ -239,6 +240,32 @@ Supports two mutually exclusive runtime modes:
 **Prompt template variables:** `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{context}}`.
 
 To import community skill definitions as agent baselines, use the built-in [`skill-import` workflow](/docs/guides/importing-skills).
+
+### `spec.input_schema`
+
+An optional JSON Schema object describing the named inputs this agent accepts at execution time. Declaring `input_schema` lets callers know exactly what to pass and enables automatic validation of execution inputs before the agent runs.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `input_schema` | JSON Schema object | | Describes the named inputs accepted at execution time. Must be a JSON Schema object with `type: object`. |
+
+**Example:**
+
+```yaml
+spec:
+  input_schema:
+    type: object
+    properties:
+      repo_url:
+        type: string
+        description: GitHub repository URL to analyze
+      dry_run:
+        type: boolean
+    required:
+      - repo_url
+```
+
+When `input_schema` is declared, callers pass inputs as a JSON object to `--input` (or the equivalent API field). The orchestrator validates the payload against the schema before dispatching the execution.
 
 ### `spec.security`
 
@@ -527,7 +554,7 @@ Paths support glob patterns (e.g., `"/config/*.yaml"`). `filesystem.read_only: t
 
 The `timeout` field is the outer bound for the entire execution. All validation sub-timeouts must fit within this budget:
 
-```
+```text
 security.resources.timeout                                    (e.g., 600s)
   └─ execution.validation[*].timeout_seconds         (e.g., 90s)  — outer-loop validator budgets
   └─ execution.tool_validation[*].timeout_seconds    (e.g., 30s)  — inner-loop tool-call judge

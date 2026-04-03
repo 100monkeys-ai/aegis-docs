@@ -59,6 +59,29 @@ metadata:
     - automated-testing
 ```
 
+### Declaring structured inputs with `input_schema`
+
+If your workflow accepts named runtime inputs, declare them in `metadata.input_schema`. This makes the contract between callers and the workflow explicit, and enables the orchestrator to validate input payloads before the workflow starts.
+
+```yaml
+metadata:
+  name: my-pipeline
+  version: "1.0.0"
+  input_schema:
+    type: object
+    properties:
+      task:
+        type: string
+        description: Natural language description of the task to complete
+      language:
+        type: string
+        enum: [python, typescript, rust]
+    required:
+      - task
+```
+
+Input fields are then available in state templates as `{{input.task}}`, `{{input.language}}`, etc. See the [Workflow Manifest Reference](/docs/reference/workflow-manifest#metadatainput_schema) for the full field specification.
+
 ---
 
 ## Step 1: Write the Workflow Manifest

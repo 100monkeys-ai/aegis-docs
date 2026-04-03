@@ -190,6 +190,37 @@ spec:
 | `description` | string | | Human-readable purpose description. |
 | `labels` | `map[string]string` | | Key-value labels for categorization and discovery. |
 | `annotations` | `map[string]string` | | Arbitrary non-identifying metadata (URLs, changelogs, JSON blobs). |
+| `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`metadata.input_schema`](#metadatainput_schema). |
+
+### `metadata.input_schema`
+
+An optional JSON Schema object describing the named inputs this workflow accepts at execution time. Callers pass a JSON object matching this schema via `--input` (or the equivalent API field); the orchestrator validates the payload before the workflow starts.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `input_schema` | JSON Schema object | | Must be a JSON Schema object with `type: object`. |
+
+**Example:**
+
+```yaml
+metadata:
+  name: data-pipeline
+  version: "1.0.0"
+  input_schema:
+    type: object
+    properties:
+      dataset_path:
+        type: string
+        description: Path to the input dataset
+      environment:
+        type: string
+        enum: [staging, production]
+    required:
+      - dataset_path
+      - environment
+```
+
+Inputs declared in `input_schema` are available to workflow states via `{{input.FIELD}}` Handlebars templates. Undeclared fields in the caller's payload are passed through unchanged; schema validation only rejects payloads that violate declared constraints.
 
 > **Scope:** Workflows are deployed at Tenant scope by default. Use `--scope user` for personal workflows or `--scope global` for platform-wide workflows (requires operator role). After deployment, use `aegis workflow promote` and `aegis workflow demote` to change scope. Scope is not a manifest field — it is controlled via the CLI `--scope` flag or API parameter at deploy time.
 
