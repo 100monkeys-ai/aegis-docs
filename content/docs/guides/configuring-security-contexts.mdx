@@ -21,17 +21,17 @@ The **chat surface** is what the Zaru client (or any MCP client) sees when a use
 
 ### Execution Surface
 
-The **execution surface** governs what agent containers can do once they are running. When a user triggers `aegis.task.execute` (or any tool that spawns an agent container), the spawned container does **not** inherit the caller's tier context. Instead, it runs under the **`agent-runtime`** context.
+The **execution surface** governs what agent containers can do once they are running. When a user triggers `aegis.task.execute` (or any tool that spawns an agent container), the spawned container does **not** inherit the caller's tier context. Instead, it runs under the **`aegis-system-agent-runtime`** context.
 
-This separation is intentional: the user's tier context is about what the user can ask the platform to do; `agent-runtime` is about what the platform's agent containers are allowed to do on the user's behalf.
+This separation is intentional: the user's tier context is about what the user can ask the platform to do; `aegis-system-agent-runtime` is about what the platform's agent containers are allowed to do on the user's behalf.
 
 ---
 
-## The `agent-runtime` Built-In Context
+## The `aegis-system-agent-runtime` Built-In Context
 
-`agent-runtime` is a platform-provided security context that ships with AEGIS. It does not need to be defined in `aegis-config.yaml` — the orchestrator registers it automatically at startup.
+`aegis-system-agent-runtime` is a platform-provided security context that ships with AEGIS. It does not need to be defined in `aegis-config.yaml` — the orchestrator registers it automatically at startup.
 
-### What `agent-runtime` grants
+### What `aegis-system-agent-runtime` grants
 
 | Capability | Scope |
 |------------|-------|
@@ -42,7 +42,7 @@ This separation is intentional: the user's tier context is about what the user c
 | `aegis.workflow.*` (read/list/signal) | Introspect and signal workflows |
 | `aegis.task.execute` | Spawn child executions (subject to swarm ceiling rules) |
 
-### What `agent-runtime` excludes
+### What `aegis-system-agent-runtime` excludes
 
 - Destructive platform operations (`aegis.agent.delete`, `aegis.workflow.delete`, `aegis.task.remove`)
 - Orchestrator commands (`aegis.system.info`, `aegis.system.config`)
@@ -50,10 +50,10 @@ This separation is intentional: the user's tier context is about what the user c
 
 ### Configuration example
 
-Because `agent-runtime` is built in, you do not define it in `aegis-config.yaml`. The orchestrator's compiled-in definition is equivalent to:
+Because `aegis-system-agent-runtime` is built in, you do not define it in `aegis-config.yaml`. The orchestrator's compiled-in definition is equivalent to:
 
 ```yaml
-- name: "agent-runtime"
+- name: "aegis-system-agent-runtime"
   description: "Execution surface for agent containers. Grants filesystem, shell, and web access scoped to /workspace."
   capabilities:
     - tool_pattern: "fs.*"
@@ -85,8 +85,8 @@ The following contexts ship with the platform and do not require operator config
 
 | Context | Surface | Description |
 |---------|---------|-------------|
-| `agent-runtime` | Execution | Agent containers — `fs.*` scoped to `/workspace`, `cmd.run`, `web.*`, aegis read/execution tools |
-| `default` | Authoring | Platform authoring agents (e.g., agent-creator-agent) — unrestricted tool access for manifest authoring and validation |
+| `aegis-system-agent-runtime` | Execution | Agent containers — `fs.*` scoped to `/workspace`, `cmd.run`, `web.*`, aegis read/execution tools |
+| `aegis-system-default` | Authoring | Platform authoring agents (e.g., agent-creator-agent) — unrestricted tool access for manifest authoring and validation |
 | `zaru-free` | Chat/MCP | Zaru Free tier chat surface — no shell, no web, ephemeral volumes only |
 | `zaru-pro` | Chat/MCP | Zaru Pro tier chat surface — full aegis tool set, rate-limited web access |
 | `zaru-business` | Chat/MCP | Zaru Business tier chat surface — same tool set as Pro with org features |

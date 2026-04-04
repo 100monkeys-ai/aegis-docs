@@ -69,7 +69,7 @@ SEAL is the protocol-level security layer that governs all MCP tool calls. Every
 
 | Concept | Description |
 |---|---|
-| **`SecurityContext`** | A named set of permitted tool capabilities defined in node config (e.g., `"default"`, `"restricted"`, `"privileged"`). |
+| **`SecurityContext`** | A named set of permitted tool capabilities defined in node config (e.g., `"aegis-system-agent-runtime"`, `"research-safe"`, `"aegis-system-operator"`). |
 | **`SecurityToken`** | A short-lived JWT issued by the orchestrator at attestation time, scoping the agent to its `SecurityContext`. |
 | **`SealEnvelope`** | Every tool call is wrapped in an envelope containing the `SecurityToken`, an Ed25519 signature, and the inner MCP payload. |
 | **`PolicyEngine`** | Cedar-based rule evaluator that checks each tool call against the `SecurityContext` capabilities. |
@@ -198,24 +198,24 @@ When a user interacts via the Zaru client or any MCP client, their tool calls ar
 
 ### Execution surface
 
-When a user calls `aegis.task.execute` (or any tool that spawns an agent container), the resulting container does **not** run under the caller's tier context. It runs under the **`agent-runtime`** context — a built-in context that grants:
+When a user calls `aegis.task.execute` (or any tool that spawns an agent container), the resulting container does **not** run under the caller's tier context. It runs under the **`aegis-system-agent-runtime`** context — a built-in context that grants:
 
 - `fs.*` scoped to `/workspace` via `path_allowlist`
 - `cmd.run` — shell command execution inside the container
 - `web.*` — outbound web access
 - `aegis` read and execution tools (`aegis.agent.get`, `aegis.workflow.list`, `aegis.task.execute`, etc.)
 
-This separation is the core of the two-surface model: the user's tier governs what they can ask the platform to do; `agent-runtime` governs what agent containers are allowed to do on the user's behalf. A Free-tier user whose context blocks direct shell access can still have an agent container run shell commands in `/workspace` — because those commands execute under `agent-runtime`, not `zaru-free`.
+This separation is the core of the two-surface model: the user's tier governs what they can ask the platform to do; `aegis-system-agent-runtime` governs what agent containers are allowed to do on the user's behalf. A Free-tier user whose context blocks direct shell access can still have an agent container run shell commands in `/workspace` — because those commands execute under `aegis-system-agent-runtime`, not `zaru-free`.
 
-The `agent-runtime` context is a platform built-in. It does not need to be defined in `aegis-config.yaml`.
+The `aegis-system-agent-runtime` context is a platform built-in. It does not need to be defined in `aegis-config.yaml`.
 
 ---
 
 ## Agent Generation and Context Escalation
 
-When a consumer triggers `aegis.agent.generate`, the resulting agent-creator-agent execution always runs in the `default` security context — not the caller's tier context. This is intentional: the generation workflow requires unrestricted tool access (`tool_pattern: "*"`) to author, validate, and register the new agent manifest. The caller's tier determines whether they are permitted to invoke `aegis.agent.generate` at all, but it does not constrain the execution context of the generation agent itself.
+When a consumer triggers `aegis.agent.generate`, the resulting agent-creator-agent execution always runs in the `aegis-system-default` security context — not the caller's tier context. This is intentional: the generation workflow requires unrestricted tool access (`tool_pattern: "*"`) to author, validate, and register the new agent manifest. The caller's tier determines whether they are permitted to invoke `aegis.agent.generate` at all, but it does not constrain the execution context of the generation agent itself.
 
-This means the agent-creator-agent can reach any tool permitted by the `default` context, regardless of whether the consumer that triggered it would normally have access to those tools.
+This means the agent-creator-agent can reach any tool permitted by the `aegis-system-default` context, regardless of whether the consumer that triggered it would normally have access to those tools.
 
 ---
 

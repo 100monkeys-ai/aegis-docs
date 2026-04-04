@@ -185,7 +185,7 @@ Agent                          Gateway                          KMS
 {
   "public_key": "<Base64-encoded Ed25519 public key (32 bytes)>",
   "workload_id": "<execution UUID or container ID>",
-  "requested_context": "default"
+  "requested_context": "aegis-system-agent-runtime"
 }
 ```
 
@@ -406,9 +406,9 @@ For `SecurityContext: research-safe` (capabilities: `fs.*` on `/workspace/shared
 Security context is bound to an execution at creation time and is immutable for its lifetime. When a parent execution spawns a child — a judge, a workflow step, or a swarm child — the child inherits the parent's security context exactly. There is no escalation path: a child cannot operate under a broader context than its parent.
 
 ```text
-Parent execution: security_context = "default"
-  └── Child (judge):      security_context = "default"   (inherited)
-      └── Grandchild:     security_context = "default"   (inherited)
+Parent execution: security_context = "aegis-system-agent-runtime"
+  └── Child (judge):      security_context = "aegis-system-agent-runtime"   (inherited)
+      └── Grandchild:     security_context = "aegis-system-agent-runtime"   (inherited)
 
 Parent execution: security_context = "zaru-free"
   └── Child execution:    security_context = "zaru-free"  (inherited, not escalated)

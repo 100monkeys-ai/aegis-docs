@@ -784,7 +784,7 @@ Validates a manifest YAML string against its canonical schema without deploying 
 
 ### `aegis.runtime.list`
 
-Returns all supported standard runtime environments from the `StandardRuntimeRegistry`. Use this tool before setting `spec.runtime` in an agent manifest to ensure the target `language` and `version` combination is valid and not deprecated. Available in the `agent-runtime` security context — no additional configuration required.
+Returns all supported standard runtime environments from the `StandardRuntimeRegistry`. Use this tool before setting `spec.runtime` in an agent manifest to ensure the target `language` and `version` combination is valid and not deprecated. Available in the `aegis-system-agent-runtime` security context — no additional configuration required.
 
 This tool is read-only; `skip_judge` defaults to `true`.
 

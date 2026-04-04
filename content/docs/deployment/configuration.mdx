@@ -447,9 +447,9 @@ security_contexts:
           calls: 60
           per_seconds: 60
 
-  # agent-runtime is a platform built-in — shown here for reference only.
+  # aegis-system-agent-runtime is a platform built-in — shown here for reference only.
   # Do NOT copy this block into your aegis-config.yaml; it is registered automatically.
-  - name: agent-runtime
+  - name: aegis-system-agent-runtime
     description: "Execution surface for agent containers. Grants filesystem, shell, and web access scoped to /workspace."
     capabilities:
       - tool_pattern: "fs.*"
