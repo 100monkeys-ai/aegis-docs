@@ -266,6 +266,99 @@ The judge runtime writes its final verdict as text output, and the orchestrator 
 
 Judge input payloads expose mounted filesystem context through `worker_mounts` (array of inherited mount paths). Treat this as the source of truth for artifact discovery.
 
+### Judge Input Schema
+
+Judges should declare `spec.input_schema` with the property names they expect to receive. The orchestrator maps `ValidationRequest` fields to these property names at runtime, so the property names in the schema determine which evaluation data reaches the judge's prompt.
+
+**Canonical property names for judge agents:**
+
+| Property | Purpose |
+|---|---|
+| `generated_manifest` or `output` | The content being evaluated — agent output, generated YAML, etc. |
+| `generated_workflow` | The workflow definition being evaluated (workflow judges). |
+| `user_objective` or `task` | The original objective or task that the worker was fulfilling. |
+| `criteria` | The evaluation rubric text passed from the validator configuration. |
+| `deployment_result` | Deployment outcome, when relevant (optional). |
+| `tool_call_history` | Tool calls made during execution (optional). |
+| `worker_mounts` | Inherited filesystem mount paths available to the judge (optional). |
+| `validation_context` | Automatically set to the judge agent's name by the orchestrator. |
+
+If a judge does not declare `spec.input_schema`, the orchestrator falls back to passing the raw content as a string with the `criteria` field as the intent. Declaring the schema explicitly gives the judge structured access to all evaluation data and enables precise prompt construction.
+
+`input_schema` must be declared under `spec:` in the judge manifest, not under `execution` or any nested block.
+
+Example judge manifest with `input_schema`:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: Agent
+metadata:
+  name: manifest-quality-judge
+  version: "1.0.0"
+  labels:
+    role: judge
+spec:
+  input_schema:
+    type: object
+    required:
+      - generated_manifest
+      - user_objective
+      - criteria
+    properties:
+      generated_manifest:
+        type: string
+        description: "The generated YAML manifest to evaluate."
+      user_objective:
+        type: string
+        description: "The original objective the manifest was created to fulfill."
+      criteria:
+        type: string
+        description: "Evaluation rubric."
+      deployment_result:
+        type: string
+        description: "Outcome of the deployment attempt, if available."
+      validation_context:
+        type: string
+        description: "Automatically set to this judge agent's name."
+
+  runtime:
+    language: python
+    version: "3.11"
+
+  task:
+    instruction: |
+      You are a manifest quality judge. Evaluate the provided YAML manifest against the
+      stated objective and return a JSON verdict:
+      {"score": 0.0-1.0, "confidence": 0.0-1.0, "reasoning": "...", "verdict": "pass|fail|warning"}
+
+  security:
+    network:
+      mode: none
+    resources:
+      timeout: "60s"
+      memory: "512Mi"
+
+  execution:
+    mode: one-shot
+    validation:
+      output:
+        format: json
+        schema:
+          type: object
+          required: ["score", "confidence", "reasoning"]
+          properties:
+            score:
+              type: number
+              minimum: 0
+              maximum: 1
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            reasoning:
+              type: string
+```
+
 ### Security Guidance for Judge Manifests
 
 Because judge outputs influence whether an iteration succeeds, a compromised judge is a high-value attack surface. A few practices reduce the risk:

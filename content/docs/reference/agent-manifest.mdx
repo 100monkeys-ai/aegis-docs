@@ -309,6 +309,8 @@ aegis agent run document-processor \
 
 > **Note:** `spec.input_schema` is a schema descriptor — it declares what inputs the agent accepts and validates them at invocation time. It is distinct from `spec.task.input_data`, which is a map of default runtime values injected into the container environment at startup and is not validated.
 
+> **Judge agents:** When an agent is used as a judge in a `semantic` or `multi_judge` validator, its `input_schema` property names determine how the orchestrator maps evaluation data (output content, objective, criteria, etc.) to the judge's prompt. Declaring `input_schema` in a judge manifest gives the judge structured access to all evaluation fields rather than receiving raw string content. See [Judge Input Schema](/docs/guides/validation#judge-input-schema) for the canonical property names.
+
 ### `spec.security`
 
 | Field | Type | Required | Description |
