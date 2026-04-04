@@ -509,6 +509,37 @@ This is the authoritative view for debugging stuck or failed workflow executions
 
 ---
 
+## Workflow Scope
+
+Every workflow has a `scope` field in its metadata that controls which callers can discover and
+invoke it:
+
+| Scope | Who Can Use It |
+|-------|----------------|
+| `user` | Only the user who registered the workflow |
+| `tenant` | All members of your organization |
+| `global` | All tenants — reserved for platform builtins |
+
+Newly registered workflows default to `tenant` scope. You do not need to specify `scope` explicitly
+unless you want `user` scope:
+
+```yaml
+metadata:
+  name: my-pipeline
+  version: "1.0.0"
+  scope: user   # omit to default to tenant scope
+```
+
+**Global scope is reserved for platform builtins** such as `builtin-intent-to-execution`. Promoting
+or demoting a workflow's scope is an admin operation.
+
+When referencing a workflow by name — for example in `aegis workflow run <name>` or an
+`aegis.workflow.run` tool call — the system resolves using narrowest-first order: user-scoped
+workflows first, then tenant-scoped, then global builtins. A tenant-scoped workflow named
+`my-pipeline` will be found before a global workflow of the same name.
+
+---
+
 ## Workflow Manifest Reference
 
 For the complete field specification including all `StateKind` options, `TransitionRule` operators, and Blackboard template variables, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).

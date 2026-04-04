@@ -163,7 +163,7 @@ aegis agent deploy ./my-agent/agent.yaml
 
 On success, the agent is registered with `status: deployed` and assigned a UUID. The manifest is validated before acceptance — invalid manifests are rejected with a specific error.
 
-```
+```text
 Deployed agent "python-coder" (id: a1b2c3d4-0000-0000-0000-000000000001)
 ```
 
@@ -185,7 +185,7 @@ aegis agent list --output json
 
 Example table output:
 
-```
+```text
 ID                                    NAME           STATUS     RUNTIME  LABELS
 a1b2c3d4-0000-...                     python-coder   deployed   docker   type=developer
 b2c3d4e5-0000-...                     code-reviewer  paused     docker
@@ -232,7 +232,7 @@ aegis task execute <AGENT_ID> \
 
 Returns the execution ID immediately:
 
-```
+```text
 Execution started: a1b2c3d4-1111-0000-0000-000000000001
 ```
 
@@ -248,7 +248,7 @@ aegis task execute <AGENT_ID> \
 
 Example output:
 
-```
+```text
 [2026-02-23T10:00:01Z] Execution a1b2c3d4-1111-... Started
 [2026-02-23T10:00:01Z] Iteration 1 Started
 [2026-02-23T10:00:03Z] Tool: fs.write /workspace/solution.py (234 bytes)
@@ -333,6 +333,24 @@ done
 
 echo "Final status: $STATUS"
 ```
+
+---
+
+## Agent Visibility and Tenant Scope
+
+Deployed agents are **tenant-scoped by default** — they are only visible and accessible within your
+tenant. Other tenants cannot discover or invoke your agents.
+
+Platform agents are **global** — they appear in agent list and search results for all tenants and
+are always available without any configuration.
+
+When an agent invokes another agent by name (for example, via tool calls in a swarm), resolution
+follows the same narrowest-first logic: your tenant's agents are checked first, then global platform
+agents. This means a tenant agent named `reviewer` will shadow a hypothetical global agent of the
+same name within your tenant.
+
+CRUD operations (update, delete) are always tenant-scoped. You cannot update or remove a global
+platform agent regardless of your role.
 
 ---
 

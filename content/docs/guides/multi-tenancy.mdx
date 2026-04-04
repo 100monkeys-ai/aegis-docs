@@ -110,6 +110,42 @@ Every use of this bypass is logged as a `TenantEvent::AdminCrossTenantAccess` fo
 
 ---
 
+## Agent Visibility
+
+Agents belong to a tenant. When the system resolves an agent by name or ID for execution, it checks
+the caller's tenant first. If no match is found, it falls back to platform-provided global agents.
+
+Platform agents — such as the intent pipeline, agent creator, and judge agents — are global and
+accessible to all tenants automatically. No configuration is required to use them.
+
+CRUD operations (update, delete) are strictly tenant-scoped. You can only modify agents your tenant
+owns. Attempting to update or delete a global platform agent is rejected regardless of the caller's
+permissions.
+
+---
+
+## Workflow Scope
+
+Every workflow has a visibility scope that controls which callers can discover and invoke it:
+
+| Scope | Visibility |
+|-------|------------|
+| **User** | Only the user who registered it |
+| **Tenant** | All members of your organization |
+| **Global** | All tenants — reserved for platform builtins |
+
+When running a workflow by name (e.g., via `aegis workflow run` or `aegis.workflow.run`), the system
+resolves using narrowest-first: user-scoped workflows first, then tenant-scoped, then global
+builtins.
+
+Platform workflows such as `builtin-intent-to-execution` are global scope and always available
+without any additional configuration.
+
+Changing a workflow's scope is an admin operation. Newly registered workflows default to `tenant`
+scope.
+
+---
+
 ## Quotas and Rate Limits
 
 Tenant-level quotas are configured in the `tenants` table and can be overridden in `node-config.yaml`:
