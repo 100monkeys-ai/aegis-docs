@@ -3,6 +3,8 @@ title: Management Tools
 description: Built-in tools for managing AEGIS agents, workflows, and schemas via MCP.
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
 AEGIS provides a suite of built-in management tools under the `aegis.*` namespace. These tools enable agents and external clients to perform full CRUD (Create, Read, Update, Delete) operations on agent and workflow definitions directly through the Model Context Protocol (MCP).
 
 Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact directly with the Orchestrator's internal registry and services.
@@ -10,6 +12,10 @@ Unlike execution tools (like `fs.*` or `cmd.run`), management tools interact dir
 These are MCP tool names, not shell commands. For the terminal CLI, use the separate [CLI Reference](/docs/reference/cli).
 
 The workflow management surface currently exposed through MCP is `aegis.workflow.list`, `aegis.workflow.search`, `aegis.workflow.validate`, `aegis.workflow.create`, `aegis.workflow.update`, `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`, `aegis.workflow.wait`, `aegis.workflow.status`, `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.generate`, `aegis.workflow.logs`, `aegis.workflow.cancel`, `aegis.workflow.signal`, and `aegis.workflow.remove`. The task management surface includes `aegis.task.execute`, `aegis.task.status`, `aegis.task.wait`, `aegis.task.list`, `aegis.task.logs`, `aegis.task.cancel`, and `aegis.task.remove`. The execute surface includes `aegis.execute.intent` and `aegis.execute.status` for the intent-to-execution pipeline. The agent management surface also includes `aegis.agent.search` for semantic search, `aegis.agent.logs` for retrieving agent-level activity logs, and `aegis.agent.wait` (alias for `aegis.task.wait`) for blocking until an agent execution completes. The tool discovery surface includes `aegis.tools.list` and `aegis.tools.search` for programmatic enumeration and search of the available tool catalog. The runtime discovery surface includes `aegis.runtime.list` for enumerating the valid entries in the `StandardRuntimeRegistry` — agents that create or update manifests should call this tool before writing `spec.runtime` fields.
+
+<Callout type="info">
+  For complete input and output schemas for every management tool, see the [MCP Tool Reference](/docs/reference/mcp-tool-reference). This page documents usage patterns, examples, and version safety rules.
+</Callout>
 
 ## Versioning and Safety
 
@@ -90,10 +96,10 @@ Performs semantic search over deployed agents, returning results ranked by relev
 |-----------|------|----------|---------|-------------|
 | `query` | `string` | ✅ | — | Natural-language search query describing the desired agent capability. |
 | `limit` | `integer` | ❌ | `10` | Maximum number of results to return. |
-| `min_score` | `number` | ❌ | `0.0` | Minimum similarity score threshold (0.0–1.0). |
+| `min_score` | `number` | ❌ | `0.3` | Minimum similarity score threshold (0.0–1.0). |
 | `labels` | `object` | ❌ | — | Label filter — only return agents matching all specified key-value pairs. |
 | `status` | `string` | ❌ | — | Filter by agent status (e.g. `"deployed"`, `"paused"`). |
-| `include_platform_templates` | `boolean` | ❌ | `false` | Include built-in platform template agents in results. |
+| `include_platform_templates` | `boolean` | ❌ | `true` | Include built-in platform template agents in results. |
 
 **Returns:**
 
@@ -167,8 +173,8 @@ Alias for `aegis.task.wait`. Blocks server-side until an agent execution reaches
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `execution_id` | string | Yes | UUID of the agent execution to wait for |
-| `poll_interval_seconds` | integer | No | Seconds between internal polls (default: 10) |
-| `timeout_seconds` | integer | No | Maximum wait time in seconds (default: 300) |
+| `poll_interval_seconds` | integer | No | Seconds between internal polls (default: 10; minimum: 1) |
+| `timeout_seconds` | integer | No | Maximum wait time in seconds (default: 300; minimum: 1) |
 
 **Returns:** Same shape as `aegis.task.wait` — guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
 
@@ -231,6 +237,7 @@ Executes a registered workflow by name, passing an optional input payload to the
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | `string` | ✅ | — | The name of the workflow to execute. |
+| `intent` | `string` | ❌ | — | Natural-language description of the goal for this workflow run. Injected into the initial blackboard so task activities and agents can access it. |
 | `input` | `object` | ❌ | `{}` | Key-value input passed to the workflow's initial blackboard state. |
 | `blackboard` | `object` | ❌ | — | Additional blackboard values merged into the workflow execution before startup. |
 | `version` | `string` | ❌ | — | Optional semantic version of the workflow to execute. When omitted, the latest deployed version is used. |
@@ -463,7 +470,11 @@ On failure:
 
 Lists all currently registered workflows.
 
-**Parameters:** None.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
+| `scope` | `string` | ❌ | — | Scope filter: `"global"` lists only global workflows; `"visible"` lists user + tenant + global. Omit to list all workflows for the current tenant. |
+| `user_id` | `string` | ❌ | — | User ID used when `scope` is `"visible"`. |
 
 **Returns:** A list of workflow summaries including `id`, `name`, `version`, and `initial_state`.
 
@@ -475,10 +486,9 @@ Performs semantic search over registered workflows, returning results ranked by 
 |-----------|------|----------|---------|-------------|
 | `query` | `string` | ✅ | — | Natural-language search query describing the desired workflow capability. |
 | `limit` | `integer` | ❌ | `10` | Maximum number of results to return. |
-| `min_score` | `number` | ❌ | `0.0` | Minimum similarity score threshold (0.0–1.0). |
+| `min_score` | `number` | ❌ | `0.3` | Minimum similarity score threshold (0.0–1.0). |
 | `labels` | `object` | ❌ | — | Label filter — only return workflows matching all specified key-value pairs. |
-| `status` | `string` | ❌ | — | Filter by workflow status. |
-| `include_platform_templates` | `boolean` | ❌ | `false` | Include built-in platform template workflows in results. |
+| `include_platform_templates` | `boolean` | ❌ | `true` | Include built-in platform template workflows in results. |
 
 **Returns:**
 
@@ -502,6 +512,77 @@ Performs semantic search over registered workflows, returning results ranked by 
 
 **Errors:** Returns an error with `"Cortex not configured"` if the node does not have a Cortex connection configured.
 
+### `aegis.workflow.status`
+
+Returns the current status of a workflow execution — a lightweight status snapshot. Prefer `aegis.workflow.executions.get` when you need the full execution context including blackboard and state outputs.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | UUID of the workflow execution to query. |
+| `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
+
+**Returns:**
+
+```json
+{
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "workflow_id": "my-workflow",
+  "status": "running",
+  "current_state": "ANALYZE",
+  "started_at": "2026-03-14T10:00:00Z",
+  "last_transition_at": "2026-03-14T10:00:05Z"
+}
+```
+
+**Related CLI command:**
+
+```bash
+aegis workflow status <execution_id>
+```
+
+### `aegis.workflow.promote`
+
+Promotes a workflow to a broader visibility scope. A workflow at `user` scope can be promoted to `tenant`; a `tenant`-scoped workflow can be promoted to `global`. Requires operator or tenant-admin capabilities.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | ✅ | — | Workflow name or ID to promote. |
+| `target_scope` | `string` | ❌ | `"global"` | Target visibility scope: `"tenant"` or `"global"`. |
+| `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
+
+**Returns:**
+
+```json
+{
+  "workflow_id": "a1b2c3d4-5678-9abc-def0-123456789abc",
+  "name": "nodejs-k8s-deploy",
+  "promoted": true,
+  "target_scope": "global"
+}
+```
+
+### `aegis.workflow.demote`
+
+Demotes a workflow to a narrower visibility scope. A `global` workflow can be demoted to `tenant`; a `tenant` workflow can be demoted to `user`. Requires operator or tenant-admin capabilities.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `string` | ✅ | — | Workflow name or ID to demote. |
+| `target_scope` | `string` | ❌ | `"tenant"` | Target visibility scope: `"tenant"` or `"user"`. |
+| `user_id` | `string` | ❌ | — | Owner user ID when demoting to `user` scope. |
+| `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
+
+**Returns:**
+
+```json
+{
+  "workflow_id": "a1b2c3d4-5678-9abc-def0-123456789abc",
+  "name": "nodejs-k8s-deploy",
+  "demoted": true,
+  "target_scope": "tenant"
+}
+```
+
 ---
 
 ## Task Management Tools
@@ -515,6 +596,7 @@ Executes a deployed agent by ID, optionally passing an input payload.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `agent_id` | `string` | ✅ | — | UUID of the agent to execute. |
+| `intent` | `string` | ❌ | — | Natural-language description of what the agent should accomplish. Steers the LLM prompt directly. Complementary to structured `input`. |
 | `input` | `object` | ❌ | `{}` | Key-value payload passed to the agent's execution context. |
 | `version` | `string` | ❌ | — | Optional semantic version of the agent to execute. When omitted, the latest deployed version is used. |
 
@@ -537,8 +619,8 @@ Blocks until an execution reaches a terminal state (completed, failed, or cancel
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `execution_id` | `string` | ✅ | — | UUID of the execution to wait for. |
-| `poll_interval_seconds` | `integer` | ❌ | `10` | Seconds between internal status polls. |
-| `timeout_seconds` | `integer` | ❌ | `300` | Maximum seconds to wait before returning a timeout. |
+| `poll_interval_seconds` | `integer` | ❌ | `10` | Seconds between internal status polls. Minimum: 1. |
+| `timeout_seconds` | `integer` | ❌ | `300` | Maximum seconds to wait before returning a timeout. Minimum: 1. |
 
 **Returns:** Same shape as `aegis.task.status` but guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
 
@@ -728,6 +810,18 @@ Returns the current status of an intent-to-execution pipeline run.
 - Running: `{ status: "running" }`
 - Completed: `{ status: "completed", final_result, duration_ms, reused_existing_agent }`
 - Failed: `{ status: "failed", reason, failed_at_state }`
+
+### `aegis.execute.wait`
+
+Alias for `aegis.workflow.wait`. Blocks server-side until the pipeline execution reaches a terminal state. Use the `pipeline_execution_id` returned by `aegis.execute.intent` as the `execution_id` parameter.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `execution_id` | `string` | ✅ | — | The `pipeline_execution_id` returned by `aegis.execute.intent`. |
+| `poll_interval_seconds` | `integer` | ❌ | `5` | Seconds between internal polls. |
+| `timeout_seconds` | `integer` | ❌ | `300` | Maximum wait time in seconds. |
+
+Returns the same shape as `aegis.workflow.wait` — a completed execution with `final_result`, or a `timed_out` indicator.
 
 ---
 

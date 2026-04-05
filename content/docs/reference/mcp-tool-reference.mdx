@@ -1,0 +1,1732 @@
+---
+title: MCP Tool Reference
+description: Complete input and output schemas for all 61 AEGIS MCP tools — 60 built-in orchestrator tools and the Zaru-only zaru.switch_mode tool — with availability by context and Zaru conversation mode.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
+
+---
+
+## Tool Availability by Context
+
+AEGIS tools are available across three distinct execution contexts. The tool set exposed to a caller varies by context.
+
+| Context | Tool groups available | Notes |
+|---------|----------------------|-------|
+| Zaru Chat — chat mode | `zaru.switch_mode` only | Mode switching only; no orchestrator tools |
+| Zaru Chat — agentic mode | `zaru.switch_mode` + agent/task management subset | See mode table below |
+| Zaru Chat — execute mode | `zaru.switch_mode` + execute pipeline tools | See mode table below |
+| Zaru Chat — architect mode | `zaru.switch_mode` + workflow/agent design subset | See mode table below |
+| Zaru Chat — operator mode | All 61 tools | No filtering applied |
+| AEGIS agent inner loop | All 60 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
+| External SEAL caller | All 60 built-in tools | Filtered by `SecurityContext` only; no mode concept |
+
+See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full routing pipeline.
+
+---
+
+## Zaru Conversation Mode Tool Sets
+
+<Callout type="info">
+  The tool sets below are enforced by the Zaru client — not the orchestrator. Outside of Zaru,
+  inside agent inner loops and via direct SEAL calls, all built-in tools are available subject to
+  `SecurityContext` and the agent's `spec.tools` allowlist.
+</Callout>
+
+### Chat Mode
+
+Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator tools directly from chat mode.
+
+### Agentic Mode
+
+- `zaru.switch_mode`
+- `aegis.agent.generate`
+- `aegis.agent.wait`
+- `aegis.agent.list`
+- `aegis.agent.logs`
+- `aegis.task.execute`
+- `aegis.task.wait`
+- `aegis.task.list`
+- `aegis.task.logs`
+- `aegis.task.cancel`
+- `aegis.tools.list`
+- `aegis.tools.search`
+
+### Execute Mode
+
+- `zaru.switch_mode`
+- `aegis.execute.intent`
+- `aegis.execute.status`
+- `aegis.execute.wait`
+- `aegis.workflow.wait`
+
+### Architect Mode
+
+- `zaru.switch_mode`
+- `aegis.workflow.generate`
+- `aegis.workflow.list`
+- `aegis.workflow.logs`
+- `aegis.agent.generate`
+- `aegis.agent.wait`
+- `aegis.agent.list`
+- `aegis.agent.logs`
+- `aegis.schema.get`
+- `aegis.schema.validate`
+- `aegis.task.execute`
+- `aegis.task.wait`
+- `aegis.workflow.wait`
+
+### Operator Mode
+
+All 61 tools are available — no filtering is applied.
+
+---
+
+## Quick-Reference Table
+
+**Zaru mode abbreviations:** C = chat, Ag = agentic, Ex = execute, Ar = architect, Op = operator.
+Operator always has full access; only additional modes are listed per tool.
+
+| Tool | Group | `skip_judge` | Required params | Zaru modes |
+|------|-------|-------------|----------------|------------|
+| `cmd.run` | dispatch | false | `command` | Op |
+| `fs.read` | fs | true | `path` | Op |
+| `fs.write` | fs | false | `path`, `content` | Op |
+| `fs.list` | fs | true | `path` | Op |
+| `fs.create_dir` | fs | false | `path` | Op |
+| `fs.create.dir` | fs | false | `path` | Op |
+| `fs.delete` | fs | false | `path` | Op |
+| `fs.edit` | fs | false | `path`, `target_content`, `replacement_content` | Op |
+| `fs.multi_edit` | fs | false | `path`, `edits` | Op |
+| `fs.grep` | fs | true | `pattern`, `path` | Op |
+| `fs.glob` | fs | true | `pattern`, `path` | Op |
+| `web.search` | web | true | `query` | Op |
+| `web.fetch` | web | true | `url` | Op |
+| `aegis.schema.get` | schema | true | `key` | Ar, Op |
+| `aegis.schema.validate` | schema | true | `kind`, `manifest_yaml` | Ar, Op |
+| `aegis.agent.create` | agent | true | `manifest_yaml` | Op |
+| `aegis.agent.list` | agent | true | — | Ag, Ar, Op |
+| `aegis.agent.update` | agent | true | `manifest_yaml` | Op |
+| `aegis.agent.export` | agent | true | `name` | Op |
+| `aegis.agent.delete` | agent | true | `agent_id` | Op |
+| `aegis.agent.generate` | agent | false | `input` | Ag, Ar, Op |
+| `aegis.agent.logs` | agent | true | `agent_id` | Ag, Ar, Op |
+| `aegis.agent.search` | agent | true | `query` | Op |
+| `aegis.agent.wait` | agent | true | `execution_id` | Ag, Ar, Op |
+| `aegis.workflow.create` | workflow | true | `manifest_yaml` | Op |
+| `aegis.workflow.list` | workflow | true | — | Ar, Op |
+| `aegis.workflow.validate` | workflow | true | `manifest_yaml` | Op |
+| `aegis.workflow.update` | workflow | true | `manifest_yaml` | Op |
+| `aegis.workflow.export` | workflow | true | `name` | Op |
+| `aegis.workflow.delete` | workflow | false | `name` | Op |
+| `aegis.workflow.run` | workflow | false | `name` | Op |
+| `aegis.workflow.generate` | workflow | false | `input` | Ar, Op |
+| `aegis.workflow.logs` | workflow | true | `execution_id` | Ar, Op |
+| `aegis.workflow.wait` | workflow | true | `execution_id` | Ex, Ar, Op |
+| `aegis.workflow.cancel` | workflow | true | `execution_id` | Op |
+| `aegis.workflow.signal` | workflow | true | `execution_id`, `response` | Op |
+| `aegis.workflow.remove` | workflow | true | `execution_id` | Op |
+| `aegis.workflow.promote` | workflow | false | `name` | Op |
+| `aegis.workflow.demote` | workflow | false | `name` | Op |
+| `aegis.workflow.executions.list` | workflow | true | — | Op |
+| `aegis.workflow.executions.get` | workflow | true | `execution_id` | Op |
+| `aegis.workflow.status` | workflow | true | `execution_id` | Op |
+| `aegis.workflow.search` | workflow | true | `query` | Op |
+| `aegis.task.execute` | task | false | `agent_id` | Ag, Ar, Op |
+| `aegis.task.status` | task | true | `execution_id` | Op |
+| `aegis.task.list` | task | true | — | Ag, Op |
+| `aegis.task.cancel` | task | false | `execution_id` | Ag, Op |
+| `aegis.task.remove` | task | false | `execution_id` | Op |
+| `aegis.task.logs` | task | true | `execution_id` | Ag, Op |
+| `aegis.task.wait` | task | true | `execution_id` | Ag, Ar, Op |
+| `aegis.execute.intent` | execute | false | `intent` | Ex, Op |
+| `aegis.execute.status` | execute | true | `pipeline_execution_id` | Ex, Op |
+| `aegis.execute.wait` | execute | true | `execution_id` | Ex, Op |
+| `aegis.tools.list` | tools | true | — | Ag, Op |
+| `aegis.tools.search` | tools | true | — | Ag, Op |
+| `aegis.system.info` | system | true | — | Op |
+| `aegis.system.config` | system | true | — | Op |
+| `aegis.runtime.list` | runtime | true | — | Op |
+| `zaru.switch_mode` | zaru | N/A | `target_mode`, `reason` | C, Ag, Ex, Ar, Op |
+
+---
+
+## Filesystem Tools (`fs.*`)
+
+Interact with the agent's mounted Workspace volume via the FSAL layer. All paths must be within
+the agent's `path_allowlist`. Absolute POSIX paths are recommended.
+
+### `fs.read`
+
+Read the contents of a file at the given POSIX path from the mounted Workspace volume.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to read. |
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/src/main.rs",
+  "content": "...",
+  "size_bytes": 1024
+}
+```
+
+### `fs.write`
+
+Write content to a file at the given POSIX path in the Workspace volume. Automatically creates
+missing parent directories.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to write. |
+| `content` | `string` | Yes | — | String content to write to the file. |
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/src/main.rs",
+  "bytes_written": 1024
+}
+```
+
+### `fs.list`
+
+List the contents of a directory in the Workspace volume.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the directory to list. |
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/src",
+  "entries": [
+    { "name": "main.rs", "file_type": "file" },
+    { "name": "lib", "file_type": "directory" }
+  ]
+}
+```
+
+Each entry has a `file_type` of either `"file"` or `"directory"`.
+
+### `fs.create_dir`
+
+Creates a new directory along with any necessary parent directories.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the directory to create. |
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/output/reports"
+}
+```
+
+### `fs.create.dir`
+
+<Callout type="info">
+  `fs.create.dir` is an alias for `fs.create_dir`. Both tools have identical parameters, behavior,
+  and output shape. Prefer `fs.create_dir` in new agent manifests.
+</Callout>
+
+Alias for fs.create_dir. Creates a new directory along with any necessary parent directories.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the directory to create. |
+
+**Output:** Same as `fs.create_dir`.
+
+### `fs.delete`
+
+<Callout type="warn">
+  `fs.delete` is destructive and irreversible. To delete a non-empty directory, set `recursive:
+  true`. Without it, deletion of a non-empty directory will fail with an error.
+</Callout>
+
+Deletes a file or directory.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file or directory to delete. |
+| `recursive` | `boolean` | No | `false` | Set to `true` to delete a directory and all its contents. |
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/tmp/cache"
+}
+```
+
+### `fs.edit`
+
+Performs an exact string replacement in a file.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to edit. |
+| `target_content` | `string` | Yes | — | Exact string content to find and replace. Must match exactly once in the file. |
+| `replacement_content` | `string` | Yes | — | New string content to insert in place of `target_content`. |
+
+<Callout type="warn">
+  `target_content` must appear exactly once in the file. If the string is not found or appears more
+  than once, the tool returns an error without modifying the file.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/src/main.rs",
+  "message": "File edited successfully"
+}
+```
+
+### `fs.multi_edit`
+
+Performs multiple sequential string replacements in a file.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to edit. |
+| `edits` | `array` | Yes | — | Array of edit objects applied sequentially. Each object requires `target_content` (string) and `replacement_content` (string). |
+
+<Callout type="info">
+  Edits are applied sequentially in array order. Each edit operates on the result of the previous
+  edit, so `target_content` values for later edits must account for earlier replacements.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/src/main.rs",
+  "applied": 3
+}
+```
+
+The `applied` field is the count of replacements successfully performed.
+
+### `fs.grep`
+
+Recursively searches for a regex pattern within files in a given directory.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `pattern` | `string` | Yes | — | Regex pattern to search for. |
+| `path` | `string` | Yes | — | Directory path to start the recursive search from. |
+
+**Output:** Formatted string of matches, one per line in `path:line_number:content` format.
+
+### `fs.glob`
+
+Recursively matches files against a glob pattern.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `pattern` | `string` | Yes | — | Glob pattern to match files (e.g. `**/*.rs`). |
+| `path` | `string` | Yes | — | Directory path to start the recursive search from. |
+
+**Output:** Newline-separated list of matching file paths.
+
+---
+
+## Web Tools (`web.*`)
+
+Access external URLs and perform internet searches. These tools are subject to the agent's
+`network_profile` and any egress restrictions configured at the node level.
+
+### `web.search`
+
+Performs an internet search query.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `query` | `string` | Yes | — | Search query. |
+
+**Output:** Formatted list of results, each containing title, URL, and snippet text.
+
+### `web.fetch`
+
+Fetches content from a URL, optionally converting HTML to Markdown.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `url` | `string` | Yes | — | URL to fetch content from. |
+
+**Output:** Response body as a string. HTML responses are converted to Markdown when the
+`to_markdown` conversion option is in effect.
+
+---
+
+## Dispatch Protocol Tool (`cmd.run`)
+
+`cmd.run` is routed via the **Dispatch Protocol** — not the FSAL layer. Commands execute inside the
+agent's ephemeral container. To expose `cmd.run` to an agent, the agent manifest must declare a
+`subcommand_allowlist` under `spec.builtin_dispatchers`:
+
+```yaml
+spec:
+  builtin_dispatchers:
+    - name: cmd
+      capabilities:
+        - name: cmd.run
+          subcommand_allowlist:
+            - "python"
+            - "pip"
+            - "bash"
+```
+
+Only commands whose first token appears in `subcommand_allowlist` will be permitted.
+
+### `cmd.run`
+
+Executes a shell command inside the agent's ephemeral container environment. Use this to build, run, or analyze code locally.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `command` | `string` | Yes | — | Command to execute. The first token must appear in the agent's `subcommand_allowlist`. |
+
+**Output:**
+
+```json
+{
+  "stdout": "Hello, world!\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+<Callout type="info">
+  A non-zero `exit_code` is returned as a successful tool response — the agent is responsible for
+  interpreting the exit code and deciding whether to retry or fail.
+</Callout>
+
+---
+
+## Agent Management Tools (`aegis.agent.*`)
+
+These tools manage the agent registry: creating, reading, updating, deleting, and searching agent
+definitions. For task execution (running agents), see
+[Task Management Tools](#task-management-tools-aegistask).
+
+### `aegis.agent.create`
+
+Parses, validates, and deploys an Agent manifest to the registry.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | Yes | — | Full Agent manifest YAML to parse, validate, and deploy. |
+| `force` | `boolean` | No | `false` | Overwrite an existing deployed agent with the same name/version. |
+
+**Output:**
+
+```json
+{
+  "agent_id": "a1b2c3d4-...",
+  "deployed": true,
+  "name": "my-agent",
+  "version": "1.0.0"
+}
+```
+
+### `aegis.agent.list`
+
+Lists currently deployed agents and metadata.
+
+**`skip_judge`:** `true`
+
+*No parameters — accepts an empty object `{}`.*
+
+**Output:**
+
+```json
+{
+  "agents": [
+    {
+      "id": "a1b2c3d4-...",
+      "name": "my-agent",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "...",
+      "labels": {}
+    }
+  ]
+}
+```
+
+### `aegis.agent.update`
+
+Updates an existing Agent manifest in the registry.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | Yes | — | Full Agent manifest YAML to update an existing agent. |
+| `force` | `boolean` | No | `false` | Overwrite an existing version if it already exists. |
+
+**Output:**
+
+```json
+{
+  "agent_id": "a1b2c3d4-...",
+  "deployed": true,
+  "name": "my-agent",
+  "version": "1.0.1"
+}
+```
+
+### `aegis.agent.export`
+
+Exports an Agent manifest by name.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Name of the agent to export. |
+
+**Output:**
+
+```json
+{
+  "manifest_yaml": "kind: Agent\n...",
+  "id": "a1b2c3d4-...",
+  "name": "my-agent",
+  "version": "1.0.0"
+}
+```
+
+### `aegis.agent.delete`
+
+<Callout type="warn">
+  Deletion is permanent and cannot be undone. Running executions are not affected, but the agent
+  definition will no longer be available for new task dispatch.
+</Callout>
+
+Removes a deployed agent from the registry by UUID.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `agent_id` | `string` | Yes | — | UUID of the agent to remove. |
+
+**Output:**
+
+```json
+{
+  "agent_id": "a1b2c3d4-...",
+  "deleted": true
+}
+```
+
+### `aegis.agent.generate`
+
+Generates an Agent manifest from a natural-language intent.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `input` | `string` | Yes | — | Natural-language intent for the agent to create. |
+
+<Callout type="info">
+  This tool returns an `execution_id` immediately and starts an async authoring loop. Use
+  [`aegis.agent.wait`](#aegisagentwait) or [`aegis.task.wait`](#aegistaskwait) to block until the
+  generated agent is deployed.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "started"
+}
+```
+
+### `aegis.agent.logs`
+
+Retrieve agent-level activity log snapshot.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `agent_id` | `string` | Yes | — | UUID of the agent whose activity log should be retrieved. |
+| `limit` | `integer` | No | `50` | Maximum number of events to return. |
+| `offset` | `integer` | No | `0` | Zero-based starting offset into the activity log. |
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.agent.logs",
+  "agent_id": "a1b2c3d4-...",
+  "events": [
+    {
+      "event_type": "task_started",
+      "payload": {},
+      "recorded_at": "2026-04-05T12:00:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### `aegis.agent.search`
+
+Semantic search over deployed agents by natural-language query.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `query` | `string` | Yes | — | Natural-language description of the agent you are looking for. |
+| `tenant_id` | `string` | No | current tenant | Tenant ID to search within. |
+| `limit` | `integer` | No | `10` | Maximum results (1–100, tier-dependent cap). |
+| `min_score` | `number` | No | `0.3` | Minimum relevance score threshold (0.0–1.0). |
+| `labels` | `object` | No | — | Label key-value pairs to filter by. All must match. |
+| `status` | `string` | No | — | Filter by agent status. One of: `active`, `paused`, `failed`. |
+| `include_platform_templates` | `boolean` | No | `true` | Include platform-provided template agents. |
+
+<Callout type="info">
+  `aegis.agent.search` requires a Cortex connection. Results are returned sorted by score
+  descending.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.agent.search",
+  "query": "image resizer",
+  "results": [
+    {
+      "id": "a1b2c3d4-...",
+      "name": "image-resizer",
+      "version": "1.0.0",
+      "description": "...",
+      "labels": {},
+      "score": 0.92
+    }
+  ],
+  "total": 5
+}
+```
+
+### `aegis.agent.wait`
+
+<Callout type="info">
+  `aegis.agent.wait` is an alias for [`aegis.task.wait`](#aegistaskwait). Both tools share
+  identical parameters and output shape.
+</Callout>
+
+Alias for aegis.task.wait. Blocks until an agent execution completes.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the execution to wait for. |
+| `poll_interval_seconds` | `integer` | No | `10` | Seconds between status polls (minimum: 1). |
+| `timeout_seconds` | `integer` | No | `300` | Maximum seconds to wait before returning a timeout (minimum: 1). |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "completed",
+  "iteration_count": 3,
+  "last_output": "...",
+  "last_error": null,
+  "started_at": "2026-04-05T12:00:00Z",
+  "ended_at": "2026-04-05T12:01:30Z"
+}
+```
+
+The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`.
+
+---
+
+## Workflow Management Tools (`aegis.workflow.*`)
+
+These tools manage the workflow registry and control workflow execution lifecycle. For workflow
+authoring and schema, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).
+
+### `aegis.workflow.create`
+
+Performs strict deterministic and semantic workflow validation, then registers on pass.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | Yes | — | Full Workflow manifest YAML to parse, validate, semantically judge, and register. |
+| `force` | `boolean` | No | `false` | Overwrite an existing version if it already exists. |
+| `task_context` | `string` | No | — | Optional task context to guide semantic judges. |
+| `judge_agents` | `array` | No | — | Judge agent names to use for semantic validation. |
+| `min_score` | `number` | No | — | Minimum consensus score required for deployment. |
+| `min_confidence` | `number` | No | — | Minimum consensus confidence required for deployment. |
+
+**Output:**
+
+```json
+{
+  "workflow_id": "w1b2c3d4-...",
+  "deployed": true,
+  "name": "my-workflow",
+  "version": "1.0.0"
+}
+```
+
+### `aegis.workflow.list`
+
+Lists currently registered workflows and metadata.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| `scope` | `string` | No | — | Scope filter. One of: `global` (global workflows only), `visible` (user + tenant + global). Omit to list all for the tenant. |
+| `user_id` | `string` | No | — | Optional user ID for `visible` scope filter. |
+
+**Output:**
+
+```json
+{
+  "workflows": [
+    {
+      "id": "w1b2c3d4-...",
+      "name": "my-workflow",
+      "version": "1.0.0",
+      "initial_state": "start"
+    }
+  ]
+}
+```
+
+### `aegis.workflow.validate`
+
+Validate a workflow manifest against the schema.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | Yes | — | Full Workflow manifest YAML to parse and deterministically validate. |
+
+**Output:**
+
+```json
+{
+  "valid": true,
+  "errors": null
+}
+```
+
+On failure: `{ "valid": false, "errors": ["error message 1", "error message 2"] }`
+
+### `aegis.workflow.update`
+
+Updates an existing Workflow manifest in the registry.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `manifest_yaml` | `string` | Yes | — | Full Workflow manifest YAML to update an existing workflow. |
+| `force` | `boolean` | No | `false` | Overwrite an existing version if it already exists. |
+
+**Output:**
+
+```json
+{
+  "workflow_id": "w1b2c3d4-...",
+  "deployed": true,
+  "name": "my-workflow",
+  "version": "1.0.1"
+}
+```
+
+### `aegis.workflow.export`
+
+Exports a Workflow manifest by name.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Name of the workflow to export. |
+
+**Output:**
+
+```json
+{
+  "manifest_yaml": "kind: Workflow\n...",
+  "id": "w1b2c3d4-...",
+  "name": "my-workflow",
+  "version": "1.0.0"
+}
+```
+
+### `aegis.workflow.delete`
+
+<Callout type="warn">
+  Deleting a workflow removes the definition from the registry. In-progress executions are not
+  terminated, but new executions of this workflow will no longer be possible.
+</Callout>
+
+Removes a registered workflow from the registry by name.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Name of the workflow to delete. |
+
+**Output:**
+
+```json
+{
+  "workflow_id": "w1b2c3d4-...",
+  "deleted": true
+}
+```
+
+### `aegis.workflow.run`
+
+Executes a registered workflow by name with optional input parameters.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Name of the workflow to execute. |
+| `intent` | `string` | No | — | Natural-language description of the goal for this run. Injected into workflow input and available to agentic states and task activities. |
+| `input` | `object` | No | — | Workflow input parameters. |
+| `blackboard` | `object` | No | — | Optional blackboard overrides merged into the execution before startup. |
+| `version` | `string` | No | latest | Semantic version of the workflow to execute. When omitted, the latest deployed version is used. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "started"
+}
+```
+
+Use [`aegis.workflow.wait`](#aegisworkflowwait) to block until completion.
+
+### `aegis.workflow.generate`
+
+Generates a Workflow manifest from a natural-language objective.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `input` | `string` | Yes | — | Natural-language workflow objective. |
+
+<Callout type="info">
+  Returns an `execution_id` immediately and starts an async authoring loop. Use
+  [`aegis.workflow.wait`](#aegisworkflowwait) to block until the generated workflow is registered.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "started"
+}
+```
+
+### `aegis.workflow.logs`
+
+Returns paginated workflow execution events.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution whose event log should be retrieved. |
+| `limit` | `integer` | No | `50` | Maximum number of events to return (max 200). |
+| `offset` | `integer` | No | `0` | Number of events to skip for pagination. |
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.workflow.logs",
+  "execution_id": "e1f2a3b4-...",
+  "status": "running",
+  "events": [
+    {
+      "sequence": 1,
+      "event_type": "state_entered",
+      "state_name": "start",
+      "iteration_number": null,
+      "payload": {},
+      "recorded_at": "2026-04-05T12:00:00Z"
+    }
+  ],
+  "total": 12,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### `aegis.workflow.wait`
+
+Polls a workflow execution until it reaches a terminal state and returns the result.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution to wait for. |
+| `poll_interval_seconds` | `integer` | No | `5` | Seconds between polls. |
+| `timeout_seconds` | `integer` | No | `300` | Maximum wait time in seconds. |
+
+**Output (completed):**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "workflow_id": "w1b2c3d4-...",
+  "status": "completed",
+  "current_state": "end",
+  "blackboard": {},
+  "started_at": "2026-04-05T12:00:00Z",
+  "last_transition_at": "2026-04-05T12:02:00Z"
+}
+```
+
+**Output (timed out):**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "running",
+  "current_state": "processing",
+  "timed_out": true
+}
+```
+
+The `status` field upon completion will be one of `completed`, `failed`, or `cancelled`.
+
+### `aegis.workflow.cancel`
+
+Cancel a running workflow execution.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution to cancel. |
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.workflow.cancel",
+  "cancelled": true,
+  "execution_id": "e1f2a3b4-..."
+}
+```
+
+On failure: `{ "cancelled": false, "error": "execution already in terminal state" }`
+
+### `aegis.workflow.signal`
+
+Send human input response to a paused workflow execution.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution to signal. |
+| `response` | `string` | Yes | — | Human input response text to send to the paused workflow. |
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.workflow.signal",
+  "signalled": true,
+  "execution_id": "e1f2a3b4-..."
+}
+```
+
+On failure: `{ "signalled": false, "error": "execution is not in a waiting state" }`
+
+### `aegis.workflow.remove`
+
+Remove a workflow execution record.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution to remove. |
+
+<Callout type="info">
+  The execution must be in a terminal state (`completed`, `failed`, or `cancelled`) before it can
+  be removed.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.workflow.remove",
+  "removed": true,
+  "execution_id": "e1f2a3b4-..."
+}
+```
+
+On failure: `{ "removed": false, "error": "execution is not in a terminal state" }`
+
+### `aegis.workflow.promote`
+
+Promote a workflow from user scope to tenant scope.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Workflow name or ID to promote. |
+| `target_scope` | `string` | No | `global` | Target scope. One of: `tenant`, `global`. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+<Callout type="info">
+  Promotion elevates a workflow's visibility scope, making it available to a wider set of users.
+  Promoting to `global` makes the workflow visible to all tenants on the platform.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "workflow_id": "w1b2c3d4-...",
+  "name": "my-workflow",
+  "promoted": true,
+  "target_scope": "global"
+}
+```
+
+### `aegis.workflow.demote`
+
+Demote a workflow from tenant scope to user scope.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Workflow name or ID to demote. |
+| `target_scope` | `string` | No | `tenant` | Target scope. One of: `tenant`, `user`. |
+| `user_id` | `string` | No | — | Owner user ID when demoting to user scope. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+<Callout type="info">
+  Demotion narrows a workflow's visibility scope, restricting access to a smaller audience.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "workflow_id": "w1b2c3d4-...",
+  "name": "my-workflow",
+  "demoted": true,
+  "target_scope": "tenant"
+}
+```
+
+### `aegis.workflow.executions.list`
+
+Lists workflow executions, optionally filtered.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `limit` | `integer` | No | `20` | Maximum number of results to return. |
+| `offset` | `integer` | No | `0` | Pagination offset. |
+| `workflow_id` | `string` | No | — | Optional workflow UUID or workflow name filter. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+**Output:**
+
+```json
+{
+  "executions": [
+    {
+      "execution_id": "e1f2a3b4-...",
+      "workflow_id": "w1b2c3d4-...",
+      "status": "completed",
+      "current_state": "end",
+      "started_at": "2026-04-05T12:00:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### `aegis.workflow.executions.get`
+
+Returns details of a specific workflow execution.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution to inspect. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "workflow_id": "w1b2c3d4-...",
+  "status": "completed",
+  "input": {},
+  "blackboard": {},
+  "state_outputs": {},
+  "current_state": "end",
+  "started_at": "2026-04-05T12:00:00Z",
+  "last_transition_at": "2026-04-05T12:02:00Z"
+}
+```
+
+### `aegis.workflow.status`
+
+Returns current status of a workflow execution.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow execution to inspect. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "workflow_id": "w1b2c3d4-...",
+  "status": "running",
+  "current_state": "processing",
+  "started_at": "2026-04-05T12:00:00Z",
+  "last_transition_at": "2026-04-05T12:01:00Z"
+}
+```
+
+### `aegis.workflow.search`
+
+Semantic search over registered workflows.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `query` | `string` | Yes | — | Natural-language description of the workflow you are looking for. |
+| `tenant_id` | `string` | No | current tenant | Tenant ID to search within. |
+| `limit` | `integer` | No | `10` | Maximum results (1–100, tier-dependent cap). |
+| `min_score` | `number` | No | `0.3` | Minimum relevance score threshold (0.0–1.0). |
+| `labels` | `object` | No | — | Label key-value pairs to filter by. All must match. |
+| `include_platform_templates` | `boolean` | No | `true` | Include platform-provided template workflows. |
+
+<Callout type="info">
+  `aegis.workflow.search` requires a Cortex connection. Results are returned sorted by score
+  descending.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.workflow.search",
+  "query": "data pipeline",
+  "results": [
+    {
+      "id": "w1b2c3d4-...",
+      "name": "etl-pipeline",
+      "version": "1.0.0",
+      "description": "...",
+      "labels": {},
+      "score": 0.88
+    }
+  ],
+  "total": 3
+}
+```
+
+---
+
+## Task Management Tools (`aegis.task.*`)
+
+These tools start and monitor individual agent executions (tasks). An agent must be deployed before
+a task can be dispatched against it. For agent lifecycle management, see
+[Agent Management Tools](#agent-management-tools-aegisagent).
+
+### `aegis.task.execute`
+
+Starts a new agent execution (task) by agent UUID or name.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `agent_id` | `string` | Yes | — | UUID or name of the agent to execute. |
+| `intent` | `string` | No | — | Natural-language description of what the agent should accomplish. Steers the LLM prompt directly. Complementary to structured `input`. |
+| `input` | `object` | No | — | Structured data for the agent, validated against `spec.input_schema` when declared. The well-known sub-field `input.prompt` (string) holds the full task instructions or user request. |
+| `version` | `string` | No | latest | Semantic version of the agent to execute. When omitted, the latest deployed version is used. |
+
+<Callout type="info">
+  Use `intent` for natural-language steering and `input.prompt` for structured task instructions.
+  Both can be provided together.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "started"
+}
+```
+
+Use [`aegis.task.wait`](#aegistaskwait) to block until completion.
+
+### `aegis.task.status`
+
+Returns the current status and output of an execution by UUID.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the execution to check. |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "agent_id": "a1b2c3d4-...",
+  "status": "completed",
+  "iteration_count": 2,
+  "last_output": "...",
+  "last_error": null,
+  "started_at": "2026-04-05T12:00:00Z",
+  "ended_at": "2026-04-05T12:01:00Z"
+}
+```
+
+The `status` field is one of `pending`, `running`, `completed`, `failed`, or `cancelled`.
+
+### `aegis.task.list`
+
+Lists recent executions, optionally filtered by agent.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `agent_id` | `string` | No | — | Optional UUID to filter executions by agent. |
+| `limit` | `integer` | No | `20` | Maximum number of results. |
+
+**Output:**
+
+```json
+{
+  "executions": [
+    {
+      "id": "e1f2a3b4-...",
+      "agent_id": "a1b2c3d4-...",
+      "status": "completed",
+      "started_at": "2026-04-05T12:00:00Z"
+    }
+  ]
+}
+```
+
+### `aegis.task.cancel`
+
+Cancels an active agent execution by UUID.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the execution to cancel. |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "cancelled": true
+}
+```
+
+### `aegis.task.remove`
+
+Removes a completed or failed execution record by UUID.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the execution to remove. |
+
+<Callout type="info">
+  The execution must be in a terminal state. Use [`aegis.task.cancel`](#aegistaskcancel) first if
+  the execution is still running.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "removed": true
+}
+```
+
+### `aegis.task.logs`
+
+Returns paginated execution events for a task by UUID.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the execution whose event log should be retrieved. |
+| `limit` | `integer` | No | `50` | Maximum number of events to return (capped at 200). |
+| `offset` | `integer` | No | `0` | Zero-based starting offset into the persisted event log. |
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.task.logs",
+  "execution_id": "e1f2a3b4-...",
+  "status": "completed",
+  "events": [
+    {
+      "sequence": 1,
+      "event_type": "iteration_started",
+      "payload": {},
+      "recorded_at": "2026-04-05T12:00:00Z"
+    }
+  ],
+  "total": 8,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### `aegis.task.wait`
+
+Polls an execution until it reaches a terminal state and returns the result.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the execution to wait for. |
+| `poll_interval_seconds` | `integer` | No | `10` | Seconds between status polls (minimum: 1). |
+| `timeout_seconds` | `integer` | No | `300` | Maximum seconds to wait before returning a timeout (minimum: 1). |
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "status": "completed",
+  "iteration_count": 3,
+  "last_output": "...",
+  "last_error": null,
+  "started_at": "2026-04-05T12:00:00Z",
+  "ended_at": "2026-04-05T12:01:30Z"
+}
+```
+
+The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`.
+
+---
+
+## Execute Pipeline Tools (`aegis.execute.*`)
+
+These tools power Execute mode in Zaru and the intent-to-execution API. They run a multi-step
+pipeline: intent → agent discovery or generation → code generation → execution → result. No
+pre-existing agent is required.
+
+### `aegis.execute.intent`
+
+Starts the intent-to-execution pipeline: discovers or generates an agent, writes code, executes in a container, and returns the formatted result.
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `intent` | `string` | Yes | — | Natural-language description of what to execute (e.g. `"resize images in /workspace to 800x600"`). |
+| `inputs` | `object` | No | — | Optional structured inputs passed to the pipeline. |
+| `volume_id` | `string` | No | ephemeral | Optional persistent volume ID to use as workspace. When omitted, an ephemeral volume is created. |
+| `language` | `string` | No | `python` | Execution language. One of: `python`, `javascript`, `bash`. |
+| `timeout_seconds` | `integer` | No | — | Optional execution timeout in seconds. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+**Output:**
+
+```json
+{
+  "pipeline_execution_id": "p1b2c3d4-...",
+  "status": "started",
+  "stream_url": "https://..."
+}
+```
+
+Use [`aegis.execute.status`](#aegisexecutestatus) or [`aegis.execute.wait`](#aegisexecutewait) to
+track completion.
+
+### `aegis.execute.status`
+
+Returns the current status of an intent-to-execution pipeline run.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `pipeline_execution_id` | `string` | Yes | — | UUID of the pipeline execution to check. |
+| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+
+**Output (running):**
+
+```json
+{ "status": "running" }
+```
+
+**Output (completed):**
+
+```json
+{
+  "status": "completed",
+  "final_result": "...",
+  "duration_ms": 4523,
+  "reused_existing_agent": false
+}
+```
+
+**Output (failed):**
+
+```json
+{
+  "status": "failed",
+  "reason": "...",
+  "failed_at_state": "code_generation"
+}
+```
+
+### `aegis.execute.wait`
+
+<Callout type="info">
+  `aegis.execute.wait` is an alias for [`aegis.workflow.wait`](#aegisworkflowwait). Pass the
+  `pipeline_execution_id` returned by [`aegis.execute.intent`](#aegisexecuteintent) as the
+  `execution_id` parameter.
+</Callout>
+
+Alias for aegis.workflow.wait. Blocks until pipeline execution completes.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | UUID of the workflow/pipeline execution to wait for. Pass the `pipeline_execution_id` from `aegis.execute.intent`. |
+| `poll_interval_seconds` | `integer` | No | `5` | Seconds between polls. |
+| `timeout_seconds` | `integer` | No | `300` | Maximum wait time in seconds. |
+
+**Output:** Same shape as [`aegis.workflow.wait`](#aegisworkflowwait).
+
+---
+
+## Tool Discovery (`aegis.tools.*`)
+
+These tools enumerate the available MCP tool catalog. Results are filtered by the caller's
+`SecurityContext` — different tiers see different subsets of tools.
+
+<Callout type="info">
+  These tools have no formally enforced input schema in the orchestrator (the schema falls through
+  to a generic `{ "type": "object" }`). The parameters below are the de facto accepted values.
+</Callout>
+
+### `aegis.tools.list`
+
+List all MCP tools available to your security context with pagination and optional source/category filtering.
+
+**`skip_judge`:** `true`
+
+*No parameters — accepts an empty object `{}`.*
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.tools.list",
+  "tools": [
+    {
+      "name": "fs.read",
+      "description": "Read the contents of a file...",
+      "source": "builtin",
+      "skip_judge": true
+    }
+  ],
+  "total": 60
+}
+```
+
+### `aegis.tools.search`
+
+Search for MCP tools by keyword, name pattern, source, category, or tags. Returns tools matching your query within your security context.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `query` | `string` | No | — | Search term matched against tool names and descriptions. |
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.tools.search",
+  "query": "workflow",
+  "tools": [
+    {
+      "name": "aegis.workflow.create",
+      "description": "...",
+      "source": "builtin",
+      "skip_judge": true
+    }
+  ],
+  "total": 19
+}
+```
+
+---
+
+## System Tools (`aegis.system.*`)
+
+### `aegis.system.info`
+
+Returns system version, status, and capabilities.
+
+**`skip_judge`:** `true`
+
+*No parameters — accepts an empty object `{}`.*
+
+**Output:**
+
+```json
+{
+  "version": "0.12.0",
+  "status": "healthy",
+  "capabilities": ["workflows", "cortex", "seal_gateway"]
+}
+```
+
+The `status` field is one of `healthy` or `unhealthy`.
+
+### `aegis.system.config`
+
+Returns the current node configuration.
+
+**`skip_judge`:** `true`
+
+*No parameters — accepts an empty object `{}`.*
+
+<Callout type="info">
+  Returns the raw YAML of the active `node-config.yaml`. See the
+  [Node Configuration Reference](/docs/reference/node-config) for the full schema.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "config_path": "/etc/aegis/node-config.yaml",
+  "content_yaml": "..."
+}
+```
+
+---
+
+## Schema Tools (`aegis.schema.*`)
+
+### `aegis.schema.get`
+
+Returns the canonical JSON Schema for a manifest kind (agent or workflow).
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `key` | `string` | Yes | — | Schema key to retrieve. Supported values: `"agent/manifest/v1"`, `"workflow/manifest/v1"`. |
+
+**Output:** The full JSON Schema object for the requested manifest type.
+
+### `aegis.schema.validate`
+
+Validates a manifest YAML string against its canonical JSON Schema.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `kind` | `string` | Yes | — | Manifest kind to validate against. Supported values: `"agent"`, `"workflow"`. |
+| `manifest_yaml` | `string` | Yes | — | Full manifest YAML text to validate against the canonical schema. |
+
+**Output:**
+
+```json
+{
+  "valid": true,
+  "errors": null
+}
+```
+
+On failure: `{ "valid": false, "errors": ["error message 1"] }`
+
+---
+
+## Runtime Discovery (`aegis.runtime.*`)
+
+### `aegis.runtime.list`
+
+List all supported standard runtime environments (language/version pairs). Call this before creating an agent manifest to ensure the declared runtime is valid.
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `language` | `string` | No | — | Filter by language name (e.g. `"python"`, `"go"`). |
+
+<Callout type="info">
+  Call `aegis.runtime.list` before writing `spec.runtime` in agent manifests to verify the exact
+  `language` + `version` identifiers accepted by the platform. See the
+  [Standard Runtime Registry](/docs/reference/standard-runtime-registry) for the full list.
+</Callout>
+
+**Output:**
+
+```json
+{
+  "tool": "aegis.runtime.list",
+  "runtimes": [
+    {
+      "language": "python",
+      "version": "3.12",
+      "image": "ghcr.io/100monkeys/runtime-python:3.12",
+      "description": "CPython 3.12",
+      "deprecated": false
+    }
+  ],
+  "custom_runtime_supported": true
+}
+```
+
+---
+
+## Zaru UI Tools
+
+<Callout type="info">
+  `zaru.switch_mode` is intercepted by the `zaru-mcp-server` and is never forwarded to the AEGIS
+  orchestrator. It is only available when using the StreamableHTTP transport and is injected by the
+  Zaru MCP server at the point of tool advertisement.
+</Callout>
+
+### `zaru.switch_mode`
+
+Suggest the user switch to a different conversation mode. Use this when the user's request cannot be fulfilled in the current mode. This renders a confirmation card inline in the chat — the user can accept, refuse, or dismiss.
+
+**`skip_judge`:** N/A (never reaches the orchestrator)
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `target_mode` | `string` | Yes | — | The mode to switch to. One of: `chat`, `agentic`, `architect`, `operator`, `execute`. |
+| `reason` | `string` | Yes | — | Short, plain-language explanation for the user. One sentence. |
+
+**Output:**
+
+```json
+{
+  "action": "mode_switch_requested",
+  "target_mode": "agentic",
+  "reason": "This request requires running an agent."
+}
+```
+
+The Zaru client renders this response as an inline confirmation card. The user can accept, refuse,
+or dismiss the mode switch.

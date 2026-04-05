@@ -3,7 +3,13 @@ title: Built-in Tools
 description: Reference documentation for the built-in MCP tools provided by the AEGIS Orchestrator
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
 The AEGIS Orchestrator provides a set of native, built-in tools out of the box. These tools are implemented internally for high performance, deep security integration, and specialized infrastructure abstraction. Built-in tools bypass the overhead of sidecar MCP servers.
+
+<Callout type="info">
+  For complete input and output schemas for all built-in tools, see the [MCP Tool Reference](/docs/reference/mcp-tool-reference). This page documents the `skip_judge` policy, argument validation, and the per-tool compiled-in defaults.
+</Callout>
 
 Built-in tools are divided into two main categories:
 
@@ -55,7 +61,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.workflow.export` | `true` | Read-only manifest lookup |
 | `aegis.agent.create` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
 | `aegis.agent.update` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
-| `aegis.agent.delete` | `false` | Destructive — removes agent from registry |
+| `aegis.agent.delete` | `true` | Manifest registry operation — the tool does not execute code and the registry-write path has its own validation |
 | `aegis.agent.generate` | `false` | Creates new agent via inner authoring loop. The agent-creator-agent always executes in the `default` security context, regardless of the caller's tier. |
 | `aegis.workflow.create` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
 | `aegis.workflow.update` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
@@ -77,9 +83,12 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.agent.wait` | `true` | Alias for `aegis.task.wait` |
 | `aegis.workflow.wait` | `true` | Read-only blocking poll until terminal state |
 | `aegis.execute.wait` | `true` | Alias for `aegis.workflow.wait` |
-| `aegis.workflow.cancel` | `false` | State-mutating — terminates a running workflow execution |
-| `aegis.workflow.signal` | `false` | State-mutating — delivers human input to a paused workflow |
-| `aegis.workflow.remove` | `false` | Destructive — deletes a workflow execution record |
+| `aegis.workflow.cancel` | `true` | Read-query against execution state — cancellation is a state transition request, not a code execution |
+| `aegis.workflow.signal` | `true` | State-signal delivery to paused execution — not an execution tool invocation |
+| `aegis.workflow.remove` | `true` | Registry delete of a terminal execution record — no semantic execution risk |
+| `aegis.workflow.validate` | `true` | Read-only schema validation — parses and deterministically validates YAML but deploys nothing |
+| `aegis.workflow.promote` | `false` | Scope elevation — changes workflow visibility; not skip_judge by default |
+| `aegis.workflow.demote` | `false` | Scope reduction — changes workflow visibility; not skip_judge by default |
 | `aegis.execute.intent` | `false` | Execution trigger — spawns intent-to-execution pipeline |
 | `aegis.execute.status` | `true` | Read-only pipeline status query |
 | `aegis.tools.list` | `true` | Read-only tool discovery |

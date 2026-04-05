@@ -12,6 +12,7 @@
         "metrics",
         "builtin-tools",
         "management-tools",
+        "mcp-tool-reference",
         "sdk-python",
         "sdk-typescript",
         "template-syntax"
