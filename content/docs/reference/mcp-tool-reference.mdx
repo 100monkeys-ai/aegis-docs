@@ -9,6 +9,34 @@ This page is the authoritative schema reference for all AEGIS MCP tools. For the
 
 ---
 
+## Tool Access Tiers
+
+AEGIS tools are divided into three access tiers. The tier determines which callers may invoke a tool.
+
+**User tools** — available to all agents and Zaru users:
+`fs.read`, `fs.write`, `fs.list`, `fs.create_dir`, `fs.create.dir`, `fs.delete`, `fs.edit`,
+`fs.multi_edit`, `fs.grep`, `fs.glob`, `web.search`, `web.fetch`, `cmd.run`,
+`aegis.agent.list`, `aegis.agent.export`, `aegis.agent.generate`, `aegis.agent.logs`,
+`aegis.agent.search`, `aegis.agent.wait`, `aegis.workflow.list`, `aegis.workflow.validate`,
+`aegis.workflow.export`, `aegis.workflow.run`, `aegis.workflow.generate`, `aegis.workflow.logs`,
+`aegis.workflow.wait`, `aegis.workflow.cancel`, `aegis.workflow.signal`,
+`aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.status`,
+`aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
+`aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
+`aegis.execute.status`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
+`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.switch_mode`
+
+**System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
+registered by platform operators:
+`aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.create`, `aegis.workflow.update`,
+`aegis.workflow.promote`, `aegis.workflow.demote`
+
+**Operator-only tools** — only available via operator SEAL sessions:
+`aegis.agent.delete`, `aegis.workflow.delete`, `aegis.workflow.remove`, `aegis.task.remove`,
+`aegis.system.info`, `aegis.system.config`
+
+---
+
 ## Tool Availability by Context
 
 AEGIS tools are available across three distinct execution contexts. The tool set exposed to a caller varies by context.
@@ -162,6 +190,8 @@ the agent's `path_allowlist`. Absolute POSIX paths are recommended.
 
 Read the contents of a file at the given POSIX path from the mounted Workspace volume.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -184,6 +214,8 @@ Read the contents of a file at the given POSIX path from the mounted Workspace v
 Write content to a file at the given POSIX path in the Workspace volume. Automatically creates
 missing parent directories.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -204,6 +236,8 @@ missing parent directories.
 ### `fs.list`
 
 List the contents of a directory in the Workspace volume.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -230,6 +264,8 @@ Each entry has a `file_type` of either `"file"` or `"directory"`.
 
 Creates a new directory along with any necessary parent directories.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -254,6 +290,8 @@ Creates a new directory along with any necessary parent directories.
 
 Alias for fs.create_dir. Creates a new directory along with any necessary parent directories.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -270,6 +308,8 @@ Alias for fs.create_dir. Creates a new directory along with any necessary parent
 </Callout>
 
 Deletes a file or directory.
+
+**Access:** User
 
 **`skip_judge`:** `false`
 
@@ -290,6 +330,8 @@ Deletes a file or directory.
 ### `fs.edit`
 
 Performs an exact string replacement in a file.
+
+**Access:** User
 
 **`skip_judge`:** `false`
 
@@ -317,6 +359,8 @@ Performs an exact string replacement in a file.
 ### `fs.multi_edit`
 
 Performs multiple sequential string replacements in a file.
+
+**Access:** User
 
 **`skip_judge`:** `false`
 
@@ -346,6 +390,8 @@ The `applied` field is the count of replacements successfully performed.
 
 Recursively searches for a regex pattern within files in a given directory.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -358,6 +404,8 @@ Recursively searches for a regex pattern within files in a given directory.
 ### `fs.glob`
 
 Recursively matches files against a glob pattern.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -379,6 +427,8 @@ Access external URLs and perform internet searches. These tools are subject to t
 
 Performs an internet search query.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -390,6 +440,8 @@ Performs an internet search query.
 ### `web.fetch`
 
 Fetches content from a URL, optionally converting HTML to Markdown.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -426,6 +478,8 @@ Only commands whose first token appears in `subcommand_allowlist` will be permit
 
 Executes a shell command inside the agent's ephemeral container environment. Use this to build, run, or analyze code locally.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -459,6 +513,8 @@ definitions. For task execution (running agents), see
 
 Parses, validates, and deploys an Agent manifest to the registry.
 
+**Access:** System
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -480,6 +536,8 @@ Parses, validates, and deploys an Agent manifest to the registry.
 ### `aegis.agent.list`
 
 Lists currently deployed agents and metadata.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -506,6 +564,8 @@ Lists currently deployed agents and metadata.
 
 Updates an existing Agent manifest in the registry.
 
+**Access:** System
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -527,6 +587,8 @@ Updates an existing Agent manifest in the registry.
 ### `aegis.agent.export`
 
 Exports an Agent manifest by name.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -554,6 +616,8 @@ Exports an Agent manifest by name.
 
 Removes a deployed agent from the registry by UUID.
 
+**Access:** Operator
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -572,6 +636,8 @@ Removes a deployed agent from the registry by UUID.
 ### `aegis.agent.generate`
 
 Generates an Agent manifest from a natural-language intent.
+
+**Access:** User
 
 **`skip_judge`:** `false`
 
@@ -597,6 +663,8 @@ Generates an Agent manifest from a natural-language intent.
 ### `aegis.agent.logs`
 
 Retrieve agent-level activity log snapshot.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -628,6 +696,8 @@ Retrieve agent-level activity log snapshot.
 ### `aegis.agent.search`
 
 Semantic search over deployed agents by natural-language query.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -675,6 +745,8 @@ Semantic search over deployed agents by natural-language query.
 
 Alias for aegis.task.wait. Blocks until an agent execution completes.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -710,6 +782,8 @@ authoring and schema, see the [Workflow Manifest Reference](/docs/reference/work
 
 Performs strict deterministic and semantic workflow validation, then registers on pass.
 
+**Access:** System
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -735,6 +809,8 @@ Performs strict deterministic and semantic workflow validation, then registers o
 ### `aegis.workflow.list`
 
 Lists currently registered workflows and metadata.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -763,6 +839,8 @@ Lists currently registered workflows and metadata.
 
 Validate a workflow manifest against the schema.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -783,6 +861,8 @@ On failure: `{ "valid": false, "errors": ["error message 1", "error message 2"] 
 ### `aegis.workflow.update`
 
 Updates an existing Workflow manifest in the registry.
+
+**Access:** System
 
 **`skip_judge`:** `true`
 
@@ -805,6 +885,8 @@ Updates an existing Workflow manifest in the registry.
 ### `aegis.workflow.export`
 
 Exports a Workflow manifest by name.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -832,6 +914,8 @@ Exports a Workflow manifest by name.
 
 Removes a registered workflow from the registry by name.
 
+**Access:** Operator
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -850,6 +934,8 @@ Removes a registered workflow from the registry by name.
 ### `aegis.workflow.run`
 
 Executes a registered workflow by name with optional input parameters.
+
+**Access:** User
 
 **`skip_judge`:** `false`
 
@@ -877,6 +963,8 @@ Use [`aegis.workflow.wait`](#aegisworkflowwait) to block until completion.
 
 Generates a Workflow manifest from a natural-language objective.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -900,6 +988,8 @@ Generates a Workflow manifest from a natural-language objective.
 ### `aegis.workflow.logs`
 
 Returns paginated workflow execution events.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -935,6 +1025,8 @@ Returns paginated workflow execution events.
 ### `aegis.workflow.wait`
 
 Polls a workflow execution until it reaches a terminal state and returns the result.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -975,6 +1067,8 @@ The `status` field upon completion will be one of `completed`, `failed`, or `can
 
 Cancel a running workflow execution.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -996,6 +1090,8 @@ On failure: `{ "cancelled": false, "error": "execution already in terminal state
 ### `aegis.workflow.signal`
 
 Send human input response to a paused workflow execution.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1019,6 +1115,8 @@ On failure: `{ "signalled": false, "error": "execution is not in a waiting state
 ### `aegis.workflow.remove`
 
 Remove a workflow execution record.
+
+**Access:** Operator
 
 **`skip_judge`:** `true`
 
@@ -1046,6 +1144,8 @@ On failure: `{ "removed": false, "error": "execution is not in a terminal state"
 ### `aegis.workflow.promote`
 
 Promote a workflow from user scope to tenant scope.
+
+**Access:** System
 
 **`skip_judge`:** `false`
 
@@ -1075,6 +1175,8 @@ Promote a workflow from user scope to tenant scope.
 
 Demote a workflow from tenant scope to user scope.
 
+**Access:** System
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -1102,6 +1204,8 @@ Demote a workflow from tenant scope to user scope.
 ### `aegis.workflow.executions.list`
 
 Lists workflow executions, optionally filtered.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1135,6 +1239,8 @@ Lists workflow executions, optionally filtered.
 
 Returns details of a specific workflow execution.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -1162,6 +1268,8 @@ Returns details of a specific workflow execution.
 
 Returns current status of a workflow execution.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -1185,6 +1293,8 @@ Returns current status of a workflow execution.
 ### `aegis.workflow.search`
 
 Semantic search over registered workflows.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1234,6 +1344,8 @@ a task can be dispatched against it. For agent lifecycle management, see
 
 Starts a new agent execution (task) by agent UUID or name.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -1263,6 +1375,8 @@ Use [`aegis.task.wait`](#aegistaskwait) to block until completion.
 
 Returns the current status and output of an execution by UUID.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -1290,6 +1404,8 @@ The `status` field is one of `pending`, `running`, `completed`, `failed`, or `ca
 
 Lists recent executions, optionally filtered by agent.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -1316,6 +1432,8 @@ Lists recent executions, optionally filtered by agent.
 
 Cancels an active agent execution by UUID.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -1334,6 +1452,8 @@ Cancels an active agent execution by UUID.
 ### `aegis.task.remove`
 
 Removes a completed or failed execution record by UUID.
+
+**Access:** Operator
 
 **`skip_judge`:** `false`
 
@@ -1358,6 +1478,8 @@ Removes a completed or failed execution record by UUID.
 ### `aegis.task.logs`
 
 Returns paginated execution events for a task by UUID.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1391,6 +1513,8 @@ Returns paginated execution events for a task by UUID.
 ### `aegis.task.wait`
 
 Polls an execution until it reaches a terminal state and returns the result.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1428,6 +1552,8 @@ pre-existing agent is required.
 
 Starts the intent-to-execution pipeline: discovers or generates an agent, writes code, executes in a container, and returns the formatted result.
 
+**Access:** User
+
 **`skip_judge`:** `false`
 
 | Property | Type | Required | Default | Description |
@@ -1455,6 +1581,8 @@ track completion.
 ### `aegis.execute.status`
 
 Returns the current status of an intent-to-execution pipeline run.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1500,6 +1628,8 @@ Returns the current status of an intent-to-execution pipeline run.
 
 Alias for aegis.workflow.wait. Blocks until pipeline execution completes.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -1526,6 +1656,8 @@ These tools enumerate the available MCP tool catalog. Results are filtered by th
 
 List all MCP tools available to your security context with pagination and optional source/category filtering.
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 *No parameters — accepts an empty object `{}`.*
@@ -1550,6 +1682,8 @@ List all MCP tools available to your security context with pagination and option
 ### `aegis.tools.search`
 
 Search for MCP tools by keyword, name pattern, source, category, or tags. Returns tools matching your query within your security context.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1583,6 +1717,8 @@ Search for MCP tools by keyword, name pattern, source, category, or tags. Return
 
 Returns system version, status, and capabilities.
 
+**Access:** Operator
+
 **`skip_judge`:** `true`
 
 *No parameters — accepts an empty object `{}`.*
@@ -1602,6 +1738,8 @@ The `status` field is one of `healthy` or `unhealthy`.
 ### `aegis.system.config`
 
 Returns the current node configuration.
+
+**Access:** Operator
 
 **`skip_judge`:** `true`
 
@@ -1629,6 +1767,8 @@ Returns the current node configuration.
 
 Returns the canonical JSON Schema for a manifest kind (agent or workflow).
 
+**Access:** User
+
 **`skip_judge`:** `true`
 
 | Property | Type | Required | Default | Description |
@@ -1640,6 +1780,8 @@ Returns the canonical JSON Schema for a manifest kind (agent or workflow).
 ### `aegis.schema.validate`
 
 Validates a manifest YAML string against its canonical JSON Schema.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1666,6 +1808,8 @@ On failure: `{ "valid": false, "errors": ["error message 1"] }`
 ### `aegis.runtime.list`
 
 List all supported standard runtime environments (language/version pairs). Call this before creating an agent manifest to ensure the declared runtime is valid.
+
+**Access:** User
 
 **`skip_judge`:** `true`
 
@@ -1710,6 +1854,8 @@ List all supported standard runtime environments (language/version pairs). Call 
 ### `zaru.switch_mode`
 
 Suggest the user switch to a different conversation mode. Use this when the user's request cannot be fulfilled in the current mode. This renders a confirmation card inline in the chat — the user can accept, refuse, or dismiss.
+
+**Access:** User
 
 **`skip_judge`:** N/A (never reaches the orchestrator)
 

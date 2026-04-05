@@ -31,7 +31,7 @@ metadata:
     maintainer: "platform@example.com"
 
 spec:
-  type: user                        # optional; user | system. Default: user
+  # security_context: aegis-system-agent-runtime  # operators only
 
   # Runtime configuration (StandardRuntime path: language + version)
   runtime:
@@ -192,7 +192,7 @@ spec:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | `"user"` \| `"system"` | | Execution tier. Default: `"user"`. |
+| `security_context` | string | | Named security context for executions. Operators only. |
 | `runtime` | object | ✓ | Runtime configuration. |
 | `task` | object | | Task definition (instructions for the agent). |
 | `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`spec.input_schema`](#specinput_schema). |
@@ -205,18 +205,23 @@ spec:
 | `tools` | `object[]` or `string[]` | | MCP tools the agent may invoke. |
 | `env` | `map[string]string` | | Environment variables injected into the container. |
 
-### `spec.type`
+### `spec.security_context`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `type` | `"user"` \| `"system"` | No | `"user"` |
+| `security_context` | `string` | No | (inherits caller context) |
 
-Declares the agent's execution tier.
+Declares the named security context this agent's executions run under. When set,
+overrides the caller's execution context at runtime.
 
-- **`user`** — The agent runs under the caller's security context. This is the default for all user-created agents.
-- **`system`** — The agent runs under a privileged system context with access to filesystem operations and platform management tools. Use this for agents that perform infrastructure or orchestration tasks on behalf of the platform.
+Permitted values are platform-configured security context names. On the standard
+platform, the only valid value is `aegis-system-agent-runtime`.
 
-Omitting this field is equivalent to `type: user`.
+Only platform operators may set this field. Consumer accounts receive a `403 Forbidden`
+error if they attempt to register an agent with `security_context` set.
+
+Omitting this field (the default) means the agent runs under the calling user's or
+workflow's security context.
 
 ### `spec.runtime`
 
