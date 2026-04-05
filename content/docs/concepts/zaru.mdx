@@ -79,10 +79,12 @@ Alongside the consumer tiers above, AEGIS supports a separate **operator** tier 
 
 | Dimension | Consumer (Zaru) | Operator (AEGIS) |
 |-----------|----------------|-------------------|
-| Keycloak realm | `zaru-consumer` | `aegis-system` |
-| JWT claim | `zaru_tier` (`Free`, `Pro`, `Business`, `Enterprise`) | `aegis_role` (`admin`, `operator`, `readonly`) |
+| Keycloak realm | `zaru-consumer` (shared realm; each user gets a per-user tenant `u-{uuid}`) | `aegis-system` |
+| JWT claims | `zaru_tier` (`Free`, `Pro`, `Business`, `Enterprise`) + `tenant_id` (`u-{uuid}`) | `aegis_role` (`admin`, `operator`, `readonly`) |
 | Identity kind | `IdentityKind::ZaruUser` | `IdentityKind::Operator` |
 | SecurityContext | `zaru-free`, `zaru-pro`, `zaru-business`, `zaru-enterprise` | `aegis-system-operator` |
+
+All consumer users authenticate through the shared `zaru-consumer` Keycloak realm, but each user is assigned a dedicated per-user tenant at signup (slug format `u-{uuid}`). This provides full data isolation between consumer users — agents, workflows, executions, and secrets are scoped to the individual's tenant rather than a shared pool. The `tenant_id` is injected into the JWT via a protocol mapper on the `zaru-consumer` realm, and each per-user tenant is provisioned with tier-appropriate quotas (Free, Pro, Business, or Enterprise).
 
 `ZaruTier` is a subscription tier — it determines the consumer's resource allocation, rate limits, and storage quotas. `AegisRole` is a platform role — it determines what administrative operations an operator may perform.
 

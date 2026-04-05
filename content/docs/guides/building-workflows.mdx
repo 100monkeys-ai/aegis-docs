@@ -516,27 +516,19 @@ invoke it:
 
 | Scope | Who Can Use It |
 |-------|----------------|
-| `user` | Only the user who registered the workflow |
-| `tenant` | All members of your organization |
+| `tenant` | All members of your organization (or the individual consumer user's per-user tenant) |
 | `global` | All tenants — reserved for platform builtins |
 
 Newly registered workflows default to `tenant` scope. You do not need to specify `scope` explicitly
-unless you want `user` scope:
-
-```yaml
-metadata:
-  name: my-pipeline
-  version: "1.0.0"
-  scope: user   # omit to default to tenant scope
-```
+in the manifest.
 
 **Global scope is reserved for platform builtins** such as `builtin-intent-to-execution`. Promoting
-or demoting a workflow's scope is an admin operation.
+a workflow's scope to global is an admin operation.
 
 When referencing a workflow by name — for example in `aegis workflow run <name>` or an
-`aegis.workflow.run` tool call — the system resolves using narrowest-first order: user-scoped
-workflows first, then tenant-scoped, then global builtins. A tenant-scoped workflow named
-`my-pipeline` will be found before a global workflow of the same name.
+`aegis.workflow.run` tool call — the system resolves using narrowest-first order: tenant-scoped
+workflows first, then global builtins. A tenant-scoped workflow named `my-pipeline` will be found
+before a global workflow of the same name.
 
 ---
 

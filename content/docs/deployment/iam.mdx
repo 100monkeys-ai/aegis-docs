@@ -172,7 +172,7 @@ The `aegis_role` claim determines the operator's read/write scope within that Se
 
 All three roles map to the same `aegis-system-operator` SecurityContext (which defines the tool capabilities ceiling). The role-based differentiation happens at the API handler level: `aegis:readonly` operators can invoke read tools (`aegis.system.info`) but not write tools (`aegis.agent.delete`, `aegis.system.config`).
 
-This is distinct from consumer identity resolution, where a `zaru-consumer` realm JWT with a `zaru_tier` claim maps to `IdentityKind::ZaruUser` and a tier-specific SecurityContext (`zaru-free`, `zaru-pro`, etc.).
+This is distinct from consumer identity resolution. Consumer users authenticate via the shared `zaru-consumer` Keycloak realm, but each user has their own per-user tenant (slug format `u-{uuid}`) provisioned at signup. The orchestrator extracts the user's `tenant_id` from a custom JWT claim (injected by a `tenant_id` protocol mapper on the `zaru-consumer` realm) and their `zaru_tier` claim to resolve `IdentityKind::ZaruUser` with a tier-specific SecurityContext (`zaru-free`, `zaru-pro`, etc.).
 
 ---
 

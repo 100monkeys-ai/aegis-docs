@@ -30,9 +30,11 @@ AEGIS identifies tenants based on the **Keycloak realm slug** embedded in the JW
 
 | Kind | Keycloak Realm | TenantId |
 |------|----------------|----------|
-| **Consumer Pool** | `zaru-consumer` | `zaru-consumer` |
+| **Consumer (Per-User)** | `zaru-consumer` | `u-{user-uuid}` |
 | **Enterprise Tenant** | `tenant-{slug}` | `{slug}` |
 | **Platform Operator** | `aegis-system` | `aegis-system` |
+
+Consumer users all authenticate through the shared `zaru-consumer` Keycloak realm, but each user receives their own dedicated per-user tenant at signup. The tenant slug follows the format `u-{uuid}` (e.g., `u-a1b2c3d4-5678-...`). This provides full data isolation between consumer users — agents, workflows, executions, and secrets are scoped to the individual user's tenant rather than a shared pool. The `tenant_id` is injected into the JWT via a `tenant_id` protocol mapper on the `zaru-consumer` realm, and the orchestrator extracts it from this custom claim during identity resolution.
 
 ### Configuration
 
@@ -46,7 +48,7 @@ To prevent cross-tenant capability name collisions, all enterprise tenant `Secur
 
 | Tenant Type | Pattern | Example |
 |-------------|---------|---------|
-| Zaru Consumer | `zaru-{tier}` | `zaru-pro` |
+| Zaru Consumer | `zaru-{tier}` | `zaru-free`, `zaru-pro` |
 | Enterprise | `tenant-{slug}-{name}` | `tenant-acme-research` |
 | Operator | `aegis-system-{name}` | `aegis-system-admin` |
 
@@ -130,13 +132,11 @@ Every workflow has a visibility scope that controls which callers can discover a
 
 | Scope | Visibility |
 |-------|------------|
-| **User** | Only the user who registered it |
-| **Tenant** | All members of your organization |
+| **Tenant** | All members of your organization (or the individual consumer user's per-user tenant) |
 | **Global** | All tenants — reserved for platform builtins |
 
 When running a workflow by name (e.g., via `aegis workflow run` or `aegis.workflow.run`), the system
-resolves using narrowest-first: user-scoped workflows first, then tenant-scoped, then global
-builtins.
+resolves using narrowest-first: tenant-scoped workflows first, then global builtins.
 
 Platform workflows such as `builtin-intent-to-execution` are global scope and always available
 without any additional configuration.

@@ -541,8 +541,9 @@ iam:
   jwks_cache_ttl_seconds: 300
   # Custom claim names injected by Keycloak attribute mappers.
   claims:
-    zaru_tier: "zaru_tier"         # Claim carrying ZaruTier (Free | Pro | Enterprise)
+    zaru_tier: "zaru_tier"         # Claim carrying ZaruTier (Free | Pro | Business | Enterprise)
     aegis_role: "aegis_role"       # Claim carrying AegisRole in aegis-system realm
+    tenant_id: "tenant_id"         # Claim carrying per-user tenant slug (u-{uuid}) for consumer users
 
 # ─── gRPC Auth ────────────────────────────────────────────────────────────────
 # Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint.
