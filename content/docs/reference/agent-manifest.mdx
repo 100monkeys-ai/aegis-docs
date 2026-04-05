@@ -31,6 +31,8 @@ metadata:
     maintainer: "platform@example.com"
 
 spec:
+  type: user                        # optional; user | system. Default: user
+
   # Runtime configuration (StandardRuntime path: language + version)
   runtime:
     language: python              # StandardRuntime: required if image not specified
@@ -190,6 +192,7 @@ spec:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `type` | `"user"` \| `"system"` | | Execution tier. Default: `"user"`. |
 | `runtime` | object | ✓ | Runtime configuration. |
 | `task` | object | | Task definition (instructions for the agent). |
 | `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`spec.input_schema`](#specinput_schema). |
@@ -201,6 +204,19 @@ spec:
 | `delivery` | object | | Output delivery destinations. |
 | `tools` | `object[]` or `string[]` | | MCP tools the agent may invoke. |
 | `env` | `map[string]string` | | Environment variables injected into the container. |
+
+### `spec.type`
+
+| Field | Type | Required | Default |
+|-------|------|----------|---------|
+| `type` | `"user"` \| `"system"` | No | `"user"` |
+
+Declares the agent's execution tier.
+
+- **`user`** — The agent runs under the caller's security context. This is the default for all user-created agents.
+- **`system`** — The agent runs under a privileged system context with access to filesystem operations and platform management tools. Use this for agents that perform infrastructure or orchestration tasks on behalf of the platform.
+
+Omitting this field is equivalent to `type: user`.
 
 ### `spec.runtime`
 
