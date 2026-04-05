@@ -18,6 +18,76 @@ The AEGIS Orchestrator exposes an HTTP API on port `8080` (default). All request
 | `POST /v1/dispatch-gateway` | Internal — no external auth (agent containers only) |
 | `GET /health` | None |
 
+### Service Account Tenant Delegation
+
+Service accounts (M2M clients using client credentials) may include an `X-Tenant-Id: {tenant-slug}` request header to scope operations to a specific user tenant. Without this header, service account requests scope to the `aegis-system` tenant by default.
+
+This header is ignored for all other identity types (consumer users, operator users).
+
+---
+
+## Agents
+
+### `GET /v1/agents/lookup/{name}`
+
+Look up a deployed agent by its unique name. Returns the agent's ID and manifest metadata.
+
+**Path parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `name` | The unique name of the agent (e.g. `code-reviewer`) |
+
+**Request headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | ✓ | Bearer JWT |
+| `X-Tenant-Id` | No | For service accounts: scope the lookup to this tenant instead of the default `aegis-system` tenant |
+
+**Response `200`:**
+
+```json
+{
+  "agent_id": "agt-uuid",
+  "name": "code-reviewer",
+  "tenant_id": "tenant-slug"
+}
+```
+
+**Errors:**
+
+| HTTP | Body | Cause |
+|------|------|-------|
+| `404` | `{"error": "Agent not found"}` | No agent with that name exists in the resolved tenant |
+
+---
+
+### `GET /v1/agents`
+
+List all deployed agents visible to the caller's resolved tenant context.
+
+**Request headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | ✓ | Bearer JWT |
+| `X-Tenant-Id` | No | For service accounts: scope the listing to this tenant instead of the default `aegis-system` tenant |
+
+**Response `200`:**
+
+```json
+{
+  "agents": [
+    {
+      "agent_id": "agt-uuid",
+      "name": "code-reviewer",
+      "tenant_id": "tenant-slug"
+    }
+  ]
+}
+```
+
 ---
 
 ## Executions
@@ -26,7 +96,14 @@ The AEGIS Orchestrator exposes an HTTP API on port `8080` (default). All request
 
 Start an agent execution. Returns immediately with the `execution_id`; use the SSE stream to follow progress.
 
-**Request:**
+**Request headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | ✓ | Bearer JWT |
+| `X-Tenant-Id` | No | For service accounts: scope the execution to this tenant instead of the default `aegis-system` tenant |
+
+**Request body:**
 
 ```json
 {

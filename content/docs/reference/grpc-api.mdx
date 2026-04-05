@@ -134,6 +134,10 @@ message ExecutionFailed {
 }
 ```
 
+**Service account tenant delegation:**
+
+Service accounts should include `x-tenant-id` in call metadata to execute agents in the target user tenant. Example: `metadata.add("x-tenant-id", "zaru-consumer")`. Without this key, service account calls scope to the `aegis-system` tenant by default.
+
 **Example (TypeScript):**
 
 ```typescript
