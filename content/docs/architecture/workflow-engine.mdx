@@ -13,7 +13,7 @@ The AEGIS workflow engine executes declarative finite-state machine (FSM) workfl
 
 The workflow engine spans two components: the Rust orchestrator handles registration, state persistence, and event sourcing; the TypeScript worker owns FSM interpretation and delegates all agent execution back to the Rust runtime via gRPC.
 
-```
+```text
               ┌─────────────Rust Orchestrator──────────────┐
               │                                            │
        WorkflowParser          WorkflowRepository          │
@@ -238,7 +238,7 @@ When a state completes, the Temporal worker writes the execution result to the B
 
 **`Agent` state:**
 
-```
+```text
 Blackboard["REQUIREMENTS"] = {
   "status": "success",
   "output": "...agent's final output text...",
@@ -249,7 +249,7 @@ Blackboard["REQUIREMENTS"] = {
 
 **`ContainerRun` state:**
 
-```
+```text
 Blackboard["BUILD"] = {
   "exit_code": 0,
   "stdout": "Compiling my-crate v0.1.0\n   Finished release in 12.3s",
@@ -260,7 +260,7 @@ Blackboard["BUILD"] = {
 
 **`ParallelContainerRun` state** (keyed by step `name`):
 
-```
+```text
 Blackboard["TEST"] = {
   "unit-tests":   { "exit_code": 0, "stdout": "...", "stderr": "",    "duration_ms": 4200 },
   "lint":         { "exit_code": 0, "stdout": "",    "stderr": "",    "duration_ms": 870  },
@@ -328,7 +328,7 @@ When `intent:` is absent, the agent receives the original workflow-level caller 
 
 A `WorkflowState.Human` suspends the Temporal workflow run and waits for an external signal:
 
-```
+```text
 WorkflowExecution
   state = "approve_requirements"
   status = WAITING_FOR_SIGNAL
@@ -352,7 +352,7 @@ Human states respect `timeout_secs`. If no signal arrives within the timeout, th
 
 When a `WorkflowState.ContainerRun` is entered, the Temporal worker calls `executeContainerRunActivity`. This activity calls the Rust orchestrator via `AegisRuntime.ExecuteContainerRun` gRPC — the orchestrator creates the container, mounts volumes through the NFS Server Gateway, runs the command, captures output, destroys the container, and returns the result. There is no LLM, no `bootstrap.py`, and no 100monkeys iteration loop.
 
-```
+```text
 Enter BUILD (ContainerRun)
 │
 ├── executeContainerRunActivity(image, command, volumes, resources)
@@ -371,7 +371,7 @@ TransitionRules evaluated on exit_code → next state chosen
 
 For `ParallelContainerRun`, the worker fans out with `Promise.allSettled` and aggregates per `ParallelCompletionStrategy`:
 
-```
+```text
 Enter TEST (ParallelContainerRun, completion: all_succeed)
 │
 ├── executeContainerRunActivity(unit-tests, ...)
@@ -397,7 +397,7 @@ Enter TEST (ParallelContainerRun, completion: all_succeed)
 
 When a `WorkflowState.ParallelAgents` is entered, the Temporal workflow dispatches all listed agent IDs concurrently as Temporal Activities:
 
-```
+```text
 Enter PARALLEL_REVIEW
 │
 ├── Activity: security-reviewer
@@ -432,7 +432,7 @@ The `Subworkflow` state kind enables parent-child workflow composition. When a w
 
 ### How It Works
 
-```
+```text
 Enter TRIGGER_CHILD (Subworkflow, mode: blocking)
 │
 ├── Temporal startChildWorkflowExecution(workflow_id, input)
@@ -457,7 +457,7 @@ TransitionRules evaluated → next state chosen
 
 In `fire_and_forget` mode, the parent does not wait:
 
-```
+```text
 Enter START_BACKGROUND (Subworkflow, mode: fire_and_forget)
 │
 ├── Temporal startChildWorkflowExecution(workflow_id, input)

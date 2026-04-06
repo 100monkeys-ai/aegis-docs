@@ -52,7 +52,7 @@ spec:
 - **HTML escaping is disabled.** Backticks, quotes, `<`, `>` in `{{input}}` and `{{instruction}}` are passed verbatim to the LLM. You do not need to escape them.
 - If `prompt_template` is omitted, the orchestrator uses a built-in default:
 
-  ```
+  ```handlebars
   {{#if instruction}}Task: {{instruction}}
 
   {{/if}}{{#if input}}Input: {{input}}{{/if}}
@@ -70,13 +70,13 @@ Workflow state `input_template` fields let you compose an agent's input from out
 
 Reference the output of any completed state by its name:
 
-```
+```handlebars
 {{STATE_NAME.output}}
 ```
 
 If the state produced structured JSON output, access nested fields with dot notation:
 
-```
+```handlebars
 {{STATE_NAME.output.field_name}}
 {{STATE_NAME.output.nested.key}}
 ```
@@ -102,7 +102,7 @@ states:
 
 Access values stored in the Blackboard — the shared mutable context for the workflow execution — using:
 
-```
+```handlebars
 {{workflow.context.KEY}}
 ```
 
@@ -121,7 +121,7 @@ input_template: |
 
 The workflow's initial execution input is available as:
 
-```
+```handlebars
 {{input.FIELD_NAME}}
 ```
 
@@ -204,7 +204,7 @@ The following issues were identified:
 
 To render a literal `{{` in template output, use `\{{`:
 
-```
+```text
 The variable syntax looks like \{{variable_name}}.
 ```
 
