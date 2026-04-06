@@ -193,6 +193,7 @@ spec:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `security_context` | string | | Named security context for executions. Operators only. |
+| `output_handler` | object | | Egress handler that fires after execution completes. See [`spec.output_handler`](#specoutput_handler). |
 | `runtime` | object | ✓ | Runtime configuration. |
 | `task` | object | | Task definition (instructions for the agent). |
 | `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`spec.input_schema`](#specinput_schema). |
@@ -222,6 +223,119 @@ error if they attempt to register an agent with `security_context` set.
 
 Omitting this field (the default) means the agent runs under the calling user's or
 workflow's security context.
+
+### `spec.output_handler`
+
+| Field | Type | Required | Default |
+|-------|------|----------|---------|
+| `output_handler` | object | No | (omitted) |
+
+Declares an egress handler that fires after agent execution completes. The handler
+receives the agent's final output and routes or transforms it through a delivery
+channel. When omitted, no post-execution delivery occurs.
+
+**Failure behavior:** Controlled by the `required` field on the handler object.
+
+| `required` value | Handler failure effect |
+|------------------|------------------------|
+| `true` | The execution is marked **failed**. |
+| `false` (default) | Failure is logged; execution status is **unaffected**. |
+
+**Workflow override:** When an agent is invoked from a workflow, the workflow
+state's `output_handler` takes precedence over the agent manifest's declaration.
+
+Four handler types are supported:
+
+#### `type: agent`
+
+Spawns a named agent and passes the output to it as input. Use this to chain a
+formatter, validator, or delivery agent after execution.
+
+```yaml
+spec:
+  output_handler:
+    type: agent
+    agent_id: my-formatter-agent
+    required: false
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | ✓ | Must be `agent`. |
+| `agent_id` | string | ✓ | Name of the agent to invoke. |
+| `required` | boolean | | If `true`, handler failure marks execution failed. Default: `false`. |
+
+#### `type: webhook`
+
+POSTs the result to an external HTTP endpoint. Supports secret interpolation in
+headers and a Handlebars body template.
+
+```yaml
+spec:
+  output_handler:
+    type: webhook
+    url: https://hooks.example.com/results
+    method: POST
+    headers:
+      Authorization: Bearer {{secret:my-token}}
+    body_template: '{"result": "{{output}}"}'
+    timeout_seconds: 30
+    required: true
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | ✓ | Must be `webhook`. |
+| `url` | string | ✓ | Target URL. |
+| `method` | string | | HTTP method. Default: `POST`. |
+| `headers` | `map[string]string` | | Request headers. Supports `{{secret:<name>}}` interpolation. |
+| `body_template` | string | | Handlebars template for the request body. Variable: `{{output}}`. |
+| `timeout_seconds` | integer | | Request timeout in seconds. Default: `30`. |
+| `required` | boolean | | If `true`, handler failure marks execution failed. Default: `false`. |
+
+#### `type: mcp_tool`
+
+Invokes an MCP tool after execution — for example, sending a notification or
+writing to an external system.
+
+```yaml
+spec:
+  output_handler:
+    type: mcp_tool
+    tool_name: slack.send_message
+    arguments:
+      channel: "#results"
+      text: "{{output}}"
+    required: false
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | ✓ | Must be `mcp_tool`. |
+| `tool_name` | string | ✓ | Fully-qualified MCP tool name (e.g., `slack.send_message`). |
+| `arguments` | object | | Tool arguments. Supports `{{output}}` interpolation. |
+| `required` | boolean | | If `true`, handler failure marks execution failed. Default: `false`. |
+
+#### `type: container`
+
+Runs a container to transform or deliver the output. The output is injected into
+the command via `{{output}}` interpolation.
+
+```yaml
+spec:
+  output_handler:
+    type: container
+    image: my-registry/formatter:latest
+    command: ["/bin/format", "--input", "{{output}}"]
+    required: false
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | ✓ | Must be `container`. |
+| `image` | string | ✓ | Fully-qualified container image reference. |
+| `command` | `string[]` | | Command and arguments. Supports `{{output}}` interpolation. |
+| `required` | boolean | | If `true`, handler failure marks execution failed. Default: `false`. |
 
 ### `spec.runtime`
 
