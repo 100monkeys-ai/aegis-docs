@@ -314,6 +314,7 @@ aegis workflow run invoice-pipeline \
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `agent` | string | ✓ | Deployed agent name or UUID. |
+| `intent` | string | | Handlebars template rendered as the per-state natural-language steering for the agent (`{{intent}}` variable in the agent's prompt template). Falls back to the workflow-level caller intent when absent. |
 | `input` | string | | Handlebars template rendered as the agent's task input. Supports `{{intent}}`, `{{input.KEY}}`, `{{STATE.output}}`, `{{blackboard.KEY}}`, `{{state.feedback}}`. |
 | `isolation` | `inherit` \| `firecracker` \| `docker` \| `process` | | Override isolation mode. Default: `inherit` (from node config). |
 
