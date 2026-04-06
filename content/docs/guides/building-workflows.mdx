@@ -346,7 +346,10 @@ spec:
     SECURITY_SCAN:
       kind: Agent
       agent: security-scanner
-      input: "{{intent}}"
+      intent: "{{intent}}"
+      input: |
+        Repository: {{input.repo_url}}
+        Branch: {{input.branch}}
       timeout: 300s
       transitions:
         - condition: on_success
@@ -388,6 +391,8 @@ spec:
       command: "echo 'Validation failed'"
       transitions: []
 ```
+
+Agent states have two distinct template fields: `intent:` carries the natural-language steering ("why") and `input:` carries the structured data ("what"). They are separate concerns — `intent:` resolves to `{{intent}}` inside the agent's prompt template, while `input:` resolves to `{{input}}`. When `intent:` is omitted on a state, `{{intent}}` in the agent's prompt falls back to the workflow-level caller intent.
 
 **Parent workflow** that invokes the child:
 

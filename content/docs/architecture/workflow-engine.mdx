@@ -308,6 +308,20 @@ Key variables:
 | `{{state.feedback}}` | `feedback` string from the incoming transition. |
 | `{{input.KEY}}` | Key from the workflow start `--input` payload. |
 
+### Per-State Intent Override
+
+Agent states can supply their own `intent:` field as a Handlebars template, which overrides the workflow-level caller intent for that state's agent execution:
+
+```yaml
+SUMMARIZE:
+  kind: Agent
+  agent: summarizer-agent
+  intent: "Summarize the output of the previous step concisely."
+  input: "{{ANALYZE.output}}"
+```
+
+When `intent:` is absent, the agent receives the original workflow-level caller intent via `{{intent}}`. Use per-state intent to give agents precise steering when the caller's original request is too broad or irrelevant for a specific pipeline step.
+
 ---
 
 ## Human State Lifecycle

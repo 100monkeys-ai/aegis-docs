@@ -136,6 +136,31 @@ input_template: |
   {{FETCH_DIFF.output}}
 ```
 
+#### Agent State `intent:` and `input:` Fields
+
+Agent states expose two distinct template fields that map to separate variables inside the agent's prompt template:
+
+| Field | Resolves to in prompt | Purpose |
+|-------|-----------------------|---------|
+| `intent:` | `{{intent}}` | Natural-language steering — the "why" |
+| `input:` | `{{input}}` | Structured data — the "what" |
+
+**Fallback behaviour:** When `intent:` is absent on a state, `{{intent}}` inside the agent's prompt template falls back to the workflow-level caller intent. When `intent:` is present on the state, it overrides the workflow-level intent for that state only.
+
+**Example:**
+
+```yaml
+SUMMARIZE:
+  kind: Agent
+  agent: summarizer-agent
+  intent: "Summarize the analysis output as three bullet points."
+  input: |
+    Analysis: {{ANALYZE.output}}
+    Context: {{workflow.context.project_name}}
+```
+
+Here `{{intent}}` in the agent's prompt receives the per-state override, and `{{input}}` receives the rendered `input:` block. A downstream state that omits `intent:` will have `{{intent}}` resolve to whatever the caller originally passed when starting the workflow.
+
 ---
 
 ## Conditionals
