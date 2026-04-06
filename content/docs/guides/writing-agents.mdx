@@ -121,17 +121,11 @@ spec:
         access_mode: read-write
 ```
 
-### Metadata: description and tags
+### Metadata: description
 
 The `metadata.description` field is a human-readable summary of what the agent does. It is used by
 the discovery service to build the semantic embedding for this agent, so write it to reflect
 capability and intent — not implementation details.
-
-The `metadata.tags` field is a free-form string array of lowercase hyphenated capability descriptors.
-Use 3 to 5 tags that describe what the agent does (e.g., `code-generation`, `api-integration`,
-`data-analysis`, `security-review`). Tags are indexed for filtering in `aegis.agent.search` and
-`aegis.agent.list` responses, and they are included in the embedding text to improve semantic search
-recall.
 
 ```yaml
 metadata:
@@ -141,11 +135,6 @@ metadata:
   labels:
     role: worker
     category: security
-  tags:
-    - security-review
-    - python
-    - owasp-compliance
-    - static-analysis
 ```
 
 ### Declaring structured inputs with `input_schema`

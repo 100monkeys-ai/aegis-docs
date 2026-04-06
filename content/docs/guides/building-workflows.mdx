@@ -30,19 +30,13 @@ This avoids creating duplicate workflows and helps you build on proven patterns.
 
 ---
 
-## Workflow Metadata: description and tags
+## Workflow Metadata: description
 
-Every workflow manifest should include `metadata.description` and `metadata.tags`.
+Every workflow manifest should include `metadata.description`.
 
 The `description` field is a human-readable summary of what the workflow accomplishes. It is the
 primary input to the semantic embedding used by the discovery service — write it to capture intent
 and capability, not implementation steps.
-
-The `tags` field is a free-form string array of lowercase hyphenated capability descriptors. Use 3
-to 5 tags that classify the workflow's domain (e.g., `ci-cd`, `data-processing`, `code-review`,
-`kubernetes-deployment`, `api-integration`). Tags are indexed for filtering in
-`aegis.workflow.search` and `aegis.workflow.list` responses, and they are included in the embedding
-text to improve semantic search recall.
 
 ```yaml
 metadata:
@@ -52,11 +46,6 @@ metadata:
   labels:
     category: deployment
     team: platform
-  tags:
-    - ci-cd
-    - nodejs
-    - kubernetes-deployment
-    - automated-testing
 ```
 
 ### Declaring structured inputs with `input_schema`
