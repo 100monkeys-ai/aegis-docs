@@ -17,7 +17,6 @@ The [`aegis-deploy`](https://github.com/100monkeys-ai/aegis-deploy) repository u
 | **pod-secrets** (OpenBao) | ✓ | ✓ | ✓ |
 | **pod-database** (PostgreSQL) | | ✓ | ✓ |
 | **pod-temporal** (Temporal + worker) | | ✓ | ✓ |
-| **pod-iam** (Keycloak) | | ✓ | ✓ |
 | **pod-observability** (Jaeger, Prometheus, Grafana, Loki) | | ✓ | ✓ |
 | **pod-storage** (SeaweedFS) | | | ✓ |
 | **pod-seal-gateway** (SEAL Gateway) | | | ✓ |
@@ -50,7 +49,7 @@ make deploy
 
 **Includes:** `pod-core` + `pod-secrets`
 
-The `minimal` profile starts only the AEGIS runtime and OpenBao. You must provide an external PostgreSQL instance and configure it in `.env`. Workflows, IAM, storage, and observability are not available.
+The `minimal` profile starts only the AEGIS runtime and OpenBao. You must provide an external PostgreSQL instance and configure it in `.env`. Workflows, storage, and observability are not available.
 
 **Required external services:**
 
@@ -62,7 +61,7 @@ The `minimal` profile starts only the AEGIS runtime and OpenBao. You must provid
 
 **Use case:** Local development, testing, and CI environments.
 
-**Includes:** `pod-core` + `pod-secrets` + `pod-database` + `pod-temporal` + `pod-iam` + `pod-observability`
+**Includes:** `pod-core` + `pod-secrets` + `pod-database` + `pod-temporal` + `pod-observability`
 
 The `development` profile starts all core services including the full observability stack. Storage uses the local filesystem (no SeaweedFS). This is the recommended profile for development and testing.
 
@@ -77,7 +76,7 @@ The `development` profile starts all core services including the full observabil
 
 **Use case:** Production, staging, and enterprise deployments.
 
-**Includes:** All 8 public pods.
+**Includes:** All 7 public pods.
 
 The `full` profile starts every public service including distributed storage (SeaweedFS) and the SEAL tooling gateway. This is the recommended profile for production deployments.
 
@@ -93,7 +92,6 @@ All profiles read from the same `.env` file. Profile-specific behavior is contro
 | `RUST_LOG` | `debug` or `info,aegis_orchestrator=debug` | `info` |
 | `AEGIS_LOG_FORMAT` | (unset, defaults to pretty) | `json` |
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Strong password |
-| `KEYCLOAK_ADMIN_PASSWORD` | `changeme` | Strong password |
 | `POSTGRES_PASSWORD` | `aegis` | Strong password |
 
 ---

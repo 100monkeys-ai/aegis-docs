@@ -60,12 +60,11 @@ When troubleshooting startup failures, check dependencies in this order:
 ```text
 1. pod-database (PostgreSQL)         <- Everything depends on this
    +-- 2. pod-secrets (OpenBao)      <- Core needs secrets
-       +-- 3. pod-iam (Keycloak)     <- Needs PostgreSQL
-           +-- 4. pod-core           <- Needs DB, secrets, optionally IAM
-               |-- 5. pod-temporal   <- Worker needs core gRPC
-               |-- 6. pod-storage    <- Core connects to filer
-               +-- 7. pod-seal-gateway <- Needs DB, Podman socket
-8. pod-observability                  <- Independent, but needs targets running
+       +-- 3. pod-core               <- Needs DB, secrets
+           |-- 4. pod-temporal       <- Worker needs core gRPC
+           |-- 5. pod-storage        <- Core connects to filer
+           +-- 6. pod-seal-gateway   <- Needs DB, Podman socket
+7. pod-observability                  <- Independent, but needs targets running
 ```
 
 If pod-core fails to start, check pod-database and pod-secrets first.
@@ -177,21 +176,6 @@ curl -s http://localhost:8200/v1/sys/health | jq .sealed
 # See: Disaster Recovery guide
 ```
 
-### Keycloak Not Ready
-
-**Symptoms:** Authentication failures; `/health/ready` returns error.
-
-```bash
-# Check Keycloak logs
-podman logs aegis-iam-keycloak
-
-# Common cause: database not available when Keycloak started
-make redeploy POD=iam
-
-# Verify health
-curl -s http://localhost:8180/health/ready | jq
-```
-
 ---
 
 ## Network Debugging
@@ -243,7 +227,7 @@ podman info
 make status > diagnostics.txt 2>&1
 
 # Recent logs (last 500 lines per service)
-for pod in core database temporal secrets iam storage observability seal-gateway; do
+for pod in core database temporal secrets storage observability seal-gateway; do
   echo "=== $pod ===" >> diagnostics.txt
   make logs POD=$pod 2>&1 | tail -500 >> diagnostics.txt
 done

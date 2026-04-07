@@ -45,7 +45,6 @@ make validate
 
 # Re-bootstrap if needed (safe to re-run)
 make bootstrap-secrets
-make bootstrap-keycloak
 ```
 
 ---
@@ -140,7 +139,6 @@ make validate
 
 # 4. Bootstrap services
 make bootstrap-secrets
-make bootstrap-keycloak
 
 # 5. Restore data from backups (if available)
 podman exec -i aegis-database-postgres psql -U aegis < ./backups/all-databases.sql

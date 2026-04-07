@@ -27,17 +27,13 @@ The AEGIS platform deploys as a set of Podman pods, each grouping related contai
 │  │              │  │:3000         │   │                  │  │
 │  └──────────────┘  └──────────────┘   └──────────────────┘  │
 │                                                               │
-│  pod-secrets       pod-iam            pod-storage             │
-│  ┌──────────────┐  ┌──────────────┐   ┌──────────────────┐  │
-│  │openbao       │  │keycloak      │   │seaweedfs-master  │  │
-│  │:8200         │  │:8180         │   │:9333 :19333 :9324│  │
-│  │              │  │              │   │seaweedfs-volume  │  │
-│  │              │  │              │   │:8080 :18080 :9325│  │
-│  │              │  │              │   │seaweedfs-filer   │  │
-│  │              │  │              │   │:8888 :9326       │  │
-│  │              │  │              │   │seaweedfs-webdav  │  │
-│  │              │  │              │   │:7333             │  │
-│  └──────────────┘  └──────────────┘   └──────────────────┘  │
+│  pod-secrets       pod-storage                                │
+│  ┌──────────────┐  ┌──────────────────────────────────────┐  │
+│  │openbao       │  │seaweedfs-master  :9333 :19333 :9324  │  │
+│  │:8200         │  │seaweedfs-volume  :8080 :18080 :9325  │  │
+│  │              │  │seaweedfs-filer   :8888 :9326         │  │
+│  │              │  │seaweedfs-webdav  :7333               │  │
+│  └──────────────┘  └──────────────────────────────────────┘  │
 │                                                               │
 │  pod-observability                    pod-seal-gateway        │
 │  ┌──────────────────────────────┐    ┌──────────────────┐   │
@@ -90,7 +86,7 @@ PostgreSQL and its Prometheus metrics exporter.
 **Volumes:**
 
 - `aegis-postgres-data` -> `/var/lib/postgresql/data`
-- Init scripts for database creation (`aegis`, `temporal`, `keycloak`)
+- Init scripts for database creation (`aegis`, `temporal`)
 
 **Authentication:** SCRAM-SHA-256
 
@@ -133,24 +129,6 @@ OpenBao secrets management (open-source Vault alternative).
 - `openbao-config.hcl` mounted
 
 **Auth method:** AppRole (role_id + secret_id). Initialize with `make bootstrap-secrets`.
-
----
-
-## pod-iam
-
-Keycloak OIDC identity provider.
-
-| Container | Image | Ports |
-|-----------|-------|-------|
-| keycloak | `quay.io/keycloak/keycloak:24.0` | 8180 (HTTP) |
-
-**Health check:** HTTP GET `/health/ready` on port 8180 (15s interval)
-
-**Database:** PostgreSQL (`aegis-database:5432/keycloak`)
-
-**Key environment:** `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`, `KC_DB_URL`
-
-Initialize realms and clients with `make bootstrap-keycloak`.
 
 ---
 
@@ -244,12 +222,10 @@ All pods share the `aegis-network` Podman bridge network. Containers within the 
 | pod-core | pod-database | TCP :5432 | State persistence |
 | pod-core | pod-temporal | gRPC :7233 | Workflow execution |
 | pod-core | pod-secrets | HTTP :8200 | Credential resolution |
-| pod-core | pod-iam | HTTP :8180 | JWT validation |
 | pod-core | pod-storage | HTTP :8888 | Volume backend (SeaweedFS filer) |
 | pod-core | pod-observability | gRPC :4317 | OTLP trace/log export |
 | pod-temporal (worker) | pod-core | gRPC :50051 | Worker activity execution |
 | pod-temporal (worker) | pod-database | TCP :5432 | Workflow state |
-| pod-iam | pod-database | TCP :5432 | Realm/user persistence |
 | pod-observability (promtail) | pod-observability (loki) | HTTP :3100 | Log shipping |
 | pod-observability (prometheus) | All pods | HTTP (various) | Metrics scraping |
 | pod-observability (grafana) | pod-observability | HTTP :9090, :3100, :16686 | Data queries |

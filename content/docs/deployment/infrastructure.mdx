@@ -16,7 +16,7 @@ AEGIS provides two distinct deployment paths depending on your use case:
 | Path | Use Case | IAM | Secrets | TLS |
 |------|----------|-----|---------|-----|
 | `aegis init` | Local testing & evaluation | None (unauthenticated) | In-memory | None |
-| `aegis-deploy` | Production | Keycloak 24 (OIDC) | OpenBao | Caddy ACME |
+| `aegis-deploy` | Production | None (optional add-on) | OpenBao | Caddy ACME |
 
 **`aegis init`** bootstraps a minimal local stack suitable for experimenting with agents and
 workflows. It does not deploy Keycloak, OpenBao, or a TLS edge proxy. It is not suitable for
@@ -24,7 +24,7 @@ production use.
 
 **`aegis-deploy`** ([github.com/100monkeys-ai/aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy))
 is the recommended production deployment path. It deploys all platform services as Podman pods with
-proper IAM, secrets management, and TLS termination.
+secrets management and TLS termination.
 
 ---
 
@@ -38,7 +38,6 @@ proper IAM, secrets management, and TLS termination.
 | Temporal | 1.22+ | Durable workflow execution | ✓ (if using workflows) |
 | SeaweedFS | 3.60+ | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓ |
 | OpenBao | 2.0+ | Secrets management | Recommended |
-| Keycloak | 24.0+ | OIDC identity provider | Recommended |
 | Caddy | 2.9+ | Reverse proxy with automatic TLS | Production only |
 | Jaeger | 1.55+ | Distributed tracing (OTLP collector) | Recommended |
 | Prometheus | 2.51+ | Metrics collection and alerting | Recommended |
@@ -68,12 +67,10 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 │  │ :2049 :9091     │   │ worker :3000     │   │                    │  │
 │  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
 │                                                                       │
-│  ┌─────────────────┐   ┌─────────────────┐   ┌────────────────────┐  │
-│  │ pod-secrets     │   │ pod-iam         │   │ pod-storage        │  │
-│  │ openbao :8200   │   │ keycloak :8180  │   │ master :9333       │  │
-│  │                 │   │                 │   │ volume :8080       │  │
-│  │                 │   │                 │   │ filer :8888        │  │
-│  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
+│  ┌─────────────────┐   ┌────────────────────────────────────────┐  │
+│  │ pod-secrets     │   │ pod-storage                            │  │
+│  │ openbao :8200   │   │ master :9333  volume :8080  filer :8888│  │
+│  └─────────────────┘   └────────────────────────────────────────┘  │
 │                                                                       │
 │  ┌─────────────────┐   ┌─────────────────┐                           │
 │  │ pod-observability│   │ pod-seal-gateway│                           │
@@ -95,7 +92,7 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-Agent containers communicate **only** with the AEGIS orchestrator (via `/v1/dispatch-gateway` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, Keycloak, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
+Agent containers communicate **only** with the AEGIS orchestrator (via `/v1/dispatch-gateway` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
 
 ---
 
@@ -177,7 +174,6 @@ aegis daemon start --config ./aegis-config.yaml
 | 7233 | gRPC | Temporal Server | temporal | Internal only |
 | 8233 | HTTP | Temporal UI | temporal | Internal / proxied |
 | 8200 | HTTP | OpenBao | secrets | Internal only |
-| 8180 | HTTP | Keycloak | iam | Internal / proxied |
 | 9333 | HTTP | SeaweedFS Master | storage | Internal only |
 | 8080 | HTTP | SeaweedFS Volume | storage | Internal only |
 | 8888 | HTTP | SeaweedFS Filer | storage | Internal only |

@@ -107,7 +107,6 @@ For major version upgrades or when pod definitions change:
 make teardown
 make deploy PROFILE=full
 make bootstrap-secrets
-make bootstrap-keycloak
 make validate
 ```
 
@@ -138,22 +137,13 @@ make redeploy POD=temporal
 # Temporal auto-setup handles schema migrations
 ```
 
-### Keycloak
-
-```bash
-# 1. Backup database
-# 2. Update image tag
-make redeploy POD=iam
-# Keycloak runs auto-migration on startup
-```
-
 ---
 
 ## Version Compatibility
 
-| AEGIS Runtime | Temporal | PostgreSQL | Keycloak | OpenBao |
-|--------------|----------|------------|----------|---------|
-| 0.x (pre-alpha) | 1.22-1.23 | 15+ | 24.0 | 2.0+ |
+| AEGIS Runtime | Temporal | PostgreSQL | OpenBao |
+|--------------|----------|------------|---------|
+| 0.x (pre-alpha) | 1.22-1.23 | 15+ | 2.0+ |
 
 <Callout type="info">
 During pre-alpha, there are no backward compatibility guarantees. Always test upgrades in a development environment first.
