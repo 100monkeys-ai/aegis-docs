@@ -191,6 +191,32 @@ Any non-terminal state ──► Failed
 
 ---
 
+## Volume Ownership Types
+
+Every volume has an **ownership type** that determines its lifecycle scope and automatic cleanup behavior. The orchestrator uses the ownership to decide when a volume's data should be garbage-collected.
+
+| Ownership | Scope | Cleanup |
+|---|---|---|
+| `Execution` | Scoped to a single agent execution | Auto-deleted when the execution ends |
+| `WorkflowExecution` | Shared across all executions within a single workflow run | Auto-deleted when the workflow execution completes |
+| `Persistent` | User-owned, not tied to any execution | Manual — deleted only when the user explicitly removes it via the CLI or API |
+
+### Workflow Workspace Sharing
+
+When a workflow runs, its workspace volume is created with `WorkflowExecution` ownership. This means the volume persists across all states in the workflow, allowing multiple agents and containers to access the same files through NFS.
+
+For example, in a code-generation workflow:
+
+1. A code-writing agent runs in the first workflow state and writes source files to `/workspace`.
+2. The workflow transitions to a build-and-test state, which launches a container to compile and run tests.
+3. Both the agent and the container mount the **same** workspace volume — the build container sees the files the agent wrote.
+
+Because the volume is owned by the workflow execution (not by any individual agent execution), it is not cleaned up when the first agent finishes. It remains available until the entire workflow completes, at which point the orchestrator garbage-collects it automatically.
+
+Persistent volumes, by contrast, survive indefinitely and are managed through the volume management API. They are useful for user workspaces that should retain files across multiple independent workflow runs.
+
+---
+
 ## Phase 1 Constraints
 
 ### `nolock` Mount Option
