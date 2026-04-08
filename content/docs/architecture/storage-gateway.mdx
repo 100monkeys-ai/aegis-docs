@@ -1,11 +1,11 @@
 ---
 title: Storage Gateway
-description: AegisFSAL architecture, user-space NFSv3, FileHandle structure, UID/GID squashing, path canonicalization, and SeaweedFS integration.
+description: AegisFSAL architecture, FUSE and NFS transports, FileHandle structure, UID/GID squashing, path canonicalization, and SeaweedFS integration.
 ---
 
 # Storage Gateway
 
-The AEGIS Storage Gateway is the security boundary for all filesystem access by agent containers. It is implemented as a user-space NFSv3 server (`AegisFSAL`) running on the orchestrator host, with agent containers mounting their volumes via the kernel NFS client.
+The AEGIS Storage Gateway is the security boundary for all filesystem access by agent containers. It is built on `AegisFSAL`, a transport-agnostic File System Abstraction Layer running in the orchestrator process. Agent containers access their volumes through one of two transports — **FUSE** (for rootless Podman) or **NFS** (for rootful Docker) — with identical authorization, audit, and policy enforcement regardless of transport.
 
 ---
 
@@ -24,14 +24,20 @@ Every POSIX operation is routed through the orchestrator-controlled `AegisFSAL` 
 
 ## Component Hierarchy
 
-```
-Agent Container (Docker)
-  │  kernel NFS client
-  │  mount: addr=orchestrator_host, nfsvers=3, proto=tcp, nolock
-  │  /workspace → NFS server
+```text
+Agent Container
+  │
+  ├── [FUSE transport] bind mount from host FUSE mountpoint
+  │     /workspace → host path → FUSE daemon
+  │
+  ├── [NFS transport] kernel NFS client
+  │     mount: addr=orchestrator_host, nfsvers=3, proto=tcp, nolock
+  │     /workspace → NFS server
   ▼
-Orchestrator Host: NFS Server Gateway (user-space, tcp, port 2049)
-  │  NFSv3 protocol handler (nfsserve Rust crate)
+Orchestrator Host
+  ├── FUSE Daemon (in-process, translates POSIX ops → FSAL calls)
+  ├── NFS Server Gateway (user-space, tcp, port 2049)
+  │     NFSv3 protocol handler (nfsserve Rust crate)
   ▼
 AegisFSAL (File System Abstraction Layer)
   │  receive: LOOKUP, READ, WRITE, READDIR, GETATTR, CREATE, REMOVE
@@ -56,7 +62,7 @@ StorageProvider trait (via StorageRouter)
 
 The NFSv3 protocol requires servers to return an opaque `FileHandle` for each file and directory. AEGIS encodes authorization information directly into the `FileHandle`:
 
-```
+```text
 FileHandle layout (48 bytes raw, ~52 bytes serialized, ≤64 bytes NFSv3 limit):
 ┌──────────────────────────────────────────────────┐
 │  execution_id  (UUID binary, 16 bytes)            │
@@ -99,7 +105,7 @@ All incoming paths are canonicalized before reaching the `StorageProvider`:
 
 Example:
 
-```
+```text
 Incoming:    /workspace/../etc/passwd
 Step 2:      ".." detected
 Step 3:      REJECTED → NFS3ERR_ACCES
@@ -131,7 +137,7 @@ If an agent attempts to write to `/agent/config.py` but only `/workspace` is in 
 
 When `size_limit` is set in the volume declaration, `AegisFSAL` tracks cumulative bytes written to the volume. Before each `WRITE`:
 
-```
+```text
 current_volume_size + write_size > parsed(size_limit)?
   → YES: fail with NFS3ERR_NOSPC, emit VolumeQuotaExceeded event
   → NO:  proceed with write
@@ -147,17 +153,52 @@ The `StorageRouter` acts as a proxy for the `AegisFSAL`, allowing operations on 
 
 For more in-depth operational mechanisms regarding diverse storage modes, see [Storage Backends](/docs/architecture/storage-backends).
 
-`AegisFSAL` is designed as a transport-agnostic core. The NFSv3 server is the Phase 1 transport for Docker-based deployments. In Phase 2 (Firecracker), a `virtio-fs` frontend will use the same `AegisFSAL` security and authorization logic with zero code duplication:
+`AegisFSAL` is designed as a transport-agnostic core. All transports — FUSE, NFS, and virtio-fs — share the same authorization logic, path canonicalization, UID/GID squashing, quota tracking, and event publishing with zero code duplication:
 
-```
-Phase 1: Docker
+```text
+FUSE transport (rootless Podman):
+  FUSE Daemon → AegisFSAL → StorageProvider
+
+NFS transport (rootful Docker):
   NFSv3 Frontend → AegisFSAL → StorageProvider
 
-Phase 2: Firecracker
+virtio-fs transport (Firecracker):
   virtio-fs Frontend → AegisFSAL → StorageProvider
 ```
 
-The FSAL authorization logic, path canonicalization, UID/GID squashing, quota tracking, and event publishing are written once in `AegisFSAL` and shared across both transports.
+---
+
+## FUSE Transport
+
+The FUSE transport enables native POSIX filesystem access to workspace volumes in rootless container runtimes where NFS mounts are unavailable. It runs as a daemon inside the orchestrator process, translating POSIX operations (`read`, `write`, `readdir`, `getattr`, `create`, `remove`, etc.) into `AegisFSAL` calls.
+
+Because the FUSE daemon calls the same `AegisFSAL` entry points as the NFS server, all security guarantees are identical: per-operation authorization, manifest policy enforcement, path traversal prevention, UID/GID squashing, quota enforcement, and `StorageEvent` audit trail.
+
+### Rootless Podman
+
+In rootless Podman deployments, the kernel NFS client is not available because mounting NFS requires root privileges. The FUSE transport solves this:
+
+1. The orchestrator mounts a FUSE filesystem at a host path (e.g., `/tmp/aegis-fuse/<volume_id>`).
+2. The container is started with a bind mount from the host FUSE mountpoint into the container's `/workspace`.
+3. All POSIX operations from the container flow through the kernel's FUSE layer to the orchestrator's FUSE daemon, which delegates to `AegisFSAL`.
+
+No privileged mount operations or special capabilities are required. The entire path — from container I/O to storage backend — runs unprivileged.
+
+### Firecracker (virtio-fs)
+
+The same FUSE protocol underpins virtio-fs, which provides filesystem access to Firecracker microVMs. In this configuration, the orchestrator acts as the virtio-fs daemon, and the guest kernel communicates via the virtio-fs device. The `AegisFSAL` security boundary is preserved identically — the VM guest cannot bypass authorization any more than a container can.
+
+### Transport Selection
+
+The orchestrator selects the filesystem transport based on configuration:
+
+| Configuration | Transport | Runtime |
+|---|---|---|
+| FUSE enabled | FUSE + bind mount | Rootless Podman |
+| FUSE disabled (default) | NFS volume driver | Rootful Docker |
+| Firecracker runtime | virtio-fs | Firecracker microVM |
+
+Transport selection is per-node. All transports produce the same observable behavior from the agent's perspective — a POSIX filesystem at `/workspace` (or the manifest-declared `mount_path`) backed by the same `AegisFSAL` authorization and the same `StorageProvider` backends.
 
 ---
 
@@ -165,7 +206,7 @@ The FSAL authorization logic, path canonicalization, UID/GID squashing, quota tr
 
 Volumes follow a deterministic state machine managed by the orchestrator:
 
-```
+```text
 Creating ──► Available ──► Attached ──► Detached
     │                          │             │
     │                          └─────────────┤
@@ -247,7 +288,7 @@ addr=<orchestrator_host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock,acregmin=3,acr
 
 Each volume gets a unique NFS export path derived from its tenant and volume identifiers:
 
-```
+```text
 /{tenant_id}/{volume_id}
 ```
 
@@ -255,7 +296,7 @@ The orchestrator maintains a runtime `NfsVolumeRegistry` — a concurrent map of
 
 The agent container's NFS mount is configured to target the orchestrator host at the volume's export path:
 
-```
+```text
 addr=<orchestrator_host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock
 device: :/<tenant_id>/<volume_id>
 target: /workspace  (or mount_path from manifest)
@@ -296,13 +337,13 @@ SeaweedFS is the default `StorageProvider`. The orchestrator communicates with S
 
 Volume data is stored in SeaweedFS at the following path structure:
 
-```
+```text
 /{tenant_id}/{volume_id}/{file_path}
 ```
 
 For example, a file `/workspace/main.py` written by an execution `exec-abc` on volume `vol-xyz` in the default single-tenant environment is stored at:
 
-```
+```text
 /00000000-0000-0000-0000-000000000001/vol-xyz/main.py
 ```
 
