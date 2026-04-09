@@ -688,3 +688,90 @@ message PushConfigResponse {
   bool accepted = 1;
   optional string rejection_reason = 2;
 }
+```
+
+---
+
+## Service: `FsalService`
+
+The FUSE daemon exposes a gRPC service that proxies POSIX filesystem operations through the orchestrator's `AegisFSAL` layer. The orchestrator calls these RPCs to perform file I/O on behalf of agent containers via the host-side FUSE mountpoints.
+
+**Port:** Orchestrator gRPC port (default `50051`)
+**Package:** `aegis.fsal.v1`
+
+```protobuf
+package aegis.fsal.v1;
+
+service FsalService {
+  rpc Lookup(LookupRequest) returns (LookupResponse);
+  rpc GetAttr(GetAttrRequest) returns (GetAttrResponse);
+  rpc ReadDir(ReadDirRequest) returns (ReadDirResponse);
+  rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Write(WriteRequest) returns (WriteResponse);
+  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  rpc Rename(RenameRequest) returns (RenameResponse);
+  rpc MkDir(MkDirRequest) returns (MkDirResponse);
+  rpc RmDir(RmDirRequest) returns (RmDirResponse);
+}
+```
+
+Each RPC carries `execution_id` and `volume_id` for authorization. The orchestrator decodes these identifiers, verifies that the requesting execution owns the volume, enforces manifest `FilesystemPolicy`, applies UID/GID squashing, checks quota, and publishes `StorageEvent`s -- identical to the NFS transport path.
+
+### RPC Summary
+
+| RPC | Description |
+|-----|-------------|
+| `Lookup` | Resolve a filename within a directory to its file attributes and handle. |
+| `GetAttr` | Retrieve file or directory metadata (size, permissions, timestamps). |
+| `ReadDir` | List directory entries. |
+| `Read` | Read bytes from a file at a given offset. |
+| `Write` | Write bytes to a file at a given offset. |
+| `Create` | Create a new file. |
+| `Remove` | Delete a file. |
+| `Rename` | Rename or move a file. |
+| `MkDir` | Create a directory. |
+| `RmDir` | Remove a directory. |
+
+---
+
+## Service: `FuseMountService`
+
+The orchestrator calls the FUSE daemon's `FuseMountService` to manage per-volume FUSE mountpoints during execution lifecycle events. When an execution starts, the orchestrator requests a mount; when the execution ends, it requests an unmount.
+
+**Port:** FUSE daemon listen address (default `127.0.0.1:50052`)
+**Package:** `aegis.fuse.v1`
+
+```protobuf
+package aegis.fuse.v1;
+
+service FuseMountService {
+  rpc Mount(MountRequest) returns (MountResponse);
+  rpc Unmount(UnmountRequest) returns (UnmountResponse);
+}
+
+message MountRequest {
+  string execution_id = 1;
+  string volume_id    = 2;
+  string tenant_id    = 3;
+}
+
+message MountResponse {
+  string mount_path = 1;  // Host path to the FUSE mountpoint, e.g. /tmp/aegis-fuse/<volume_id>
+}
+
+message UnmountRequest {
+  string execution_id = 1;
+  string volume_id    = 2;
+}
+
+message UnmountResponse {}
+```
+
+### Mount Lifecycle
+
+1. Orchestrator calls `Mount` with execution and volume identifiers.
+2. FUSE daemon creates a FUSE mountpoint at `<mount_prefix>/<volume_id>`.
+3. FUSE daemon returns the host path in `MountResponse.mount_path`.
+4. Orchestrator bind-mounts the host path into the agent container at the manifest-declared `mount_path`.
+5. When the execution ends, orchestrator calls `Unmount` to tear down the FUSE mountpoint.

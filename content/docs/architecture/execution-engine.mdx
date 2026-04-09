@@ -116,6 +116,20 @@ The `keep_container_on_failure` flag (set in the agent manifest) bypasses all th
 
 ---
 
+## FUSE Bind Mount Initialization
+
+In rootless Podman deployments, the orchestrator uses the host-side FUSE daemon to provide workspace volumes instead of NFS. During container creation (step 4 of the outer loop), the orchestrator performs the following sequence:
+
+1. Calls `FuseMountService.Mount(execution_id, volume_id, tenant_id)` on the FUSE daemon via gRPC.
+2. The FUSE daemon creates a FUSE mountpoint at `<mount_prefix>/<volume_id>` and returns the host path.
+3. The orchestrator configures the container with a bind mount from the host FUSE path to the container's declared `mount_path` (typically `/workspace`).
+4. Starts the container -- the agent sees a standard POSIX filesystem at `/workspace`.
+5. On execution end (step 8), the orchestrator calls `FuseMountService.Unmount(execution_id, volume_id)` to tear down the mountpoint.
+
+This replaces the NFS volume driver mount used in rootful Docker deployments. The agent container code is identical in both cases -- only the volume mount mechanism differs. Transport selection is determined by the presence of `fuse_daemon_address` in the node configuration.
+
+---
+
 ## Inner Loop: InnerLoopService
 
 The `InnerLoopService` drives the conversation loop for a single iteration. It communicates with `bootstrap.py` running inside the container via the **Aegis Dispatch Protocol**.

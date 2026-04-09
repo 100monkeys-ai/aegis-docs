@@ -742,7 +742,7 @@ security.resources.timeout                                    (e.g., 600s)
 
 ### `spec.volumes[]`
 
-Storage volumes are mounted into the agent container via the **NFS Server Gateway** — the orchestrator intercepts all file operations, enforcing policy and maintaining a full audit trail.
+Storage volumes are mounted into the agent container via the orchestrator's **AegisFSAL** layer. Volume mount declarations are **transport-agnostic** -- the runtime automatically selects the appropriate transport (NFS for rootful Docker, FUSE bind mounts for rootless Podman, virtio-fs for Firecracker) based on the node configuration. The agent manifest does not need to specify which transport to use; the orchestrator intercepts all file operations regardless of transport, enforcing policy and maintaining a full audit trail.
 
 | Class | TTL | Use Case |
 |---|---|---|

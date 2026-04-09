@@ -284,40 +284,66 @@ sudo systemctl daemon-reload
 
 ---
 
-### NFS Volume Mounting
+### FUSE Daemon Volume Mounting
 
-Agent containers mount their volumes via the kernel NFS client to the orchestrator's NFS server gateway (port 2049). The mount configuration is identical to Docker:
+In rootless Podman deployments, agent containers receive their workspace volumes via the host-side FUSE daemon rather than NFS. The FUSE daemon runs as a separate process on the host and must be started before the orchestrator.
 
-```json
-// Example Bollard mount configuration produced by AEGIS for a volume named "workspace":
-{
-  "Target": "/workspace",
-  "Type": "volume",
-  "VolumeOptions": {
-    "DriverConfig": {
-      "Name": "local",
-      "Options": {
-        "type":   "nfs",
-        "o":      "addr=<orchestrator-host>,nfsvers=3,proto=tcp,soft,timeo=10,nolock",
-        "device": ":/<tenant_id>/<volume_id>"
-      }
-    }
-  }
-}
+#### Starting the FUSE Daemon
+
+```bash
+# Start the FUSE daemon (manual)
+aegis fuse-daemon start \
+  --orchestrator-url grpc://localhost:50051 \
+  --mount-prefix /tmp/aegis-fuse \
+  --listen-addr 127.0.0.1:50052
 ```
 
-The agent container does not require `CAP_SYS_ADMIN` or any elevated capabilities for NFS mounts.
+#### systemd Service Setup
 
-### Network Reachability of NFS
+For production deployments, run the FUSE daemon as a systemd user service that starts before the orchestrator:
 
-In rootless Podman, use `host.containers.internal` to reach the host from within a container. Configure the NFS listen address in `aegis-config.yaml`:
+```ini
+# ~/.config/systemd/user/aegis-fuse-daemon.service
+[Unit]
+Description=AEGIS FUSE Daemon
+Before=aegis.service
+
+[Service]
+ExecStart=/usr/local/bin/aegis fuse-daemon start \
+  --orchestrator-url grpc://localhost:50051 \
+  --mount-prefix /tmp/aegis-fuse \
+  --listen-addr 127.0.0.1:50052
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable aegis-fuse-daemon
+systemctl --user start aegis-fuse-daemon
+```
+
+#### AEGIS Configuration
+
+Point the orchestrator at the FUSE daemon in `aegis-config.yaml`:
 
 ```yaml
 storage:
-  nfs_listen_addr: "0.0.0.0:2049"
+  fuse_mount_prefix: "/tmp/aegis-fuse"
+  fuse_daemon_address: "127.0.0.1:50052"
 ```
 
-In multi-host deployments, use the orchestrator host's external IP or hostname.
+When `fuse_daemon_address` is set, the orchestrator uses FUSE bind mounts instead of NFS volume driver mounts for all agent containers. The agent container does not require `CAP_SYS_ADMIN` or any elevated capabilities.
+
+#### Mount Flow
+
+1. Execution starts. Orchestrator calls `FuseMountService.Mount` on the FUSE daemon.
+2. FUSE daemon creates a mountpoint at `/tmp/aegis-fuse/<volume_id>`.
+3. Orchestrator bind-mounts the host path into the container's `/workspace`.
+4. All POSIX operations proxy through the FUSE daemon to the orchestrator's AegisFSAL.
+5. On execution end, orchestrator calls `FuseMountService.Unmount` to clean up.
 
 ---
 

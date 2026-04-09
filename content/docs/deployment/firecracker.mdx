@@ -116,25 +116,28 @@ runtime:
 
 ## virtio-fs: Storage Transport for Firecracker
 
-In the Firecracker deployment, agent VMs cannot use NFSv3 over TCP (no network bridge by default). Instead, volumes are mounted via **virtio-fs** — a shared memory file transport that exposes the `AegisFSAL` backend directly to the microVM via a `vhost-user-fs` device.
+In the Firecracker deployment, agent VMs cannot use NFSv3 over TCP (no network bridge by default). Instead, volumes are mounted via **virtio-fs** -- a shared memory file transport that exposes the `AegisFSAL` backend directly to the microVM via a `vhost-user-fs` device.
 
-```
+The same host-side FUSE daemon used for rootless Podman deployments supports the virtio-fs transport for Firecracker. The daemon acts as the vhost-user-fs backend, and the guest kernel communicates via the virtio-fs device. This means a single daemon binary handles both FUSE (containers) and virtio-fs (microVMs).
+
+```text
 microVM (guest kernel)
   /workspace mounted via virtio-fs
          │
          │ shared memory (no network)
          ▼
-vhost-user-fs process (host)
+FUSE daemon (host) — same binary as container FUSE transport
+         │
+         │ gRPC
+         ▼
+AegisFSAL (orchestrator)
+  Same security, authorization, audit, and quota logic as NFS and FUSE
          │
          ▼
-AegisFSAL
-  Same security, authorization, audit, and quota logic as Phase 1 NFS
-         │
-         ▼
-SeaweedFS (StorageProvider)
+StorageProvider (SeaweedFS, OpenDAL, etc.)
 ```
 
-The key architectural advantage: `AegisFSAL` is the same code regardless of transport. Security invariants (path canonicalization, UID/GID squashing, filesystem policy enforcement, quota) are implemented once and reused across NFS (Docker) and virtio-fs (Firecracker).
+The key architectural advantage: `AegisFSAL` is the same code regardless of transport. Security invariants (path canonicalization, UID/GID squashing, filesystem policy enforcement, quota) are implemented once and reused across NFS (Docker), FUSE (rootless Podman), and virtio-fs (Firecracker).
 
 ---
 

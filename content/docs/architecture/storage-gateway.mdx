@@ -170,25 +170,83 @@ virtio-fs transport (Firecracker):
 
 ## FUSE Transport
 
-The FUSE transport enables native POSIX filesystem access to workspace volumes in rootless container runtimes where NFS mounts are unavailable. It runs as a daemon inside the orchestrator process, translating POSIX operations (`read`, `write`, `readdir`, `getattr`, `create`, `remove`, etc.) into `AegisFSAL` calls.
+The FUSE transport enables native POSIX filesystem access to workspace volumes in rootless container runtimes where NFS mounts are unavailable. It runs as a **host-side daemon process** separate from the orchestrator, translating POSIX operations (`read`, `write`, `readdir`, `getattr`, `create`, `remove`, etc.) into gRPC calls to the orchestrator's `FsalService`, which delegates to `AegisFSAL`.
 
-Because the FUSE daemon calls the same `AegisFSAL` entry points as the NFS server, all security guarantees are identical: per-operation authorization, manifest policy enforcement, path traversal prevention, UID/GID squashing, quota enforcement, and `StorageEvent` audit trail.
+Because the FUSE daemon proxies all operations through the same `AegisFSAL` entry points as the NFS server, all security guarantees are identical: per-operation authorization, manifest policy enforcement, path traversal prevention, UID/GID squashing, quota enforcement, and `StorageEvent` audit trail.
+
+### Host-Side Daemon Architecture
+
+The FUSE daemon runs as a standalone process on the host, outside of any container or pod. This design eliminates the need for `CAP_SYS_ADMIN` or `/dev/fuse` access inside the orchestrator pod.
+
+```text
+Host OS
+├── aegis-fuse-daemon (standalone process)
+│     ├── Listens on 127.0.0.1:50052 (FuseMountService)
+│     ├── Connects to orchestrator gRPC on :50051 (FsalService)
+│     └── Manages FUSE mountpoints under /tmp/aegis-fuse/
+│
+├── aegis-orchestrator (pod-core or daemon)
+│     ├── Calls FuseMountService.Mount on execution start
+│     ├── Bind-mounts host FUSE path into container
+│     └── Calls FuseMountService.Unmount on execution end
+│
+└── Agent Container
+      └── /workspace → bind mount from /tmp/aegis-fuse/<volume_id>
+```
+
+The FUSE daemon acts as a **gRPC FSAL proxy**: every POSIX system call from an agent container flows through the kernel FUSE layer to the daemon, which forwards the operation to the orchestrator's `FsalService` gRPC endpoint. The orchestrator applies all AegisFSAL security checks and routes the operation to the appropriate `StorageProvider`.
+
+### Mount Lifecycle
+
+1. An execution starts. The orchestrator calls `FuseMountService.Mount(execution_id, volume_id, tenant_id)` on the FUSE daemon.
+2. The FUSE daemon creates a FUSE mountpoint at `<mount_prefix>/<volume_id>` (e.g., `/tmp/aegis-fuse/<volume_id>`).
+3. The daemon returns the host mount path in the `MountResponse`.
+4. The orchestrator creates the agent container with a bind mount from the host FUSE path to the container's `/workspace` (or the manifest-declared `mount_path`).
+5. All POSIX operations from the container flow through the kernel FUSE layer to the daemon, which proxies them via gRPC to the orchestrator's `FsalService`.
+6. When the execution ends, the orchestrator calls `FuseMountService.Unmount(execution_id, volume_id)`. The daemon unmounts the FUSE filesystem and cleans up.
+
+### systemd Deployment
+
+In production deployments, the FUSE daemon runs as a systemd service that starts before the orchestrator:
+
+```ini
+# /etc/systemd/system/aegis-fuse-daemon.service  (system service)
+# or ~/.config/systemd/user/aegis-fuse-daemon.service  (user service for rootless)
+[Unit]
+Description=AEGIS FUSE Daemon
+Before=aegis.service
+
+[Service]
+ExecStart=/usr/local/bin/aegis fuse-daemon start \
+  --orchestrator-url grpc://localhost:50051 \
+  --mount-prefix /tmp/aegis-fuse \
+  --listen-addr 127.0.0.1:50052
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
+```
+
+The `Before=aegis.service` ordering ensures the FUSE daemon is ready to accept mount requests before the orchestrator starts processing executions.
+
+### Bidirectional Mount Propagation
+
+The FUSE mount directory uses **bidirectional mount propagation** so that FUSE-backed volumes mounted by the daemon are visible to execution containers on the same host. This is required because rootless container runtimes isolate mount namespaces per container -- without propagation, FUSE mounts would be invisible to other containers.
 
 ### Rootless Podman
 
 In rootless Podman deployments, the kernel NFS client is not available because mounting NFS requires root privileges. The FUSE transport solves this:
 
-1. The orchestrator mounts a FUSE filesystem at a host path (e.g., `/tmp/aegis-fuse/<volume_id>`).
+1. The FUSE daemon mounts a FUSE filesystem at a host path (e.g., `/tmp/aegis-fuse/<volume_id>`).
 2. The container is started with a bind mount from the host FUSE mountpoint into the container's `/workspace`.
-3. All POSIX operations from the container flow through the kernel's FUSE layer to the orchestrator's FUSE daemon, which delegates to `AegisFSAL`.
+3. All POSIX operations from the container flow through the kernel's FUSE layer to the FUSE daemon, which proxies them via gRPC to `AegisFSAL`.
 
-No privileged mount operations or special capabilities are required. The entire path — from container I/O to storage backend — runs unprivileged.
-
-The orchestrator's FUSE mount directory uses **bidirectional mount propagation** so that FUSE-backed volumes mounted inside the orchestrator are visible to execution containers on the same host. This is required because rootless container runtimes isolate mount namespaces per container — without propagation, FUSE mounts would be invisible to other containers.
+No privileged mount operations or special capabilities are required. The entire path -- from container I/O to storage backend -- runs unprivileged.
 
 ### Firecracker (virtio-fs)
 
-The same FUSE protocol underpins virtio-fs, which provides filesystem access to Firecracker microVMs. In this configuration, the orchestrator acts as the virtio-fs daemon, and the guest kernel communicates via the virtio-fs device. The `AegisFSAL` security boundary is preserved identically — the VM guest cannot bypass authorization any more than a container can.
+The same FUSE daemon supports **virtio-fs** transport for Firecracker microVMs. In this configuration, the daemon acts as the vhost-user-fs backend, and the guest kernel communicates via the virtio-fs device. The `AegisFSAL` security boundary is preserved identically -- the VM guest cannot bypass authorization any more than a container can.
 
 ### Transport Selection
 
@@ -196,11 +254,11 @@ The orchestrator selects the filesystem transport based on configuration:
 
 | Configuration | Transport | Runtime |
 |---|---|---|
-| FUSE enabled | FUSE + bind mount | Rootless Podman |
-| FUSE disabled (default) | NFS volume driver | Rootful Docker |
-| Firecracker runtime | virtio-fs | Firecracker microVM |
+| `fuse_daemon_address` set | FUSE + bind mount | Rootless Podman |
+| `fuse_daemon_address` unset (default) | NFS volume driver | Rootful Docker |
+| Firecracker runtime | virtio-fs (via FUSE daemon) | Firecracker microVM |
 
-Transport selection is per-node. All transports produce the same observable behavior from the agent's perspective — a POSIX filesystem at `/workspace` (or the manifest-declared `mount_path`) backed by the same `AegisFSAL` authorization and the same `StorageProvider` backends.
+Transport selection is per-node. All transports produce the same observable behavior from the agent's perspective -- a POSIX filesystem at `/workspace` (or the manifest-declared `mount_path`) backed by the same `AegisFSAL` authorization and the same `StorageProvider` backends.
 
 ---
 

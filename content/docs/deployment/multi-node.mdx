@@ -615,6 +615,38 @@ spec:
 
 ---
 
+## Per-Node FUSE Daemon
+
+In rootless Podman deployments, each node runs its own FUSE daemon instance. The FUSE daemon is a host-local process -- it connects to the local orchestrator's gRPC endpoint and manages FUSE mountpoints on the local filesystem only.
+
+### Topology
+
+```text
+┌──────────────────────────┐    ┌──────────────────────────┐
+│       Node A             │    │       Node B             │
+│                          │    │                          │
+│  aegis-fuse-daemon       │    │  aegis-fuse-daemon       │
+│    → grpc://localhost:50051  │    │    → grpc://localhost:50051  │
+│    → /tmp/aegis-fuse/    │    │    → /tmp/aegis-fuse/    │
+│                          │    │                          │
+│  aegis-orchestrator      │    │  aegis-orchestrator      │
+│    → calls local FUSE    │    │    → calls local FUSE    │
+│      daemon for mounts   │    │      daemon for mounts   │
+└──────────────────────────┘    └──────────────────────────┘
+```
+
+Each FUSE daemon is configured independently via the node's `aegis-config.yaml`:
+
+```yaml
+storage:
+  fuse_mount_prefix: "/tmp/aegis-fuse"
+  fuse_daemon_address: "127.0.0.1:50052"
+```
+
+The FUSE daemon does not participate in cluster coordination -- it is purely a local mount management service. Cross-node volume access is handled by the SEAL remote storage protocol, not by FUSE.
+
+---
+
 ## See Also
 
 - [Node Config Reference](/docs/reference/node-config)

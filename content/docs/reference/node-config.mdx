@@ -140,6 +140,9 @@ spec:
       mount_point: "/data/shared_llm_weights"
     opendal:
       provider: "memory"
+    # FUSE daemon connection settings (rootless Podman deployments)
+    fuse_mount_prefix: "/tmp/aegis-fuse"    # host directory for per-volume FUSE mountpoints
+    fuse_daemon_address: "127.0.0.1:50052"  # address of the host-side FUSE daemon
 
   # ─── Deploy Built-In Templates ──────────────────────────────────────────────
   # Deploy vendored built-in agent and workflow templates on startup.

@@ -12,6 +12,7 @@ This page reflects the currently implemented `aegis` command surface and its rel
 | Command | Subcommands / Shape |
 |---|---|
 | `aegis daemon` | `start`, `stop`, `status`, `install`, `uninstall` |
+| `aegis fuse-daemon` | `start`, `stop`, `status` |
 | `aegis agent` | `deploy`, `list`, `show`, `remove`, `logs`, `generate --input ...` |
 | `aegis task` | `execute`, `status`, `logs`, `cancel`, `remove`, `list` |
 | `aegis workflow` | `validate`, `deploy`, `deploy --force`, `run`, `run --wait`, `list`, `executions list`, `executions get`, `signal`, `cancel`, `remove`, `describe`, `logs`, `delete`, `generate --input ...` |
@@ -82,6 +83,7 @@ Only part of the CLI has a direct MCP management-tool equivalent today. Local st
 The CLI also exposes commands with no current MCP counterpart:
 
 - `aegis daemon start|stop|install|uninstall`
+- `aegis fuse-daemon start|stop|status`
 - `aegis init|up|down|restart|status|update|uninstall`
 - `aegis node init|join|leave|peers`
 - `aegis workflow run --wait`

@@ -95,6 +95,8 @@ spec:
 
 ## NFS Volume Mounting
 
+Docker deployments use the NFS transport for agent container volume mounts. Because the Docker daemon runs as root, the kernel NFS client is available without any special configuration. The FUSE daemon is not required for Docker deployments -- it is designed for rootless Podman where NFS mounts are unavailable. See [Podman Deployment](/docs/deployment/podman) for the FUSE-based volume mounting model.
+
 Agent containers mount their volumes via the kernel NFS client to the orchestrator's NFS server gateway (port 2049):
 
 ```

@@ -321,6 +321,19 @@ storage:
     # Hard ceiling on any single volume size in MB. Default: 10000
     max_size_limit_mb: 10000
 
+  # ── FUSE Daemon (rootless Podman deployments) ──────────────────────────────
+  # When set, the orchestrator uses the host-side FUSE daemon for agent
+  # container volume mounts instead of NFS. Required for rootless Podman.
+  # Omit both fields to use NFS (default for rootful Docker).
+
+  # Host directory under which per-volume FUSE mountpoints are created.
+  # Default: /tmp/aegis-fuse
+  fuse_mount_prefix: "/tmp/aegis-fuse"
+  # Address of the host-side FUSE daemon's FuseMountService gRPC endpoint.
+  # When set, enables FUSE transport. When absent, NFS transport is used.
+  # Default: null (NFS mode)
+  fuse_daemon_address: "127.0.0.1:50052"
+
 # ─── Deploy Built-In Templates ───────────────────────────────────────────────
 # Deploy vendored built-in agent and workflow templates on startup.
 # Includes agent-creator-agent, workflow-generator-planner-agent, judge agents,

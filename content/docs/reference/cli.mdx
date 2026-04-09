@@ -35,6 +35,7 @@ Supported structured-output commands include agent, task, workflow, node, config
 | Command | Purpose |
 |---|---|
 | `aegis daemon` | Manage the background daemon process. |
+| `aegis fuse-daemon` | Manage the host-side FUSE daemon for rootless volume mounts. |
 | `aegis task` | Execute agents and inspect execution records. |
 | `aegis node` | Perform cluster node bootstrap and peer operations. |
 | `aegis config` | Show, validate, or generate config files. |
@@ -166,6 +167,46 @@ Removes the system-service installation.
 
 ```bash
 aegis daemon uninstall
+```
+
+---
+
+## `aegis fuse-daemon`
+
+Manage the host-side FUSE daemon lifecycle. The FUSE daemon runs as a separate process on the host, providing FUSE-backed filesystem mounts that are bind-mounted into agent containers. It connects to the orchestrator's gRPC API to proxy all POSIX operations through AegisFSAL.
+
+### `aegis fuse-daemon start`
+
+Starts the host-side FUSE daemon. The daemon connects to the orchestrator's gRPC endpoint and begins serving FUSE mounts for agent workspace volumes.
+
+```bash
+aegis fuse-daemon start
+aegis fuse-daemon start --orchestrator-url grpc://localhost:50051
+aegis fuse-daemon start --mount-prefix /tmp/aegis-fuse
+aegis fuse-daemon start --listen-addr 127.0.0.1:50052
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--orchestrator-url` | `grpc://localhost:50051` | gRPC endpoint of the orchestrator to proxy FSAL operations through. |
+| `--mount-prefix` | `/tmp/aegis-fuse` | Host directory under which per-volume FUSE mountpoints are created. |
+| `--listen-addr` | `127.0.0.1:50052` | Address the FUSE daemon listens on for mount/unmount RPCs from the orchestrator. |
+
+### `aegis fuse-daemon stop`
+
+Stops the running FUSE daemon, unmounting all active FUSE mountpoints.
+
+```bash
+aegis fuse-daemon stop
+```
+
+### `aegis fuse-daemon status`
+
+Checks whether the FUSE daemon is running and reports active mount count and health.
+
+```bash
+aegis fuse-daemon status
+aegis fuse-daemon status --output json
 ```
 
 ---

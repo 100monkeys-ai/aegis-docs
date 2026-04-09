@@ -178,6 +178,79 @@ curl -s http://localhost:8200/v1/sys/health | jq .sealed
 
 ---
 
+## FUSE Daemon Issues
+
+### FUSE Daemon Not Running
+
+**Symptoms:** Executions fail with `FUSE daemon unreachable` or `connection refused on port 50052`.
+
+```bash
+# Check if the FUSE daemon is running
+aegis fuse-daemon status
+
+# Check systemd service status (rootless)
+systemctl --user status aegis-fuse-daemon
+
+# Start or restart the daemon
+aegis fuse-daemon start
+# or
+systemctl --user restart aegis-fuse-daemon
+```
+
+The FUSE daemon must be started before the orchestrator. If the orchestrator is already running, restart it after starting the FUSE daemon.
+
+### FUSE Mount Not Visible in Container
+
+**Symptoms:** Agent container sees an empty `/workspace` directory.
+
+```bash
+# Verify the FUSE mountpoint exists on the host
+ls -la /tmp/aegis-fuse/
+
+# Check mount propagation
+findmnt | grep aegis-fuse
+
+# Verify the daemon is connected to the orchestrator
+aegis fuse-daemon status --output json
+```
+
+This typically indicates a mount propagation issue. Ensure the FUSE mount directory uses bidirectional mount propagation so containers can see host-mounted FUSE filesystems.
+
+### Permission Denied on FUSE Operations
+
+**Symptoms:** Agent gets `EACCES` or `Permission denied` when accessing `/workspace` files.
+
+```bash
+# Check the FUSE daemon logs
+journalctl --user -u aegis-fuse-daemon --since "5 min ago"
+
+# Verify the execution owns the volume
+# Look for UnauthorizedVolumeAccess events in orchestrator logs
+make logs POD=core | grep -i "unauthorized\|volume\|fuse"
+```
+
+Permission errors on FUSE mounts follow the same AegisFSAL authorization model as NFS. Check that the execution's manifest `FilesystemPolicy` allows the operation.
+
+### Stale FUSE Mounts
+
+**Symptoms:** Mountpoints remain under `/tmp/aegis-fuse/` after executions end; new executions fail with `mount point busy`.
+
+```bash
+# List stale mounts
+mount | grep aegis-fuse
+
+# Force unmount a stale FUSE mount
+fusermount -u /tmp/aegis-fuse/<volume_id>
+
+# Restart the FUSE daemon to clean up all mounts
+aegis fuse-daemon stop
+aegis fuse-daemon start
+```
+
+Stale mounts can occur if the orchestrator crashes without calling `Unmount`. Restarting the FUSE daemon unmounts all active mountpoints and starts fresh.
+
+---
+
 ## Network Debugging
 
 ```bash
