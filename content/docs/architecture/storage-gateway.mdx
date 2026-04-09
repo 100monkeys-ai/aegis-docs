@@ -184,6 +184,8 @@ In rootless Podman deployments, the kernel NFS client is not available because m
 
 No privileged mount operations or special capabilities are required. The entire path — from container I/O to storage backend — runs unprivileged.
 
+The orchestrator's FUSE mount directory uses **bidirectional mount propagation** so that FUSE-backed volumes mounted inside the orchestrator are visible to execution containers on the same host. This is required because rootless container runtimes isolate mount namespaces per container — without propagation, FUSE mounts would be invisible to other containers.
+
 ### Firecracker (virtio-fs)
 
 The same FUSE protocol underpins virtio-fs, which provides filesystem access to Firecracker microVMs. In this configuration, the orchestrator acts as the virtio-fs daemon, and the guest kernel communicates via the virtio-fs device. The `AegisFSAL` security boundary is preserved identically — the VM guest cannot bypass authorization any more than a container can.
