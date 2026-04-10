@@ -87,6 +87,8 @@ Published by `AegisFSAL` for every file operation:
 
 `FileOpened`, `FileRead`, `FileWritten`, `FileClosed`, `DirectoryListed`, `FileCreated`, `FileDeleted`, `PathTraversalBlocked`, `FilesystemPolicyViolation`, `QuotaExceeded`, `UnauthorizedVolumeAccess`
 
+Storage events support dual execution context: agent FSAL calls set `execution_id`; ContainerStep FUSE filesystem reads set `workflow_execution_id` instead. The two fields are mutually exclusive — exactly one is always set.
+
 ### MCP Tool Events
 
 Published by the `SealMiddleware` and tool routing layer:
