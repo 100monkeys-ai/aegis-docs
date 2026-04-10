@@ -295,7 +295,7 @@ In rootless Podman deployments, agent containers receive their workspace volumes
 aegis fuse-daemon start \
   --orchestrator-url grpc://localhost:50051 \
   --mount-prefix /tmp/aegis-fuse \
-  --listen-addr 127.0.0.1:50052
+  --listen-addr 127.0.0.1:50053
 ```
 
 #### systemd Service Setup
@@ -312,7 +312,7 @@ Before=aegis.service
 ExecStart=/usr/local/bin/aegis fuse-daemon start \
   --orchestrator-url grpc://localhost:50051 \
   --mount-prefix /tmp/aegis-fuse \
-  --listen-addr 127.0.0.1:50052
+  --listen-addr 127.0.0.1:50053
 Restart=on-failure
 RestartSec=5s
 
@@ -332,7 +332,7 @@ Point the orchestrator at the FUSE daemon in `aegis-config.yaml`:
 ```yaml
 storage:
   fuse_mount_prefix: "/tmp/aegis-fuse"
-  fuse_daemon_address: "127.0.0.1:50052"
+  fuse_daemon_address: "127.0.0.1:50053"
 ```
 
 When `fuse_daemon_address` is set, the orchestrator uses FUSE bind mounts instead of NFS volume driver mounts for all agent containers. The agent container does not require `CAP_SYS_ADMIN` or any elevated capabilities.

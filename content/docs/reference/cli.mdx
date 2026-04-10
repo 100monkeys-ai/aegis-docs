@@ -183,14 +183,14 @@ Starts the host-side FUSE daemon. The daemon connects to the orchestrator's gRPC
 aegis fuse-daemon start
 aegis fuse-daemon start --orchestrator-url grpc://localhost:50051
 aegis fuse-daemon start --mount-prefix /tmp/aegis-fuse
-aegis fuse-daemon start --listen-addr 127.0.0.1:50052
+aegis fuse-daemon start --listen-addr 127.0.0.1:50053
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--orchestrator-url` | `grpc://localhost:50051` | gRPC endpoint of the orchestrator to proxy FSAL operations through. |
 | `--mount-prefix` | `/tmp/aegis-fuse` | Host directory under which per-volume FUSE mountpoints are created. |
-| `--listen-addr` | `127.0.0.1:50052` | Address the FUSE daemon listens on for mount/unmount RPCs from the orchestrator. |
+| `--listen-addr` | `127.0.0.1:50053` | Address the FUSE daemon listens on for mount/unmount RPCs from the orchestrator. |
 
 ### `aegis fuse-daemon stop`
 

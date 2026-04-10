@@ -61,7 +61,7 @@ The central AEGIS orchestrator. Manages agent lifecycle, execution, tool routing
 | aegis-runtime | `ghcr.io/100monkeys-ai/aegis-runtime` | 8088 (HTTP), 50051 (gRPC), 2049 (NFS), 9091 (metrics) |
 
 <Callout type="info">
-The FUSE daemon runs on the **host**, not inside pod-core. The orchestrator pod does not need `/dev/fuse` access or `CAP_SYS_ADMIN`. In rootless Podman deployments, the FUSE daemon is a separate systemd service that the orchestrator communicates with via gRPC on port 50052. See [Podman Deployment](/docs/deployment/podman) for setup instructions.
+The FUSE daemon runs on the **host**, not inside pod-core. The orchestrator pod does not need `/dev/fuse` access or `CAP_SYS_ADMIN`. In rootless Podman deployments, the FUSE daemon is a separate systemd service that the orchestrator communicates with via gRPC on port 50053. See [Podman Deployment](/docs/deployment/podman) for setup instructions.
 </Callout>
 
 **Health check:** HTTP GET `/health` on port 8088 (30s interval)

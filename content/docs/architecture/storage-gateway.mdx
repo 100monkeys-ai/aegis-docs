@@ -181,7 +181,7 @@ The FUSE daemon runs as a standalone process on the host, outside of any contain
 ```text
 Host OS
 ├── aegis-fuse-daemon (standalone process)
-│     ├── Listens on 127.0.0.1:50052 (FuseMountService)
+│     ├── Listens on 127.0.0.1:50053 (FuseMountService)
 │     ├── Connects to orchestrator gRPC on :50051 (FsalService)
 │     └── Manages FUSE mountpoints under /tmp/aegis-fuse/
 │
@@ -220,7 +220,7 @@ Before=aegis.service
 ExecStart=/usr/local/bin/aegis fuse-daemon start \
   --orchestrator-url grpc://localhost:50051 \
   --mount-prefix /tmp/aegis-fuse \
-  --listen-addr 127.0.0.1:50052
+  --listen-addr 127.0.0.1:50053
 Restart=on-failure
 RestartSec=5s
 

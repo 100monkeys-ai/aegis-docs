@@ -739,7 +739,7 @@ Each RPC carries `execution_id` and `volume_id` for authorization. The orchestra
 
 The orchestrator calls the FUSE daemon's `FuseMountService` to manage per-volume FUSE mountpoints during execution lifecycle events. When an execution starts, the orchestrator requests a mount; when the execution ends, it requests an unmount.
 
-**Port:** FUSE daemon listen address (default `127.0.0.1:50052`)
+**Port:** FUSE daemon listen address (default `127.0.0.1:50053`)
 **Package:** `aegis.fuse.v1`
 
 ```protobuf
