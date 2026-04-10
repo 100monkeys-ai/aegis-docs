@@ -114,6 +114,7 @@ All configuration is driven by a `.env` file. Key variables:
 | `POSTGRES_PASSWORD` | Yes | PostgreSQL password |
 | `RUST_LOG` | No | Log level (default: `info`) |
 | `CONTAINER_SOCK` | No | Podman socket path (default: `/run/user/1000/podman/podman.sock`) |
+| `AEGIS_FUSE_DAEMON_ENDPOINT` | No | Address of the host-side FUSE daemon (e.g. `http://127.0.0.1:50053`); required for rootless Podman FUSE volume mounting |
 
 See `.env.example` in the `aegis-deploy` repository for the full variable reference.
 
@@ -325,9 +326,18 @@ systemctl --user enable aegis-fuse-daemon
 systemctl --user start aegis-fuse-daemon
 ```
 
+<Callout type="warning">
+The FUSE daemon **must be running before the orchestrator pod starts**. The systemd `Before=aegis.service` directive enforces this when using systemd. For non-systemd setups, start the FUSE daemon manually and verify it is listening on port 50053 before launching the orchestrator pod.
+</Callout>
+
 #### AEGIS Configuration
 
-Point the orchestrator at the FUSE daemon in `aegis-config.yaml`:
+Point the orchestrator at the FUSE daemon in `aegis-config.yaml` and set the corresponding environment variable in your `.env` file:
+
+```bash
+# .env
+AEGIS_FUSE_DAEMON_ENDPOINT=http://127.0.0.1:50053
+```
 
 ```yaml
 storage:

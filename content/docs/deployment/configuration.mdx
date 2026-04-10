@@ -329,9 +329,14 @@ storage:
   # Host directory under which per-volume FUSE mountpoints are created.
   # Default: /tmp/aegis-fuse
   fuse_mount_prefix: "/tmp/aegis-fuse"
-  # Address of the host-side FUSE daemon's FuseMountService gRPC endpoint.
-  # When set, enables FUSE transport. When absent, NFS transport is used.
-  # Default: null (NFS mode)
+  # Address of the external FUSE daemon's FuseMountService gRPC endpoint.
+  # This is the gRPC service exposed by the host-side FUSE daemon process,
+  # not the internal FSAL (filesystem abstraction) service.
+  # When set, enables FUSE transport for agent workspace mounts.
+  # When absent, the orchestrator falls back to in-process FUSE, which requires
+  # the orchestrator itself to run on the host with /dev/fuse access (not
+  # suitable for rootless Podman deployments).
+  # Default: null (in-process FUSE / NFS mode)
   fuse_daemon_address: "127.0.0.1:50053"
 
 # ─── Deploy Built-In Templates ───────────────────────────────────────────────

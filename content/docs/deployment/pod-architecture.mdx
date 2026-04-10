@@ -72,7 +72,7 @@ The FUSE daemon runs on the **host**, not inside pod-core. The orchestrator pod 
 - Podman socket (read-only) for spawning agent containers
 - `aegis-config.yaml` and `runtime-registry.yaml` mounted as config
 
-**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK`, `AEGIS_ORCHESTRATOR_URL`, `SEAL_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`
+**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK`, `AEGIS_ORCHESTRATOR_URL`, `SEAL_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`, `AEGIS_FUSE_DAEMON_ENDPOINT` (address of the host-side FUSE daemon used for workspace volume mounting in rootless Podman deployments)
 
 ---
 
