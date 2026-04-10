@@ -250,6 +250,7 @@ Running executions continue using the provider that was active when they started
 | `model` | string | Yes | Model identifier as accepted by the provider's API. |
 | `capabilities` | string[] | No | Tags like `code`, `reasoning`, `vision`. |
 | `context_window` | integer | No | Provider's context window size in tokens. |
+| `max_output_tokens` | integer | No | Maximum output tokens to request from the provider. Default `8192`. Important for thinking-mode models (e.g., Gemini 2.5 Pro) that use output budget for internal reasoning. |
 
 ---
 

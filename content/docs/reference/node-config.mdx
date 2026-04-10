@@ -80,6 +80,7 @@ spec:
           model: claude-sonnet-4-5
           capabilities: [chat, code, reasoning]
           context_window: 200000
+          max_output_tokens: 8192  # optional; default 8192
           cost_per_1k_tokens: 0.003
 
     - name: ollama-local
@@ -503,6 +504,7 @@ Required array. At least one entry with at least one model is required.
 | `models[].model` | string | ✅ | — | Provider-side model identifier |
 | `models[].capabilities` | string[] | ✅ | — | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` |
 | `models[].context_window` | u32 | ✅ | — | Max context window in tokens |
+| `models[].max_output_tokens` | u32 | ❌ | `8192` | Max output tokens per request. Increase for thinking-mode models. |
 | `models[].cost_per_1k_tokens` | f64 | ❌ | `0.0` | Cost per 1K tokens (0.0 for free/local) |
 
 #### Provider Types
