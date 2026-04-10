@@ -41,8 +41,8 @@ Orchestrator Host
   ▼
 AegisFSAL (File System Abstraction Layer)
   │  receive: LOOKUP, READ, WRITE, READDIR, GETATTR, CREATE, REMOVE
-  ├──► Decode FileHandle → extract execution_id + volume_id
-  ├──► Authorize: does execution own this volume?
+  ├──► Decode FileHandle → extract volume_id + execution context
+  ├──► Authorize: does execution or workflow execution own this volume?
   ├──► Canonicalize path: reject ".." components
   ├──► Enforce FilesystemPolicy (manifest allowlists)
   ├──► Apply UID/GID squashing (return agent container's UID/GID, not real ownership)
@@ -74,7 +74,7 @@ FileHandle layout (48 bytes raw, ~52 bytes serialized, ≤64 bytes NFSv3 limit):
 
 Because NFSv3's 64-byte limit does not allow storing a full file path in the handle, `path_hash` contains a hash of the canonical path. The NFS server maintains a bidirectional in-memory `FileHandleTable` (`fileid3 ↔ AegisFileHandle`) that maps numeric file IDs to handles and reconstructs paths on demand. This table is per-execution and discarded when the execution ends.
 
-On every NFS operation, `AegisFSAL` decodes the `FileHandle`, extracts `execution_id` and `volume_id`, and verifies that the requesting execution is authorized to access that volume. If the execution does not own the volume, the operation fails with `NFS3ERR_ACCES` and an `UnauthorizedVolumeAccess` event is published.
+On every NFS operation, `AegisFSAL` decodes the `FileHandle`, extracts `volume_id`, and verifies that the requesting execution context is authorized to access that volume. For the FUSE transport, authorization uses the dual execution context carried in each `FsalService` gRPC request: an `execution_id` (for agent-owned volumes) or a `workflow_execution_id` (for workflow-owned volumes used by container steps). Exactly one is set per request. If the caller does not own the volume, the operation fails with `NFS3ERR_ACCES` and an `UnauthorizedVolumeAccess` event is published.
 
 The 64-byte NFSv3 `FileHandle` size limit is a hard protocol constraint enforced by the kernel NFS client. The current layout serializes to ~52 bytes via `bincode`, safely within the limit.
 
@@ -194,7 +194,7 @@ Host OS
       └── /workspace → bind mount from /tmp/aegis-fuse/<volume_id>
 ```
 
-The FUSE daemon acts as a **gRPC FSAL proxy**: every POSIX system call from an agent container flows through the kernel FUSE layer to the daemon, which forwards the operation to the orchestrator's `FsalService` gRPC endpoint. The orchestrator applies all AegisFSAL security checks and routes the operation to the appropriate `StorageProvider`.
+The FUSE daemon acts as a **gRPC FSAL proxy**: every POSIX system call from an agent container flows through the kernel FUSE layer to the daemon, which forwards the operation to the orchestrator's `FsalService` gRPC endpoint. Each `FsalService` request carries a dual execution context -- either `execution_id` (for agent-owned volumes) or `workflow_execution_id` (for workflow-owned volumes accessed by container steps). The orchestrator applies all AegisFSAL security checks using whichever context is present and routes the operation to the appropriate `StorageProvider`.
 
 ### Mount Lifecycle
 
