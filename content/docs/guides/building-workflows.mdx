@@ -488,6 +488,59 @@ For the complete field specification and validation rules, see the [Workflow Man
 
 ---
 
+## Retry Loops and Visit Limits
+
+When a workflow contains backward transitions -- for example, a validation state that routes back to a code-generation state on failure -- the FSM can enter an unbounded retry loop if the upstream state never produces acceptable output. Two fields prevent this:
+
+- **`max_state_visits`** (per state, default `5`, ceiling `20`): limits how many times the FSM can enter a given state. Once exceeded, the workflow terminates.
+- **`max_total_transitions`** (workflow level, default `50`, ceiling `100`): limits the total number of state-to-state transitions across the entire execution.
+
+Set these values based on the expected retry depth of your workflow. Lower values are appropriate for pipelines where retries are unlikely to succeed after a few attempts; higher values suit workflows with legitimate multi-pass refinement.
+
+```yaml
+spec:
+  initial_state: GENERATE
+  max_total_transitions: 30
+
+  states:
+    GENERATE:
+      kind: Agent
+      agent: coder-v1
+      max_state_visits: 5
+      input: |
+        {{#if state.feedback}}
+        Previous attempt failed: {{state.feedback}}
+        Fix the code.
+        {{else}}
+        {{intent}}
+        {{/if}}
+      transitions:
+        - condition: always
+          target: VALIDATE
+
+    VALIDATE:
+      kind: Agent
+      agent: reviewer-v1
+      max_state_visits: 5
+      transitions:
+        - condition: score_above
+          threshold: 0.85
+          target: DONE
+        - condition: score_below
+          threshold: 0.85
+          target: GENERATE
+          feedback: "{{VALIDATE.output.reasoning}}"
+
+    DONE:
+      kind: System
+      command: "echo 'Complete'"
+      transitions: []
+```
+
+In this example, `VALIDATE` can route back to `GENERATE` up to 5 times. If either state hits its `max_state_visits` limit or the workflow exceeds 30 total transitions, execution terminates. These limits are independent of `max_iterations`, which controls the agent's inner refinement loop within a single state execution.
+
+---
+
 ## Temporal UI
 
 Temporal provides a built-in workflow visibility UI that shows the durable state of every workflow execution. Access it at `http://localhost:8233` when running the local dev stack.

@@ -278,6 +278,7 @@ aegis workflow run invoice-pipeline \
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `initial_state` | string | ✓ | Name of the first state to enter. Must exist in `spec.states`. |
+| `max_total_transitions` | integer | | Maximum total state transitions before the workflow terminates. Default: `50`. Ceiling: `100`. |
 | `context` | `map[string, any]` | | Global constants accessible via `{{workflow.context.KEY}}`. |
 | `storage` | object | | Workflow-level shared volume configuration. |
 | `states` | `map[string, WorkflowState]` | ✓ | State machine definition. Must contain `initial_state`. |
@@ -302,6 +303,7 @@ aegis workflow run invoice-pipeline \
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` \| `ContainerRun` \| `ParallelContainerRun` \| `Subworkflow` |
+| `max_state_visits` | integer | | `5` | Maximum times this state can be entered before the workflow terminates. Ceiling: `20`. |
 | `timeout` | string | | `300s` | Maximum time in this state. Human-readable: `"300s"`, `"5m"`, `"1h"`. |
 | `volumes` | `object[]` | | | Volume mounts for this state (`Agent` kind). |
 | `volumes[].volume` | string | ✓ | | Volume reference. Supports Handlebars: `{{workflow.storage.workspace}}`. |
