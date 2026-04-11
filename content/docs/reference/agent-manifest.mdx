@@ -354,6 +354,7 @@ Supports two mutually exclusive runtime modes:
 | `image_pull_policy` | string | | `IfNotPresent` | Image caching strategy: `Always` (pull from registry every time), `IfNotPresent` (use cache if available, pull if missing), `Never` (cache only — fail if missing, no network attempt). See [Container Registry & Image Management](/docs/deployment/container-registry). |
 | `isolation` | string | | `inherit` | `inherit` \| `firecracker` \| `docker` \| `process` |
 | `model` | string | | `default` | LLM model alias from `aegis-config.yaml`. |
+| `temperature` | number | | (alias default) | LLM sampling temperature override. `0.0` = deterministic, `1.0` = creative. When set, overrides the temperature configured on the model alias in `aegis-config.yaml`. |
 
 **Mutual Exclusion Validation Rules:**
 

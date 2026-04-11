@@ -505,6 +505,7 @@ Required array. At least one entry with at least one model is required.
 | `models[].capabilities` | string[] | ✅ | — | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` |
 | `models[].context_window` | u32 | ✅ | — | Max context window in tokens |
 | `models[].max_output_tokens` | u32 | ❌ | `8192` | Max output tokens per request. Increase for thinking-mode models. |
+| `models[].temperature` | f32 | ❌ | `0.4` | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Can be overridden per-agent via `spec.runtime.temperature`. |
 | `models[].cost_per_1k_tokens` | f64 | ❌ | `0.0` | Cost per 1K tokens (0.0 for free/local) |
 
 #### Provider Types
