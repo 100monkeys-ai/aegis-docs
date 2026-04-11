@@ -17,6 +17,7 @@
         "cicd-pipelines",
         "building-swarms",
         "configuring-storage",
+        "vault",
         "llm-providers",
         "validation",
         "tool-call-judging",

@@ -1,0 +1,69 @@
+---
+title: The Vault
+description: Store and manage credentials that your agents use at runtime. Agents never see credential values directly — the platform injects them securely at execution time.
+---
+
+# The Vault
+
+The Vault is where you store credentials that your agents use at runtime. Agents never see credential values directly — the platform retrieves the credential and injects it securely when the agent needs it during execution.
+
+---
+
+## Supported Providers and Credential Types
+
+| Provider | Credential Types | Example Value |
+|---|---|---|
+| OpenAI | Secret | `sk-...` |
+| Anthropic | Secret | `sk-ant-...` |
+| Google (Gemini) | Secret, Service Account | API key or service account JSON |
+| GitHub | Secret | `ghp_...` |
+| Custom | Secret, Variable | Any value |
+
+---
+
+## Secrets vs Variables
+
+The Vault has two credential types:
+
+**Secret** — a sensitive value. Masked after creation and never shown again. Use Secret for API keys, passwords, access tokens, and any value you would not want displayed in logs or the UI.
+
+**Variable** — a non-sensitive configuration value. Readable after creation. Use Variable for base URLs, feature flags, region names, or any non-sensitive identifier your agents need at runtime.
+
+When in doubt, use Secret.
+
+---
+
+## Adding a Credential
+
+1. Navigate to **The Vault** in the sidebar.
+2. Click **New Credential**.
+3. Select a provider from the list (or choose **Custom** for any other service).
+4. Enter a name for the credential — this is how it will appear in grant lists and agent configuration.
+5. Enter the credential value.
+6. Click **Save**.
+
+Secret values are masked immediately after saving and cannot be retrieved again. If you lose a secret value, you will need to rotate it from the source service and save the new value.
+
+---
+
+## Credential Grants
+
+Saving a credential does not automatically make it available to your agents. You must explicitly grant access.
+
+After saving a credential, open it and click **Add Grant**. You can grant access to:
+
+- A specific agent by name
+- A workflow by name
+- Your entire current session (useful for interactive use)
+
+Without an active grant, no agent can read or use the credential, even if they request it.
+
+---
+
+## OAuth Connections
+
+GitHub and Google support OAuth connections, which let agents act on your behalf for those services — such as reading repositories, creating issues, or calling Google APIs — without you having to copy and paste tokens manually.
+
+OAuth connections are managed from the **Connections** tab, not the Vault. From there, click **Connect** next to the provider and complete the authorization flow in your browser. Once connected, agents granted access to that connection can make authenticated requests on your behalf.
+
+OAuth connections automatically refresh when tokens expire. You can disconnect a connection at any time from the Connections tab.
