@@ -197,6 +197,7 @@ spec:
 | `runtime` | object | ✓ | Runtime configuration. |
 | `task` | object | | Task definition (instructions for the agent). |
 | `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`spec.input_schema`](#specinput_schema). |
+| `output_schema` | JSON Schema object | | Declares the shape of the agent's structured output. See [`spec.output_schema`](#specoutput_schema). |
 | `security` | object | | Security policy (deny-by-default). |
 | `volumes` | `object[]` | | Volume mount declarations. |
 | `execution` | object | | Execution strategy and acceptance criteria. |
@@ -446,6 +447,37 @@ aegis agent run document-processor \
 > **Note:** `spec.input_schema` is a schema descriptor — it declares what inputs the agent accepts and validates them at invocation time. It is distinct from `spec.task.input_data`, which is a map of default runtime values injected into the container environment at startup and is not validated.
 
 > **Judge agents:** When an agent is used as a judge in a `semantic` or `multi_judge` validator, its `input_schema` property names determine how the orchestrator maps evaluation data (output content, objective, criteria, etc.) to the judge's prompt. Declaring `input_schema` in a judge manifest gives the judge structured access to all evaluation fields rather than receiving raw string content. See [Judge Input Schema](/docs/guides/validation#judge-input-schema) for the canonical property names.
+
+### `spec.output_schema`
+
+An optional JSON Schema object declaring the shape of the agent's structured output. This is a descriptive contract — it documents what the agent produces so that callers (workflows, other agents, SDK consumers) know the expected output shape.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `output_schema` | JSON Schema object | | Describes the agent's output shape. Must be a JSON Schema object with `type: object`. |
+
+**Example:**
+
+```yaml
+spec:
+  output_schema:
+    type: object
+    required:
+      - summary
+      - confidence
+    properties:
+      summary:
+        type: string
+        description: "Natural language summary of the analysis."
+      confidence:
+        type: number
+        description: "Confidence score (0.0–1.0)."
+      findings:
+        type: array
+        items:
+          type: string
+        description: "List of key findings."
+```
 
 ### `spec.security`
 

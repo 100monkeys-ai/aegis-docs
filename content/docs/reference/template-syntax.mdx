@@ -5,12 +5,13 @@ description: Handlebars template variables and helpers available in agent prompt
 
 # Template Syntax
 
-AEGIS uses [Handlebars](https://handlebarsjs.com/) for template rendering in two places:
+AEGIS uses [Handlebars](https://handlebarsjs.com/) for template rendering in three places:
 
 1. **Agent prompt templates** — `spec.task.prompt_template` in an agent manifest
 2. **Workflow Blackboard templates** — `input_template` fields in workflow state definitions
+3. **Workflow output templates** — `metadata.output_template` values in a workflow manifest
 
-Both use `{{variable}}` syntax, but the available variable namespaces differ.
+All three use `{{variable}}` syntax, but the available variable namespaces differ.
 
 ---
 
@@ -210,9 +211,54 @@ The variable syntax looks like \{{variable_name}}.
 
 ---
 
+## Workflow Output Templates (`output_template`)
+
+The `metadata.output_template` field in a workflow manifest declares how the workflow's structured output is extracted from the Blackboard at completion. Unlike `input_template` (which renders a single string for an agent's input), `output_template` is an object where **each leaf value is rendered independently** as a separate Handlebars expression.
+
+### How It Works
+
+Each key in `output_template` maps to a property in `output_schema`. Each value is a Handlebars expression evaluated against the final Blackboard. The rendered string is then type-coerced to match the schema's declared type for that property.
+
+```yaml
+metadata:
+  output_schema:
+    type: object
+    properties:
+      summary:
+        type: string
+      count:
+        type: integer
+      passed:
+        type: boolean
+  output_template:
+    summary: "{{ANALYZE.output}}"
+    count: "{{TRANSFORM.output.record_count}}"
+    passed: "{{VALIDATE.status}}"
+```
+
+In this example, `summary` is used as-is (string), `count` is parsed as an integer, and `passed` is compared to `"true"` to produce a boolean.
+
+### Available Variables
+
+Output templates have access to the same Blackboard variables as any workflow state template:
+
+- `{{STATE.output}}` — output of any completed state
+- `{{STATE.output.stdout}}` — stdout of System/ContainerRun states
+- `{{STATE.score}}` — validation score of Agent states
+- `{{STATE.status}}` — status of any completed state
+- `{{blackboard.KEY}}` — any Blackboard key
+- `{{input.KEY}}` — workflow start input fields
+
+### Key Difference from State Templates
+
+State `input_template` values produce a single string that becomes the agent's input. Output template values are rendered independently per key and then type-coerced — each leaf is a separate render pass, not part of a single concatenated template.
+
+---
+
 ## See Also
 
 - [Agent Manifest Reference — `spec.task.prompt_template`](/docs/reference/agent-manifest#spectask)
 - [Workflow Manifest Reference — `input_template`](/docs/reference/workflow-manifest)
+- [Workflow Manifest Reference — `output_template`](/docs/reference/workflow-manifest#metadataoutput_template)
 - [Building Workflows](/docs/guides/building-workflows)
 - [Human Approvals — template in prompts](/docs/guides/human-approvals#template-variables-in-prompts)

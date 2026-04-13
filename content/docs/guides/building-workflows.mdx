@@ -71,6 +71,61 @@ metadata:
 
 Input fields are then available in state templates as `{{input.task}}`, `{{input.language}}`, etc. See the [Workflow Manifest Reference](/docs/reference/workflow-manifest#metadatainput_schema) for the full field specification.
 
+### Declaring structured outputs with `output_schema` and `output_template`
+
+If your workflow produces a structured result, declare `output_schema` and `output_template` in `metadata`. The schema defines the shape; the template defines how values are extracted from the Blackboard at workflow completion.
+
+```yaml
+metadata:
+  name: code-pipeline
+  version: "1.0.0"
+  input_schema:
+    type: object
+    properties:
+      task:
+        type: string
+    required:
+      - task
+  output_schema:
+    type: object
+    properties:
+      code:
+        type: string
+        description: The generated source code
+      test_passed:
+        type: boolean
+        description: Whether all tests passed
+      review_score:
+        type: number
+        description: Final review score (0.0–1.0)
+    required:
+      - code
+  output_template:
+    code: "{{IMPLEMENT.output}}"
+    test_passed: "{{EXECUTE_TESTS.status}}"
+    review_score: "{{REVIEW.score}}"
+```
+
+When the workflow completes, the engine renders each template value against the final Blackboard, coerces types per the schema (e.g. `review_score` is parsed as a float, `test_passed` is compared to `"true"`), validates the result, and stores it as `final_output` on the `WorkflowExecution`. The `final_output` is returned as `last_output` in `aegis.workflow.wait` tool responses.
+
+**Extracting stdout from a ContainerRun state:**
+
+```yaml
+output_template:
+  build_log: "{{BUILD.output.stdout}}"
+  exit_code: "{{BUILD.output.exit_code}}"
+```
+
+**Extracting agent output:**
+
+```yaml
+output_template:
+  analysis: "{{ANALYZE.output}}"
+  recommendations: "{{REVIEW.output}}"
+```
+
+For the full type coercion rules and field specification, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest#metadataoutput_schema).
+
 ---
 
 ## Step 1: Write the Workflow Manifest

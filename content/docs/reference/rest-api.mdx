@@ -452,6 +452,33 @@ Ingest a webhook from an external system. Authenticated by HMAC-SHA256.
 
 ---
 
+## Workflow Definitions and Executions
+
+Workflow definition and execution management endpoints are available under `/v1/workflows`. The key response fields related to output schemas are documented below.
+
+### Workflow Definition Response Fields
+
+When retrieving a workflow definition, the response includes the full manifest metadata:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `metadata.output_schema` | object | JSON Schema declaring the workflow's output shape (if declared). |
+| `metadata.output_template` | `map[string, string]` | Handlebars expressions for extracting final output (if declared). |
+
+These fields appear alongside existing metadata fields (`name`, `version`, `input_schema`, etc.).
+
+### Workflow Execution Response Fields
+
+When retrieving a workflow execution (e.g. `GET /v1/workflows/executions/{id}`), the response includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `final_output` | object | Structured output produced at workflow completion, if the workflow declares `output_template`. `null` when the workflow has no output template or has not yet completed. |
+
+The `final_output` value is the rendered and type-coerced result of evaluating the workflow's `output_template` against the final Blackboard. It is also returned as `last_output` in `aegis.workflow.wait` tool responses.
+
+---
+
 ## Health
 
 ### `GET /health`

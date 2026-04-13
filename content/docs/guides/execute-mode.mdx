@@ -77,7 +77,7 @@ pipeline reaches a terminal state, rather than polling `aegis.execute.status` in
 | **Discover or generate** | Searches for an existing code-writing agent. Creates one if no close match is found. |
 | **Generate code** | The agent writes the solution to an isolated workspace. |
 | **Execute** | The solution runs in a sandboxed container with no internet access and no persistent storage. Only stdout and the exit code return. |
-| **Format result** | A single-shot formatter converts the raw output into a clean natural language response. |
+| **Format result** | A single-shot formatter converts the raw output into a clean natural language response. The formatted result is delivered as `final_output` on the workflow execution when the pipeline declares an `output_template`. |
 
 ---
 

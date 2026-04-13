@@ -237,6 +237,21 @@ See [Configuring Agent Validation](/docs/guides/validation) for full configurati
 
 ---
 
+## Workflow Execution Output
+
+When a workflow declares `output_schema` and `output_template` in its metadata, the engine produces a structured `final_output` at completion. The lifecycle is:
+
+1. **States complete** -- each state writes its output to the Blackboard as usual.
+2. **Blackboard populated** -- by the time the workflow reaches a terminal state, the Blackboard contains all state outputs.
+3. **Output template evaluated** -- the engine renders each `output_template` value as a Handlebars expression against the final Blackboard. Each leaf value is rendered independently.
+4. **Type coercion** -- rendered string values are coerced to the types declared in `output_schema` (e.g. `parseInt` for integers, `parseFloat` for numbers, `=== "true"` for booleans, `JSON.parse` for objects and arrays).
+5. **Validation** -- the coerced output is validated against `output_schema`. If validation fails, the workflow still completes but `final_output` is not populated.
+6. **Storage** -- the validated output is stored as `WorkflowExecution.final_output` in PostgreSQL and returned as `last_output` in `aegis.workflow.wait` tool responses.
+
+Workflows without `output_template` complete as before -- the Blackboard is captured but no structured `final_output` is produced.
+
+---
+
 ## Timeout Hierarchy
 
 Four independent timeout boundaries apply to every execution. They nest from outermost to innermost:

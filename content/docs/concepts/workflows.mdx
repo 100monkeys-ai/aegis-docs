@@ -63,6 +63,8 @@ On nodes with the discovery service configured, registered workflows are automat
 
 ## Manifest Structure
 
+A workflow manifest declares the FSM states and transitions, along with optional metadata including `input_schema` (what the workflow accepts), `output_schema` (the shape of the workflow's structured output), and `output_template` (Handlebars expressions that extract the final output from the Blackboard at completion).
+
 ```yaml
 apiVersion: 100monkeys.ai/v1
 kind: Workflow
@@ -464,6 +466,12 @@ Available template variables:
 | `{{state.feedback}}` | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | Feedback text from the Human `signal --feedback` argument. |
 | `{{input.KEY}}` | Key from the workflow start `--input` payload. |
+
+### Workflow Output
+
+Workflows can declare their output shape using `metadata.output_schema` and `metadata.output_template`. When the workflow reaches a terminal state, the engine evaluates each `output_template` value as a Handlebars expression against the final Blackboard, coerces the rendered values to the types declared in `output_schema`, and stores the result as `final_output` on the `WorkflowExecution`. This `final_output` is returned as `last_output` in `aegis.workflow.wait` tool responses, giving callers a structured, typed result without parsing raw agent text.
+
+For full field definitions and type coercion rules, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest#metadataoutput_schema).
 
 ---
 

@@ -375,6 +375,27 @@ message IngestStimulusResponse {
 
 ---
 
+## Workflow Execution Messages
+
+The `WorkflowExecution` message returned by workflow-related RPCs includes output schema fields:
+
+```protobuf
+message WorkflowExecution {
+  string execution_id              = 1;
+  string workflow_id               = 2;
+  string status                    = 3;  // "running", "completed", "failed"
+  string current_state             = 4;
+  string blackboard_json           = 5;  // JSON-encoded final Blackboard
+  optional string final_output_json = 6; // JSON-encoded final_output (when output_template is declared)
+  string started_at                = 7;
+  optional string completed_at     = 8;
+}
+```
+
+The `final_output_json` field contains the structured output produced by evaluating the workflow's `output_template` against the final Blackboard. It is `null` when the workflow does not declare an output template or has not yet completed.
+
+---
+
 ## Error Codes
 
 | gRPC Status | Meaning |

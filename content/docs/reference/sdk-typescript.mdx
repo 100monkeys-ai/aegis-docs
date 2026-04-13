@@ -368,6 +368,34 @@ Send a webhook event from a named source.
 
 ---
 
+## Workflow Execution Output
+
+When a workflow declares `output_schema` and `output_template`, the completed `WorkflowExecution` includes a `final_output` field containing the structured result.
+
+```typescript
+const result = await client.workflowWait('data-extraction', {
+  input: { url: 'https://...' },
+});
+
+// Access the structured final_output
+console.log(result.final_output);
+// { summary: "Extracted 42 records...", record_count: 42, success: true }
+
+console.log(result.final_output?.record_count); // 42
+```
+
+**`WorkflowExecution` interface:**
+
+```typescript
+interface WorkflowExecution {
+  execution_id: string;
+  status: 'running' | 'completed' | 'failed';
+  final_output?: Record<string, any>; // Present when workflow declares output_template
+}
+```
+
+---
+
 ## Workflow Logs
 
 ### `getWorkflowExecutionLogs(executionId, limit?, offset?)`

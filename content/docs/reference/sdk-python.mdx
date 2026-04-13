@@ -215,6 +215,32 @@ Send a webhook-style stimulus from an external source.
 
 ---
 
+### Workflow Execution Output
+
+When a workflow declares `output_schema` and `output_template`, the completed `WorkflowExecution` includes a `final_output` field containing the structured result.
+
+```python
+async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
+    # Start and wait for a workflow with output_schema
+    result = await client.workflow_wait("data-extraction", input={"url": "https://..."})
+
+    # Access the structured final_output
+    print(result.final_output)
+    # {"summary": "Extracted 42 records...", "record_count": 42, "success": True}
+
+    print(result.final_output["record_count"])  # 42
+```
+
+**`WorkflowExecution` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `execution_id` | `str` | UUID of the workflow execution. |
+| `status` | `str` | `"running"`, `"completed"`, or `"failed"`. |
+| `final_output` | `Optional[Dict[str, Any]]` | Structured output when the workflow declares `output_template`. `None` otherwise. |
+
+---
+
 ### Workflow Logs
 
 #### `get_workflow_execution_logs(execution_id, limit?, offset?)`

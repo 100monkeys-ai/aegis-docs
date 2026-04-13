@@ -27,6 +27,21 @@ metadata:
     pattern: iterative-refinement
   annotations:                     # optional; non-identifying metadata
     docs: "https://docs.example.com/workflows/dev-pipeline"
+  output_schema:                   # optional; JSON Schema declaring the workflow's output shape
+    type: object
+    properties:
+      result:
+        type: string
+      score:
+        type: number
+      iterations:
+        type: integer
+    required:
+      - result
+  output_template:                 # optional; Handlebars expressions evaluated against the final Blackboard
+    result: "{{EXECUTE.output.stdout}}"
+    score: "{{VALIDATE.score}}"
+    iterations: "{{blackboard.iteration_number}}"
 
 spec:
   initial_state: GENERATE          # required; name of the first state to enter
@@ -191,6 +206,8 @@ spec:
 | `labels` | `map[string]string` | | Key-value labels for categorization and discovery. |
 | `annotations` | `map[string]string` | | Arbitrary non-identifying metadata (URLs, changelogs, JSON blobs). |
 | `input_schema` | JSON Schema object | | Declares named inputs accepted at execution time. See [`metadata.input_schema`](#metadatainput_schema). |
+| `output_schema` | JSON Schema object | | Declares the shape of the workflow's structured output. See [`metadata.output_schema`](#metadataoutput_schema). |
+| `output_template` | `map[string, string]` | | Handlebars expressions that extract the workflow's final output from the Blackboard. See [`metadata.output_template`](#metadataoutput_template). |
 
 ### `metadata.input_schema`
 
@@ -272,6 +289,86 @@ aegis workflow run invoice-pipeline \
 ```
 
 > **Scope:** Workflows are deployed at Tenant scope by default. Use `--scope user` for personal workflows or `--scope global` for platform-wide workflows (requires operator role). After deployment, use `aegis workflow promote` and `aegis workflow demote` to change scope. Scope is not a manifest field — it is controlled via the CLI `--scope` flag or API parameter at deploy time.
+
+### `metadata.output_schema`
+
+An optional JSON Schema object declaring the shape of the workflow's structured output. When present, the engine validates `final_output` against this schema at workflow completion. The schema must have `type: object` and supports the same draft-07 subset as `input_schema`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `output_schema` | JSON Schema object | | Must be a JSON Schema object with `type: object`. |
+
+**Example:**
+
+```yaml
+metadata:
+  name: data-extraction
+  version: "1.0.0"
+  output_schema:
+    type: object
+    properties:
+      summary:
+        type: string
+        description: Natural language summary of the extraction
+      record_count:
+        type: integer
+        description: Number of records extracted
+      success:
+        type: boolean
+        description: Whether extraction completed without errors
+    required:
+      - summary
+      - record_count
+```
+
+### `metadata.output_template`
+
+An optional object where each leaf value is a Handlebars expression evaluated against the final Blackboard at workflow completion. Each value is rendered independently (not as a single template). The rendered values are type-coerced according to the corresponding `output_schema` property type, validated, and stored as the `WorkflowExecution.final_output`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `output_template` | `map[string, string]` | | Each key matches a property in `output_schema`; each value is a Handlebars expression. |
+
+**Type coercion rules:**
+
+| Schema type | Coercion |
+|---|---|
+| `string` | Used as-is (no conversion). |
+| `integer` | Parsed with `parseInt`. |
+| `number` | Parsed with `parseFloat`. |
+| `boolean` | Compared to `"true"` (case-sensitive). |
+| `object` | Parsed with `JSON.parse`. |
+| `array` | Parsed with `JSON.parse`. |
+
+If coercion or schema validation fails, the workflow completes but `final_output` is not populated. The failure is recorded in the workflow execution event log.
+
+**Example (paired with the `output_schema` above):**
+
+```yaml
+metadata:
+  name: data-extraction
+  version: "1.0.0"
+  output_schema:
+    type: object
+    properties:
+      summary:
+        type: string
+      record_count:
+        type: integer
+      success:
+        type: boolean
+    required:
+      - summary
+      - record_count
+  output_template:
+    summary: "{{EXTRACT.output}}"
+    record_count: "{{TRANSFORM.output.count}}"
+    success: "{{VALIDATE.status}}"
+```
+
+In this example, when the workflow completes, the engine renders each template value against the final Blackboard, coerces `record_count` to an integer and `success` to a boolean, validates the result against `output_schema`, and stores it as `final_output` on the `WorkflowExecution`.
+
+> **`output_template` requires `output_schema`.** The template defines how values are extracted; the schema defines their types and validation constraints. If `output_template` is present without `output_schema`, the manifest is rejected at deploy time.
 
 ### `spec`
 
