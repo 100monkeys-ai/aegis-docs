@@ -340,7 +340,7 @@ An optional object where each leaf value is a Handlebars expression evaluated ag
 | `object` | Parsed with `JSON.parse`. |
 | `array` | Parsed with `JSON.parse`. |
 
-If coercion or schema validation fails, the workflow completes but `final_output` is not populated. The failure is recorded in the workflow execution event log.
+If coercion or schema validation fails, the workflow fails with a descriptive error identifying the field and the value that could not be coerced or validated.
 
 **Example (paired with the `output_schema` above):**
 
@@ -368,7 +368,7 @@ metadata:
 
 In this example, when the workflow completes, the engine renders each template value against the final Blackboard, coerces `record_count` to an integer and `success` to a boolean, validates the result against `output_schema`, and stores it as `final_output` on the `WorkflowExecution`.
 
-> **`output_template` requires `output_schema`.** The template defines how values are extracted; the schema defines their types and validation constraints. If `output_template` is present without `output_schema`, the manifest is rejected at deploy time.
+> **`output_template` and `output_schema` are independently optional.** `output_template` can be used without `output_schema` (no type coercion or validation -- all values remain strings). `output_schema` can be used without `output_template`. When both are present, the template is rendered first, then coerced and validated against the schema.
 
 ### `spec`
 
