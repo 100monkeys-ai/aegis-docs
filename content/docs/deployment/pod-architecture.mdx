@@ -16,6 +16,7 @@ The AEGIS platform deploys as a set of Podman pods, each grouping related contai
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    aegis-network (bridge)                     │
+│              Platform pods — stable routing                    │
 │                                                               │
 │  pod-core          pod-temporal        pod-database           │
 │  ┌──────────────┐  ┌──────────────┐   ┌──────────────────┐  │
@@ -43,6 +44,17 @@ The AEGIS platform deploys as a set of Podman pods, each grouping related contai
 │  │loki       :3100              │    │                  │   │
 │  │promtail   :9080              │    │                  │   │
 │  └──────────────────────────────┘    └──────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│               aegis-exec-network (bridge)                    │
+│         Agent execution containers — isolated                 │
+│                                                               │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │ agent-ctr1 │  │ agent-ctr2 │  │ agent-ctr3 │   ...       │
+│  │            │  │            │  │            │             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+│  Reach orchestrator via host.containers.internal:8088        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -72,7 +84,7 @@ The FUSE daemon runs on the **host**, not inside pod-core. The orchestrator pod 
 - Podman socket (read-only) for spawning agent containers
 - `aegis-config.yaml` and `runtime-registry.yaml` mounted as config
 
-**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK`, `AEGIS_ORCHESTRATOR_URL`, `SEAL_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`, `AEGIS_FUSE_DAEMON_ENDPOINT` (address of the host-side FUSE daemon used for workspace volume mounting in rootless Podman deployments)
+**Key environment variables:** `RUST_LOG`, `DATABASE_URL`, `AEGIS_CONTAINER_NETWORK` (set to `aegis-exec-network` — the isolated network for agent containers), `AEGIS_ORCHESTRATOR_URL`, `SEAL_PRIVATE_KEY_PATH`, `AEGIS_OTLP_ENDPOINT`, `CORTEX_GRPC_URL`, `AEGIS_FUSE_DAEMON_ENDPOINT` (address of the host-side FUSE daemon used for workspace volume mounting in rootless Podman deployments)
 
 ---
 
@@ -219,7 +231,13 @@ SEAL tooling gateway for REST workflow macros, API explorer, and ephemeral CLI t
 
 ## Inter-Pod Communication
 
-All pods share the `aegis-network` Podman bridge network. Containers within the same pod communicate via `localhost`. Cross-pod communication uses pod DNS names:
+AEGIS uses a three-network topology:
+
+- **`aegis-network`** — Platform pods (pod-core, pod-database, pod-temporal, etc.). All platform pods share this bridge network and communicate via pod DNS names.
+- **`aegis-exec-network`** — Agent execution containers spawned by the orchestrator. Isolated from the platform network to prevent container lifecycle churn from disrupting platform pod routing. Agent containers reach the orchestrator via `host.containers.internal:8088`.
+- **`zaru-edge`** — Public-facing Caddy reverse proxy (pod-zaru-edge), bridging external traffic to the platform network.
+
+Containers within the same pod communicate via `localhost`. Cross-pod communication on `aegis-network` uses pod DNS names:
 
 | From | To | Protocol | Purpose |
 |------|----|----------|---------|

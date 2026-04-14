@@ -107,7 +107,7 @@ spec:
     bootstrap_script: "assets/bootstrap.py"
     default_isolation: docker        # docker | firecracker | inherit | process
     container_socket_path: "/var/run/docker.sock"  # or Podman: /run/user/1000/podman/podman.sock
-    container_network_mode: "aegis-network"
+    container_network_mode: "aegis-exec-network"  # Isolated network for agent containers
     orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
     nfs_server_host: "env:AEGIS_NFS_HOST"
     nfs_port: 2049
@@ -1124,7 +1124,7 @@ spec:
     default_provider: ollama
   runtime:
     default_isolation: docker
-    container_network_mode: "env:AEGIS_CONTAINER_NETWORK"
+    container_network_mode: "env:AEGIS_CONTAINER_NETWORK"  # Should resolve to "aegis-exec-network"
     orchestrator_url: "env:AEGIS_ORCHESTRATOR_URL"
     nfs_server_host: "env:AEGIS_NFS_HOST"
     runtime_registry_path: "runtime-registry.yaml"

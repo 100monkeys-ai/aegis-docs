@@ -54,10 +54,11 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Caddy Reverse Proxy (pod-zaru-edge)  :80 / :443                      │
+│  zaru-edge network (public-facing)                                    │
 │  Routes: api.* → :8088  auth.* → :8180  grafana.* → :3300  etc.      │
 └───────┬────────────────────────────────────────────────────────────────┘
         │
-        ▼  aegis-network (Podman bridge)
+        ▼  aegis-network (Podman bridge — platform pods)
 ┌───────────────────────────────────────────────────────────────────────┐
 │                                                                       │
 │  ┌─────────────────┐   ┌─────────────────┐   ┌────────────────────┐  │
@@ -67,10 +68,10 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 │  │ :2049 :9091     │   │ worker :3000     │   │                    │  │
 │  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
 │                                                                       │
-│  ┌─────────────────┐   ┌────────────────────────────────────────┐  │
-│  │ pod-secrets     │   │ pod-storage                            │  │
-│  │ openbao :8200   │   │ master :9333  volume :8080  filer :8888│  │
-│  └─────────────────┘   └────────────────────────────────────────┘  │
+│  ┌─────────────────┐   ┌────────────────────────────────────────┐    │
+│  │ pod-secrets     │   │ pod-storage                            │    │
+│  │ openbao :8200   │   │ master :9333  volume :8080  filer :8888│    │
+│  └─────────────────┘   └────────────────────────────────────────┘    │
 │                                                                       │
 │  ┌─────────────────┐   ┌─────────────────┐                           │
 │  │ pod-observability│   │ pod-seal-gateway│                           │
@@ -79,20 +80,19 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 │  │ grafana :3300   │   │                 │                           │
 │  │ loki :3100      │   │                 │                           │
 │  └─────────────────┘   └─────────────────┘                           │
-│                                                                       │
-│  ┌────────────────────────────────────────────────────────────────┐   │
-│  │  Agent Containers (spawned by aegis-runtime via bollard)       │   │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐               │   │
-│  │  │ container1 │  │ container2 │  │ container3 │               │   │
-│  │  │  NFS mount │  │  NFS mount │  │  NFS mount │               │   │
-│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘               │   │
-│  └────────┼───────────────┼───────────────┼───────────────────────┘   │
-│           └───────────────┴───────────────┘                           │
-│           All NFS traffic → pod-core (port 2049)                      │
+└───────────────────────────────────────────────────────────────────────┘
+
+        aegis-exec-network (Podman bridge — agent containers, isolated)
+┌───────────────────────────────────────────────────────────────────────┐
+│  Agent Containers (spawned by aegis-runtime via bollard)              │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐                     │
+│  │ container1 │  │ container2 │  │ container3 │  ...                 │
+│  └────────────┘  └────────────┘  └────────────┘                     │
+│  Reach orchestrator via host.containers.internal:8088                 │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-Agent containers communicate **only** with the AEGIS orchestrator (via `/v1/dispatch-gateway` over HTTP) and the NFS server (port 2049). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
+Agent containers run on `aegis-exec-network`, isolated from platform pods on `aegis-network`. They communicate with the AEGIS orchestrator via `host.containers.internal:8088` (`/v1/dispatch-gateway` over HTTP). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
 
 ---
 

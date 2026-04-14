@@ -187,9 +187,11 @@ runtime:
   #   Podman system (root):     /run/podman/podman.sock
   # Can also be set via CONTAINER_HOST or DOCKER_HOST env vars (see below).
   container_socket_path: "/var/run/docker.sock"
-  # Container network name for agent containers.
+  # Container network name for agent containers. Must be a separate network
+  # from the platform pods (aegis-network) to prevent container lifecycle
+  # churn from disrupting platform pod routing via Podman/netavark.
   # Supports env: prefix. Example: "env:AEGIS_CONTAINER_NETWORK"
-  container_network_mode: "aegis-network"
+  container_network_mode: "aegis-exec-network"
   # URL that agent containers use to call back to the orchestrator.
   # Must be reachable from inside containers, not from the host.
   # Default: http://localhost:8088

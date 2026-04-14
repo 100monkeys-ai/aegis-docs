@@ -157,8 +157,8 @@ podman network ls | grep aegis
 # Check NFS port is listening
 ss -tlnp | grep 2049
 
-# Verify from container perspective
-podman run --rm --network aegis-network alpine ping -c1 host.containers.internal
+# Verify from container perspective (agent containers use aegis-exec-network)
+podman run --rm --network aegis-exec-network alpine ping -c1 host.containers.internal
 
 # Check runtime logs for NFS errors
 make logs POD=core | grep -i nfs
@@ -254,15 +254,18 @@ Stale mounts can occur if the orchestrator crashes without calling `Unmount`. Re
 ## Network Debugging
 
 ```bash
-# Check pod network connectivity
+# Check platform pod network connectivity (aegis-network)
 podman exec aegis-core-aegis-runtime curl -s http://aegis-database:5432 || echo "expected - not HTTP"
 podman exec aegis-core-aegis-runtime curl -s http://aegis-temporal:7233 || echo "expected - not HTTP"
 
-# DNS resolution within pods
+# DNS resolution within platform pods
 podman exec aegis-core-aegis-runtime getent hosts aegis-database
 
-# Check network
+# Inspect platform network
 podman network inspect aegis-network
+
+# Inspect agent execution network (agent containers use this, not aegis-network)
+podman network inspect aegis-exec-network
 ```
 
 ---

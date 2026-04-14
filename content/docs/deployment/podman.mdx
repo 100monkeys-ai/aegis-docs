@@ -362,8 +362,11 @@ When `fuse_daemon_address` is set, the orchestrator uses FUSE bind mounts instea
 ### Creating the AEGIS Network
 
 ```bash
-# Create a Podman network for AEGIS containers
+# Create the platform network (for pods)
 podman network create aegis-network
+
+# Create the agent execution network (isolated from platform pods)
+podman network create aegis-exec-network
 
 # Verify
 podman network ls

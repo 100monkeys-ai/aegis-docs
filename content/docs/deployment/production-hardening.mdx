@@ -111,7 +111,7 @@ Only the Caddy edge proxy should be exposed publicly:
 
 ### Podman Network
 
-All pods run on the `aegis-network` bridge. Agent containers spawned by the orchestrator also join this network for NFS access to port 2049.
+Platform pods run on the `aegis-network` bridge. Agent execution containers run on a separate `aegis-exec-network` bridge, isolated from the platform network. This separation exists because Podman's netavark network driver corrupts outbound NAT routing for existing pods when containers are frequently created and destroyed on the same network. By placing agent containers on their own network, platform pod routing remains stable regardless of agent execution churn. Agent containers reach the orchestrator via `host.containers.internal:8088`.
 
 For multi-node deployments, use the cluster protocol (port 50056) with mTLS between nodes. See [Multi-Node Deployment](/docs/deployment/multi-node).
 
