@@ -1,6 +1,6 @@
 ---
 title: MCP Tool Reference
-description: Complete input and output schemas for all 61 AEGIS MCP tools — 60 built-in orchestrator tools and the Zaru-only zaru.switch_mode tool — with availability by context and Zaru conversation mode.
+description: Complete input and output schemas for all 62 AEGIS MCP tools — 61 built-in orchestrator tools and the Zaru-only zaru.switch_mode tool — with availability by context and Zaru conversation mode.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
@@ -23,7 +23,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.status`,
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
-`aegis.execute.status`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
+`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
 `aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.switch_mode`
 
 **System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
@@ -47,9 +47,9 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 | Zaru Chat — agentic mode | `zaru.switch_mode` + agent/task management subset | See mode table below |
 | Zaru Chat — execute mode | `zaru.switch_mode` + execute pipeline tools | See mode table below |
 | Zaru Chat — workflow mode | `zaru.switch_mode` + workflow/agent design subset | See mode table below |
-| Zaru Chat — operator mode | All 61 tools | No filtering applied |
-| AEGIS agent inner loop | All 60 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
-| External SEAL caller | All 60 built-in tools | Filtered by `SecurityContext` only; no mode concept |
+| Zaru Chat — operator mode | All 62 tools | No filtering applied |
+| AEGIS agent inner loop | All 61 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
+| External SEAL caller | All 61 built-in tools | Filtered by `SecurityContext` only; no mode concept |
 
 See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full routing pipeline.
 
@@ -79,6 +79,7 @@ Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator too
 - `aegis.task.list`
 - `aegis.task.logs`
 - `aegis.task.cancel`
+- `aegis.execution.file`
 - `aegis.tools.list`
 - `aegis.tools.search`
 
@@ -88,6 +89,7 @@ Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator too
 - `aegis.execute.intent`
 - `aegis.execute.status`
 - `aegis.execute.wait`
+- `aegis.execution.file`
 - `aegis.workflow.wait`
 
 ### Architect Mode
@@ -104,11 +106,12 @@ Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator too
 - `aegis.schema.validate`
 - `aegis.task.execute`
 - `aegis.task.wait`
+- `aegis.execution.file`
 - `aegis.workflow.wait`
 
 ### Operator Mode
 
-All 61 tools are available — no filtering is applied.
+All 62 tools are available — no filtering is applied.
 
 ---
 
@@ -169,6 +172,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.task.remove` | task | false | `execution_id` | Op |
 | `aegis.task.logs` | task | true | `execution_id` | Ag, Op |
 | `aegis.task.wait` | task | true | `execution_id` | Ag, Ar, Op |
+| `aegis.execution.file` | execution | true | `execution_id`, `path` | Ag, Ex, Ar, Op |
 | `aegis.execute.intent` | execute | false | `intent` | Ex, Op |
 | `aegis.execute.status` | execute | true | `pipeline_execution_id` | Ex, Op |
 | `aegis.execute.wait` | execute | true | `execution_id` | Ex, Op |
@@ -1539,6 +1543,37 @@ Polls an execution until it reaches a terminal state and returns the result.
 ```
 
 The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`.
+
+### `aegis.execution.file`
+
+Read a file from a completed execution's workspace volume. Use this to retrieve output files after an agent or task execution finishes.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `execution_id` | `string` | Yes | — | The execution ID to retrieve a file from. |
+| `path` | `string` | Yes | — | File path relative to /workspace (e.g. `output.md` or `/workspace/output.md`). |
+
+**Available in:** Agentic, Execute, Workflow modes
+
+<Callout type="info">
+  The path is automatically normalized — both `/workspace/report.md` and `report.md` resolve to
+  the same file. Returns file contents as text. Works after execution completes, while the volume
+  is still available (ephemeral volumes are cleaned up based on TTL).
+</Callout>
+
+**Output:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "path": "output.md",
+  "content": "..."
+}
+```
 
 ---
 
