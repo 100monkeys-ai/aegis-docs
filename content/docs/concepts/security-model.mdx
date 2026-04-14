@@ -203,7 +203,7 @@ When a user calls `aegis.task.execute` (or any tool that spawns an agent contain
 - `fs.*` scoped to `/workspace` via `path_allowlist`
 - `cmd.run` — shell command execution inside the container
 - `web.*` — outbound web access
-- `aegis` read and execution tools (`aegis.agent.get`, `aegis.workflow.list`, `aegis.task.execute`, etc.)
+- `aegis` read and execution tools (`aegis.agent.get`, `aegis.workflow.list`, `aegis.task.execute`, `aegis.execution.file`, etc.)
 
 This separation is the core of the two-surface model: the user's tier governs what they can ask the platform to do; `aegis-system-agent-runtime` governs what agent containers are allowed to do on the user's behalf. A Free-tier user whose context blocks direct shell access can still have an agent container run shell commands in `/workspace` — because those commands execute under `aegis-system-agent-runtime`, not `zaru-free`.
 
