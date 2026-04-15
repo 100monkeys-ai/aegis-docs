@@ -74,7 +74,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/guides
 | `aegis.task.wait` | `true` | Read-only blocking poll until terminal state |
 | `aegis.task.list` | `true` | Read-only execution listing |
 | `aegis.task.logs` | `true` | Read-only execution log query |
-| `aegis.execution.file` | `true` | Read-only — retrieves a file from a completed execution's workspace volume |
+| `aegis.execution.file` | `true` | Read-only — retrieves a file from a completed execution's workspace volume. Text files include inline content; binary files (images, PDFs, etc.) include a download URL for out-of-band retrieval. |
 | `aegis.workflow.logs` | `true` | Read-only execution log query |
 | `aegis.workflow.executions.get` | `true` | Read-only execution detail query |
 | `aegis.workflow.status` | `true` | Read-only execution status query |

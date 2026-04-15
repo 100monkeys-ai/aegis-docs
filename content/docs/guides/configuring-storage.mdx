@@ -243,7 +243,7 @@ When `seaweedfs.s3_endpoint` is configured in the node configuration, all volume
 
 Volumes are stored at the following path in the SeaweedFS S3 namespace:
 
-```
+```text
 /<tenant_id>/<volume_id>/
 ```
 
@@ -264,6 +264,15 @@ aws s3 cp s3://${TENANT_ID}/${VOL_ID}/ ./artifacts/ --recursive \
 ```
 
 The S3 gateway does not enforce manifest `FilesystemPolicy` rules. Restrict access to the S3 gateway endpoint at the network level in production environments — it should not be reachable from agent containers or public networks.
+
+### Retrieving Files via `aegis.execution.file`
+
+The `aegis.execution.file` MCP tool provides a higher-level alternative to direct S3 access for retrieving files from completed executions. It supports both text and binary files:
+
+- **Text files** (source code, Markdown, JSON, etc.) are returned inline in the tool result, making them directly consumable by LLMs in agentic workflows.
+- **Binary files** (images, PDFs, archives, compiled artifacts, etc.) are returned with a `download_url` that points to the `GET /v1/executions/:id/files/*path` REST endpoint. Client applications can fetch the binary content out-of-band from this URL.
+
+Files retrieved through this tool are read directly from the storage backend — no running execution or active NFS mount is required. Files remain available until the ephemeral volume's TTL expires (default 24 hours after execution completes). Persistent volumes retain their files indefinitely.
 
 ---
 

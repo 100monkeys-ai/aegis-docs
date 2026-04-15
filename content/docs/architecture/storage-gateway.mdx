@@ -427,3 +427,23 @@ A common convention for AEGIS deployments is:
 ### Health Checks
 
 The orchestrator checks SeaweedFS health via the Filer API on startup and periodically thereafter. If SeaweedFS is unreachable and `fallback_to_local` is enabled in the node configuration, the orchestrator falls back to a local filesystem `StorageProvider`. The local fallback does not support S3 artifact inspection or multi-node access.
+
+---
+
+## Post-Execution File Retrieval
+
+After an execution completes, files from the execution's workspace volume remain accessible through two interfaces:
+
+- **`aegis.execution.file` MCP tool** — retrieves individual files by path from a completed execution's workspace. Text files are returned inline in the tool result for direct LLM consumption. Binary files (images, PDFs, archives, etc.) return a `download_url` pointing to the REST endpoint for out-of-band retrieval by the client application.
+- **`GET /v1/executions/:id/files/*path` REST endpoint** — streams the raw file bytes directly from the storage backend. Used by the `download_url` in binary file tool results and available for direct HTTP access by client applications.
+
+Both interfaces read directly from the storage backend (SeaweedFS or the active `StorageProvider`) using the `AegisFSAL`. No FUSE mount or NFS export is needed post-execution — the volume data persists in SeaweedFS after the container stops and the NFS export is removed (volume state `Detached`).
+
+File content type detection uses a combination of file extension mapping and content sniffing to determine whether a file is text or binary. Text files have their contents included inline in the MCP tool result; binary files are served via the REST endpoint to avoid polluting the LLM context with base64-encoded data.
+
+Files remain accessible until the volume is garbage-collected:
+
+- **Ephemeral volumes** (ownership `Execution` or `WorkflowExecution`): available until the volume's TTL expires (default 24 hours after execution completes).
+- **Persistent volumes**: available indefinitely until explicitly deleted.
+
+For the architectural decision behind binary file download support, see ADR-108.

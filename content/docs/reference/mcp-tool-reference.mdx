@@ -1546,7 +1546,7 @@ The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_
 
 ### `aegis.execution.file`
 
-Read a file from a completed execution's workspace volume. Use this to retrieve output files after an agent or task execution finishes.
+Read a file from a completed execution's workspace volume. Use this to retrieve output files after an agent or task execution finishes. Supports both text and binary files.
 
 **Access:** User
 
@@ -1561,19 +1561,55 @@ Read a file from a completed execution's workspace volume. Use this to retrieve 
 
 <Callout type="info">
   The path is automatically normalized — both `/workspace/report.md` and `report.md` resolve to
-  the same file. Returns file contents as text. Works after execution completes, while the volume
-  is still available (ephemeral volumes are cleaned up based on TTL).
+  the same file. Works after execution completes, while the volume is still available (ephemeral
+  volumes are cleaned up based on TTL).
 </Callout>
 
-**Output:**
+**Output schema:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `execution_id` | `string` | The execution ID the file was retrieved from. |
+| `path` | `string` | Normalized file path relative to `/workspace`. |
+| `content` | `string` | File contents as text. **Present only for text files.** |
+| `content_type` | `string` | MIME type of the file (e.g. `text/plain`, `image/png`, `application/pdf`). |
+| `is_binary` | `boolean` | `true` if the file is binary, `false` for text files. |
+| `download_url` | `string` | Signed URL for out-of-band file download. **Present only for binary files.** |
+| `size_bytes` | `number` | Size of the file in bytes. |
+
+Text files include their content inline in the `content` field so LLMs can consume it directly. Binary files (images, PDFs, archives, etc.) omit `content` and instead provide a `download_url` for out-of-band retrieval by the client application.
+
+**Text file example:**
 
 ```json
 {
   "execution_id": "e1f2a3b4-...",
   "path": "output.md",
-  "content": "..."
+  "content": "# Report\n\nAnalysis complete. Found 3 issues...",
+  "content_type": "text/markdown",
+  "is_binary": false,
+  "size_bytes": 1847
 }
 ```
+
+**Binary file example:**
+
+```json
+{
+  "execution_id": "e1f2a3b4-...",
+  "path": "chart.png",
+  "content_type": "image/png",
+  "is_binary": true,
+  "download_url": "https://aegis.example.com/v1/executions/e1f2a3b4-.../files/chart.png?token=...",
+  "size_bytes": 245120
+}
+```
+
+<Callout type="info">
+  The download URL points to the REST endpoint `GET /v1/executions/:id/files/*path`, which streams
+  the file directly from the storage backend. The URL includes a short-lived authentication token
+  and expires after the volume's TTL.
+</Callout>
 
 ---
 
