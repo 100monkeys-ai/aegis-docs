@@ -170,7 +170,8 @@ interface AegisClientOptions {
 | | `setSamlConfig(payload)` | Set SAML IdP configuration |
 | | `getSubscription()` | Get subscription details |
 | **Billing** | | |
-| | `createCheckoutSession(tier, interval)` | Create a Stripe Checkout Session |
+| | `listPrices()` | List available pricing tiers |
+| | `createCheckoutSession(options)` | Create a Stripe Checkout Session |
 | | `createPortalSession()` | Create a Stripe Customer Portal session |
 | | `getSubscriptionBilling()` | Get subscription billing details |
 | | `getInvoices()` | List invoices |
@@ -1026,19 +1027,35 @@ Get the colony's subscription details.
 
 All billing methods return a rejected promise with a `501` status if `STRIPE_SECRET_KEY` is not configured on the orchestrator.
 
-### `createCheckoutSession(tier, interval)`
+### `listPrices()`
+
+List all available pricing tiers with their Stripe price IDs.
+
+```typescript
+const { tiers } = await client.listPrices();
+tiers.forEach((t) => console.log(t.tier, t.monthly?.amount));
+```
+
+**Returns:** `Promise<PricingResponse>`
+
+### `createCheckoutSession(options)`
 
 Create a Stripe Checkout Session URL for subscribing to a plan.
 
 ```typescript
-const { url } = await client.createCheckoutSession('pro', 'monthly');
+const { url } = await client.createCheckoutSession({
+  price_id: 'price_xxx',
+  seat_price_id: 'price_seat_xxx',
+  seats: 5,
+});
 // Redirect user to url
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `tier` | `string` | Subscription tier: `"pro"`, `"business"`, or `"enterprise"` |
-| `interval` | `string` | Billing interval: `"monthly"` or `"annual"` |
+| `options.price_id` | `string` | Stripe Price ID for the base tier |
+| `options.seat_price_id` | `string?` | Stripe Price ID for per-seat billing |
+| `options.seats` | `number?` | Number of additional seats |
 
 **Returns:** `Promise<{ url: string }>`
 

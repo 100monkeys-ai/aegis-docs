@@ -150,7 +150,8 @@ async with AegisClient(
 | | `set_saml_config(payload)` | Set SAML IdP configuration |
 | | `get_subscription()` | Get subscription details |
 | **Billing** | | |
-| | `create_checkout_session(tier, interval)` | Create a Stripe Checkout Session |
+| | `list_prices()` | List available pricing tiers |
+| | `create_checkout_session(price_id, ...)` | Create a Stripe Checkout Session |
 | | `create_portal_session()` | Create a Stripe Customer Portal session |
 | | `get_subscription_billing()` | Get subscription billing details |
 | | `get_invoices()` | List invoices |
@@ -971,12 +972,30 @@ All billing methods raise an `AegisApiError` with status `501` if `STRIPE_SECRET
 
 ---
 
-#### `create_checkout_session(tier, interval)`
+#### `list_prices()`
+
+List all available pricing tiers with their Stripe price IDs.
+
+```python
+resp = await client.list_prices()
+for tier in resp.tiers:
+    print(tier.tier, tier.monthly.amount if tier.monthly else None)
+```
+
+**Returns:** `PricingResponse` with `tiers: List[TierPricing]`.
+
+---
+
+#### `create_checkout_session(price_id, seat_price_id=None, seats=None)`
 
 Create a Stripe Checkout Session URL for subscribing to a plan.
 
 ```python
-resp = await client.create_checkout_session("pro", "monthly")
+resp = await client.create_checkout_session(
+    price_id="price_xxx",
+    seat_price_id="price_seat_xxx",
+    seats=5,
+)
 # Redirect user to resp["url"]
 ```
 
@@ -984,8 +1003,9 @@ resp = await client.create_checkout_session("pro", "monthly")
 
 | Name | Type | Description |
 |------|------|-------------|
-| `tier` | `str` | Subscription tier: `"pro"`, `"business"`, or `"enterprise"` |
-| `interval` | `str` | Billing interval: `"monthly"` or `"annual"` |
+| `price_id` | `str` | Stripe Price ID for the base tier |
+| `seat_price_id` | `str?` | Stripe Price ID for per-seat billing |
+| `seats` | `int?` | Number of additional seats |
 
 **Returns:** `Dict[str, Any]` with `url: str`.
 

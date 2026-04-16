@@ -483,6 +483,44 @@ The `final_output` value is the rendered and type-coerced result of evaluating t
 
 All billing endpoints require a valid Keycloak Bearer JWT (`Authorization: Bearer <token>`). They return `501 Not Implemented` if `STRIPE_SECRET_KEY` is not configured on the orchestrator.
 
+### `GET /v1/billing/prices`
+
+List all available pricing tiers with their Stripe price IDs.
+
+**Response `200`:**
+
+```json
+{
+  "tiers": [
+    {
+      "tier": "pro",
+      "product_id": "prod_xxx",
+      "name": "Pro",
+      "description": "For professionals and small teams",
+      "included_seats": 1,
+      "monthly": { "price_id": "price_xxx", "amount": 2900, "currency": "usd" },
+      "annual": { "price_id": "price_yyy", "amount": 29000, "currency": "usd" },
+      "seat_monthly": { "price_id": "price_seat_m", "amount": 1500, "currency": "usd" },
+      "seat_annual": { "price_id": "price_seat_a", "amount": 15000, "currency": "usd" }
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tiers[].tier` | string | Tier slug (`pro`, `business`, `enterprise`) |
+| `tiers[].product_id` | string | Stripe Product ID |
+| `tiers[].name` | string | Human-readable tier name |
+| `tiers[].description` | string | Tier description |
+| `tiers[].included_seats` | integer | Number of seats included in the base price |
+| `tiers[].monthly` | object or null | Monthly price (`price_id`, `amount` in cents, `currency`) |
+| `tiers[].annual` | object or null | Annual price |
+| `tiers[].seat_monthly` | object or null | Monthly per-seat price |
+| `tiers[].seat_annual` | object or null | Annual per-seat price |
+
+---
+
 ### `POST /v1/billing/checkout`
 
 Create a Stripe Checkout Session for subscribing to a plan.
@@ -491,15 +529,17 @@ Create a Stripe Checkout Session for subscribing to a plan.
 
 ```json
 {
-  "tier": "pro",
-  "interval": "monthly"
+  "price_id": "price_xxx",
+  "seat_price_id": "price_seat_xxx",
+  "seats": 5
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `tier` | string | Yes | Subscription tier: `pro`, `business`, or `enterprise` |
-| `interval` | string | Yes | Billing interval: `monthly` or `annual` |
+| `price_id` | string | Yes | Stripe Price ID from `GET /v1/billing/prices` |
+| `seat_price_id` | string | No | Stripe Price ID for per-seat billing |
+| `seats` | integer | No | Number of additional seats |
 
 **Response `200`:**
 
