@@ -5,12 +5,13 @@ description: How to enable cmd.run subprocess execution and register external MC
 
 # Configuring Tools
 
-This guide covers the two main categories of tools available to AEGIS agents:
+This guide covers the main categories of tools available to AEGIS agents:
 
 - **`cmd.run`** — execute subprocesses inside the agent container (compilers, test runners, interpreters)
-- **MCP Tool Servers** — long-running server processes on the orchestrator host that provide access to external APIs (web search, email, GitHub, and so on)
+- **`web.search`** — native builtin powered by the Brave Search API; configured via `spec.builtin_dispatchers`
+- **MCP Tool Servers** — long-running server processes on the orchestrator host that provide access to external APIs (email, GitHub, and so on)
 
-Both categories route through the same [MCP Tool Routing](/docs/architecture/tool-routing) pipeline. The difference is where execution happens: `cmd.run` runs inside the container, MCP Tool Servers run on the host.
+Both `cmd.run` and MCP Tool Servers route through the same [MCP Tool Routing](/docs/architecture/tool-routing) pipeline. The difference is where execution happens: `cmd.run` runs inside the container, MCP Tool Servers run on the host. `web.search` is fulfilled directly by the orchestrator process.
 
 ---
 
@@ -122,7 +123,51 @@ The agent receives the subprocess result as a tool result message in its LLM con
 
 ---
 
-## Part B: Adding an External MCP Tool Server
+## Part B: Enabling `web.search`
+
+`web.search` is a native builtin tool powered by the [Brave Search REST API](https://brave.com/search/api/). It is fulfilled directly by the orchestrator — no external MCP server process is required.
+
+### Get an API key
+
+Sign up for a free key at <https://brave.com/search/api/>. The free tier provides 2,000 requests/month. Set the key as an environment variable on the orchestrator host (e.g. `BRAVE_SEARCH_API_KEY`) or store it in OpenBao.
+
+### Configure the dispatcher
+
+Add a `web.search` entry to `spec.builtin_dispatchers` in `aegis-config.yaml`:
+
+```yaml
+spec:
+  builtin_dispatchers:
+    - name: "web.search"
+      enabled: true
+      api_key: "env:BRAVE_SEARCH_API_KEY"
+      capabilities:
+        - name: "web.search"
+          skip_judge: true
+```
+
+The `api_key` field supports both `env:` and `secret:` resolution:
+
+```yaml
+# Using an OpenBao secret
+api_key: "secret:aegis-system/web-search/brave-api-key"
+```
+
+If `api_key` is omitted or the `web.search` dispatcher entry is absent, any `web.search` call returns a descriptive error:
+
+```text
+web.search is not configured: add api_key to the web.search entry in spec.builtin_dispatchers
+```
+
+This error is surfaced as a tool result in the agent's LLM context, allowing the agent to communicate the misconfiguration rather than silently returning empty results.
+
+### Grant access in the agent manifest
+
+No additional manifest configuration is required. `web.search` is available to any agent whose `SecurityContext` permits the `web.*` tool pattern. The `skip_judge: true` default means no inner-loop judge overhead is added for read-only searches.
+
+---
+
+## Part C: Adding an External MCP Tool Server
 
 External tools — web search, email, calendar APIs, and similar — are handled by MCP server processes running on the orchestrator host. The orchestrator starts each server at daemon startup, monitors it with periodic health checks, and routes matching tool calls to it via JSON-RPC over stdio.
 
@@ -249,17 +294,17 @@ Resolved values are injected as environment variables into the server process an
 
 ---
 
-## Choosing between `cmd.run` and an MCP Tool Server
+## Choosing between tool types
 
-| | `cmd.run` (`builtin:cmd`) | MCP Tool Server (`mcp:<name>`) |
-|---|---|---|
-| **Execution location** | Inside agent container | On orchestrator host |
-| **Access to agent filesystem** | Full access to mounted volumes | Only what the agent passes as arguments |
-| **Network access** | None (inherits container network isolation) | Full host network access |
-| **Credentials** | None injected | Injected from `env:` / `secret:` at startup |
-| **Process lifecycle** | One process per `cmd.run` call | Long-running; started at daemon startup |
-| **Typical use cases** | Compilers, test runners, linters, interpreters | Web APIs, email, databases, SaaS integrations |
-| **Policy mechanism** | `SubcommandAllowlist` | Domain allowlist, rate limits, capability patterns |
+| | `cmd.run` (`builtin:cmd`) | `web.search` (builtin) | MCP Tool Server (`mcp:<name>`) |
+|---|---|---|---|
+| **Execution location** | Inside agent container | Orchestrator process | On orchestrator host |
+| **Access to agent filesystem** | Full access to mounted volumes | None | Only what the agent passes as arguments |
+| **Network access** | None (inherits container network isolation) | Brave Search API only | Full host network access |
+| **Credentials** | None injected | `api_key` in `builtin_dispatchers` | Injected from `env:` / `secret:` at startup |
+| **Process lifecycle** | One process per `cmd.run` call | In-process | Long-running; started at daemon startup |
+| **Typical use cases** | Compilers, test runners, linters, interpreters | Web search | Email, databases, SaaS integrations |
+| **Policy mechanism** | `SubcommandAllowlist` | Domain allowlist, `api_key` required | Domain allowlist, rate limits, capability patterns |
 
 ---
 

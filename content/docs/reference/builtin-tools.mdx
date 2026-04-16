@@ -288,11 +288,15 @@ Recursively matches files against a glob pattern.
 
 ## Web Tools
 
-The `web.*` tools provide native HTTP request and web search capabilities, including HTML scraping and content extraction.
+The `web.*` tools provide native HTTP request and web search capabilities.
 
 ### `web.search`
 
-Performs an internet search query. Currently defaults to DuckDuckGo HTML scraping.
+Performs an internet search query using the [Brave Search REST API](https://brave.com/search/api/). This is a native builtin — no external MCP server process is required.
+
+**Requires configuration:** An API key must be set via the `api_key` field on the `web.search` entry in `spec.builtin_dispatchers`. See [Configuring Tools — Enabling `web.search`](/docs/guides/configuring-tools#part-b-enabling-websearch) for setup instructions.
+
+**Free tier:** 2,000 requests/month.
 
 **Parameters:**
 
@@ -301,7 +305,11 @@ Performs an internet search query. Currently defaults to DuckDuckGo HTML scrapin
 
 **Returns:** A formatted list of search results, each containing title, URL, and snippet text.
 
-**Errors:** `DomainNotAllowed` if the SecurityContext's `domain_allowlist` does not permit the search engine domain; network error if the external request fails.
+**Errors:**
+
+- Configuration error if `api_key` is not set: `web.search is not configured: add api_key to the web.search entry in spec.builtin_dispatchers`
+- `DomainNotAllowed` if the SecurityContext's `domain_allowlist` does not permit the Brave Search API domain
+- Network error if the external request fails
 
 ### `web.fetch`
 

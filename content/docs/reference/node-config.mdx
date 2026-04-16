@@ -153,29 +153,6 @@ spec:
   # Required for aegis.agent.generate, aegis.workflow.generate, and aegis.execute.intent to function.
   deploy_builtins: false
 
-  # ─── MCP Tool Servers ───────────────────────────────────────────────────────
-  mcp_servers:
-    - name: web-search
-      enabled: true
-      executable: "node"
-      args: ["/opt/aegis-tools/web-search/index.js"]
-      capabilities:
-        - name: web.search
-          skip_judge: true   # read-only lookup — skip inner-loop judge overhead
-        - name: web.fetch
-          skip_judge: true   # read-only fetch — skip inner-loop judge overhead
-      credentials:
-        SEARCH_API_KEY: "secret:aegis-system/tools/search-api-key"
-      environment:
-        LOG_LEVEL: "info"
-      health_check:
-        interval_seconds: 60
-        timeout_seconds: 5
-        method: "tools/list"
-      resource_limits:
-        cpu_millicores: 1000
-        memory_mb: 512
-
   # ─── SEAL ───────────────────────────────────────────────────────────────────
   seal:
     private_key_path: "/etc/aegis/seal/private.pem"
@@ -253,6 +230,13 @@ spec:
           skip_judge: false  # state-mutating — always validate
         - name: fs.delete
           skip_judge: false  # state-mutating — always validate
+    - name: "web.search"
+      description: "Native web search powered by the Brave Search API"
+      enabled: true
+      api_key: "env:BRAVE_SEARCH_API_KEY"  # obtain a free key at https://brave.com/search/api/
+      capabilities:
+        - name: web.search
+          skip_judge: true   # read-only lookup — skip inner-loop judge overhead
 
   # ─── IAM (OIDC) ─────────────────────────────────────────────────────────────
   iam:
@@ -714,9 +698,10 @@ Each entry:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `name` | string | — | Dispatcher identifier (e.g. `"cmd"`, `"fs"`) |
+| `name` | string | — | Dispatcher identifier (e.g. `"cmd"`, `"fs"`, `"web.search"`) |
 | `description` | string | `""` | Human-readable description forwarded to the LLM tool schema |
 | `enabled` | bool | `true` | Activate or deactivate this dispatcher |
+| `api_key` | string | null | API key for builtins that call external services. Supports `env:VAR_NAME` and `secret:path/to/secret` resolution. Required for `web.search` (Brave Search API). |
 | `capabilities` | CapabilityConfig[] | `[]` | Per-tool capability objects (same schema as `spec.mcp_servers[].capabilities`) |
 
 Each `CapabilityConfig` entry follows the same schema described under [`spec.mcp_servers`](#specmcp_servers) above.
