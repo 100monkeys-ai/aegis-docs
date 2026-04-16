@@ -1,0 +1,165 @@
+---
+title: Connect Zaru to Any MCP Client
+description: Set up the Zaru MCP server in Claude Code, Claude Desktop, Cursor, Windsurf, VS Code Copilot, Gemini CLI, and other MCP-compatible tools.
+---
+
+Zaru can be activated in any MCP-compatible tool. Connect the Zaru MCP server and type `zaru init` to bring the full AEGIS agent orchestration platform into your editor or AI assistant.
+
+---
+
+## Prerequisites
+
+- A Zaru account at [ask.myzaru.com](https://ask.myzaru.com)
+- An API key (generate one at **Settings → API Keys** in the Zaru client, or via [The Vault](/docs/guides/vault))
+
+---
+
+## MCP Server URL
+
+```text
+https://mcp.myzaru.com/mcp/v1
+```
+
+All clients connect to this single endpoint using the **StreamableHTTP** transport.
+
+---
+
+## Authentication
+
+All requests require an API key passed as a Bearer token:
+
+```text
+Authorization: Bearer <your-api-key>
+```
+
+---
+
+## Client-Specific Setup
+
+### Claude Code
+
+```bash
+claude mcp add zaru \
+  --transport streamable-http \
+  https://mcp.myzaru.com/mcp/v1 \
+  --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "zaru": {
+      "url": "https://mcp.myzaru.com/mcp/v1",
+      "transport": "streamable-http",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Navigate to **Settings → MCP → Add Server** and enter:
+
+| Field | Value |
+|---|---|
+| Name | `zaru` |
+| URL | `https://mcp.myzaru.com/mcp/v1` |
+| Transport | StreamableHTTP |
+| Headers | `Authorization: Bearer YOUR_API_KEY` |
+
+### Windsurf
+
+Add to your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "zaru": {
+      "serverUrl": "https://mcp.myzaru.com/mcp/v1",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+### VS Code (GitHub Copilot)
+
+Create or edit `.vscode/mcp.json` in your workspace:
+
+```json
+{
+  "servers": {
+    "zaru": {
+      "type": "http",
+      "url": "https://mcp.myzaru.com/mcp/v1",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+### Gemini CLI
+
+```bash
+gemini mcp add \
+  --name zaru \
+  --url https://mcp.myzaru.com/mcp/v1 \
+  --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Any MCP Client
+
+Any client supporting the StreamableHTTP transport can connect with:
+
+| Parameter | Value |
+|---|---|
+| URL | `https://mcp.myzaru.com/mcp/v1` |
+| Transport | StreamableHTTP (POST/GET/DELETE) |
+| Auth Header | `Authorization: Bearer <api-key>` |
+
+---
+
+## First Use
+
+Once connected, tell your AI assistant:
+
+```text
+zaru init
+```
+
+The assistant will call the `zaru.init` tool and adopt the Zaru persona with access to all AEGIS tools.
+
+To start in a specific mode:
+
+```text
+zaru init agentic
+```
+
+Available modes: `chat`, `agentic`, `workflow`, `execute`.
+
+---
+
+## Switching Modes
+
+During a session, say "switch to workflow mode" and the assistant will call `zaru.mode` to change modes with updated tools and behavior.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| **"Tool not found"** | Ensure the MCP server is connected and your API key is valid. |
+| **"Unauthorized"** | Check your API key — generate a new one from **Settings → API Keys** in the Zaru client. |
+| **"Connection refused"** | Verify the URL is exactly `https://mcp.myzaru.com/mcp/v1`. |
