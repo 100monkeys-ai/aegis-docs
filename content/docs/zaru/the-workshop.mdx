@@ -1,0 +1,65 @@
+---
+title: The Workshop
+description: Create and manage persistent storage volumes for your agent workloads.
+---
+
+# The Workshop
+
+The Workshop is the volume management area, available at `/workshop` in the Zaru client.
+Volumes provide persistent storage that agents can read from and write to during execution.
+
+---
+
+## Storage Quota
+
+The top of the Workshop page displays your storage quota: how much space you have used and
+how much is available under your current tier.
+
+| Tier | Storage Quota |
+|---|---|
+| Free | Limited |
+| Pro | 10 GB |
+| Business | 50 GB |
+| Enterprise | 100 GB |
+
+---
+
+## Creating Volumes
+
+Click **New Volume** to create a persistent storage volume.
+
+- **Label** — a human-readable name for the volume (e.g., "project-data", "reports-output").
+- **Size** — the allocated size for the volume. Must fit within your remaining storage quota.
+
+The volume is available immediately after creation and can be attached to agent executions.
+
+---
+
+## Browsing Volumes
+
+The volume list shows all volumes in your tenant with their label, size, creation date, and
+usage. The storage quota bar at the top updates as you create or delete volumes.
+
+---
+
+## Volume Details and Settings
+
+Click a volume to open its detail view:
+
+- **Overview** — label, size, creation date, and last accessed time.
+- **Settings** — rename the volume or adjust its size (within quota limits). Delete the volume
+  when it is no longer needed. Deletion is permanent and removes all files within the volume.
+
+---
+
+## File Management
+
+Inside a volume's detail view, the **Files** tab provides a file browser for the volume's
+contents.
+
+- Browse directories and files within the volume
+- Upload files directly from your local machine
+- Download individual files
+- Delete files or directories
+
+Files stored in volumes are accessible to any agent execution that has the volume attached.

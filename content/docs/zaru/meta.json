@@ -2,9 +2,16 @@
     "title": "Zaru",
     "pages": [
         "overview",
-        "mcp-client-setup",
-        "execute-mode",
+        "chat",
+        "the-architect",
+        "the-colony",
+        "the-workshop",
+        "vault",
         "control-plane",
-        "vault"
+        "pricing",
+        "api-keys",
+        "invites",
+        "mcp-client-setup",
+        "execute-mode"
     ]
 }

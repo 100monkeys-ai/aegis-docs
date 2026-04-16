@@ -1,0 +1,83 @@
+---
+title: Chat
+description: The main conversational interface at ask.myzaru.com — conversation modes, model selection, and the Glass Laboratory context panel.
+---
+
+# Chat
+
+The chat interface at [ask.myzaru.com](https://ask.myzaru.com) is where you interact with
+the AEGIS platform. Every conversation runs in a specific mode that determines the available
+tools and behavior.
+
+---
+
+## Conversation Modes
+
+Select a mode from the toolbar before sending your first message. The mode is locked once the
+first message is sent.
+
+| Mode | Purpose |
+|---|---|
+| **Chat** | General conversation with Zaru. No platform tools are invoked — this is a standard LLM chat with Zaru's persona and knowledge. |
+| **Agentic** | Zaru has access to AEGIS tools and can create, discover, and execute agents and workflows on your behalf. The full tool surface is available based on your tier. |
+| **Workflow** | Specialized mode for designing and running multi-step workflows. Zaru guides you through defining workflow states, transitions, and agent assignments. |
+| **Execute** | Single-shot code execution. Describe a computation in plain English, optionally provide typed inputs, and get back the result. See [Running Code with Execute Mode](/docs/zaru/execute-mode) for details. |
+
+---
+
+## Model Selector
+
+The model selector in the toolbar lets you choose which language model powers the conversation.
+
+**Zaru Default** — the platform-managed model. This is the default for all tiers and requires
+no configuration.
+
+**BYOK (Bring Your Own Key)** — Pro and higher tiers can connect their own API keys for
+supported providers (OpenAI, Anthropic, Google) via [The Vault](/docs/zaru/vault). Once a
+provider key is saved and granted, it appears as an option in the model selector. BYOK users
+are exempt from LLM-specific rate limits.
+
+---
+
+## Conversations
+
+Each conversation is saved automatically and appears in the left sidebar. Conversations are
+organized chronologically with the most recent at the top.
+
+### Managing Conversations
+
+- **Pin** — right-click a conversation (or use the three-dot menu) and select **Pin**. Pinned
+  conversations stay at the top of the sidebar regardless of age.
+- **Rename** — right-click and select **Rename** to give a conversation a descriptive title.
+  By default, Zaru generates a title from your first message.
+- **Delete** — right-click and select **Delete**. This removes the conversation and all
+  associated execution history. Deletion is permanent.
+
+---
+
+## The Glass Laboratory
+
+The Glass Laboratory is the real-time context panel on the right side of the chat interface.
+Expand it using the panel icon in the top-right corner.
+
+### What It Shows
+
+When an agent or workflow execution is running, the Glass Laboratory renders each step of the
+process as it happens:
+
+- Tool invocations and their outputs
+- Iteration progress (attempt number, validation feedback, refinements)
+- Workflow state transitions
+- Policy decisions made by the SEAL Gateway
+
+### Context Panel Tabs
+
+In Agentic, Workflow, and Execute modes, the context panel provides browsable tabs for
+platform resources:
+
+- **Agents** — lists deployed agents. Click **Execute** to run one with an inline parameter
+  form, or **Send to Chat** to inject a structured prompt for Zaru to assist with.
+- **Workflows** — lists deployed workflows with the same Execute and Send to Chat actions.
+- **Tools** — lists available AEGIS tools for the current mode and tier.
+
+The context panel is hidden in Chat mode, where no platform resources are in scope.

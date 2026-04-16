@@ -1,0 +1,95 @@
+---
+title: Pricing & Plans
+description: Zaru tier comparison — Free, Pro, Business, and Enterprise — with details on features, limits, and billing.
+---
+
+# Pricing & Plans
+
+Zaru offers four tiers. All tiers include access to the full chat interface, agent execution,
+and the Glass Laboratory. Higher tiers unlock additional capacity, team features, and
+deployment options.
+
+---
+
+## Tier Comparison
+
+| Feature | Free | Pro | Business | Enterprise |
+|---|---|---|---|---|
+| Concurrent agents | 1 | 5 | 50+ | Unlimited |
+| Agent count | Limited | Unlimited | Unlimited | Unlimited |
+| Persistent storage | Limited | 10 GB | 50 GB | 100 GB |
+| Execution timeout | 5 min | 30 min | 4 hours | 24 hours |
+| Seats | 1 | 1 | Per-seat pricing | Per-seat pricing |
+| Teams and orgs | — | — | Yes | Yes |
+| SAML SSO | — | — | — | Yes |
+| Self-hosted / air-gapped | — | — | — | Yes |
+| Priority support | — | — | Yes | Yes |
+| Audit log retention | — | — | 90 days | 365 days |
+
+---
+
+## What Each Tier Includes
+
+### Free
+
+Get started at no cost. Includes the full chat interface, all conversation modes, and
+single-shot code execution. Limited to 1 concurrent agent execution, a 5-minute execution
+timeout, and limited persistent storage. Rate limits: 3 agent executions per minute, 20
+per day.
+
+### Pro
+
+Everything in Free, plus higher capacity for serious individual use. 5 concurrent executions,
+30-minute timeout, 10 GB persistent storage, and BYOK model support. Rate limits: 10 agent
+executions per minute, 200 per day. BYOK users are exempt from LLM-specific rate limits.
+
+### Business
+
+Everything in Pro, plus team and organization features. Per-seat pricing for your team, 50+
+concurrent executions, 4-hour timeout, 50 GB storage, custom agent and workflow manifests,
+audit logs with 90-day retention, and priority support. Rate limits: 30 agent executions
+per minute, 1,000 per day. Limits are customizable per tenant.
+
+### Enterprise
+
+Everything in Business, plus self-hosted and air-gapped deployment options, SAML SSO
+federation, 100 GB storage, 24-hour timeout, unlimited concurrent executions, and audit logs
+with 365-day retention. Rate limits: 100 agent executions per minute, 10,000 per day. All
+limits are fully customizable per tenant and per user.
+
+---
+
+## Billing
+
+### Monthly vs Annual
+
+Both monthly and annual billing cycles are available. Annual billing offers a discount
+compared to monthly pricing.
+
+### Per-Seat Pricing
+
+Business and Enterprise tiers are billed per seat. Each member in your organization counts
+as one seat. Adding or removing members adjusts the next invoice automatically through
+prorated billing.
+
+### How to Upgrade
+
+Upgrade from the `/pricing` page in the Zaru client or from the **Upgrade** button in
+[The Colony](/docs/zaru/the-colony) billing tab. The upgrade flow redirects to Stripe's
+hosted checkout for secure payment processing. Your tier updates automatically once payment
+succeeds.
+
+### Managing Billing
+
+Click **Manage Billing** in the Colony billing tab to open the Stripe Customer Portal. From
+there you can update payment methods, download invoices, switch between monthly and annual
+billing, and cancel your subscription.
+
+---
+
+## Self-Hosted Deployments
+
+Self-hosted and air-gapped deployments (Enterprise tier) do not use Stripe. Billing is
+disabled entirely — tier assignment is managed directly through the platform's identity
+provider or admin API. All billing-related endpoints return `501 Not Implemented` when
+Stripe is not configured.

@@ -1,0 +1,95 @@
+---
+title: API Keys
+description: Create and manage API keys for programmatic access to the AEGIS platform via the MCP server and SDKs.
+---
+
+# API Keys
+
+API keys provide programmatic access to the AEGIS platform. Generate them from
+**Settings → API Keys** in the Zaru client.
+
+---
+
+## Creating an API Key
+
+1. Navigate to **Settings → API Keys**.
+2. Click **New API Key**.
+3. Enter a name for the key (e.g., "CI pipeline", "local development").
+4. Select a scope preset or configure custom scopes.
+5. Choose an expiry period.
+6. Click **Create**.
+
+The key value is shown once. Copy it immediately — it cannot be retrieved again.
+
+---
+
+## Scope Presets
+
+Scope presets provide common permission sets:
+
+| Preset | Permissions |
+|---|---|
+| **Read-Only** | List and read agents, workflows, executions, and volumes. No mutations. |
+| **Execution** | Read-only permissions plus the ability to execute agents and workflows. |
+| **Developer** | Execution permissions plus the ability to create and update agents, workflows, and volumes. |
+| **Full Access** | All permissions available to your tier, including credential management and team operations. |
+
+### Custom Scopes
+
+Select **Custom** to pick individual scopes from the full list. This is useful when you need
+a key with a narrow permission set — for example, a key that can only execute a specific
+workflow.
+
+---
+
+## Expiry Options
+
+| Option | Duration |
+|---|---|
+| 7 days | Short-lived, suitable for temporary scripts |
+| 30 days | Standard for development use |
+| 90 days | Extended for CI/CD pipelines |
+| 1 year | Long-lived, suitable for stable integrations |
+| No expiry | The key remains valid until manually revoked |
+
+Expired keys stop working immediately. You can create a new key at any time.
+
+---
+
+## Using API Keys with the MCP Server
+
+Pass the API key as a Bearer token when connecting to the Zaru MCP server:
+
+```text
+Authorization: Bearer <your-api-key>
+```
+
+See [Connect Zaru to Any MCP Client](/docs/zaru/mcp-client-setup) for client-specific
+configuration instructions.
+
+---
+
+## Using API Keys with the SDKs
+
+The Python and TypeScript SDKs accept an API key for authentication:
+
+```python
+from aegis_sdk import AegisClient
+
+client = AegisClient(api_key="your-api-key")
+```
+
+```typescript
+import { AegisClient } from "@aegis/sdk";
+
+const client = new AegisClient({ apiKey: "your-api-key" });
+```
+
+---
+
+## Revoking Keys
+
+Open **Settings → API Keys**, find the key in the list, and click **Revoke**. The key stops
+working immediately. Revocation is permanent — if you need access again, create a new key.
+
+Active sessions authenticated with a revoked key are terminated.

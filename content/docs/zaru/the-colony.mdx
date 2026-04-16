@@ -1,0 +1,83 @@
+---
+title: The Colony
+description: Manage your team, configure SSO, and handle subscription billing from The Colony.
+---
+
+# The Colony
+
+The Colony is the team and organization management area, available at `/colony` in the Zaru
+client. It is where you manage members, configure identity federation, and handle your
+subscription.
+
+---
+
+## Members
+
+The **Members** tab shows everyone in your organization.
+
+### Inviting Members
+
+Click **Invite Member** and enter the recipient's email address. They receive an invitation
+link and join your organization when they accept.
+
+Team features are available on Business and Enterprise tiers. Free and Pro accounts operate
+as single-user tenants.
+
+### Removing Members
+
+Click the three-dot menu next to a member and select **Remove**. Removing a member revokes
+their access to all shared agents, workflows, and volumes within the organization.
+
+### Updating Roles
+
+Each member has a role that determines their permissions within the organization:
+
+- **Owner** — full administrative control, including billing and member management
+- **Admin** — manage agents, workflows, volumes, and members (cannot manage billing)
+- **Member** — create and execute agents and workflows, manage own resources
+
+Click a member's role badge to change it. Only Owners and Admins can modify roles.
+
+---
+
+## SAML SSO
+
+Enterprise tier organizations can configure SAML Single Sign-On for centralized
+authentication.
+
+From the **SSO** tab, provide your identity provider's metadata URL or upload the metadata
+XML. Once configured, all members authenticate through your corporate identity provider
+instead of individual credentials.
+
+SAML SSO is available exclusively on the Enterprise tier.
+
+---
+
+## Subscription and Billing
+
+The **Billing** tab shows your current plan, usage against tier quotas, and payment details.
+
+### Viewing Your Plan
+
+The billing overview displays:
+
+- Current tier (Free, Pro, Business, or Enterprise)
+- Quota usage — concurrent agents, total agent count, storage consumed, and seats used
+- Billing period and next renewal date
+
+### Upgrading
+
+Click **Upgrade** or visit the `/pricing` page to compare tiers and select a new plan. The
+upgrade flow redirects to Stripe's hosted checkout for secure payment processing. Your tier
+updates automatically once payment succeeds.
+
+### Managing Billing
+
+Click **Manage Billing** to open the Stripe Customer Portal, where you can update payment
+methods, download invoices, and change between monthly and annual billing.
+
+### Per-Seat Pricing
+
+Business and Enterprise tiers use per-seat pricing. Each member in your organization counts
+as a seat. Adding or removing members adjusts your next invoice automatically via Stripe's
+prorated billing.

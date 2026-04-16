@@ -1,0 +1,103 @@
+---
+title: The Architect
+description: Create, manage, and monitor agents and workflows from the Architect dashboard.
+---
+
+# The Architect
+
+The Architect is the management dashboard for agents and workflows, available at `/dashboard`
+in the Zaru client. From here you can browse, create, edit, and monitor everything running on
+the AEGIS platform within your tenant.
+
+---
+
+## Agent Management
+
+### Browsing Agents
+
+The agent list shows all agents visible to your tenant. Use the search bar to filter by name
+or description. Scope filters let you narrow the list:
+
+- **My Agents** — agents you created
+- **Shared** — agents shared within your organization (Business and Enterprise tiers)
+- **Built-in** — platform-provided agents deployed automatically
+
+Each agent card shows the agent name, status (active, inactive, draft), and last execution
+time.
+
+### Agent Details
+
+Click an agent to open its detail view:
+
+- **Manifest** — the full agent definition including runtime, security policy, resource limits,
+  and role assignments.
+- **Versions** — a history of manifest versions. Each deployment creates a new version.
+- **Execution History** — a chronological list of all executions for this agent with status,
+  duration, and links to execution logs.
+
+### Creating Agents
+
+Click **New Agent** to open the creation interface. Three authoring methods are available:
+
+- **Form Editor** — a guided form for configuring the agent step by step. Fields include name,
+  description, runtime, instructions, security policy, and resource limits.
+- **YAML Editor** — a text editor for writing the `AgentManifest` directly. Syntax validation
+  runs as you type.
+- **AI Generation** — describe what you want the agent to do in plain English. Zaru generates
+  the complete manifest, which you can review and edit before deploying.
+
+### Editing and Redeploying
+
+Open an existing agent and click **Edit** to modify its manifest. Changes create a new version
+on deploy. The previous version remains in the version history.
+
+---
+
+## Workflow Management
+
+### Browsing Workflows
+
+The workflow list shows all workflows visible to your tenant. Use the search bar to filter by
+name or description.
+
+Each workflow card shows the workflow name, state count, status, and last execution time.
+
+### Workflow Details
+
+Click a workflow to open its detail view:
+
+- **Manifest** — the full workflow definition including states, transitions, and agent
+  assignments.
+- **FSM Visualization** — a state machine diagram showing states, transitions, and terminal
+  conditions.
+- **Versions** — a history of workflow manifest versions.
+- **Execution History** — a chronological list of executions with status, current state, and
+  duration.
+
+### Creating Workflows
+
+Click **New Workflow** to open the creation interface. The same three authoring methods are
+available as for agents — form editor, YAML editor, and AI generation.
+
+Workflow manifests define a finite state machine: an initial state, one or more intermediate
+states with agent assignments, transition conditions, and terminal states.
+
+### Executing Workflows
+
+From a workflow's detail view, click **Execute**. If the workflow defines an input schema, a
+parameter form appears for you to fill in before starting. Execution progress is streamed
+to the Glass Laboratory panel in real time.
+
+---
+
+## Execution Logs
+
+Every agent and workflow execution produces a log accessible from the execution history in
+the detail view. Logs include:
+
+- Timestamped entries for each tool invocation and its output
+- Iteration progress and validation feedback
+- State transitions (for workflows)
+- Final output or error details
+
+Click any execution in the history list to open its full log.
