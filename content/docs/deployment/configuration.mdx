@@ -642,22 +642,14 @@ cortex:
 # Optional. Omit for self-hosted deployments where billing is not required.
 # When stripe_secret_key is absent, all /v1/billing/* endpoints return
 # 501 Not Implemented.
-# Note: STRIPE_PUBLISHABLE_KEY and STRIPE_PRICING_TABLE_ID are frontend-only
-# env vars passed directly to the zaru-client container — they are NOT part
-# of NodeConfig and do not belong here.
+# Note: STRIPE_PUBLISHABLE_KEY is a frontend-only env var passed directly to
+# the zaru-client container — it is NOT part of NodeConfig and does not belong here.
+# Pricing is dynamic — prices are fetched live from Stripe via GET /v1/billing/prices.
 billing:
   # Stripe API secret key (server-side only). Supports env: and secret: prefixes.
   stripe_secret_key: "env:STRIPE_SECRET_KEY"
   # Webhook signing secret for verifying Stripe webhook event signatures.
   stripe_webhook_secret: "env:STRIPE_WEBHOOK_SECRET"
-  # Stripe Price IDs for each tier and billing interval.
-  price_ids:
-    pro_monthly: "env:STRIPE_PRICE_PRO_MONTHLY"
-    pro_annual: "env:STRIPE_PRICE_PRO_ANNUAL"
-    business_monthly: "env:STRIPE_PRICE_BUSINESS_MONTHLY"
-    business_annual: "env:STRIPE_PRICE_BUSINESS_ANNUAL"
-    enterprise_monthly: "env:STRIPE_PRICE_ENTERPRISE_MONTHLY"
-    enterprise_annual: "env:STRIPE_PRICE_ENTERPRISE_ANNUAL"
 
 # ─── External SEAL Tooling Gateway ─────────────────────────────────
 # Optional. Omit to keep external tool routing disabled.
@@ -1042,16 +1034,12 @@ Optional. Configures Stripe billing integration. Omit this section for self-host
 | ------------------------------ | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
 | `stripe_secret_key`            | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
 | `stripe_webhook_secret`        | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
-| `price_ids.pro_monthly`        | string | No       | —       | Stripe Price ID for Pro tier, monthly billing.                                                                      |
-| `price_ids.pro_annual`         | string | No       | —       | Stripe Price ID for Pro tier, annual billing.                                                                       |
-| `price_ids.business_monthly`   | string | No       | —       | Stripe Price ID for Business tier, monthly billing.                                                                 |
-| `price_ids.business_annual`    | string | No       | —       | Stripe Price ID for Business tier, annual billing.                                                                  |
-| `price_ids.enterprise_monthly` | string | No       | —       | Stripe Price ID for Enterprise tier, monthly billing.                                                               |
-| `price_ids.enterprise_annual`  | string | No       | —       | Stripe Price ID for Enterprise tier, annual billing.                                                                |
 
 All fields support `env:` and `secret:` credential prefixes (see [Credential Resolution](#credential-resolution)).
 
-> **Note:** `publishable_key` and `pricing_table_id` are frontend-only variables configured on the Zaru client (via `STRIPE_PUBLISHABLE_KEY` and `STRIPE_PRICING_TABLE_ID` environment variables), not in the orchestrator config.
+Pricing is dynamic — the orchestrator fetches available tiers and prices directly from Stripe at runtime via `GET /v1/billing/prices`. No price IDs are configured in NodeConfig.
+
+> **Note:** `STRIPE_PUBLISHABLE_KEY` is a frontend-only environment variable configured on the Zaru client container, not in the orchestrator config.
 
 ---
 

@@ -855,16 +855,12 @@ Optional. Configures Stripe billing integration. Omit this section for self-host
 | ------------------------------ | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
 | `stripe_secret_key`            | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
 | `stripe_webhook_secret`        | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
-| `price_ids.pro_monthly`        | string | No       | —       | Stripe Price ID for Pro tier, monthly billing.                                                                      |
-| `price_ids.pro_annual`         | string | No       | —       | Stripe Price ID for Pro tier, annual billing.                                                                       |
-| `price_ids.business_monthly`   | string | No       | —       | Stripe Price ID for Business tier, monthly billing.                                                                 |
-| `price_ids.business_annual`    | string | No       | —       | Stripe Price ID for Business tier, annual billing.                                                                  |
-| `price_ids.enterprise_monthly` | string | No       | —       | Stripe Price ID for Enterprise tier, monthly billing.                                                               |
-| `price_ids.enterprise_annual`  | string | No       | —       | Stripe Price ID for Enterprise tier, annual billing.                                                                |
 
 All fields support `env:` and `secret:` credential prefixes (see [Credential Resolution](#credential-resolution)).
 
-> **Note:** `publishable_key` and `pricing_table_id` are frontend-only variables configured on the Zaru client (via `STRIPE_PUBLISHABLE_KEY` and `STRIPE_PRICING_TABLE_ID` environment variables), not in the orchestrator config.
+Pricing is dynamic — the orchestrator fetches available tiers and prices directly from Stripe at runtime via `GET /v1/billing/prices`. No price IDs are configured in NodeConfig.
+
+> **Note:** `STRIPE_PUBLISHABLE_KEY` is a frontend-only environment variable configured on the Zaru client container, not in the orchestrator config.
 
 ---
 
