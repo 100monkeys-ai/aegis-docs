@@ -123,7 +123,7 @@ If the agent writes data that would exceed the quota, the write fails with `ENOS
 
 **Single-writer constraint**: In Phase 1, a persistent volume with `read-write` access can only be mounted by one execution at a time. Attempting to mount an already-in-use `read-write` persistent volume will cause the second execution to fail at startup with a `VolumeAlreadyMounted` error.
 
-**File locking**: NFS mounts use the `nolock` option. POSIX advisory locks (`flock`, `fcntl`) are not coordinated between agents. For multi-agent coordination on shared files, use the [ResourceLock](/docs/concepts/swarms#resource-locking) mechanism instead.
+**File locking**: NFS mounts use the `nolock` option. POSIX advisory locks (`flock`, `fcntl`) are not coordinated between agents. For multi-agent coordination on shared files, use the [ResourceLock](/docs/workflows/swarms#resource-locking) mechanism instead.
 
 ---
 

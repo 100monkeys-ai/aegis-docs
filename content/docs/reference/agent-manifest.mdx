@@ -375,7 +375,7 @@ Supports two mutually exclusive runtime modes:
 
 **Prompt template variables:** `{{intent}}`, `{{instruction}}`, `{{input}}`, `{{iteration_number}}`, `{{previous_error}}`, `{{context}}`.
 
-To import community skill definitions as agent baselines, use the built-in [`skill-import` workflow](/docs/guides/importing-skills).
+To import community skill definitions as agent baselines, use the built-in [`skill-import` workflow](/docs/agents/importing-skills).
 
 ### `spec.input_schema`
 
@@ -445,7 +445,7 @@ aegis agent run document-processor \
 
 > **Note:** `spec.input_schema` is a schema descriptor — it declares what inputs the agent accepts and validates them at invocation time. It is distinct from `spec.task.input_data`, which is a map of default runtime values injected into the container environment at startup and is not validated.
 
-> **Judge agents:** When an agent is used as a judge in a `semantic` or `multi_judge` validator, its `input_schema` property names determine how the orchestrator maps evaluation data (output content, objective, criteria, etc.) to the judge's prompt. Declaring `input_schema` in a judge manifest gives the judge structured access to all evaluation fields rather than receiving raw string content. See [Judge Input Schema](/docs/guides/validation#judge-input-schema) for the canonical property names.
+> **Judge agents:** When an agent is used as a judge in a `semantic` or `multi_judge` validator, its `input_schema` property names determine how the orchestrator maps evaluation data (output content, objective, criteria, etc.) to the judge's prompt. Declaring `input_schema` in a judge manifest gives the judge structured access to all evaluation fields rather than receiving raw string content. See [Judge Input Schema](/docs/agents/validation-guide#judge-input-schema) for the canonical property names.
 
 ### `spec.security`
 
@@ -487,7 +487,7 @@ aegis agent run document-processor \
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
 | `llm_timeout_seconds` | integer | | `300` | HTTP socket timeout for bootstrap.py LLM proxy calls in seconds. Applies to network requests from agent to orchestrator. |
 | `validation` | `ValidatorSpec[]` | | | Ordered outer-loop validators executed after each iteration. |
-| `tool_validation` | `ValidatorSpec[]` | | | Ordered inner-loop tool-call validators. Current runtime consumes `semantic` entries for pre-execution judging; see [Tool-Call Judging](/docs/guides/tool-call-judging). |
+| `tool_validation` | `ValidatorSpec[]` | | | Ordered inner-loop tool-call validators. Current runtime consumes `semantic` entries for pre-execution judging; see [Tool-Call Judging](/docs/agents/tool-call-judging). |
 
 ### `spec.execution.validation`
 
@@ -537,7 +537,7 @@ aegis agent run document-processor \
 | `min_confidence` | float | `0.0` | Minimum self-reported confidence required. |
 | `timeout_seconds` | integer | `300` | Maximum wait time for all judge child executions in seconds. |
 
-`tool_validation` is an ordered list of validator specifications. In the current runtime, only `semantic` entries are used for tool-call gating; they run before dispatch and can block the call synchronously. See [Tool-Call Judging](/docs/guides/tool-call-judging) for the inner-loop contract.
+`tool_validation` is an ordered list of validator specifications. In the current runtime, only `semantic` entries are used for tool-call gating; they run before dispatch and can block the call synchronously. See [Tool-Call Judging](/docs/agents/tool-call-judging) for the inner-loop contract.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -681,11 +681,11 @@ For the full matrix including pre-installed toolchains, deprecation lifecycle, a
 
 When you specify `image`, the orchestrator pulls from your container registry. Supports fully-qualified references like `ghcr.io/org/custom:v1.0`.
 
-**Benefits:** Flexibility for OS packages, custom dependencies, private registries. See [Custom Runtime Agents](/docs/guides/custom-runtime-agents) for a complete walkthrough.
+**Benefits:** Flexibility for OS packages, custom dependencies, private registries. See [Custom Runtime Agents](/docs/agents/custom-runtime-agents) for a complete walkthrough.
 
 #### Bootstrap Script
 
-Both paths use the orchestrator-provided bootstrap script for 100monkeys iteration control. To bundle your own bootstrap script in a CustomRuntime image, declare its path in `spec.advanced.bootstrap_path`. See [Custom Runtime Agents — Bootstrap Handling](/docs/guides/custom-runtime-agents#bootstrap-handling).
+Both paths use the orchestrator-provided bootstrap script for 100monkeys iteration control. To bundle your own bootstrap script in a CustomRuntime image, declare its path in `spec.advanced.bootstrap_path`. See [Custom Runtime Agents — Bootstrap Handling](/docs/agents/custom-runtime-agents#bootstrap-handling).
 
 #### Isolation Mode
 
@@ -772,7 +772,7 @@ Common validator variants:
 - `semantic` - spawns a judge agent as a child execution and compares the returned `score` and `confidence` against thresholds.
 - `multi_judge` - runs multiple judge agents and aggregates their results.
 
-For tool-call judging specifics, including the judge payload and bypass semantics, see [Tool-Call Judging](/docs/guides/tool-call-judging).
+For tool-call judging specifics, including the judge payload and bypass semantics, see [Tool-Call Judging](/docs/agents/tool-call-judging).
 
 ### `spec.tools[]`
 
@@ -1097,8 +1097,8 @@ spec:
 
 For validation requiring multiple independent judges with consensus aggregation, use `ValidatorSpec::MultiJudge` inside `spec.execution.validation`. For workflow-level fan-out and consensus, use **workflow `ParallelAgents` states**. See:
 
-- [Building Workflows](/docs/guides/building-workflows) — `ParallelAgents` state type
-- [Validation Guide](/docs/guides/validation) — gradient scoring and confidence gating
+- [Building Workflows](/docs/workflows/building-workflows) — `ParallelAgents` state type
+- [Validation Guide](/docs/agents/validation-guide) — gradient scoring and confidence gating
 
 | Feature | `spec.execution.validation.multi_judge` | Workflow `ParallelAgents` |
 |---|---|---|
@@ -1130,7 +1130,7 @@ For validation requiring multiple independent judges with consensus aggregation,
 - You're using a private container registry
 - You need image signing or vulnerability scanning
 
-**See:** [Custom Runtime Agents](/docs/guides/custom-runtime-agents) for complete walkthrough.
+**See:** [Custom Runtime Agents](/docs/agents/custom-runtime-agents) for complete walkthrough.
 
 ---
 

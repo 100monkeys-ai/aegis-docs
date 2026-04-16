@@ -1,0 +1,13 @@
+{
+    "title": "Workflows",
+    "pages": [
+        "overview",
+        "building-workflows",
+        "creating-workflows-ui",
+        "workflow-visualization",
+        "cicd-pipelines",
+        "swarms",
+        "building-swarms",
+        "human-approvals"
+    ]
+}

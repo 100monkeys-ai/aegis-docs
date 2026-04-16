@@ -1,0 +1,19 @@
+{
+    "title": "Agents",
+    "pages": [
+        "overview",
+        "execution",
+        "dispatch-protocol",
+        "validation",
+        "writing-agents",
+        "agents-as-functions",
+        "configuring-tools",
+        "custom-runtime-agents",
+        "creating-agents-ui",
+        "deploying-agents",
+        "importing-skills",
+        "validation-guide",
+        "tool-call-judging",
+        "local-testing"
+    ]
+}

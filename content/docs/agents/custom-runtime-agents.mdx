@@ -9,7 +9,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 This guide covers the advanced path for agents that require a custom container image, non-standard dependencies, or a custom runtime script.
 
-For most use cases, use the manifest-first default guide: [Writing Your First Agent](/docs/guides/writing-agents).
+For most use cases, use the manifest-first default guide: [Writing Your First Agent](/docs/agents/writing-agents).
 
 ---
 
@@ -77,7 +77,7 @@ Validation is performed at manifest deserialization time; invalid combinations a
 
 ## Project Structure
 
-```
+```text
 my-agent/
 ├── agent.yaml
 ├── bootstrap.py
@@ -426,8 +426,8 @@ aegis task execute python-coder --input '{"task":"Write a prime checker"}' --fol
 
 ## Related Docs
 
-- [Writing Your First Agent](/docs/guides/writing-agents) — Standard (manifest-only) agents
+- [Writing Your First Agent](/docs/agents/writing-agents) — Standard (manifest-only) agents
 - [Standard Runtime Registry](/docs/reference/standard-runtime-registry) — Supported language versions and their Docker images
 - [Agent Manifest Reference](/docs/reference/agent-manifest) — Complete `spec.runtime` field reference
 - [Container Registry & Image Management](/docs/deployment/container-registry) — ImagePullPolicy, private registry credentials, and pull failure troubleshooting
-- [Deploying Agents](/docs/guides/deploying-agents)
+- [Deploying Agents](/docs/agents/deploying-agents)

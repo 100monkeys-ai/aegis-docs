@@ -142,7 +142,7 @@ The inner loop uses a single HTTP endpoint on the orchestrator host:
 POST /v1/dispatch-gateway
 ```
 
-This endpoint handles both initial LLM generation requests and the results of in-container command dispatches. For a detailed breakdown of the message schema and loop mechanics, see the [Aegis Dispatch Protocol](/docs/concepts/dispatch-protocol).
+This endpoint handles both initial LLM generation requests and the results of in-container command dispatches. For a detailed breakdown of the message schema and loop mechanics, see the [Aegis Dispatch Protocol](/docs/agents/dispatch-protocol).
 
 ### Tool Schema Injection
 
@@ -210,7 +210,7 @@ The **Aegis Dispatch Protocol** is the mechanism the orchestrator uses to trigge
 
 The `AgentRuntime` trait abstracts over all supported container backends. The concrete implementation, `ContainerRuntime` (previously named `DockerRuntime`), uses the `bollard` crate to communicate with any Docker-API-compatible daemon -- including both Docker Engine and Podman. The same trait will back future Firecracker support as a separate implementation.
 
-For full technical details, including wire formats and the `bootstrap.py` implementation, see the [Aegis Dispatch Protocol](/docs/concepts/dispatch-protocol) concept page.
+For full technical details, including wire formats and the `bootstrap.py` implementation, see the [Aegis Dispatch Protocol](/docs/agents/dispatch-protocol) concept page.
 
 ### Security and Subcommand Allowlist
 

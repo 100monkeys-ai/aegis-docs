@@ -221,7 +221,7 @@ This section tests the complete Temporal workflow integration: YAML workflow →
 
 ### Architecture Overview
 
-```
+```text
 YAML Workflow → RegisterWorkflowUseCase (Rust)
                         ↓
               TemporalWorkflowMapper
@@ -358,7 +358,7 @@ temporal workflow show --workflow-id test-agent-001 --follow
 
 **Expected event sequence:**
 
-```
+```text
 WorkflowExecutionStarted
 ActivityTaskScheduled: executeAgentActivity
 ActivityTaskStarted
@@ -517,7 +517,7 @@ cargo run --bin aegis -- --port 8088 workflow run 100monkeys-classic \
 
 **Watch for Cortex events in the output:**
 
-```
+```text
 [2026-02-14 12:00:02] Cortex Event: PatternDiscovered { pattern_id: "...", execution_id: "...", ... }
 ```
 
@@ -671,7 +671,7 @@ cargo run --bin aegis -- --port 8088 workflow logs <EXEC_ID> --follow --verbose
 ## See Also
 
 - [aegis-examples](https://github.com/100monkeys-ai/aegis-examples) — all agent and workflow manifests
-- [Writing Your First Agent](/docs/guides/writing-agents)
-- [Deploying & Running Agents](/docs/guides/deploying-agents)
-- [Building Workflows](/docs/guides/building-workflows)
+- [Writing Your First Agent](/docs/agents/writing-agents)
+- [Deploying & Running Agents](/docs/agents/deploying-agents)
+- [Building Workflows](/docs/workflows/building-workflows)
 - [Configuring Storage](/docs/deployment/configuring-storage)

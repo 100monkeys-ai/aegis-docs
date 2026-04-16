@@ -1,12 +1,6 @@
 {
     "title": "Core Concepts",
     "pages": [
-        "agents",
-        "execution",
-        "dispatch-protocol",
-        "validation",
-        "workflows",
-        "swarms",
         "security-model",
         "stimulus-response",
         "cortex-integration",

@@ -5,7 +5,7 @@ description: Validator types, gradient scoring, threshold configuration, inner-l
 
 # Configuring Agent Validation
 
-AEGIS uses a **gradient validation** system. Instead of binary pass/fail, each validator produces a `ValidationScore` (0.0-1.0) and a `Confidence` (0.0-1.0). The execution loop compares the score against a configured threshold to decide whether to proceed to the next iteration or accept the output. AEGIS also supports a separate pre-dispatch semantic judge for selected tool calls via `execution.tool_validation`; see [Tool-Call Judging](/docs/guides/tool-call-judging) for the tool-specific runtime contract.
+AEGIS uses a **gradient validation** system. Instead of binary pass/fail, each validator produces a `ValidationScore` (0.0-1.0) and a `Confidence` (0.0-1.0). The execution loop compares the score against a configured threshold to decide whether to proceed to the next iteration or accept the output. AEGIS also supports a separate pre-dispatch semantic judge for selected tool calls via `execution.tool_validation`; see [Tool-Call Judging](/docs/agents/tool-call-judging) for the tool-specific runtime contract.
 
 ---
 
@@ -126,7 +126,7 @@ Unlike outer validators, the inner `tool_validation` acts synchronously and pre-
 4. If the judge returns `score < min_score` or `confidence < min_confidence`, the tool call is rejected, the judge reasoning is appended to the inner-loop prompt, and the agent tries again without terminating the full iteration.
 5. If the judge passes, the tool call proceeds into the normal routing and policy pipeline.
 
-Operators can explicitly bypass this semantic gate with `skip_judge` for approved tools. That removes only the judge step; the call still remains subject to the normal policy and authorization path. For the complete gate semantics and bypass rules, see [Tool-Call Judging](/docs/guides/tool-call-judging).
+Operators can explicitly bypass this semantic gate with `skip_judge` for approved tools. That removes only the judge step; the call still remains subject to the normal policy and authorization path. For the complete gate semantics and bypass rules, see [Tool-Call Judging](/docs/agents/tool-call-judging).
 
 ```yaml
 execution:

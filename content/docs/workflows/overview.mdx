@@ -1,5 +1,5 @@
 ---
-title: Workflows
+title: What are Workflows?
 description: Declarative finite state machine workflows backed by Temporal. State types including ContainerRun for CI/CD steps, Blackboard context, transition rules, and the Forge reference pattern.
 ---
 
@@ -529,7 +529,7 @@ A transition with no `condition` (or `condition: always`) is an unconditional fa
 
 The **Forge** is the canonical multi-agent development workflow. It implements a 7-state sequential pipeline with a human approval gate:
 
-```
+```text
 RequirementsAI → [Human Approval] → ArchitectureAI → TesterAI → CoderAI → ReviewerAI → CriticAI → SecurityAI
 ```
 

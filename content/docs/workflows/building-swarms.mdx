@@ -17,7 +17,7 @@ Use swarms when a single agent's task is best decomposed into parallel or sequen
 - **Specialization**: Route sub-tasks to agents with different capabilities (e.g., a `python-expert` and a `security-reviewer` in parallel).
 - **Pipeline decomposition**: Break a large task into sequential stages, each with isolated state and its own iteration loop.
 
-If your decomposition is static and predictable, consider a [Workflow FSM](/docs/concepts/workflows) instead — it is easier to monitor and debug. Use swarms when decomposition needs to be dynamic (e.g., spawn one child per input item).
+If your decomposition is static and predictable, consider a [Workflow FSM](/docs/workflows/overview) instead — it is easier to monitor and debug. Use swarms when decomposition needs to be dynamic (e.g., spawn one child per input item).
 
 ---
 
@@ -195,7 +195,7 @@ Messages are delivered in send order between the same sender-receiver pair. Ther
 
 A child agent's `security_context` must be a subset of the parent's. If your parent runs with `security_context: default` and you attempt to spawn a child with `security_context: privileged`, the spawn will be rejected:
 
-```
+```text
 SpawnError: ContextExceedsParentCeiling (requested=privileged, parent=default)
 ```
 

@@ -60,7 +60,7 @@ The `ExecutionSupervisor` runs validators sequentially after the inner loop comp
                                Failed
 ```
 
-Validators are evaluated in the order they are declared. Expensive LLM judges are only reached if the cheaper deterministic validators (exit code, JSON schema, regex) pass first — making it cost-effective to chain them. See [Configuring Agent Validation](/docs/guides/validation) for ordering strategies.
+Validators are evaluated in the order they are declared. Expensive LLM judges are only reached if the cheaper deterministic validators (exit code, JSON schema, regex) pass first — making it cost-effective to chain them. See [Configuring Agent Validation](/docs/agents/validation-guide) for ordering strategies.
 
 ### Policy Violations in Validation Context
 
@@ -81,7 +81,7 @@ When a judge's self-reported `confidence` falls below the validator's `min_confi
 
 ## Inner-Loop Tool Validation
 
-While the outer-loop `validation` runs at the **end** of an iteration, AEGIS also supports **inner-loop** validation via the `tool_validation` field. For the full tool-call flow, judge payload contract, and operator bypass semantics, see [Tool-Call Judging](/docs/guides/tool-call-judging).
+While the outer-loop `validation` runs at the **end** of an iteration, AEGIS also supports **inner-loop** validation via the `tool_validation` field. For the full tool-call flow, judge payload contract, and operator bypass semantics, see [Tool-Call Judging](/docs/agents/tool-call-judging).
 
 This is a pre-execution semantic judge for tool intent, not a post-execution output review. If an agent proposes a dangerous `cmd.run` payload, the orchestrator pauses the execution, submits the proposed tool call to the semantic judge, and uses the returned gradient result to either permit the invocation or reject it synchronously.
 
@@ -147,6 +147,6 @@ All four judges run in parallel. The orchestrator collects all results before co
 | `unanimous` | All judges must score ≥ threshold. Uses minimum confidence across judges. | Security audits, production deployment gates. |
 | `best_of_n` | Rank by `score × confidence`; take top N; weighted average of those N. | Reduce impact of outlier or misbehaving judges. |
 
-For configuration details — validator YAML syntax, threshold fields, judge `mode: one-shot` requirements — see [Configuring Agent Validation](/docs/guides/validation).
+For configuration details — validator YAML syntax, threshold fields, judge `mode: one-shot` requirements — see [Configuring Agent Validation](/docs/agents/validation-guide).
 
 For using `ParallelAgents` states in workflows to run judges as part of a multi-stage pipeline, see the [Workflow Manifest Reference](/docs/reference/workflow-manifest).

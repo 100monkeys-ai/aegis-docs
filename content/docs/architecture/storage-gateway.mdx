@@ -324,7 +324,7 @@ Persistent volumes, by contrast, survive indefinitely and are managed through th
 
 All NFS mounts in Phase 1 use `nolock`. This disables the NLM (Network Lock Manager) protocol, meaning POSIX advisory file locks (`flock`, `fcntl`) are not coordinated across agents.
 
-This is safe for the common case of single-agent-per-volume. For multi-agent coordination (swarms), use the [ResourceLock](/docs/concepts/swarms#resource-locking) mechanism provided by the swarm coordination context instead of POSIX locks.
+This is safe for the common case of single-agent-per-volume. For multi-agent coordination (swarms), use the [ResourceLock](/docs/workflows/swarms#resource-locking) mechanism provided by the swarm coordination context instead of POSIX locks.
 
 ### Single-Writer Constraint
 

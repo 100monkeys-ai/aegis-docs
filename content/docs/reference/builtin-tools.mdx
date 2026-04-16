@@ -32,7 +32,7 @@ For **read-only tools** the judge often adds latency without meaningful safety v
 
 The judge only applies to inner-loop tool calls routed through the orchestrator's tool invocation path. It is not the same as outer-loop iteration validation, and it is not part of direct SEAL authentication or policy enforcement.
 
-The canonical explanation of this control is in [Tool-Call Judging](/docs/guides/tool-call-judging).
+The canonical explanation of this control is in [Tool-Call Judging](/docs/agents/tool-call-judging).
 
 **Compiled-in defaults:**
 
@@ -293,7 +293,7 @@ The `web.*` tools provide native HTTP request and web search capabilities.
 
 Performs an internet search query using the [Brave Search REST API](https://brave.com/search/api/). This is a native builtin — no external MCP server process is required.
 
-**Requires configuration:** An API key must be set via the `api_key` field on the `web.search` entry in `spec.builtin_dispatchers`. See [Configuring Tools — Enabling `web.search`](/docs/guides/configuring-tools#part-b-enabling-websearch) for setup instructions.
+**Requires configuration:** An API key must be set via the `api_key` field on the `web.search` entry in `spec.builtin_dispatchers`. See [Configuring Tools — Enabling `web.search`](/docs/agents/configuring-tools#part-b-enabling-websearch) for setup instructions.
 
 **Free tier:** 2,000 requests/month.
 

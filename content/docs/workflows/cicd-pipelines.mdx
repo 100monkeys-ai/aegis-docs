@@ -35,7 +35,7 @@ All states in a workflow share the same volumes. An agent writes code to `/works
 
 ### Blackboard Integration
 
-Container step outputs land on the [Blackboard](/docs/concepts/workflows#the-blackboard) under the state name, accessible by subsequent states:
+Container step outputs land on the [Blackboard](/docs/workflows/overview#the-blackboard) under the state name, accessible by subsequent states:
 
 ```text
 {{BUILD.output.exit_code}}    # 0 on success
@@ -628,6 +628,6 @@ Verify `registry_credentials` resolves to a valid credential in the vault and th
 
 - [Workflow Manifest Reference](/docs/reference/workflow-manifest) — Complete `ContainerRun` and `ParallelContainerRun` field specification
 - [Configuring Storage](/docs/deployment/configuring-storage) — Volume types, lifecycle, and access modes
-- [Writing Agents](/docs/guides/writing-agents) — Build the agent steps that feed into your CI/CD pipeline
-- [Human Approvals](/docs/guides/human-approvals) — Add operator approval gates between pipeline stages
-- [Building Swarms](/docs/guides/building-swarms) — Spawn child agents from within a running workflow
+- [Writing Agents](/docs/agents/writing-agents) — Build the agent steps that feed into your CI/CD pipeline
+- [Human Approvals](/docs/workflows/human-approvals) — Add operator approval gates between pipeline stages
+- [Building Swarms](/docs/workflows/building-swarms) — Spawn child agents from within a running workflow

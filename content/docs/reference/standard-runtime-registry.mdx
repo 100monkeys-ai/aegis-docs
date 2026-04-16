@@ -127,7 +127,7 @@ pip install requests numpy
 apt-get install -y libssl-dev
 ```
 
-> **Tip:** If you need more than a few OS packages, consider a [Custom Runtime](/docs/guides/custom-runtime-agents) to avoid repeated installs at execution time.
+> **Tip:** If you need more than a few OS packages, consider a [Custom Runtime](/docs/agents/custom-runtime-agents) to avoid repeated installs at execution time.
 
 ### JavaScript / TypeScript (`node:x-alpine`, Alpine 3.18)
 
@@ -217,15 +217,15 @@ Version removals are announced **two phases in advance**: a deprecation warning 
 | Need | Use |
 |---|---|
 | Supported language and version | StandardRuntime — no image to build or maintain |
-| OS-level packages (e.g., `ffmpeg`, `graphviz`) | [CustomRuntime](/docs/guides/custom-runtime-agents) |
-| Language version not in the registry | [CustomRuntime](/docs/guides/custom-runtime-agents) |
-| Pre-compiled binaries in the image | [CustomRuntime](/docs/guides/custom-runtime-agents) |
-| Proprietary or private dependencies | [CustomRuntime](/docs/guides/custom-runtime-agents) |
+| OS-level packages (e.g., `ffmpeg`, `graphviz`) | [CustomRuntime](/docs/agents/custom-runtime-agents) |
+| Language version not in the registry | [CustomRuntime](/docs/agents/custom-runtime-agents) |
+| Pre-compiled binaries in the image | [CustomRuntime](/docs/agents/custom-runtime-agents) |
+| Proprietary or private dependencies | [CustomRuntime](/docs/agents/custom-runtime-agents) |
 
 ---
 
 ## See Also
 
-- [Custom Runtime Agents](/docs/guides/custom-runtime-agents) — Using your own Docker image
+- [Custom Runtime Agents](/docs/agents/custom-runtime-agents) — Using your own Docker image
 - [Container Registry & Image Management](/docs/deployment/container-registry) — ImagePullPolicy, private registry authentication, and image caching
 - [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.runtime` field definitions

@@ -2,24 +2,8 @@
     "title": "Guides",
     "pages": [
         "authentication",
-        "writing-agents",
-        "agents-as-functions",
-        "configuring-tools",
-        "custom-runtime-agents",
-        "creating-agents-ui",
-        "deploying-agents",
-        "importing-skills",
         "management-via-mcp",
-        "building-workflows",
-        "creating-workflows-ui",
-        "workflow-visualization",
-        "cicd-pipelines",
-        "building-swarms",
         "vault",
-        "validation",
-        "tool-call-judging",
-        "local-testing",
-        "human-approvals",
         "troubleshooting"
     ]
 }
