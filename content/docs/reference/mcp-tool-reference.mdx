@@ -14,7 +14,7 @@ This page is the authoritative schema reference for all AEGIS MCP tools. For the
 AEGIS tools are divided into three access tiers. The tier determines which callers may invoke a tool.
 
 **User tools** — available to all agents and Zaru users:
-`fs.read`, `fs.write`, `fs.list`, `fs.create_dir`, `fs.create.dir`, `fs.delete`, `fs.edit`,
+`fs.read`, `fs.write`, `fs.list`, `fs.create_dir`, `fs.delete`, `fs.edit`,
 `fs.multi_edit`, `fs.grep`, `fs.glob`, `web.search`, `web.fetch`, `cmd.run`,
 `aegis.agent.list`, `aegis.agent.export`, `aegis.agent.generate`, `aegis.agent.logs`,
 `aegis.agent.search`, `aegis.agent.wait`, `aegis.workflow.list`, `aegis.workflow.validate`,
@@ -127,7 +127,6 @@ Operator always has full access; only additional modes are listed per tool.
 | `fs.write` | fs | false | `path`, `content` | Op |
 | `fs.list` | fs | true | `path` | Op |
 | `fs.create_dir` | fs | false | `path` | Op |
-| `fs.create.dir` | fs | false | `path` | Op |
 | `fs.delete` | fs | false | `path` | Op |
 | `fs.edit` | fs | false | `path`, `target_content`, `replacement_content` | Op |
 | `fs.multi_edit` | fs | false | `path`, `edits` | Op |
@@ -284,25 +283,6 @@ Creates a new directory along with any necessary parent directories.
   "path": "/workspace/output/reports"
 }
 ```
-
-### `fs.create.dir`
-
-<Callout type="info">
-  `fs.create.dir` is an alias for `fs.create_dir`. Both tools have identical parameters, behavior,
-  and output shape. Prefer `fs.create_dir` in new agent manifests.
-</Callout>
-
-Alias for fs.create_dir. Creates a new directory along with any necessary parent directories.
-
-**Access:** User
-
-**`skip_judge`:** `false`
-
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the directory to create. |
-
-**Output:** Same as `fs.create_dir`.
 
 ### `fs.delete`
 
