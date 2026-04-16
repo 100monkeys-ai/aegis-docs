@@ -3,6 +3,7 @@
     "pages": [
         "overview",
         "chat",
+        "context-panel",
         "the-architect",
         "the-colony",
         "the-workshop",

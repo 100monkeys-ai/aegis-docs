@@ -1,0 +1,76 @@
+---
+title: Context Panel & Glass Laboratory
+description: The real-time context panel for browsing agents, workflows, tools, scripts, and monitoring execution progress.
+---
+
+# Context Panel & Glass Laboratory
+
+The context panel is the collapsible right sidebar in the Zaru chat interface. It serves two
+purposes: browsing platform resources (agents, workflows, tools, scripts) and monitoring
+execution progress in real time via the Glass Laboratory.
+
+## Opening the Context Panel
+
+Click the sidebar icon in the top-right corner of the chat interface to expand or collapse the
+panel. On mobile, it opens as a sheet overlay.
+
+## Mode-Aware Tabs
+
+The context panel dynamically shows different tabs based on your conversation mode:
+
+| Mode | Tabs |
+| -------- | ----------------------- |
+| Chat | No context panel (conversation only) |
+| Agentic | Agents, Tools |
+| Execute | Workflows, Tools |
+| Workflow | Agents, Workflows, Tools |
+| Live | Scripts, Tools |
+| Operator | Agents, Workflows, Tools |
+
+## Agent Browser
+
+Browse and search deployed agents. Each agent card shows name, description, version, and
+labels. Click an agent to view details or interact with it:
+
+- **Execute** opens an inline parameter form and runs the agent directly, showing the result
+  inside the panel.
+- **Send to Chat** injects a structured prompt into the chat input so Zaru can assist with
+  configuration before running the agent.
+
+## Workflow Browser
+
+Browse and search registered workflows. View workflow metadata, state definitions, and trigger
+execution from the panel. Each workflow card offers the same **Execute** and **Send to Chat**
+actions as agents.
+
+## Tool Browser
+
+Browse available SEAL tools. Search by name or capability. View tool descriptions and input
+schemas. Each tool supports direct execution or chat-assisted invocation.
+
+## Script Browser
+
+Available in Live mode. Browse saved TypeScript scripts. Search by name or description. From
+the panel you can:
+
+- **Run** a script directly
+- **Insert into chat** for modification before running
+- **Fork** a script to create an editable copy
+
+Script persistence is coming soon — saved scripts will appear here automatically.
+
+## Glass Laboratory
+
+When an agent or workflow execution is running, the Glass Laboratory renders each step of the
+execution pipeline in real time:
+
+- **Iteration progress** — current iteration number and total allowed
+- **Tool calls** — invocations with arguments and results
+- **LLM reasoning and output** — the agent's generated content at each step
+- **Validation scores and judge verdicts** — feedback from iteration judges
+- **File operations and workspace changes** — modifications made during execution
+- **Workflow state transitions** — FSM state changes as the workflow progresses
+- **Policy decisions** — security decisions made by the SEAL Gateway
+
+The Glass Lab updates live via server-sent events. Completed executions remain viewable until
+the conversation moves on.
