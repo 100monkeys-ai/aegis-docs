@@ -3,6 +3,8 @@
     "pages": [
         "overview",
         "mcp-client-setup",
-        "execute-mode"
+        "execute-mode",
+        "control-plane",
+        "vault"
     ]
 }

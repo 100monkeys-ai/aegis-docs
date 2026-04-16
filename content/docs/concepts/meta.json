@@ -3,7 +3,6 @@
     "pages": [
         "security-model",
         "stimulus-response",
-        "cortex-integration",
-        "control-plane"
+        "cortex-integration"
     ]
 }
