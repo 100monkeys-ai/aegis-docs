@@ -123,7 +123,7 @@ The table below covers the most common fields. For the complete field-by-field s
 | `execution` | object | | Iteration mode, max iterations, and validation criteria. |
 | `tools` | object[] or string[] | | MCP tools the agent may invoke. |
 | `env` | map[string]string | | Environment variables injected into the agent container. |
-| `volumes` | object[] | | Volume mounts. See [Configuring Storage](/docs/guides/configuring-storage). |
+| `volumes` | object[] | | Volume mounts. See [Configuring Storage](/docs/deployment/configuring-storage). |
 
 ### `spec.security`
 
@@ -239,7 +239,7 @@ llm:
 
 To swap the model backing the `default` alias for all agents on the node, change the alias mapping in config and restart the daemon — no manifest changes required.
 
-See [Configuring LLM Providers](/docs/guides/llm-providers) for the full provider configuration reference.
+See [Configuring LLM Providers](/docs/deployment/llm-providers) for the full provider configuration reference.
 
 ---
 

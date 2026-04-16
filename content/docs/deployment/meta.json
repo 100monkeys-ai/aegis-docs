@@ -16,6 +16,14 @@
         "container-registry",
         "multi-node",
         "observability",
-        "production-hardening"
+        "production-hardening",
+        "configuring-storage",
+        "configuring-webhooks",
+        "configuring-security-contexts",
+        "llm-providers",
+        "multi-tenancy",
+        "backup-restore",
+        "disaster-recovery",
+        "upgrade-procedures"
     ]
 }

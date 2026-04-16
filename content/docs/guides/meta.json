@@ -15,19 +15,11 @@
         "workflow-visualization",
         "cicd-pipelines",
         "building-swarms",
-        "configuring-storage",
         "vault",
-        "llm-providers",
         "validation",
         "tool-call-judging",
         "local-testing",
-        "configuring-webhooks",
         "human-approvals",
-        "configuring-security-contexts",
-        "multi-tenancy",
-        "backup-restore",
-        "disaster-recovery",
-        "upgrade-procedures",
         "troubleshooting"
     ]
 }
