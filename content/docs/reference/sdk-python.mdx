@@ -13,66 +13,304 @@ pip install aegis-sdk
 
 The SDK consists of two distinct layers:
 
-- **`AegisClient`** — async HTTP client: start executions, manage approvals, invoke SEAL tools, administer tenants and rate limits
+- **`AegisClient`** — async HTTP client: manage agents, executions, workflows, volumes, credentials, secrets, SEAL tools, and more
 - **`bootstrap.py` / Dispatch Protocol types** — agent-side: the wire format exchanged between a custom bootstrap script and the orchestrator's `/v1/dispatch-gateway`
 
 ---
 
 ## `AegisClient`
 
+### Authentication
+
+The client supports two authentication modes:
+
+**Service-to-service (OAuth2 client credentials):**
+
 ```python
 from aegis import AegisClient
 
 async with AegisClient(
-    base_url="https://your-aegis-node",
-    api_key="your-keycloak-jwt",     # Optional; alternatively set AEGIS_API_KEY env var
+    base_url="https://your-orchestrator.com",
+    keycloak_url="https://auth.example.com",
+    realm="aegis-system",
+    client_id="your-client-id",
+    client_secret="your-client-secret",
 ) as client:
     resp = await client.start_execution("agt-uuid", "Write a primality check in Python")
     print(resp.execution_id)
+```
+
+**Bearer token passthrough (for user-scoped access):**
+
+```python
+from aegis import AegisClient
+
+async with AegisClient(
+    base_url="https://your-orchestrator.com",
+    bearer_token="user-jwt-token-here",
+) as client:
+    agents = await client.list_agents()
 ```
 
 ### Method Reference
 
 | Section | Method | Description |
 |---------|--------|-------------|
-| Execution | `start_execution(agent_id, input, context_overrides?)` | Start an agent execution |
-| Execution | `stream_execution(execution_id, token?)` | Stream execution events (SSE) |
-| Human Approvals | `list_pending_approvals()` | List all pending human-in-the-loop approvals |
-| Human Approvals | `get_pending_approval(approval_id)` | Get a single pending approval |
-| Human Approvals | `approve_request(approval_id, feedback?, approved_by?)` | Approve a pending request |
-| Human Approvals | `reject_request(approval_id, reason, rejected_by?)` | Reject a pending request |
-| SEAL | `attest_seal(payload)` | Obtain an SEAL security attestation token |
-| SEAL | `invoke_seal(payload)` | Invoke an SEAL tool |
-| SEAL | `list_seal_tools(security_context?)` | List available SEAL tools |
-| Dispatch Gateway | `dispatch_gateway(payload)` | Send a dispatch gateway request |
-| Stimulus | `ingest_stimulus(payload)` | Ingest a stimulus event |
-| Stimulus | `send_webhook(source, payload)` | Send a webhook stimulus |
-| Workflow Logs | `get_workflow_execution_logs(execution_id, limit?, offset?)` | Fetch paginated workflow logs |
-| Workflow Logs | `stream_workflow_execution_logs(execution_id)` | Stream workflow logs (SSE) |
-| Admin: Tenants | `create_tenant(slug, display_name, tier?)` | Create a new tenant |
-| Admin: Tenants | `list_tenants()` | List all tenants |
-| Admin: Tenants | `suspend_tenant(slug)` | Suspend a tenant |
-| Admin: Tenants | `delete_tenant(slug)` | Delete a tenant |
-| Admin: Rate Limits | `list_rate_limit_overrides(tenant_id?, user_id?)` | List rate limit overrides |
-| Admin: Rate Limits | `create_rate_limit_override(payload)` | Create a rate limit override |
-| Admin: Rate Limits | `delete_rate_limit_override(override_id)` | Delete a rate limit override |
-| Admin: Rate Limits | `get_rate_limit_usage(scope_type, scope_id)` | Get rate limit usage records |
-| Health | `health_live()` | Liveness probe |
-| Health | `health_ready()` | Readiness probe |
+| **Agent Management** | | |
+| | `deploy_agent(manifest)` | Deploy a new agent from a manifest |
+| | `list_agents()` | List all deployed agents |
+| | `get_agent(agent_id)` | Get agent details by ID |
+| | `lookup_agent(name)` | Look up an agent by name |
+| | `update_agent(agent_id, payload)` | Update an agent's configuration |
+| | `delete_agent(agent_id)` | Delete a deployed agent |
+| | `execute_agent(agent_id, input, intent?, context_overrides?)` | Execute an agent directly (alias route) |
+| | `list_agent_versions(agent_id)` | List version history for an agent |
+| | `update_agent_scope(agent_id, payload)` | Update an agent's visibility scope |
+| | `stream_agent_events(agent_id)` | Stream SSE events for an agent |
+| **Workflow Management** | | |
+| | `register_workflow(payload)` | Register a new workflow definition |
+| | `list_workflows()` | List all registered workflows |
+| | `get_workflow(name)` | Get a workflow definition by name |
+| | `delete_workflow(name)` | Delete a workflow definition |
+| | `list_workflow_versions(name)` | List version history for a workflow |
+| | `update_workflow_scope(name, payload)` | Update a workflow's visibility scope |
+| | `run_workflow(name, payload)` | Run a workflow by name |
+| | `execute_temporal_workflow(payload)` | Execute a Temporal workflow |
+| | `register_temporal_workflow(payload)` | Register a Temporal workflow (alias) |
+| **Workflow Execution Management** | | |
+| | `list_workflow_executions()` | List all workflow executions |
+| | `get_workflow_execution(execution_id)` | Get a workflow execution by ID |
+| | `remove_workflow_execution(execution_id)` | Remove a workflow execution record |
+| | `signal_workflow_execution(execution_id, payload)` | Send a signal to a running workflow execution |
+| | `cancel_workflow_execution(execution_id)` | Cancel a running workflow execution |
+| **Execution** | | |
+| | `start_execution(agent_id, input, intent?, context_overrides?)` | Start an agent execution |
+| | `stream_execution(execution_id, token?)` | Stream execution events (SSE) |
+| | `get_execution(execution_id)` | Get execution details by ID |
+| | `list_executions()` | List all executions |
+| | `cancel_execution(execution_id)` | Cancel a running execution |
+| | `delete_execution(execution_id)` | Delete an execution record |
+| | `get_execution_file(execution_id, path)` | Download a file from an execution's workspace |
+| **Human Approvals** | | |
+| | `list_pending_approvals()` | List all pending human-in-the-loop approvals |
+| | `get_pending_approval(approval_id)` | Get a single pending approval |
+| | `approve_request(approval_id, feedback?, approved_by?)` | Approve a pending request |
+| | `reject_request(approval_id, reason, rejected_by?)` | Reject a pending request |
+| **SEAL** | | |
+| | `attest_seal(payload)` | Obtain a SEAL security attestation token |
+| | `invoke_seal(payload)` | Invoke a SEAL tool |
+| | `list_seal_tools(security_context?)` | List available SEAL tools |
+| **Dispatch Gateway** | | |
+| | `dispatch_gateway(payload)` | Send a dispatch gateway request |
+| **Stimulus** | | |
+| | `list_stimuli()` | List all stimulus events |
+| | `get_stimulus(stimulus_id)` | Get a stimulus event by ID |
+| | `ingest_stimulus(payload)` | Ingest a stimulus event |
+| | `send_webhook(source, payload)` | Send a webhook stimulus |
+| **Volume Management** | | |
+| | `create_volume(payload)` | Create a new storage volume |
+| | `list_volumes()` | List all volumes |
+| | `get_volume(volume_id)` | Get volume details |
+| | `rename_volume(volume_id, payload)` | Rename a volume |
+| | `delete_volume(volume_id)` | Delete a volume |
+| | `get_volume_quota()` | Get storage quota information |
+| | `list_files(volume_id, path?)` | List files in a volume |
+| | `download_file(volume_id, path)` | Download a file from a volume |
+| | `upload_file(volume_id, file, path?)` | Upload a file to a volume |
+| | `mkdir(volume_id, path)` | Create a directory in a volume |
+| | `move_path(volume_id, payload)` | Move or rename a file/directory in a volume |
+| | `delete_path(volume_id, path)` | Delete a file or directory from a volume |
+| **Credential Management** | | |
+| | `list_credentials()` | List all stored credentials |
+| | `get_credential(credential_id)` | Get a credential by ID |
+| | `store_api_key(payload)` | Store an API key credential |
+| | `revoke_credential(credential_id)` | Revoke a credential |
+| | `rotate_credential(credential_id)` | Rotate a credential's secret |
+| | `oauth_initiate(payload)` | Initiate an OAuth credential flow |
+| | `oauth_callback(params)` | Handle OAuth callback |
+| | `device_poll(payload)` | Poll for device authorization completion |
+| | `list_grants(credential_id)` | List agent grants for a credential |
+| | `add_grant(credential_id, payload)` | Grant an agent access to a credential |
+| | `revoke_grant(credential_id, grant_id)` | Revoke an agent's credential grant |
+| **Secrets Management** | | |
+| | `list_secrets()` | List all secrets |
+| | `get_secret(path)` | Read a secret by path |
+| | `write_secret(path, payload)` | Write a secret |
+| | `delete_secret(path)` | Delete a secret |
+| **API Key Management** | | |
+| | `list_api_keys()` | List all API keys |
+| | `create_api_key(payload)` | Create a new API key |
+| | `revoke_api_key(key_id)` | Revoke an API key |
+| **Colony Management** | | |
+| | `list_members()` | List colony members |
+| | `invite_member(payload)` | Invite a new member |
+| | `remove_member(user_id)` | Remove a colony member |
+| | `update_role(payload)` | Update a member's role |
+| | `get_saml_config()` | Get SAML IdP configuration |
+| | `set_saml_config(payload)` | Set SAML IdP configuration |
+| | `get_subscription()` | Get subscription details |
+| **Cluster & Infrastructure** | | |
+| | `get_cluster_status()` | Get cluster status |
+| | `get_cluster_nodes()` | List cluster nodes |
+| **Swarm Coordination** | | |
+| | `list_swarms()` | List active swarms |
+| | `get_swarm(swarm_id)` | Get swarm details |
+| **Observability** | | |
+| | `get_dashboard_summary()` | Get the observability dashboard summary |
+| | `list_security_incidents()` | List security incidents |
+| | `list_storage_violations()` | List storage policy violations |
+| **Cortex** | | |
+| | `list_cortex_patterns()` | List learned execution patterns |
+| | `get_cortex_skills()` | Get the cortex skill inventory |
+| | `get_cortex_metrics()` | Get cortex performance metrics |
+| **User** | | |
+| | `get_user_rate_limit_usage()` | Get the current user's rate limit usage |
+| **Workflow Logs** | | |
+| | `get_workflow_execution_logs(execution_id, limit?, offset?)` | Fetch paginated workflow logs |
+| | `stream_workflow_execution_logs(execution_id)` | Stream workflow logs (SSE) |
+| **Admin: Tenants** | | |
+| | `create_tenant(slug, display_name, tier?)` | Create a new tenant |
+| | `list_tenants()` | List all tenants |
+| | `suspend_tenant(slug)` | Suspend a tenant |
+| | `delete_tenant(slug)` | Delete a tenant |
+| **Admin: Rate Limits** | | |
+| | `list_rate_limit_overrides(tenant_id?, user_id?)` | List rate limit overrides |
+| | `create_rate_limit_override(payload)` | Create a rate limit override |
+| | `delete_rate_limit_override(override_id)` | Delete a rate limit override |
+| | `get_rate_limit_usage(scope_type, scope_id)` | Get rate limit usage records |
+| **Health** | | |
+| | `health_live()` | Liveness probe |
+| | `health_ready()` | Readiness probe |
+| **Lifecycle** | | |
+| | `aclose()` | Close the underlying HTTP client |
+
+---
+
+### Agent Management
+
+#### `deploy_agent(manifest)`
+
+Deploy a new agent from a manifest dictionary.
+
+```python
+resp = await client.deploy_agent({
+    "name": "code-reviewer",
+    "language": "python",
+    "version": "3.12",
+    "instruction": "You are a code reviewer.",
+})
+print(resp["agent_id"])
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `manifest` | `Dict[str, Any]` | Agent manifest payload |
+
+**Returns:** `Dict[str, Any]` with `agent_id`.
+
+---
+
+#### `list_agents()`
+
+List all deployed agents visible to the caller's tenant.
+
+**Returns:** `Dict[str, Any]` with `agents: List`.
+
+---
+
+#### `get_agent(agent_id)`
+
+Get details for a specific agent.
+
+**Returns:** `Dict[str, Any]` — full agent record.
+
+---
+
+#### `lookup_agent(name)`
+
+Look up an agent by its unique name.
+
+**Returns:** `Dict[str, Any]` with `agent_id`, `name`, `tenant_id`.
+
+---
+
+#### `update_agent(agent_id, payload)`
+
+Update an agent's configuration (partial update).
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `delete_agent(agent_id)`
+
+Delete a deployed agent.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `execute_agent(agent_id, input, intent?, context_overrides?)`
+
+Execute an agent via the direct `POST /v1/agents/{agent_id}/execute` route.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `agent_id` | `str` | UUID of the agent |
+| `input` | `str` | Task prompt |
+| `intent` | `Optional[str]` | Semantic intent for routing |
+| `context_overrides` | `Any` | Optional context overrides |
+
+**Returns:** `Dict[str, Any]` with `execution_id`.
+
+---
+
+#### `list_agent_versions(agent_id)`
+
+List the version history of an agent.
+
+**Returns:** `Dict[str, Any]` with `versions: List`.
+
+---
+
+#### `update_agent_scope(agent_id, payload)`
+
+Update an agent's visibility scope (e.g., public, tenant-only).
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `stream_agent_events(agent_id)`
+
+Stream real-time SSE events for all executions of a given agent.
+
+**Returns:** `AsyncGenerator[ExecutionEvent, None]`.
 
 ---
 
 ### Execution
 
-#### `start_execution(agent_id, input, context_overrides?)`
+#### `start_execution(agent_id, input, intent?, context_overrides?)`
 
 Start an agent execution and receive an execution ID for streaming.
 
 ```python
-async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
+async with AegisClient(
+    base_url="https://your-orchestrator.com",
+    keycloak_url="https://auth.example.com",
+    realm="aegis-system",
+    client_id="my-client",
+    client_secret="my-secret",
+) as client:
     resp = await client.start_execution(
         agent_id="agt-uuid",
         input="Write a primality check in Python",
+        intent="code-generation",
     )
     print(resp.execution_id)  # "exec-uuid"
 ```
@@ -83,6 +321,7 @@ async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
 |------|------|-------------|
 | `agent_id` | `str` | UUID of a deployed agent |
 | `input` | `str` | Task prompt for the agent |
+| `intent` | `Optional[str]` | Semantic intent label for discovery routing |
 | `context_overrides` | `Any` | Optional context overrides |
 
 **Returns:** `StartExecutionResponse` with `execution_id: str`.
@@ -94,11 +333,8 @@ async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
 Stream real-time execution events via SSE. Returns an async generator.
 
 ```python
-async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
-    resp = await client.start_execution("agt-uuid", "Solve the task")
-
-    async for event in client.stream_execution(resp.execution_id):
-        print(f"[{event.event_type}] {event.data}")
+async for event in client.stream_execution(resp.execution_id):
+    print(f"[{event.event_type}] {event.data}")
 ```
 
 **Parameters:**
@@ -109,6 +345,53 @@ async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
 | `token` | `str` | Optional auth token override |
 
 **Returns:** `AsyncGenerator[ExecutionEvent, None]` — each event has `event_type: str` and `data: Dict[str, Any]`.
+
+---
+
+#### `get_execution(execution_id)`
+
+Get details of a specific execution.
+
+**Returns:** `Dict[str, Any]` — full execution record including status, agent_id, timestamps.
+
+---
+
+#### `list_executions()`
+
+List all executions visible to the caller.
+
+**Returns:** `Dict[str, Any]` with `executions: List`.
+
+---
+
+#### `cancel_execution(execution_id)`
+
+Cancel a running execution.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `delete_execution(execution_id)`
+
+Delete an execution record.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `get_execution_file(execution_id, path)`
+
+Download a file from an execution's workspace.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `execution_id` | `str` | UUID of the execution |
+| `path` | `str` | File path within the workspace |
+
+**Returns:** `bytes` — raw file content.
 
 ---
 
@@ -161,6 +444,121 @@ Reject a pending request with a mandatory reason.
 
 ---
 
+### Workflow Management
+
+#### `register_workflow(payload)`
+
+Register a new workflow definition.
+
+```python
+resp = await client.register_workflow({
+    "name": "data-pipeline",
+    "definition": { ... },
+})
+```
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `list_workflows()`
+
+List all registered workflow definitions.
+
+**Returns:** `Dict[str, Any]` with `workflows: List`.
+
+---
+
+#### `get_workflow(name)`
+
+Get a workflow definition by name.
+
+**Returns:** `Dict[str, Any]` — full workflow record.
+
+---
+
+#### `delete_workflow(name)`
+
+Delete a workflow definition.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `list_workflow_versions(name)`
+
+List version history for a workflow.
+
+**Returns:** `Dict[str, Any]` with `versions: List`.
+
+---
+
+#### `update_workflow_scope(name, payload)`
+
+Update a workflow's visibility scope.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `run_workflow(name, payload)`
+
+Run a workflow by name with the given input payload.
+
+**Returns:** `Dict[str, Any]` with execution details.
+
+---
+
+#### `execute_temporal_workflow(payload)`
+
+Execute a Temporal workflow directly.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Workflow Execution Management
+
+#### `list_workflow_executions()`
+
+List all workflow executions.
+
+**Returns:** `Dict[str, Any]` with `executions: List`.
+
+---
+
+#### `get_workflow_execution(execution_id)`
+
+Get a workflow execution by ID.
+
+**Returns:** `Dict[str, Any]` — full workflow execution record including `final_output` when available.
+
+---
+
+#### `remove_workflow_execution(execution_id)`
+
+Remove a workflow execution record.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `signal_workflow_execution(execution_id, payload)`
+
+Send a signal to a running workflow execution (e.g., to advance state or provide input).
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `cancel_workflow_execution(execution_id)`
+
+Cancel a running workflow execution.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
 ### SEAL
 
 #### `attest_seal(payload)`
@@ -173,7 +571,7 @@ Obtain a security attestation token for SEAL tool invocation.
 
 #### `invoke_seal(payload)`
 
-Invoke an SEAL tool with an attested payload.
+Invoke a SEAL tool with an attested payload.
 
 **Returns:** `Dict[str, Any]` — tool-specific response.
 
@@ -199,6 +597,22 @@ Send a raw dispatch gateway request. Used by custom bootstrap scripts.
 
 ### Stimulus
 
+#### `list_stimuli()`
+
+List all stimulus events.
+
+**Returns:** `Dict[str, Any]` with `stimuli: List`.
+
+---
+
+#### `get_stimulus(stimulus_id)`
+
+Get a stimulus event by ID.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
 #### `ingest_stimulus(payload)`
 
 Ingest a stimulus event into the stimulus-response pipeline.
@@ -215,29 +629,432 @@ Send a webhook-style stimulus from an external source.
 
 ---
 
-### Workflow Execution Output
+### Volume Management
 
-When a workflow declares `output_schema` and `output_template`, the completed `WorkflowExecution` includes a `final_output` field containing the structured result.
+#### `create_volume(payload)`
+
+Create a new storage volume.
 
 ```python
-async with AegisClient("https://your-aegis-node", api_key=TOKEN) as client:
-    # Start and wait for a workflow with output_schema
-    result = await client.workflow_wait("data-extraction", input={"url": "https://..."})
-
-    # Access the structured final_output
-    print(result.final_output)
-    # {"summary": "Extracted 42 records...", "record_count": 42, "success": True}
-
-    print(result.final_output["record_count"])  # 42
+vol = await client.create_volume({"name": "my-dataset"})
+print(vol["id"])
 ```
 
-**`WorkflowExecution` fields:**
+**Returns:** `Dict[str, Any]` with volume details.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `execution_id` | `str` | UUID of the workflow execution. |
-| `status` | `str` | `"running"`, `"completed"`, or `"failed"`. |
-| `final_output` | `Optional[Dict[str, Any]]` | Structured output when the workflow declares `output_template`. `None` otherwise. |
+---
+
+#### `list_volumes()`
+
+List all volumes owned by the caller's tenant.
+
+**Returns:** `Dict[str, Any]` with `volumes: List`.
+
+---
+
+#### `get_volume(volume_id)`
+
+Get volume details by ID.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `rename_volume(volume_id, payload)`
+
+Rename a volume.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `delete_volume(volume_id)`
+
+Delete a volume and all its contents.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `get_volume_quota()`
+
+Get the caller's storage quota and current usage.
+
+**Returns:** `Dict[str, Any]` with quota limits and usage.
+
+---
+
+#### `list_files(volume_id, path?)`
+
+List files and directories in a volume at the given path.
+
+**Returns:** `Dict[str, Any]` with `files: List`.
+
+---
+
+#### `download_file(volume_id, path)`
+
+Download a file from a volume.
+
+**Returns:** `bytes` — raw file content.
+
+---
+
+#### `upload_file(volume_id, file, path?)`
+
+Upload a file to a volume.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `mkdir(volume_id, path)`
+
+Create a directory in a volume.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `move_path(volume_id, payload)`
+
+Move or rename a file or directory within a volume.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `volume_id` | `str` | UUID of the volume |
+| `payload` | `Dict[str, Any]` | Must include `source` and `destination` paths |
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `delete_path(volume_id, path)`
+
+Delete a file or directory from a volume.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Credential Management
+
+#### `list_credentials()`
+
+List all stored credentials for the caller's tenant.
+
+**Returns:** `Dict[str, Any]` with `credentials: List`.
+
+---
+
+#### `get_credential(credential_id)`
+
+Get a credential by ID (metadata only; secrets are not returned).
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `store_api_key(payload)`
+
+Store an API key credential.
+
+```python
+cred = await client.store_api_key({
+    "name": "github-token",
+    "provider": "github",
+    "api_key": "ghp_xxxx",
+})
+```
+
+**Returns:** `Dict[str, Any]` with credential ID.
+
+---
+
+#### `revoke_credential(credential_id)`
+
+Revoke (delete) a credential.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `rotate_credential(credential_id)`
+
+Rotate a credential's secret value.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `oauth_initiate(payload)`
+
+Initiate an OAuth credential flow. Returns a URL for the user to authorize.
+
+**Returns:** `Dict[str, Any]` with authorization URL.
+
+---
+
+#### `oauth_callback(params)`
+
+Handle OAuth callback after user authorization.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `device_poll(payload)`
+
+Poll for device authorization flow completion.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `list_grants(credential_id)`
+
+List agent grants for a credential.
+
+**Returns:** `Dict[str, Any]` with `grants: List`.
+
+---
+
+#### `add_grant(credential_id, payload)`
+
+Grant an agent access to a credential.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `revoke_grant(credential_id, grant_id)`
+
+Revoke an agent's access to a credential.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Secrets Management
+
+#### `list_secrets()`
+
+List all secrets in the caller's tenant namespace.
+
+**Returns:** `Dict[str, Any]` with `secrets: List`.
+
+---
+
+#### `get_secret(path)`
+
+Read a secret by its path.
+
+**Returns:** `Dict[str, Any]` with secret data.
+
+---
+
+#### `write_secret(path, payload)`
+
+Write or update a secret at the given path.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `delete_secret(path)`
+
+Delete a secret.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### API Key Management
+
+#### `list_api_keys()`
+
+List all API keys for the caller.
+
+**Returns:** `Dict[str, Any]` with `api_keys: List`.
+
+---
+
+#### `create_api_key(payload)`
+
+Create a new API key. The raw key value is only returned once at creation time.
+
+```python
+key = await client.create_api_key({"name": "ci-pipeline"})
+print(key["api_key"])  # Save this — it won't be shown again
+```
+
+**Returns:** `Dict[str, Any]` with `id` and `api_key`.
+
+---
+
+#### `revoke_api_key(key_id)`
+
+Revoke an API key.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Colony Management
+
+#### `list_members()`
+
+List all members of the caller's colony (tenant team).
+
+**Returns:** `Dict[str, Any]` with `members: List`.
+
+---
+
+#### `invite_member(payload)`
+
+Invite a new member to the colony.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `remove_member(user_id)`
+
+Remove a member from the colony.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `update_role(payload)`
+
+Update a colony member's role.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `get_saml_config()`
+
+Get the colony's SAML IdP configuration.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `set_saml_config(payload)`
+
+Set or update the colony's SAML IdP configuration for SSO.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `get_subscription()`
+
+Get the colony's subscription details.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Cluster & Infrastructure
+
+#### `get_cluster_status()`
+
+Get the overall cluster status.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `get_cluster_nodes()`
+
+List all nodes in the cluster with their status and capabilities.
+
+**Returns:** `Dict[str, Any]` with `nodes: List`.
+
+---
+
+### Swarm Coordination
+
+#### `list_swarms()`
+
+List all active swarms (multi-agent coordination groups).
+
+**Returns:** `Dict[str, Any]` with `swarms: List`.
+
+---
+
+#### `get_swarm(swarm_id)`
+
+Get details of a specific swarm including member agents and coordination state.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### Observability
+
+#### `get_dashboard_summary()`
+
+Get an aggregated observability dashboard summary (execution counts, error rates, active agents).
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `list_security_incidents()`
+
+List recent security incidents.
+
+**Returns:** `Dict[str, Any]` with `incidents: List`.
+
+---
+
+#### `list_storage_violations()`
+
+List storage policy violations.
+
+**Returns:** `Dict[str, Any]` with `violations: List`.
+
+---
+
+### Cortex
+
+#### `list_cortex_patterns()`
+
+List learned execution patterns from the Cortex memory system.
+
+**Returns:** `Dict[str, Any]` with `patterns: List`.
+
+---
+
+#### `get_cortex_skills()`
+
+Get the Cortex skill inventory — a summary of capabilities the system has learned.
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+#### `get_cortex_metrics()`
+
+Get Cortex performance metrics (memory utilization, recall accuracy, decay stats).
+
+**Returns:** `Dict[str, Any]`.
+
+---
+
+### User
+
+#### `get_user_rate_limit_usage()`
+
+Get the current authenticated user's rate limit usage.
+
+**Returns:** `Dict[str, Any]` with usage records.
 
 ---
 
@@ -326,6 +1143,23 @@ Get rate limit usage records for a given scope.
 Liveness and readiness probes.
 
 **Returns:** `Dict[str, str]`.
+
+---
+
+### Lifecycle
+
+#### `aclose()`
+
+Close the underlying HTTP client and release resources. Called automatically when using the `async with` context manager.
+
+```python
+# Manual lifecycle
+client = AegisClient(base_url="...", bearer_token="...")
+try:
+    await client.list_agents()
+finally:
+    await client.aclose()
+```
 
 ---
 

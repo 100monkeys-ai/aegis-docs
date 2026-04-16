@@ -1,6 +1,6 @@
 ---
 title: TypeScript SDK
-description: AegisClient for TypeScript and Node.js — execution, approvals, SEAL, stimulus, admin, and more.
+description: AegisClient for TypeScript and Node.js — agents, executions, workflows, volumes, credentials, SEAL, and more.
 ---
 
 # TypeScript SDK
@@ -16,31 +16,281 @@ npm install @100monkeys-ai/aegis-sdk
 
 ## `AegisClient`
 
+### Authentication
+
+The client supports two authentication modes:
+
+**Service-to-service (OAuth2 client credentials):**
+
 ```typescript
 import { AegisClient } from '@100monkeys-ai/aegis-sdk';
 
-const client = new AegisClient(
-  'https://your-aegis-node',
-  process.env.AEGIS_API_KEY,   // Optional; Keycloak Bearer JWT
-);
+const client = new AegisClient({
+  baseUrl: 'https://your-orchestrator.com',
+  keycloakUrl: 'https://auth.example.com',
+  realm: 'aegis-system',
+  clientId: 'your-client-id',
+  clientSecret: 'your-client-secret',
+});
+
+const { execution_id } = await client.startExecution('agent-uuid', 'Write a primality check');
+console.log(execution_id);
+```
+
+**Bearer token passthrough (for user-scoped access):**
+
+```typescript
+import { AegisClient } from '@100monkeys-ai/aegis-sdk';
+
+const client = new AegisClient({
+  baseUrl: 'https://your-orchestrator.com',
+  bearerToken: 'user-jwt-token-here',
+});
+
+const agents = await client.listAgents();
 ```
 
 ### Constructor
 
 ```typescript
-new AegisClient(baseUrl: string, apiKey?: string)
+new AegisClient(options: AegisClientOptions)
 ```
+
+```typescript
+interface AegisClientOptions {
+  baseUrl: string;
+  // OAuth2 client credentials mode
+  keycloakUrl?: string;
+  realm?: string;
+  clientId?: string;
+  clientSecret?: string;
+  tokenRefreshBufferSecs?: number; // default: 30
+  // Bearer token passthrough mode
+  bearerToken?: string;
+}
+```
+
+---
+
+### Method Reference
+
+| Section | Method | Description |
+|---------|--------|-------------|
+| **Agent Management** | | |
+| | `deployAgent(manifest)` | Deploy a new agent from a manifest |
+| | `listAgents()` | List all deployed agents |
+| | `getAgent(agentId)` | Get agent details by ID |
+| | `lookupAgent(name)` | Look up an agent by name |
+| | `updateAgent(agentId, payload)` | Update an agent's configuration |
+| | `deleteAgent(agentId)` | Delete a deployed agent |
+| | `executeAgent(agentId, input, intent?, contextOverrides?)` | Execute an agent directly (alias route) |
+| | `listAgentVersions(agentId)` | List version history for an agent |
+| | `updateAgentScope(agentId, payload)` | Update an agent's visibility scope |
+| | `streamAgentEvents(agentId)` | Stream SSE events for an agent |
+| **Workflow Management** | | |
+| | `registerWorkflow(payload)` | Register a new workflow definition |
+| | `listWorkflows()` | List all registered workflows |
+| | `getWorkflow(name)` | Get a workflow definition by name |
+| | `deleteWorkflow(name)` | Delete a workflow definition |
+| | `listWorkflowVersions(name)` | List version history for a workflow |
+| | `updateWorkflowScope(name, payload)` | Update a workflow's visibility scope |
+| | `runWorkflow(name, payload)` | Run a workflow by name |
+| | `executeTemporalWorkflow(payload)` | Execute a Temporal workflow |
+| | `registerTemporalWorkflow(payload)` | Register a Temporal workflow (alias) |
+| **Workflow Execution Management** | | |
+| | `listWorkflowExecutions()` | List all workflow executions |
+| | `getWorkflowExecution(executionId)` | Get a workflow execution by ID |
+| | `removeWorkflowExecution(executionId)` | Remove a workflow execution record |
+| | `signalWorkflowExecution(executionId, payload)` | Send a signal to a running workflow |
+| | `cancelWorkflowExecution(executionId)` | Cancel a running workflow execution |
+| **Execution** | | |
+| | `startExecution(agentId, input, contextOverrides?, intent?)` | Start an agent execution |
+| | `streamExecution(executionId, token?)` | Stream execution events (SSE) |
+| | `getExecution(executionId)` | Get execution details by ID |
+| | `listExecutions()` | List all executions |
+| | `cancelExecution(executionId)` | Cancel a running execution |
+| | `deleteExecution(executionId)` | Delete an execution record |
+| | `getExecutionFile(executionId, path)` | Download a file from an execution's workspace |
+| **Human Approvals** | | |
+| | `listPendingApprovals()` | List all pending approvals |
+| | `getPendingApproval(id)` | Get a single pending approval |
+| | `approveRequest(id, request?)` | Approve a pending request |
+| | `rejectRequest(id, request)` | Reject a pending request |
+| **SEAL** | | |
+| | `attestSeal(payload)` | Obtain a SEAL attestation token |
+| | `invokeSeal(payload)` | Invoke a SEAL tool |
+| | `listSealTools(securityContext?)` | List available SEAL tools |
+| **Dispatch Gateway** | | |
+| | `dispatchGateway(payload)` | Send a dispatch gateway request |
+| **Stimulus** | | |
+| | `listStimuli()` | List all stimulus events |
+| | `getStimulus(stimulusId)` | Get a stimulus event by ID |
+| | `ingestStimulus(payload)` | Ingest a stimulus event |
+| | `sendWebhook(source, payload)` | Send a webhook stimulus |
+| **Volume Management** | | |
+| | `createVolume(payload)` | Create a new storage volume |
+| | `listVolumes()` | List all volumes |
+| | `getVolume(volumeId)` | Get volume details |
+| | `renameVolume(volumeId, payload)` | Rename a volume |
+| | `deleteVolume(volumeId)` | Delete a volume |
+| | `getVolumeQuota()` | Get storage quota information |
+| | `listFiles(volumeId, path?)` | List files in a volume |
+| | `downloadFile(volumeId, path)` | Download a file from a volume |
+| | `uploadFile(volumeId, file, path?)` | Upload a file to a volume |
+| | `mkdir(volumeId, path)` | Create a directory in a volume |
+| | `movePath(volumeId, payload)` | Move or rename a file/directory |
+| | `deletePath(volumeId, path)` | Delete a file or directory |
+| **Credential Management** | | |
+| | `listCredentials()` | List all stored credentials |
+| | `getCredential(credentialId)` | Get a credential by ID |
+| | `storeApiKeyCredential(payload)` | Store an API key credential |
+| | `revokeCredential(credentialId)` | Revoke a credential |
+| | `rotateCredential(credentialId)` | Rotate a credential's secret |
+| | `oauthInitiate(payload)` | Initiate an OAuth credential flow |
+| | `oauthCallback(params)` | Handle OAuth callback |
+| | `devicePoll(payload)` | Poll for device authorization completion |
+| | `listGrants(credentialId)` | List agent grants for a credential |
+| | `addGrant(credentialId, payload)` | Grant an agent access to a credential |
+| | `revokeGrant(credentialId, grantId)` | Revoke an agent's credential grant |
+| **Secrets Management** | | |
+| | `listSecrets()` | List all secrets |
+| | `getSecret(path)` | Read a secret by path |
+| | `writeSecret(path, payload)` | Write a secret |
+| | `deleteSecret(path)` | Delete a secret |
+| **API Key Management** | | |
+| | `listApiKeys()` | List all API keys |
+| | `createApiKey(payload)` | Create a new API key |
+| | `revokeApiKey(keyId)` | Revoke an API key |
+| **Colony Management** | | |
+| | `listMembers()` | List colony members |
+| | `inviteMember(payload)` | Invite a new member |
+| | `removeMember(userId)` | Remove a colony member |
+| | `updateRole(payload)` | Update a member's role |
+| | `getSamlConfig()` | Get SAML IdP configuration |
+| | `setSamlConfig(payload)` | Set SAML IdP configuration |
+| | `getSubscription()` | Get subscription details |
+| **Cluster & Infrastructure** | | |
+| | `getClusterStatus()` | Get cluster status |
+| | `getClusterNodes()` | List cluster nodes |
+| **Swarm Coordination** | | |
+| | `listSwarms()` | List active swarms |
+| | `getSwarm(swarmId)` | Get swarm details |
+| **Observability** | | |
+| | `getDashboardSummary()` | Get the observability dashboard summary |
+| | `listSecurityIncidents()` | List security incidents |
+| | `listStorageViolations()` | List storage policy violations |
+| **Cortex** | | |
+| | `listCortexPatterns()` | List learned execution patterns |
+| | `getCortexSkills()` | Get the cortex skill inventory |
+| | `getCortexMetrics()` | Get cortex performance metrics |
+| **User** | | |
+| | `getUserRateLimitUsage()` | Get the current user's rate limit usage |
+| **Workflow Logs** | | |
+| | `getWorkflowExecutionLogs(executionId, limit?, offset?)` | Fetch paginated workflow logs |
+| | `streamWorkflowExecutionLogs(executionId)` | Stream workflow logs (SSE) |
+| **Admin: Tenants** | | |
+| | `createTenant(slug, displayName, tier?)` | Create a new tenant |
+| | `listTenants()` | List all tenants |
+| | `suspendTenant(slug)` | Suspend a tenant |
+| | `deleteTenant(slug)` | Delete a tenant |
+| **Admin: Rate Limits** | | |
+| | `listRateLimitOverrides(tenantId?, userId?)` | List rate limit overrides |
+| | `createRateLimitOverride(payload)` | Create a rate limit override |
+| | `deleteRateLimitOverride(overrideId)` | Delete a rate limit override |
+| | `getRateLimitUsage(scopeType, scopeId)` | Get rate limit usage records |
+| **Health** | | |
+| | `healthLive()` | Liveness probe |
+| | `healthReady()` | Readiness probe |
+
+---
+
+## Agent Management
+
+### `deployAgent(manifest)`
+
+Deploy a new agent from a manifest object.
+
+```typescript
+const resp = await client.deployAgent({
+  name: 'code-reviewer',
+  language: 'typescript',
+  instruction: 'You are a code reviewer.',
+});
+console.log(resp.agent_id);
+```
+
+**Returns:** `Promise<{ agent_id: string }>`
+
+### `listAgents()`
+
+List all deployed agents visible to the caller's tenant.
+
+**Returns:** `Promise<{ agents: Agent[] }>`
+
+### `getAgent(agentId)`
+
+Get details for a specific agent.
+
+**Returns:** `Promise<Agent>`
+
+### `lookupAgent(name)`
+
+Look up an agent by its unique name.
+
+```typescript
+const { agent_id } = await client.lookupAgent('code-reviewer');
+```
+
+**Returns:** `Promise<{ agent_id: string; name: string; tenant_id: string }>`
+
+### `updateAgent(agentId, payload)`
+
+Update an agent's configuration (partial update).
+
+**Returns:** `Promise<any>`
+
+### `deleteAgent(agentId)`
+
+Delete a deployed agent.
+
+**Returns:** `Promise<any>`
+
+### `executeAgent(agentId, input, intent?, contextOverrides?)`
+
+Execute an agent via the direct route.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `baseUrl` | `string` | Base URL of the AEGIS orchestrator (no trailing slash) |
-| `apiKey` | `string` | Optional Keycloak Bearer JWT. When omitted, requests are unauthenticated. |
+| `agentId` | `string` | UUID of the agent |
+| `input` | `string` | Task prompt |
+| `intent` | `string` | Optional semantic intent for routing |
+| `contextOverrides` | `any` | Optional context overrides |
+
+**Returns:** `Promise<{ execution_id: string }>`
+
+### `listAgentVersions(agentId)`
+
+List the version history of an agent.
+
+**Returns:** `Promise<{ versions: any[] }>`
+
+### `updateAgentScope(agentId, payload)`
+
+Update an agent's visibility scope (e.g., public, tenant-only).
+
+**Returns:** `Promise<any>`
+
+### `streamAgentEvents(agentId)`
+
+Stream real-time SSE events for all executions of a given agent.
+
+**Returns:** `Promise<ReadableStream>`
 
 ---
 
 ## Execution
 
-### `startExecution(agentId, input, contextOverrides?)`
+### `startExecution(agentId, input, contextOverrides?, intent?)`
 
 Start a new agent execution. Returns the execution ID immediately; use `streamExecution` to follow progress.
 
@@ -48,6 +298,8 @@ Start a new agent execution. Returns the execution ID immediately; use `streamEx
 const { execution_id } = await client.startExecution(
   'agent-uuid',
   'Write a primality check in TypeScript',
+  undefined,
+  'code-generation',
 );
 console.log(execution_id); // "exec-uuid"
 ```
@@ -57,6 +309,7 @@ console.log(execution_id); // "exec-uuid"
 | `agentId` | `string` | UUID of the agent to execute |
 | `input` | `string` | The task prompt / instruction |
 | `contextOverrides` | `any` | Optional context overrides for the execution |
+| `intent` | `string` | Optional semantic intent label for discovery routing |
 
 **Returns:** `Promise<StartExecutionResponse>`
 
@@ -80,6 +333,41 @@ const stream = await client.streamExecution(execution_id);
 | `token` | `string` | Optional resumption token |
 
 **Returns:** `Promise<ReadableStream>` — an SSE event stream (see [Streaming Executions](#streaming-executions) below).
+
+### `getExecution(executionId)`
+
+Get details of a specific execution.
+
+**Returns:** `Promise<any>` — full execution record including status, agent_id, timestamps.
+
+### `listExecutions()`
+
+List all executions visible to the caller.
+
+**Returns:** `Promise<{ executions: any[] }>`
+
+### `cancelExecution(executionId)`
+
+Cancel a running execution.
+
+**Returns:** `Promise<any>`
+
+### `deleteExecution(executionId)`
+
+Delete an execution record.
+
+**Returns:** `Promise<any>`
+
+### `getExecutionFile(executionId, path)`
+
+Download a file from an execution's workspace.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `executionId` | `string` | UUID of the execution |
+| `path` | `string` | File path within the workspace |
+
+**Returns:** `Promise<ArrayBuffer>` — raw file content.
 
 ---
 
@@ -113,11 +401,6 @@ await client.approveRequest('approval-uuid', {
 });
 ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | `string` | UUID of the approval request |
-| `request` | `ApprovalRequest` | Optional feedback and approver identity |
-
 **Returns:** `Promise<ApprovalResponse>`
 
 ### `rejectRequest(id, request)`
@@ -131,12 +414,101 @@ await client.rejectRequest('approval-uuid', {
 });
 ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | `string` | UUID of the approval request |
-| `request` | `RejectionRequest` | Reason and optional rejector identity |
-
 **Returns:** `Promise<ApprovalResponse>`
+
+---
+
+## Workflow Management
+
+### `registerWorkflow(payload)`
+
+Register a new workflow definition.
+
+**Returns:** `Promise<any>`
+
+### `listWorkflows()`
+
+List all registered workflow definitions.
+
+**Returns:** `Promise<{ workflows: any[] }>`
+
+### `getWorkflow(name)`
+
+Get a workflow definition by name.
+
+**Returns:** `Promise<any>`
+
+### `deleteWorkflow(name)`
+
+Delete a workflow definition.
+
+**Returns:** `Promise<any>`
+
+### `listWorkflowVersions(name)`
+
+List version history for a workflow.
+
+**Returns:** `Promise<{ versions: any[] }>`
+
+### `updateWorkflowScope(name, payload)`
+
+Update a workflow's visibility scope.
+
+**Returns:** `Promise<any>`
+
+### `runWorkflow(name, payload)`
+
+Run a workflow by name with the given input payload.
+
+**Returns:** `Promise<any>`
+
+### `executeTemporalWorkflow(payload)`
+
+Execute a Temporal workflow directly.
+
+**Returns:** `Promise<any>`
+
+---
+
+## Workflow Execution Management
+
+### `listWorkflowExecutions()`
+
+List all workflow executions.
+
+**Returns:** `Promise<{ executions: any[] }>`
+
+### `getWorkflowExecution(executionId)`
+
+Get a workflow execution by ID, including `final_output` when available.
+
+**Returns:** `Promise<WorkflowExecution>`
+
+```typescript
+interface WorkflowExecution {
+  execution_id: string;
+  status: 'running' | 'completed' | 'failed';
+  final_output?: Record<string, any>;
+}
+```
+
+### `removeWorkflowExecution(executionId)`
+
+Remove a workflow execution record.
+
+**Returns:** `Promise<any>`
+
+### `signalWorkflowExecution(executionId, payload)`
+
+Send a signal to a running workflow execution (e.g., to advance state or provide input).
+
+**Returns:** `Promise<any>`
+
+### `cancelWorkflowExecution(executionId)`
+
+Cancel a running workflow execution.
+
+**Returns:** `Promise<any>`
 
 ---
 
@@ -144,7 +516,7 @@ await client.rejectRequest('approval-uuid', {
 
 ### `attestSeal(payload)`
 
-Request an SEAL security token via attestation.
+Request a SEAL security token via attestation.
 
 **Returns:** `Promise<SealAttestationResponse>`
 
@@ -156,7 +528,7 @@ interface SealAttestationResponse {
 
 ### `invokeSeal(payload)`
 
-Invoke an SEAL tool with a signed payload.
+Invoke a SEAL tool with a signed payload.
 
 **Returns:** `Promise<any>`
 
@@ -349,6 +721,18 @@ Dispatch a message to the inner loop gateway.
 
 ## Stimulus
 
+### `listStimuli()`
+
+List all stimulus events.
+
+**Returns:** `Promise<{ stimuli: any[] }>`
+
+### `getStimulus(stimulusId)`
+
+Get a stimulus event by ID.
+
+**Returns:** `Promise<any>`
+
 ### `ingestStimulus(payload)`
 
 Ingest an external stimulus event.
@@ -368,31 +752,354 @@ Send a webhook event from a named source.
 
 ---
 
-## Workflow Execution Output
+## Volume Management
 
-When a workflow declares `output_schema` and `output_template`, the completed `WorkflowExecution` includes a `final_output` field containing the structured result.
+### `createVolume(payload)`
+
+Create a new storage volume.
 
 ```typescript
-const result = await client.workflowWait('data-extraction', {
-  input: { url: 'https://...' },
+const vol = await client.createVolume({ name: 'my-dataset' });
+console.log(vol.id);
+```
+
+**Returns:** `Promise<any>`
+
+### `listVolumes()`
+
+List all volumes owned by the caller's tenant.
+
+**Returns:** `Promise<{ volumes: any[] }>`
+
+### `getVolume(volumeId)`
+
+Get volume details by ID.
+
+**Returns:** `Promise<any>`
+
+### `renameVolume(volumeId, payload)`
+
+Rename a volume.
+
+**Returns:** `Promise<any>`
+
+### `deleteVolume(volumeId)`
+
+Delete a volume and all its contents.
+
+**Returns:** `Promise<any>`
+
+### `getVolumeQuota()`
+
+Get the caller's storage quota and current usage.
+
+**Returns:** `Promise<any>`
+
+### `listFiles(volumeId, path?)`
+
+List files and directories in a volume at the given path.
+
+**Returns:** `Promise<{ files: any[] }>`
+
+### `downloadFile(volumeId, path)`
+
+Download a file from a volume.
+
+**Returns:** `Promise<ArrayBuffer>`
+
+### `uploadFile(volumeId, file, path?)`
+
+Upload a file to a volume.
+
+**Returns:** `Promise<any>`
+
+### `mkdir(volumeId, path)`
+
+Create a directory in a volume.
+
+**Returns:** `Promise<any>`
+
+### `movePath(volumeId, payload)`
+
+Move or rename a file or directory within a volume.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `volumeId` | `string` | UUID of the volume |
+| `payload` | `{ source: string; destination: string }` | Source and destination paths |
+
+**Returns:** `Promise<any>`
+
+### `deletePath(volumeId, path)`
+
+Delete a file or directory from a volume.
+
+**Returns:** `Promise<any>`
+
+---
+
+## Credential Management
+
+### `listCredentials()`
+
+List all stored credentials for the caller's tenant.
+
+**Returns:** `Promise<{ credentials: any[] }>`
+
+### `getCredential(credentialId)`
+
+Get a credential by ID (metadata only; secrets are not returned).
+
+**Returns:** `Promise<any>`
+
+### `storeApiKeyCredential(payload)`
+
+Store an API key credential.
+
+```typescript
+const cred = await client.storeApiKeyCredential({
+  name: 'github-token',
+  provider: 'github',
+  api_key: 'ghp_xxxx',
 });
-
-// Access the structured final_output
-console.log(result.final_output);
-// { summary: "Extracted 42 records...", record_count: 42, success: true }
-
-console.log(result.final_output?.record_count); // 42
 ```
 
-**`WorkflowExecution` interface:**
+**Returns:** `Promise<any>`
+
+### `revokeCredential(credentialId)`
+
+Revoke (delete) a credential.
+
+**Returns:** `Promise<any>`
+
+### `rotateCredential(credentialId)`
+
+Rotate a credential's secret value.
+
+**Returns:** `Promise<any>`
+
+### `oauthInitiate(payload)`
+
+Initiate an OAuth credential flow. Returns a URL for the user to authorize.
+
+**Returns:** `Promise<{ authorization_url: string }>`
+
+### `oauthCallback(params)`
+
+Handle OAuth callback after user authorization.
+
+**Returns:** `Promise<any>`
+
+### `devicePoll(payload)`
+
+Poll for device authorization flow completion.
+
+**Returns:** `Promise<any>`
+
+### `listGrants(credentialId)`
+
+List agent grants for a credential.
+
+**Returns:** `Promise<{ grants: any[] }>`
+
+### `addGrant(credentialId, payload)`
+
+Grant an agent access to a credential.
+
+**Returns:** `Promise<any>`
+
+### `revokeGrant(credentialId, grantId)`
+
+Revoke an agent's access to a credential.
+
+**Returns:** `Promise<any>`
+
+---
+
+## Secrets Management
+
+### `listSecrets()`
+
+List all secrets in the caller's tenant namespace.
+
+**Returns:** `Promise<{ secrets: any[] }>`
+
+### `getSecret(path)`
+
+Read a secret by its path.
+
+**Returns:** `Promise<any>`
+
+### `writeSecret(path, payload)`
+
+Write or update a secret at the given path.
+
+**Returns:** `Promise<any>`
+
+### `deleteSecret(path)`
+
+Delete a secret.
+
+**Returns:** `Promise<any>`
+
+---
+
+## API Key Management
+
+### `listApiKeys()`
+
+List all API keys for the caller.
+
+**Returns:** `Promise<{ api_keys: any[] }>`
+
+### `createApiKey(payload)`
+
+Create a new API key. The raw key value is only returned once at creation time.
 
 ```typescript
-interface WorkflowExecution {
-  execution_id: string;
-  status: 'running' | 'completed' | 'failed';
-  final_output?: Record<string, any>; // Present when workflow declares output_template
-}
+const key = await client.createApiKey({ name: 'ci-pipeline' });
+console.log(key.api_key); // Save this — it won't be shown again
 ```
+
+**Returns:** `Promise<{ id: string; api_key: string }>`
+
+### `revokeApiKey(keyId)`
+
+Revoke an API key.
+
+**Returns:** `Promise<any>`
+
+---
+
+## Colony Management
+
+### `listMembers()`
+
+List all members of the caller's colony (tenant team).
+
+**Returns:** `Promise<{ members: any[] }>`
+
+### `inviteMember(payload)`
+
+Invite a new member to the colony.
+
+**Returns:** `Promise<any>`
+
+### `removeMember(userId)`
+
+Remove a member from the colony.
+
+**Returns:** `Promise<any>`
+
+### `updateRole(payload)`
+
+Update a colony member's role.
+
+**Returns:** `Promise<any>`
+
+### `getSamlConfig()`
+
+Get the colony's SAML IdP configuration.
+
+**Returns:** `Promise<any>`
+
+### `setSamlConfig(payload)`
+
+Set or update the colony's SAML IdP configuration for SSO.
+
+**Returns:** `Promise<any>`
+
+### `getSubscription()`
+
+Get the colony's subscription details.
+
+**Returns:** `Promise<any>`
+
+---
+
+## Cluster & Infrastructure
+
+### `getClusterStatus()`
+
+Get the overall cluster status.
+
+**Returns:** `Promise<any>`
+
+### `getClusterNodes()`
+
+List all nodes in the cluster with their status and capabilities.
+
+**Returns:** `Promise<{ nodes: any[] }>`
+
+---
+
+## Swarm Coordination
+
+### `listSwarms()`
+
+List all active swarms (multi-agent coordination groups).
+
+**Returns:** `Promise<{ swarms: any[] }>`
+
+### `getSwarm(swarmId)`
+
+Get details of a specific swarm including member agents and coordination state.
+
+**Returns:** `Promise<any>`
+
+---
+
+## Observability
+
+### `getDashboardSummary()`
+
+Get an aggregated observability dashboard summary (execution counts, error rates, active agents).
+
+**Returns:** `Promise<any>`
+
+### `listSecurityIncidents()`
+
+List recent security incidents.
+
+**Returns:** `Promise<{ incidents: any[] }>`
+
+### `listStorageViolations()`
+
+List storage policy violations.
+
+**Returns:** `Promise<{ violations: any[] }>`
+
+---
+
+## Cortex
+
+### `listCortexPatterns()`
+
+List learned execution patterns from the Cortex memory system.
+
+**Returns:** `Promise<{ patterns: any[] }>`
+
+### `getCortexSkills()`
+
+Get the Cortex skill inventory — a summary of capabilities the system has learned.
+
+**Returns:** `Promise<any>`
+
+### `getCortexMetrics()`
+
+Get Cortex performance metrics (memory utilization, recall accuracy, decay stats).
+
+**Returns:** `Promise<any>`
+
+---
+
+## User
+
+### `getUserRateLimitUsage()`
+
+Get the current authenticated user's rate limit usage.
+
+**Returns:** `Promise<any>`
 
 ---
 
@@ -548,7 +1255,10 @@ Use `streamExecution` to follow a running execution via SSE:
 ```typescript
 import { AegisClient } from '@100monkeys-ai/aegis-sdk';
 
-const client = new AegisClient('https://your-aegis-node', process.env.AEGIS_API_KEY);
+const client = new AegisClient({
+  baseUrl: 'https://your-aegis-node',
+  bearerToken: process.env.AEGIS_TOKEN,
+});
 
 const { execution_id } = await client.startExecution('agent-uuid', 'Analyze this codebase');
 const stream = await client.streamExecution(execution_id);
@@ -674,19 +1384,21 @@ For the full field reference, see the [Agent Manifest Reference](/docs/reference
 
 ## Error Handling
 
-All methods throw on non-2xx responses. Catch and inspect `axios.isAxiosError(err)` for HTTP-level errors:
+All methods throw on non-2xx responses. Catch and inspect errors for HTTP-level details:
 
 ```typescript
-import axios from 'axios';
 import { AegisClient } from '@100monkeys-ai/aegis-sdk';
 
-const client = new AegisClient('https://your-aegis-node', process.env.AEGIS_API_KEY);
+const client = new AegisClient({
+  baseUrl: 'https://your-aegis-node',
+  bearerToken: process.env.AEGIS_TOKEN,
+});
 
 try {
   const { execution_id } = await client.startExecution('agent-uuid', 'Do something');
-} catch (err) {
-  if (axios.isAxiosError(err)) {
-    console.error(err.response?.status, err.response?.data);
+} catch (err: any) {
+  if (err.response) {
+    console.error(err.response.status, err.response.data);
   } else {
     throw err;
   }
