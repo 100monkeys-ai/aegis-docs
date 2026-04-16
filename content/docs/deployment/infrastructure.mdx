@@ -194,5 +194,3 @@ aegis daemon start --config ./aegis-config.yaml
 | 80/443 | HTTP/TLS | Caddy Reverse Proxy | edge | Public |
 
 Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. Public-facing traffic enters through Caddy on ports 80/443 only.
-
-> **Note:** NFS (2049) and Cortex-related ports (50052, 6333, 6334) are only present in the full `aegis-platform-deployment` profile. They are not started by `aegis init`.
