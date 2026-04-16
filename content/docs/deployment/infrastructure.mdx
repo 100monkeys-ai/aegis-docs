@@ -64,7 +64,7 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 │  ┌─────────────────┐   ┌─────────────────┐   ┌────────────────────┐  │
 │  │ pod-core        │   │ pod-temporal     │   │ pod-database       │  │
 │  │ aegis-runtime   │   │ temporal :7233   │   │ postgres :5432     │  │
-│  │ :8088 :50051    │   │ temporal-ui :8233│   │ pg-exporter :9187  │  │
+│  │ :8088 :50051    │   │ temporal-ui :8082│   │ pg-exporter :9187  │  │
 │  │ :2049 :9091     │   │ worker :3000     │   │                    │  │
 │  └─────────────────┘   └─────────────────┘   └────────────────────┘  │
 │                                                                       │
@@ -150,7 +150,7 @@ docker compose -f ~/.aegis/docker-compose.yml logs -f
 | SeaweedFS Filer | 8888 | SeaweedFS POSIX layer |
 | SeaweedFS Volume | 8080 | SeaweedFS data server |
 | Temporal Server | 7233 | Workflow execution |
-| Temporal Web UI | 8233 | Workflow visibility UI |
+| Temporal Web UI | 8082 | Workflow visibility UI |
 
 Clone and start the AEGIS daemon against the dev stack:
 
@@ -172,7 +172,7 @@ aegis daemon start --config ./aegis-config.yaml
 | 5432 | TCP | PostgreSQL | database | Internal only |
 | 9187 | HTTP | PostgreSQL Exporter | database | Internal (scrape target) |
 | 7233 | gRPC | Temporal Server | temporal | Internal only |
-| 8233 | HTTP | Temporal UI | temporal | Internal / proxied |
+| 8082 | HTTP | Temporal UI | temporal | Internal / proxied |
 | 8200 | HTTP | OpenBao | secrets | Internal only |
 | 9333 | HTTP | SeaweedFS Master | storage | Internal only |
 | 8080 | HTTP | SeaweedFS Volume | storage | Internal only |
@@ -184,6 +184,15 @@ aegis daemon start --config ./aegis-config.yaml
 | 3100 | HTTP | Loki | observability | Internal only |
 | 8089 | HTTP | SEAL Gateway | seal-gateway | Internal / proxied |
 | 50055 | gRPC | SEAL Gateway gRPC | seal-gateway | Internal only |
+| 3000 | HTTP | Zaru Client | zaru | Internal / proxied |
+| 3001 | HTTP | Zaru MCP Server | zaru | Internal / proxied |
+| 8180 | HTTP | Keycloak IAM | iam | Internal / proxied |
+| 4318 | HTTP | OTLP Collector HTTP | observability | Internal only |
+| 50052 | gRPC | Cortex Embedding Service | cortex | Internal only |
+| 6333 | HTTP | Qdrant Vector DB | cortex | Internal only |
+| 6334 | gRPC | Qdrant gRPC | cortex | Internal only |
 | 80/443 | HTTP/TLS | Caddy Reverse Proxy | edge | Public |
 
 Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. Public-facing traffic enters through Caddy on ports 80/443 only.
+
+> **Note:** NFS (2049) and Cortex-related ports (50052, 6333, 6334) are only present in the full `aegis-platform-deployment` profile. They are not started by `aegis init`.
