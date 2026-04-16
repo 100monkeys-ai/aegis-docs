@@ -1,6 +1,6 @@
 ---
 title: MCP Tool Reference
-description: Complete input and output schemas for all 62 AEGIS MCP tools — 61 built-in orchestrator tools and the Zaru-only zaru.switch_mode tool — with availability by context and Zaru conversation mode.
+description: Complete input and output schemas for all 63 AEGIS MCP tools — 61 built-in orchestrator tools and the Zaru-only zaru.init and zaru.mode tools — with availability by context and Zaru conversation mode.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
@@ -24,7 +24,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
 `aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
-`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.switch_mode`
+`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.init`, `zaru.mode`
 
 **System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
 registered by platform operators:
@@ -43,11 +43,11 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 
 | Context | Tool groups available | Notes |
 |---------|----------------------|-------|
-| Zaru Chat — chat mode | `zaru.switch_mode` only | Mode switching only; no orchestrator tools |
-| Zaru Chat — agentic mode | `zaru.switch_mode` + agent/task management subset | See mode table below |
-| Zaru Chat — execute mode | `zaru.switch_mode` + execute pipeline tools | See mode table below |
-| Zaru Chat — workflow mode | `zaru.switch_mode` + workflow/agent design subset | See mode table below |
-| Zaru Chat — operator mode | All 62 tools | No filtering applied |
+| Zaru Chat — chat mode | `zaru.init` + `zaru.mode` only | Mode switching only; no orchestrator tools |
+| Zaru Chat — agentic mode | `zaru.init` + `zaru.mode` + agent/task management subset | See mode table below |
+| Zaru Chat — execute mode | `zaru.init` + `zaru.mode` + execute pipeline tools | See mode table below |
+| Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + workflow/agent design subset | See mode table below |
+| Zaru Chat — operator mode | All 63 tools | No filtering applied |
 | AEGIS agent inner loop | All 61 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
 | External SEAL caller | All 61 built-in tools | Filtered by `SecurityContext` only; no mode concept |
 
@@ -65,11 +65,12 @@ See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full ro
 
 ### Chat Mode
 
-Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator tools directly from chat mode.
+Only `zaru.init` and `zaru.mode` are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
 
 ### Agentic Mode
 
-- `zaru.switch_mode`
+- `zaru.init`
+- `zaru.mode`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
 - `aegis.agent.list`
@@ -85,7 +86,8 @@ Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator too
 
 ### Execute Mode
 
-- `zaru.switch_mode`
+- `zaru.init`
+- `zaru.mode`
 - `aegis.execute.intent`
 - `aegis.execute.status`
 - `aegis.execute.wait`
@@ -94,7 +96,8 @@ Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator too
 
 ### Architect Mode
 
-- `zaru.switch_mode`
+- `zaru.init`
+- `zaru.mode`
 - `aegis.workflow.generate`
 - `aegis.workflow.list`
 - `aegis.workflow.logs`
@@ -111,7 +114,7 @@ Only `zaru.switch_mode` is exposed. The model cannot invoke any orchestrator too
 
 ### Operator Mode
 
-All 62 tools are available — no filtering is applied.
+All 63 tools are available — no filtering is applied.
 
 ---
 
@@ -180,7 +183,8 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.system.info` | system | true | — | Op |
 | `aegis.system.config` | system | true | — | Op |
 | `aegis.runtime.list` | runtime | true | — | Op |
-| `zaru.switch_mode` | zaru | N/A | `target_mode`, `reason` | C, Ag, Ex, Ar, Op |
+| `zaru.init` | zaru | N/A | — | C, Ag, Ex, Ar, Op |
+| `zaru.mode` | zaru | N/A | `target_mode`, `reason` | C, Ag, Ex, Ar, Op |
 
 ---
 
@@ -1897,14 +1901,37 @@ List all supported standard runtime environments (language/version pairs). Call 
 ## Zaru UI Tools
 
 <Callout type="info">
-  `zaru.switch_mode` is intercepted by the `zaru-mcp-server` and is never forwarded to the AEGIS
-  orchestrator. It is only available when using the StreamableHTTP transport and is injected by the
-  Zaru MCP server at the point of tool advertisement.
+  `zaru.init` and `zaru.mode` are intercepted by the `zaru-mcp-server` and are never forwarded to
+  the AEGIS orchestrator. They are only available when using the StreamableHTTP transport and are
+  injected by the Zaru MCP server at the point of tool advertisement.
 </Callout>
 
-### `zaru.switch_mode`
+### `zaru.init`
 
-Suggest the user switch to a different conversation mode. Use this when the user's request cannot be fulfilled in the current mode. This renders a confirmation card inline in the chat — the user can accept, refuse, or dismiss.
+Activate Zaru in any MCP client. Call this tool at the start of a session to retrieve the current mode, system prompt, available tools, and server version. Any MCP client (Claude Code, Claude Desktop, or the Zaru web UI) should call `zaru.init` on connection to bootstrap the session.
+
+**Access:** User
+
+**`skip_judge`:** N/A (never reaches the orchestrator)
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `mode` | `string` | No | `chat` | The initial mode to activate. One of: `chat`, `agentic`, `architect`, `operator`, `execute`. |
+
+**Output:**
+
+```json
+{
+  "mode": "chat",
+  "system_prompt": "You are Zaru, a helpful AI assistant...",
+  "available_tools": ["zaru.init", "zaru.mode"],
+  "version": "0.8.0"
+}
+```
+
+### `zaru.mode`
+
+Switch to a different conversation mode. Use this when the user's request cannot be fulfilled in the current mode. In the Zaru web UI this renders a confirmation card inline in the chat — the user can accept, refuse, or dismiss. In headless MCP clients the mode switch is applied immediately.
 
 **Access:** User
 
@@ -1925,5 +1952,6 @@ Suggest the user switch to a different conversation mode. Use this when the user
 }
 ```
 
-The Zaru client renders this response as an inline confirmation card. The user can accept, refuse,
-or dismiss the mode switch.
+In the Zaru web UI, this response renders as an inline confirmation card. The user can accept,
+refuse, or dismiss the mode switch. In headless MCP clients (Claude Code, Claude Desktop), the
+mode switch is applied immediately and the response confirms the new mode.
