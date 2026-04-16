@@ -149,6 +149,11 @@ async with AegisClient(
 | | `get_saml_config()` | Get SAML IdP configuration |
 | | `set_saml_config(payload)` | Set SAML IdP configuration |
 | | `get_subscription()` | Get subscription details |
+| **Billing** | | |
+| | `create_checkout_session(tier, interval)` | Create a Stripe Checkout Session |
+| | `create_portal_session()` | Create a Stripe Customer Portal session |
+| | `get_subscription_billing()` | Get subscription billing details |
+| | `get_invoices()` | List invoices |
 | **Cluster & Infrastructure** | | |
 | | `get_cluster_status()` | Get cluster status |
 | | `get_cluster_nodes()` | List cluster nodes |
@@ -957,6 +962,72 @@ Set or update the colony's SAML IdP configuration for SSO.
 Get the colony's subscription details.
 
 **Returns:** `Dict[str, Any]`.
+
+---
+
+### Billing
+
+All billing methods raise an `AegisApiError` with status `501` if `STRIPE_SECRET_KEY` is not configured on the orchestrator.
+
+---
+
+#### `create_checkout_session(tier, interval)`
+
+Create a Stripe Checkout Session URL for subscribing to a plan.
+
+```python
+resp = await client.create_checkout_session("pro", "monthly")
+# Redirect user to resp["url"]
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `tier` | `str` | Subscription tier: `"pro"`, `"business"`, or `"enterprise"` |
+| `interval` | `str` | Billing interval: `"monthly"` or `"annual"` |
+
+**Returns:** `Dict[str, Any]` with `url: str`.
+
+---
+
+#### `create_portal_session()`
+
+Create a Stripe Customer Portal session URL for managing payment methods and invoices.
+
+```python
+resp = await client.create_portal_session()
+# Redirect user to resp["url"]
+```
+
+**Returns:** `Dict[str, Any]` with `url: str`.
+
+---
+
+#### `get_subscription_billing()`
+
+Get the current user's subscription billing details from Stripe.
+
+```python
+sub = await client.get_subscription_billing()
+print(sub["tier"], sub["status"])
+```
+
+**Returns:** `Dict[str, Any]` with `tier`, `status`, `current_period_end`, `cancel_at_period_end`, `stripe_customer_id`.
+
+---
+
+#### `get_invoices()`
+
+List invoices for the current user.
+
+```python
+resp = await client.get_invoices()
+for inv in resp["invoices"]:
+    print(inv["id"], inv["amount"], inv["status"])
+```
+
+**Returns:** `Dict[str, Any]` with `invoices: List[Dict]` containing `id`, `amount`, `currency`, `status`, `created`, `pdf_url`.
 
 ---
 

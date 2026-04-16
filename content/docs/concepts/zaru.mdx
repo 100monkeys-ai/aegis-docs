@@ -73,6 +73,33 @@ Consumer tiers access AEGIS via `aegis.agent.generate` and `aegis.workflow.gener
 
 Because the system enforces a strict "ceiling rule" during Swarm creation, a child agent can never be spawned with a broader `SecurityContext` than its parent, ensuring tier restrictions apply collectively across the entire agent swarm.
 
+## Subscription Billing
+
+Zaru uses Stripe for subscription management. Each consumer user's `ZaruTier` is backed by a Stripe subscription, and tier changes are propagated automatically through the platform.
+
+### Tier Lifecycle
+
+1. **Checkout**: The user selects a plan via the Zaru pricing page (or a `POST /v1/billing/checkout` API call). This creates a Stripe Checkout Session and redirects the user to Stripe's hosted payment form.
+2. **Activation**: When payment succeeds, Stripe fires a `checkout.session.completed` webhook. The orchestrator receives this at `POST /v1/webhooks/stripe`, resolves the user, and updates their `zaru_tier` attribute in Keycloak.
+3. **Renewal**: Stripe automatically renews subscriptions at each billing period. On `invoice.payment_succeeded`, the orchestrator confirms the tier remains active.
+4. **Tier Change**: When a user upgrades or downgrades, Stripe fires `customer.subscription.updated`. The orchestrator maps the new Stripe Price ID to the corresponding `ZaruTier` and updates Keycloak accordingly.
+5. **Cancellation**: When a subscription is cancelled (`customer.subscription.deleted`), the user's tier reverts to `Free` at the end of the current billing period. The `cancel_at_period_end` flag is set on the subscription so the user retains paid access until the period expires.
+6. **Payment Failure**: On `invoice.payment_failed`, the subscription enters `past_due` status. The user's tier remains unchanged during the grace period configured in Stripe's retry settings.
+
+### Propagation Path
+
+Tier changes flow through the system as follows:
+
+```text
+Stripe webhook → Orchestrator → Keycloak (zaru_tier attribute) → JWT claim → SecurityContext
+```
+
+The orchestrator updates the user's `zaru_tier` attribute in the `zaru-consumer` Keycloak realm. The next JWT issued for that user carries the updated `zaru_tier` claim, which the `ZaruAuthMiddleware` uses to resolve the appropriate `SecurityContext`. Existing sessions continue with their current tier until the JWT expires and is refreshed.
+
+### Self-Hosted Deployments
+
+Stripe billing is entirely optional. Self-hosted deployments that omit the `spec.stripe` configuration section manage tiers directly through Keycloak user attributes or the admin API. All `/v1/billing/*` endpoints return `501 Not Implemented` when `STRIPE_SECRET_KEY` is not configured.
+
 ## Operator Tier
 
 Alongside the consumer tiers above, AEGIS supports a separate **operator** tier for platform administrators and SREs. Operators and consumers use distinct identity paths:

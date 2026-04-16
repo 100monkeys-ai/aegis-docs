@@ -169,6 +169,11 @@ interface AegisClientOptions {
 | | `getSamlConfig()` | Get SAML IdP configuration |
 | | `setSamlConfig(payload)` | Set SAML IdP configuration |
 | | `getSubscription()` | Get subscription details |
+| **Billing** | | |
+| | `createCheckoutSession(tier, interval)` | Create a Stripe Checkout Session |
+| | `createPortalSession()` | Create a Stripe Customer Portal session |
+| | `getSubscriptionBilling()` | Get subscription billing details |
+| | `getInvoices()` | List invoices |
 | **Cluster & Infrastructure** | | |
 | | `getClusterStatus()` | Get cluster status |
 | | `getClusterNodes()` | List cluster nodes |
@@ -1014,6 +1019,61 @@ Set or update the colony's SAML IdP configuration for SSO.
 Get the colony's subscription details.
 
 **Returns:** `Promise<any>`
+
+---
+
+## Billing
+
+All billing methods return a rejected promise with a `501` status if `STRIPE_SECRET_KEY` is not configured on the orchestrator.
+
+### `createCheckoutSession(tier, interval)`
+
+Create a Stripe Checkout Session URL for subscribing to a plan.
+
+```typescript
+const { url } = await client.createCheckoutSession('pro', 'monthly');
+// Redirect user to url
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tier` | `string` | Subscription tier: `"pro"`, `"business"`, or `"enterprise"` |
+| `interval` | `string` | Billing interval: `"monthly"` or `"annual"` |
+
+**Returns:** `Promise<{ url: string }>`
+
+### `createPortalSession()`
+
+Create a Stripe Customer Portal session URL for managing payment methods and invoices.
+
+```typescript
+const { url } = await client.createPortalSession();
+// Redirect user to url
+```
+
+**Returns:** `Promise<{ url: string }>`
+
+### `getSubscriptionBilling()`
+
+Get the current user's subscription billing details from Stripe.
+
+```typescript
+const sub = await client.getSubscriptionBilling();
+console.log(sub.tier, sub.status);
+```
+
+**Returns:** `Promise<{ tier: string; status: string; current_period_end: string; cancel_at_period_end: boolean; stripe_customer_id: string }>`
+
+### `getInvoices()`
+
+List invoices for the current user.
+
+```typescript
+const { invoices } = await client.getInvoices();
+invoices.forEach((inv) => console.log(inv.id, inv.amount, inv.status));
+```
+
+**Returns:** `Promise<{ invoices: Array<{ id: string; amount: number; currency: string; status: string; created: string; pdf_url: string }> }>`
 
 ---
 

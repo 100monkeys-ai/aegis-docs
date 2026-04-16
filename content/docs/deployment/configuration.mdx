@@ -638,6 +638,28 @@ cortex:
   # Omit for local or open cortex deployments (connects without authentication).
   api_key: "env:CORTEX_API_KEY"
 
+# ─── Stripe Billing ──────────────────────────────────────────────────────────
+# Optional. Omit all Stripe variables for self-hosted deployments where
+# billing is not required. When STRIPE_SECRET_KEY is absent, all /v1/billing/*
+# endpoints return 501 Not Implemented.
+stripe:
+  # Stripe API secret key (server-side only). Supports env: and secret: prefixes.
+  secret_key: "env:STRIPE_SECRET_KEY"
+  # Stripe publishable key (passed to frontend for Checkout and Pricing Table).
+  publishable_key: "env:STRIPE_PUBLISHABLE_KEY"
+  # Webhook signing secret for verifying Stripe webhook event signatures.
+  webhook_secret: "env:STRIPE_WEBHOOK_SECRET"
+  # Stripe Price IDs for each tier and billing interval.
+  prices:
+    pro_monthly: "env:STRIPE_PRICE_PRO_MONTHLY"
+    pro_annual: "env:STRIPE_PRICE_PRO_ANNUAL"
+    business_monthly: "env:STRIPE_PRICE_BUSINESS_MONTHLY"
+    business_annual: "env:STRIPE_PRICE_BUSINESS_ANNUAL"
+    enterprise_monthly: "env:STRIPE_PRICE_ENTERPRISE_MONTHLY"
+    enterprise_annual: "env:STRIPE_PRICE_ENTERPRISE_ANNUAL"
+  # Stripe embedded pricing table component ID (used by the Zaru frontend).
+  pricing_table_id: "env:STRIPE_PRICING_TABLE_ID"
+
 # ─── External SEAL Tooling Gateway ─────────────────────────────────
 # Optional. Omit to keep external tool routing disabled.
 seal_gateway:
@@ -1010,6 +1032,27 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 ### `spec.discovery`
 
 **Discovery** — Semantic agent and workflow search (`aegis.agent.search`, `aegis.workflow.search`) is powered by the Cortex service. When `spec.cortex` is configured with a valid `grpc_url` and `api_key`, discovery is available automatically. No separate `spec.discovery` configuration is required.
+
+---
+
+### `spec.stripe`
+
+Optional. Configures Stripe billing integration. Omit all Stripe variables for self-hosted deployments where billing is not required. When `secret_key` is absent, all `/v1/billing/*` endpoints return `501 Not Implemented`.
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `secret_key` | string | Yes | — | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes. |
+| `publishable_key` | string | Yes | — | Stripe publishable key, passed to the frontend for Checkout and Pricing Table rendering. |
+| `webhook_secret` | string | Yes | — | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). |
+| `prices.pro_monthly` | string | Yes | — | Stripe Price ID for Pro tier, monthly billing. |
+| `prices.pro_annual` | string | Yes | — | Stripe Price ID for Pro tier, annual billing. |
+| `prices.business_monthly` | string | Yes | — | Stripe Price ID for Business tier, monthly billing. |
+| `prices.business_annual` | string | Yes | — | Stripe Price ID for Business tier, annual billing. |
+| `prices.enterprise_monthly` | string | Yes | — | Stripe Price ID for Enterprise tier, monthly billing. |
+| `prices.enterprise_annual` | string | Yes | — | Stripe Price ID for Enterprise tier, annual billing. |
+| `pricing_table_id` | string | No | — | Stripe embedded pricing table component ID, used by the Zaru frontend to render plan selection. |
+
+All fields support `env:` and `secret:` credential prefixes (see [Credential Resolution](#credential-resolution)).
 
 ---
 

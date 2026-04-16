@@ -160,7 +160,7 @@ Forward the provider's delivery ID as the `X-Idempotency-Key` header on the webh
 
 When Stage 2 LLM classification is used, the orchestrator forwards all request headers to the `RouterAgent` as part of the stimulus. This lets the router distinguish event types using provider-specific headers:
 
-```
+```text
 X-GitHub-Event: pull_request
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
 ```
@@ -201,8 +201,60 @@ curl -X POST https://your-aegis-node/v1/stimuli \
 
 ---
 
+## Stripe Billing Webhooks
+
+The orchestrator includes a dedicated Stripe webhook handler at `POST /v1/webhooks/stripe` for processing subscription lifecycle events. This endpoint uses Stripe's native signature verification (HMAC-SHA256 with the `Stripe-Signature` header) rather than the generic `X-Aegis-Signature` mechanism.
+
+### Required Stripe Events
+
+Configure the following events in your Stripe Dashboard under **Developers > Webhooks**:
+
+| Event | Purpose |
+|-------|---------|
+| `checkout.session.completed` | Activates the subscription after successful payment |
+| `customer.subscription.updated` | Propagates tier upgrades, downgrades, and billing changes |
+| `customer.subscription.deleted` | Reverts the user to the Free tier at period end |
+| `invoice.payment_succeeded` | Confirms successful renewal payments |
+| `invoice.payment_failed` | Marks the subscription as `past_due` for retry handling |
+
+### Configuration
+
+Set the webhook signing secret on the orchestrator:
+
+```bash
+export STRIPE_WEBHOOK_SECRET="whsec_..."
+```
+
+Or use the `spec.stripe.webhook_secret` field in `aegis-config.yaml` (see [Configuration Reference](/docs/deployment/configuration)).
+
+### Webhook URL
+
+Point your Stripe webhook endpoint to:
+
+```text
+https://your-aegis-node/v1/webhooks/stripe
+```
+
+### Signature Verification
+
+Stripe signs each webhook payload using HMAC-SHA256 with your webhook signing secret. The signature is delivered in the `Stripe-Signature` header. The orchestrator verifies this signature before processing any event, rejecting requests with invalid or missing signatures.
+
+### Tier Propagation
+
+When the orchestrator receives a subscription event, it:
+
+1. Verifies the `Stripe-Signature` header against `STRIPE_WEBHOOK_SECRET`
+2. Maps the Stripe Price ID from the event to the corresponding `ZaruTier`
+3. Updates the user's `zaru_tier` attribute in Keycloak
+4. Returns `200` to Stripe to acknowledge receipt
+
+See [Zaru Integration — Subscription Billing](/docs/concepts/zaru#subscription-billing) for the full tier lifecycle.
+
+---
+
 ## See Also
 
 - [Stimulus-Response Routing](/docs/concepts/stimulus-response) — architecture of the routing pipeline
 - [Building Workflows](/docs/guides/building-workflows) — define workflows to handle incoming stimuli
 - [REST API — `POST /v1/webhooks/{source}`](/docs/reference/rest-api#post-v1webhookssource)
+- [REST API — Billing](/docs/reference/rest-api#billing) — checkout, portal, subscription, and invoice endpoints

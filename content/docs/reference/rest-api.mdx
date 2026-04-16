@@ -479,6 +479,112 @@ The `final_output` value is the rendered and type-coerced result of evaluating t
 
 ---
 
+## Billing
+
+All billing endpoints require a valid Keycloak Bearer JWT (`Authorization: Bearer <token>`). They return `501 Not Implemented` if `STRIPE_SECRET_KEY` is not configured on the orchestrator.
+
+### `POST /v1/billing/checkout`
+
+Create a Stripe Checkout Session for subscribing to a plan.
+
+**Request body:**
+
+```json
+{
+  "tier": "pro",
+  "interval": "monthly"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tier` | string | Yes | Subscription tier: `pro`, `business`, or `enterprise` |
+| `interval` | string | Yes | Billing interval: `monthly` or `annual` |
+
+**Response `200`:**
+
+```json
+{
+  "url": "https://checkout.stripe.com/c/pay/cs_live_..."
+}
+```
+
+Redirect the user's browser to the returned `url` to complete payment.
+
+---
+
+### `POST /v1/billing/portal`
+
+Create a Stripe Customer Portal session for managing payment methods, viewing invoices, and cancelling subscriptions.
+
+**Response `200`:**
+
+```json
+{
+  "url": "https://billing.stripe.com/p/session/..."
+}
+```
+
+---
+
+### `GET /v1/billing/subscription`
+
+Get the current user's subscription details.
+
+**Response `200`:**
+
+```json
+{
+  "tier": "pro",
+  "status": "active",
+  "current_period_end": "2026-05-15T00:00:00Z",
+  "cancel_at_period_end": false,
+  "stripe_customer_id": "cus_..."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tier` | string | Current subscription tier (`free`, `pro`, `business`, `enterprise`) |
+| `status` | string | Stripe subscription status (`active`, `past_due`, `canceled`, `trialing`, etc.) |
+| `current_period_end` | string (ISO 8601) | End of the current billing period |
+| `cancel_at_period_end` | boolean | Whether the subscription will cancel at period end |
+| `stripe_customer_id` | string | The Stripe Customer ID associated with this user |
+
+---
+
+### `GET /v1/billing/invoices`
+
+List invoices for the current user.
+
+**Response `200`:**
+
+```json
+{
+  "invoices": [
+    {
+      "id": "in_...",
+      "amount": 2900,
+      "currency": "usd",
+      "status": "paid",
+      "created": "2026-04-01T00:00:00Z",
+      "pdf_url": "https://pay.stripe.com/invoice/..."
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Stripe Invoice ID |
+| `amount` | integer | Invoice amount in the smallest currency unit (e.g., cents) |
+| `currency` | string | Three-letter ISO currency code |
+| `status` | string | Invoice status (`draft`, `open`, `paid`, `void`, `uncollectible`) |
+| `created` | string (ISO 8601) | Invoice creation timestamp |
+| `pdf_url` | string | URL to download the invoice PDF |
+
+---
+
 ## Health
 
 ### `GET /health`
