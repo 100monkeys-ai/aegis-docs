@@ -12,6 +12,7 @@
         "api-keys",
         "invites",
         "mcp-client-setup",
-        "execute-mode"
+        "execute-mode",
+        "live-mode"
     ]
 }

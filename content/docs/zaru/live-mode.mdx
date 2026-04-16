@@ -1,0 +1,95 @@
+---
+title: Live Mode
+description: Write and execute TypeScript with access to the AEGIS SDK directly in chat.
+---
+
+# Live Mode
+
+Live Mode lets Zaru write and execute TypeScript programs during your conversation. Code runs
+in a secure QuickJS WASM sandbox with access to the AEGIS TypeScript SDK — no containers, no
+server overhead, instant results.
+
+---
+
+## How It Works
+
+1. Switch to **Live** mode using the mode selector in the chat toolbar.
+2. Describe what you want — Zaru writes TypeScript using the AEGIS SDK.
+3. Code executes instantly in a sandboxed environment.
+4. Results return to the conversation — Zaru can iterate based on output or errors.
+
+The execution sandbox has access to the AEGIS SDK but no filesystem, raw network, or Node.js
+APIs. All platform operations go through the SDK's authenticated API calls.
+
+---
+
+## Available SDK Methods
+
+| Method | Description |
+|---|---|
+| `listAgents()` | List all registered agents |
+| `searchAgents(query)` | Search agents by name or description |
+| `executeTask(agentId, input)` | Execute an agent with input |
+| `waitForTask(executionId)` | Wait for an execution to complete |
+| `getTaskStatus(executionId)` | Check execution status |
+| `getExecutionFile(executionId, path)` | Retrieve a file from execution output |
+| `listTools()` | List available SEAL tools |
+| `searchTools(query)` | Search tools by keyword |
+
+---
+
+## Example
+
+A simple conversation showing Live Mode in action:
+
+> **You:** List all my agents and find the one best suited for text summarization
+
+Zaru writes and executes:
+
+```typescript
+const agents = await listAgents();
+const match = agents.find(a =>
+  a.description?.toLowerCase().includes("summar")
+);
+return {
+  total: agents.length,
+  match: match ? { name: match.name, id: match.id } : null
+};
+```
+
+Zaru then presents the result inline and can refine the query or act on the matched agent
+in follow-up messages.
+
+---
+
+## Saving Scripts
+
+When Zaru writes a useful program, you can ask it to save the script for later reuse. Saved
+scripts appear in the **Scripts** panel in the right sidebar. Script persistence is coming
+soon.
+
+---
+
+## Limitations
+
+- No direct filesystem access — use SDK methods for file operations
+- No raw network requests — all API calls go through the SDK
+- Execution timeout: 30 seconds per program
+- No Node.js built-in modules (`fs`, `path`, `http`, etc.)
+- Available only in Zaru Client (not Claude Code, Cursor, or other MCP clients)
+
+---
+
+## Enabling Live Mode
+
+Live Mode is opt-in. To enable it, open **Settings** and toggle **Live Mode** on. Once
+enabled, the **Live** mode option appears in the chat mode selector.
+
+---
+
+## Related
+
+- [Zaru Overview](/docs/zaru/overview) — conversation modes, tier routing, and the Glass
+  Laboratory UX
+- [Running Code with Execute Mode](/docs/zaru/execute-mode) — single-shot code execution
+  with container isolation
