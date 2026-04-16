@@ -2,7 +2,6 @@
     "title": "Guides",
     "pages": [
         "authentication",
-        "execute-mode",
         "writing-agents",
         "agents-as-functions",
         "configuring-tools",
@@ -11,7 +10,6 @@
         "deploying-agents",
         "importing-skills",
         "management-via-mcp",
-        "mcp-client-setup",
         "building-workflows",
         "creating-workflows-ui",
         "workflow-visualization",

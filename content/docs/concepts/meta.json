@@ -10,7 +10,6 @@
         "security-model",
         "stimulus-response",
         "cortex-integration",
-        "control-plane",
-        "zaru"
+        "control-plane"
     ]
 }
