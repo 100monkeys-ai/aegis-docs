@@ -1,11 +1,13 @@
 ---
 title: MCP Tool Reference
-description: Complete input and output schemas for all 63 AEGIS MCP tools — 61 built-in orchestrator tools and the Zaru-only zaru.init and zaru.mode tools — with availability by context and Zaru conversation mode.
+description: Complete input and output schemas for all 64 AEGIS MCP tools — 61 built-in orchestrator tools and the Zaru-only zaru.init, zaru.mode, and zaru.docs tools — with availability by context and Zaru conversation mode.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
+
+Tool count: **64** total — 61 built-in orchestrator tools + 3 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`).
 
 ---
 
@@ -24,7 +26,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
 `aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
-`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.init`, `zaru.mode`
+`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.init`, `zaru.mode`, `zaru.docs`
 
 **System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
 registered by platform operators:
@@ -43,11 +45,11 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 
 | Context | Tool groups available | Notes |
 |---------|----------------------|-------|
-| Zaru Chat — chat mode | `zaru.init` + `zaru.mode` only | Mode switching only; no orchestrator tools |
-| Zaru Chat — agentic mode | `zaru.init` + `zaru.mode` + agent/task management subset | See mode table below |
-| Zaru Chat — execute mode | `zaru.init` + `zaru.mode` + execute pipeline tools | See mode table below |
-| Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + workflow/agent design subset | See mode table below |
-| Zaru Chat — operator mode | All 63 tools | No filtering applied |
+| Zaru Chat — chat mode | `zaru.init` + `zaru.mode` + `zaru.docs` only | Mode switching and docs search; no orchestrator tools |
+| Zaru Chat — agentic mode | `zaru.init` + `zaru.mode` + `zaru.docs` + agent/task management subset | See mode table below |
+| Zaru Chat — execute mode | `zaru.init` + `zaru.mode` + `zaru.docs` + execute pipeline tools | See mode table below |
+| Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + `zaru.docs` + workflow/agent design subset | See mode table below |
+| Zaru Chat — operator mode | All 64 tools | No filtering applied |
 | AEGIS agent inner loop | All 61 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
 | External SEAL caller | All 61 built-in tools | Filtered by `SecurityContext` only; no mode concept |
 
@@ -65,12 +67,13 @@ See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full ro
 
 ### Chat Mode
 
-Only `zaru.init` and `zaru.mode` are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
+Only `zaru.init`, `zaru.mode`, and `zaru.docs` are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
 
 ### Agentic Mode
 
 - `zaru.init`
 - `zaru.mode`
+- `zaru.docs`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
 - `aegis.agent.list`
@@ -88,6 +91,7 @@ Only `zaru.init` and `zaru.mode` are exposed. The model cannot invoke any orches
 
 - `zaru.init`
 - `zaru.mode`
+- `zaru.docs`
 - `aegis.execute.intent`
 - `aegis.execute.status`
 - `aegis.execute.wait`
@@ -98,6 +102,7 @@ Only `zaru.init` and `zaru.mode` are exposed. The model cannot invoke any orches
 
 - `zaru.init`
 - `zaru.mode`
+- `zaru.docs`
 - `aegis.workflow.generate`
 - `aegis.workflow.list`
 - `aegis.workflow.logs`
@@ -114,7 +119,7 @@ Only `zaru.init` and `zaru.mode` are exposed. The model cannot invoke any orches
 
 ### Operator Mode
 
-All 63 tools are available — no filtering is applied.
+All 64 tools are available — no filtering is applied.
 
 ---
 
@@ -185,6 +190,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.runtime.list` | runtime | true | — | Op |
 | `zaru.init` | zaru | N/A | — | C, Ag, Ex, Ar, Op |
 | `zaru.mode` | zaru | N/A | `target_mode`, `reason` | C, Ag, Ex, Ar, Op |
+| `zaru.docs` | zaru | N/A | `query` | C, Ag, Ex, Ar, Op |
 
 ---
 
@@ -1901,9 +1907,9 @@ List all supported standard runtime environments (language/version pairs). Call 
 ## Zaru UI Tools
 
 <Callout type="info">
-  `zaru.init` and `zaru.mode` are intercepted by the `zaru-mcp-server` and are never forwarded to
-  the AEGIS orchestrator. They are only available when using the StreamableHTTP transport and are
-  injected by the Zaru MCP server at the point of tool advertisement.
+  `zaru.init`, `zaru.mode`, and `zaru.docs` are intercepted by the `zaru-mcp-server` and are never
+  forwarded to the AEGIS orchestrator. They are only available when using the StreamableHTTP
+  transport and are injected by the Zaru MCP server at the point of tool advertisement.
 </Callout>
 
 ### `zaru.init`
@@ -1955,3 +1961,43 @@ Switch to a different conversation mode. Use this when the user's request cannot
 In the Zaru web UI, this response renders as an inline confirmation card. The user can accept,
 refuse, or dismiss the mode switch. In headless MCP clients (Claude Code, Claude Desktop), the
 mode switch is applied immediately and the response confirms the new mode.
+
+### `zaru.docs`
+
+Search AEGIS and Zaru documentation. Results are fetched from `docs.100monkeys.ai` and cached for 5 minutes. Available in every conversation mode.
+
+**Access:** User
+
+**`skip_judge`:** N/A (never reaches the orchestrator)
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `query` | `string` | Yes | — | What the user wants to know about AEGIS or Zaru. |
+
+**Output:**
+
+```json
+{
+  "query": "how to create an agent",
+  "sections": [
+    {
+      "title": "Creating Your First Agent",
+      "content": "To create an agent, define a manifest YAML...",
+      "url": "https://docs.100monkeys.ai/docs/guides/creating-agents"
+    }
+  ],
+  "total_matches": 3
+}
+```
+
+**Example call:**
+
+```typescript
+zaru.docs({ query: "how to create an agent" })
+```
+
+<Callout type="info">
+  `zaru.docs` is handled entirely by the `zaru-mcp-server`. It searches the published documentation
+  at `docs.100monkeys.ai` and returns matching sections with titles, content excerpts, and direct
+  URLs. Results are cached per query for 5 minutes to reduce latency on repeated lookups.
+</Callout>
