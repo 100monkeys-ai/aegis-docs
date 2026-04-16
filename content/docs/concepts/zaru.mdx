@@ -34,7 +34,7 @@ mcpServers:
       X-Zaru-User-ID: "{{ZARU_USER_ID}}"
       X-Zaru-Tier: "{{ZARU_USER_TIER}}"
       Authorization: "Bearer {{ZARU_USER_TOKEN}}"
-    timeout: 120000   # 2-minute tool call timeout (covers long 100monkeys iterations)
+    timeout: 120000 # 2-minute tool call timeout (covers long 100monkeys iterations)
 ```
 
 ## Session and Swarm Management
@@ -60,16 +60,16 @@ Consumer tiers access AEGIS via `aegis.agent.generate` and `aegis.workflow.gener
 - **Business (`ZaruTier::Business`)** — maps to `"zaru-business"`. Same tool access as Pro. Adds teams and organization support, dedicated node option, custom agent and workflow manifests, and audit logs with 90-day retention. 50 GB storage, 4-hour timeout, 50+ concurrent executions. Rate limits: 30 agent executions/min, 1,000/day. Limits are customizable per-tenant.
 - **Enterprise (`ZaruTier::Enterprise`)** — maps to `"zaru-enterprise"`. Same tool access. Adds self-hosted and air-gapped deployment, SAML federation, and a full audit trail with 365-day retention. 100 GB storage, 24-hour timeout, unlimited concurrent executions. Rate limits: 100 agent executions/min, 10,000/day. All limits are fully customizable per-tenant and per-user.
 
-| Capability | Free | Pro | Business | Enterprise |
-|---|---|---|---|---|
-| Tool access | Slightly reduced | Full | Full | Full |
-| Persistent storage | Limited | 10 GB | 50 GB | 100 GB |
-| Max execution timeout | 5 min | 30 min | 4 hours | 24 hours |
-| Concurrent executions | 1 | 5 | 50+ | Unlimited |
-| Agent executions/min | 3 | 10 | 30 | 100 |
-| Teams and orgs | — | — | Yes | Yes |
-| Self-hosted / air-gapped | — | — | — | Yes |
-| Audit log retention | — | — | 90 days | 365 days |
+| Capability               | Free             | Pro    | Business | Enterprise |
+| ------------------------ | ---------------- | ------ | -------- | ---------- |
+| Tool access              | Slightly reduced | Full   | Full     | Full       |
+| Persistent storage       | Limited          | 10 GB  | 50 GB    | 100 GB     |
+| Max execution timeout    | 5 min            | 30 min | 4 hours  | 24 hours   |
+| Concurrent executions    | 1                | 5      | 50+      | Unlimited  |
+| Agent executions/min     | 3                | 10     | 30       | 100        |
+| Teams and orgs           | —                | —      | Yes      | Yes        |
+| Self-hosted / air-gapped | —                | —      | —        | Yes        |
+| Audit log retention      | —                | —      | 90 days  | 365 days   |
 
 Because the system enforces a strict "ceiling rule" during Swarm creation, a child agent can never be spawned with a broader `SecurityContext` than its parent, ensuring tier restrictions apply collectively across the entire agent swarm.
 
@@ -98,18 +98,18 @@ The orchestrator updates the user's `zaru_tier` attribute in the `zaru-consumer`
 
 ### Self-Hosted Deployments
 
-Stripe billing is entirely optional. Self-hosted deployments that omit the `spec.stripe` configuration section manage tiers directly through Keycloak user attributes or the admin API. All `/v1/billing/*` endpoints return `501 Not Implemented` when `STRIPE_SECRET_KEY` is not configured.
+Stripe billing is entirely optional. Self-hosted deployments that omit the `spec.billing` configuration section manage tiers directly through Keycloak user attributes or the admin API. All `/v1/billing/*` endpoints return `501 Not Implemented` when `STRIPE_SECRET_KEY` is not configured.
 
 ## Operator Tier
 
 Alongside the consumer tiers above, AEGIS supports a separate **operator** tier for platform administrators and SREs. Operators and consumers use distinct identity paths:
 
-| Dimension | Consumer (Zaru) | Operator (AEGIS) |
-|-----------|----------------|-------------------|
-| Keycloak realm | `zaru-consumer` (shared realm; each user gets a per-user tenant `u-{uuid}`) | `aegis-system` |
-| JWT claims | `zaru_tier` (`Free`, `Pro`, `Business`, `Enterprise`) + `tenant_id` (`u-{uuid}`) | `aegis_role` (`admin`, `operator`, `readonly`) |
-| Identity kind | `IdentityKind::ZaruUser` | `IdentityKind::Operator` |
-| SecurityContext | `zaru-free`, `zaru-pro`, `zaru-business`, `zaru-enterprise` | `aegis-system-operator` |
+| Dimension       | Consumer (Zaru)                                                                  | Operator (AEGIS)                               |
+| --------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Keycloak realm  | `zaru-consumer` (shared realm; each user gets a per-user tenant `u-{uuid}`)      | `aegis-system`                                 |
+| JWT claims      | `zaru_tier` (`Free`, `Pro`, `Business`, `Enterprise`) + `tenant_id` (`u-{uuid}`) | `aegis_role` (`admin`, `operator`, `readonly`) |
+| Identity kind   | `IdentityKind::ZaruUser`                                                         | `IdentityKind::Operator`                       |
+| SecurityContext | `zaru-free`, `zaru-pro`, `zaru-business`, `zaru-enterprise`                      | `aegis-system-operator`                        |
 
 All consumer users authenticate through the shared `zaru-consumer` Keycloak realm, but each user is assigned a dedicated per-user tenant at signup (slug format `u-{uuid}`). This provides full data isolation between consumer users — agents, workflows, executions, and secrets are scoped to the individual's tenant rather than a shared pool. The `tenant_id` is injected into the JWT via a protocol mapper on the `zaru-consumer` realm, and each per-user tenant is provisioned with tier-appropriate quotas (Free, Pro, Business, or Enterprise).
 

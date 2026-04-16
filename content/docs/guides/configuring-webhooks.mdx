@@ -57,24 +57,24 @@ The sender must compute an HMAC-SHA256 signature of the raw request body using t
 **Example — Node.js (any sender):**
 
 ```javascript
-const crypto = require('crypto');
+const crypto = require("crypto");
 
 function signPayload(body, secret) {
   const sig = crypto
-    .createHmac('sha256', secret)
-    .update(body)                   // body must be the raw bytes/string
-    .digest('hex');
+    .createHmac("sha256", secret)
+    .update(body) // body must be the raw bytes/string
+    .digest("hex");
   return `sha256=${sig}`;
 }
 
-const body = JSON.stringify({ event: 'push', ref: 'refs/heads/main' });
+const body = JSON.stringify({ event: "push", ref: "refs/heads/main" });
 const signature = signPayload(body, process.env.WEBHOOK_SECRET);
 
-fetch('https://your-aegis-node/v1/webhooks/github', {
-  method: 'POST',
+fetch("https://your-aegis-node/v1/webhooks/github", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json',
-    'X-Aegis-Signature': signature,
+    "Content-Type": "application/json",
+    "X-Aegis-Signature": signature,
   },
   body,
 });
@@ -139,11 +139,11 @@ A successful response:
 
 Prevent duplicate workflow executions from retried webhook deliveries by including an idempotency key. Most webhook providers supply one automatically:
 
-| Provider | Header to forward |
-|----------|-------------------|
-| GitHub | `X-GitHub-Delivery` |
-| Stripe | `Stripe-Signature` (already unique per event) |
-| Custom | Any stable per-event UUID |
+| Provider | Header to forward                             |
+| -------- | --------------------------------------------- |
+| GitHub   | `X-GitHub-Delivery`                           |
+| Stripe   | `Stripe-Signature` (already unique per event) |
+| Custom   | Any stable per-event UUID                     |
 
 Forward the provider's delivery ID as the `X-Idempotency-Key` header on the webhook request. The orchestrator deduplicates on `(source_name, idempotency_key)` with a 24-hour TTL. Duplicate deliveries return HTTP 409:
 
@@ -171,16 +171,16 @@ A well-designed `RouterAgent` prompt can use `X-GitHub-Event` to route `push` ev
 
 ## Error Reference
 
-| HTTP | Code | Cause |
-|------|------|-------|
-| `401` | `missing_signature` | `X-Aegis-Signature` header absent |
-| `400` | `malformed_signature` | Header not in `sha256=<hex>` format |
-| `400` | `invalid_hex` | Hex portion contains non-hex characters |
-| `401` | `secret_not_found` | No `AEGIS_WEBHOOK_SECRET_<SOURCE>` configured |
-| `401` | `invalid_signature` | HMAC digest does not match |
-| `409` | `idempotent_duplicate` | Already processed within 24-hour window |
-| `422` | `classification_failed` | RouterAgent confidence below threshold |
-| `422` | `no_router_configured` | No direct route and no RouterAgent |
+| HTTP  | Code                    | Cause                                         |
+| ----- | ----------------------- | --------------------------------------------- |
+| `401` | `missing_signature`     | `X-Aegis-Signature` header absent             |
+| `400` | `malformed_signature`   | Header not in `sha256=<hex>` format           |
+| `400` | `invalid_hex`           | Hex portion contains non-hex characters       |
+| `401` | `secret_not_found`      | No `AEGIS_WEBHOOK_SECRET_<SOURCE>` configured |
+| `401` | `invalid_signature`     | HMAC digest does not match                    |
+| `409` | `idempotent_duplicate`  | Already processed within 24-hour window       |
+| `422` | `classification_failed` | RouterAgent confidence below threshold        |
+| `422` | `no_router_configured`  | No direct route and no RouterAgent            |
 
 ---
 
@@ -209,13 +209,13 @@ The orchestrator includes a dedicated Stripe webhook handler at `POST /v1/webhoo
 
 Configure the following events in your Stripe Dashboard under **Developers > Webhooks**:
 
-| Event | Purpose |
-|-------|---------|
-| `checkout.session.completed` | Activates the subscription after successful payment |
+| Event                           | Purpose                                                   |
+| ------------------------------- | --------------------------------------------------------- |
+| `checkout.session.completed`    | Activates the subscription after successful payment       |
 | `customer.subscription.updated` | Propagates tier upgrades, downgrades, and billing changes |
-| `customer.subscription.deleted` | Reverts the user to the Free tier at period end |
-| `invoice.payment_succeeded` | Confirms successful renewal payments |
-| `invoice.payment_failed` | Marks the subscription as `past_due` for retry handling |
+| `customer.subscription.deleted` | Reverts the user to the Free tier at period end           |
+| `invoice.payment_succeeded`     | Confirms successful renewal payments                      |
+| `invoice.payment_failed`        | Marks the subscription as `past_due` for retry handling   |
 
 ### Configuration
 
@@ -225,7 +225,7 @@ Set the webhook signing secret on the orchestrator:
 export STRIPE_WEBHOOK_SECRET="whsec_..."
 ```
 
-Or use the `spec.stripe.webhook_secret` field in `aegis-config.yaml` (see [Configuration Reference](/docs/deployment/configuration)).
+Or use the `spec.billing.stripe_webhook_secret` field in `aegis-config.yaml` (see [Configuration Reference](/docs/deployment/configuration)).
 
 ### Webhook URL
 

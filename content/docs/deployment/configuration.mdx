@@ -29,11 +29,11 @@ The daemon searches for a config file in the following order. The first match wi
 
 Any string value in the config file can use a credential prefix instead of a literal:
 
-| Prefix | Resolution |
-|--------|------------|
-| `env:VAR_NAME` | Read from the daemon process environment at startup. |
+| Prefix                  | Resolution                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `env:VAR_NAME`          | Read from the daemon process environment at startup.                           |
 | `secret:path/to/secret` | Resolved from OpenBao at runtime (requires `spec.secrets.backend` configured). |
-| *(literal)* | Plaintext. Avoid for secrets. |
+| _(literal)_             | Plaintext. Avoid for secrets.                                                  |
 
 The recommended production pattern is `secret:` references for all API keys and credentials. Use `env:` as a fallback when OpenBao is not available.
 
@@ -60,9 +60,9 @@ All `aegis-config.yaml` files use the Kubernetes-style manifest envelope:
 apiVersion: 100monkeys.ai/v1
 kind: NodeConfig
 metadata:
-  name: "my-aegis-node"          # required
-  version: "1.0.0"               # optional
-  labels:                        # optional
+  name: "my-aegis-node" # required
+  version: "1.0.0" # optional
+  labels: # optional
     environment: "production"
 spec:
   # All configuration sections documented below sit under spec:
@@ -109,20 +109,20 @@ image_tag: "0.1.0-pre-alpha"
 # ─── LLM Providers ────────────────────────────────────────────────────────────
 # Array of LLM provider configurations. At least one entry is required.
 llm_providers:
-  - name: openai-primary           # Unique provider name on this node. Required.
-    type: openai                   # openai | anthropic | ollama | openai-compatible. Required.
-    endpoint: "https://api.openai.com/v1"  # API endpoint URL. Required.
-    api_key: "env:OPENAI_API_KEY"  # Supports env: and secret: prefixes.
-    enabled: true                  # Default: true
-    models:                        # Must have at least one entry. Required.
-      - alias: default             # Alias referenced in agent manifests. Required.
-        model: gpt-4o              # Provider-side model name. Required.
-        capabilities:              # chat | embedding | reasoning | vision | code. Required.
+  - name: openai-primary # Unique provider name on this node. Required.
+    type: openai # openai | anthropic | ollama | openai-compatible. Required.
+    endpoint: "https://api.openai.com/v1" # API endpoint URL. Required.
+    api_key: "env:OPENAI_API_KEY" # Supports env: and secret: prefixes.
+    enabled: true # Default: true
+    models: # Must have at least one entry. Required.
+      - alias: default # Alias referenced in agent manifests. Required.
+        model: gpt-4o # Provider-side model name. Required.
+        capabilities: # chat | embedding | reasoning | vision | code. Required.
           - chat
           - code
           - reasoning
-        context_window: 128000     # Max context window in tokens. Required.
-        cost_per_1k_tokens: 0.005  # Default: 0.0 (free/local)
+        context_window: 128000 # Max context window in tokens. Required.
+        cost_per_1k_tokens: 0.005 # Default: 0.0 (free/local)
       - alias: fast
         model: gpt-4o-mini
         capabilities: [chat, code]
@@ -240,14 +240,14 @@ network:
   tls:
     cert_path: "/etc/aegis/tls/server.crt"
     key_path: "/etc/aegis/tls/server.key"
-    ca_path: null    # Optional CA certificate path
+    ca_path: null # Optional CA certificate path
 
 # ─── Cluster ──────────────────────────────────────────────────────────────────
 # Optional. Configures the node's role in the multi-node cluster topology.
 cluster:
   # Enable cluster mode. Default: false.
   enabled: true
-  
+
   # Node role in cluster. Options: controller | worker | hybrid. Default: hybrid.
   # - controller: Manages routing and registration; does not run executions.
   # - worker: Runs agent executions; does not perform routing decisions.
@@ -360,8 +360,8 @@ force_deploy_builtins: "false"
 # ─── MCP Tool Servers ─────────────────────────────────────────────────────────
 # External MCP server processes. Optional array.
 mcp_servers:
-  - name: web-search              # Unique server name on this node. Required.
-    enabled: true                 # Default: true
+  - name: web-search # Unique server name on this node. Required.
+    enabled: true # Default: true
     # Executable path (absolute or relative to /usr/local/bin). Required.
     executable: "node"
     # Command-line arguments. Default: []
@@ -380,12 +380,12 @@ mcp_servers:
       LOG_LEVEL: "info"
     # Health check configuration.
     health_check:
-      interval_seconds: 60        # Default: 60
-      timeout_seconds: 5          # Default: 5
-      method: "tools/list"        # MCP method used for health check. Default: tools/list
+      interval_seconds: 60 # Default: 60
+      timeout_seconds: 5 # Default: 5
+      method: "tools/list" # MCP method used for health check. Default: tools/list
     # Resource limits for the server process.
     resource_limits:
-      cpu_millicores: 1000        # 1000 = 1 CPU core
+      cpu_millicores: 1000 # 1000 = 1 CPU core
       memory_mb: 512
 
 # ─── SEAL (Signed Envelope Attestation Layer) ────────────────────────────────────
@@ -410,7 +410,7 @@ security_contexts:
   - name: coder-default
     description: "Standard coder context — filesystem + commands + safe package registries"
     capabilities:
-      - tool_pattern: "fs.*"        # ← tool_pattern, not tool
+      - tool_pattern: "fs.*" # ← tool_pattern, not tool
         path_allowlist:
           - /workspace
           - /agent
@@ -426,7 +426,7 @@ security_contexts:
           - crates.io
           - npmjs.com
         rate_limit:
-          calls: 30                 # ← object with calls + per_seconds, not "30/minute"
+          calls: 30 # ← object with calls + per_seconds, not "30/minute"
           per_seconds: 60
     # Explicit deny list — overrides any matching capability above.
     deny_list: []
@@ -546,11 +546,11 @@ builtin_dispatchers:
 iam:
   # Array of Keycloak realms trusted by this node.
   realms:
-    - slug: "aegis-system"         # Realm name matching Keycloak config. Required.
-      issuer_url: "https://auth.myzaru.com/realms/aegis-system"  # OIDC issuer URL. Required.
-      jwks_uri: "https://auth.myzaru.com/realms/aegis-system/protocol/openid-connect/certs"  # Required.
-      audience: "aegis-orchestrator"  # Expected aud claim. Required.
-      kind: system                 # system | consumer | tenant. Required.
+    - slug: "aegis-system" # Realm name matching Keycloak config. Required.
+      issuer_url: "https://auth.myzaru.com/realms/aegis-system" # OIDC issuer URL. Required.
+      jwks_uri: "https://auth.myzaru.com/realms/aegis-system/protocol/openid-connect/certs" # Required.
+      audience: "aegis-orchestrator" # Expected aud claim. Required.
+      kind: system # system | consumer | tenant. Required.
     - slug: "zaru-consumer"
       issuer_url: "https://auth.myzaru.com/realms/zaru-consumer"
       jwks_uri: "https://auth.myzaru.com/realms/zaru-consumer/protocol/openid-connect/certs"
@@ -561,9 +561,9 @@ iam:
   jwks_cache_ttl_seconds: 300
   # Custom claim names injected by Keycloak attribute mappers.
   claims:
-    zaru_tier: "zaru_tier"         # Claim carrying ZaruTier (Free | Pro | Business | Enterprise)
-    aegis_role: "aegis_role"       # Claim carrying AegisRole in aegis-system realm
-    tenant_id: "tenant_id"         # Claim carrying per-user tenant slug (u-{uuid}) for consumer users
+    zaru_tier: "zaru_tier" # Claim carrying ZaruTier (Free | Pro | Business | Enterprise)
+    aegis_role: "aegis_role" # Claim carrying AegisRole in aegis-system realm
+    tenant_id: "tenant_id" # Claim carrying per-user tenant slug (u-{uuid}) for consumer users
 
 # ─── gRPC Auth ────────────────────────────────────────────────────────────────
 # Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint.
@@ -597,8 +597,8 @@ secrets:
     # Optional mTLS to OpenBao.
     tls:
       ca_cert: "/etc/aegis/openbao-ca.pem"
-      client_cert: null            # Optional mTLS client cert
-      client_key: null             # Optional mTLS client key
+      client_cert: null # Optional mTLS client cert
+      client_key: null # Optional mTLS client key
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 # Optional. If omitted the daemon uses InMemory repositories (dev only).
@@ -638,27 +638,26 @@ cortex:
   # Omit for local or open cortex deployments (connects without authentication).
   api_key: "env:CORTEX_API_KEY"
 
-# ─── Stripe Billing ──────────────────────────────────────────────────────────
-# Optional. Omit all Stripe variables for self-hosted deployments where
-# billing is not required. When STRIPE_SECRET_KEY is absent, all /v1/billing/*
-# endpoints return 501 Not Implemented.
-stripe:
+# ─── Billing ──────────────────────────────────────────────────────────────────
+# Optional. Omit for self-hosted deployments where billing is not required.
+# When stripe_secret_key is absent, all /v1/billing/* endpoints return
+# 501 Not Implemented.
+# Note: STRIPE_PUBLISHABLE_KEY and STRIPE_PRICING_TABLE_ID are frontend-only
+# env vars passed directly to the zaru-client container — they are NOT part
+# of NodeConfig and do not belong here.
+billing:
   # Stripe API secret key (server-side only). Supports env: and secret: prefixes.
-  secret_key: "env:STRIPE_SECRET_KEY"
-  # Stripe publishable key (passed to frontend for Checkout and Pricing Table).
-  publishable_key: "env:STRIPE_PUBLISHABLE_KEY"
+  stripe_secret_key: "env:STRIPE_SECRET_KEY"
   # Webhook signing secret for verifying Stripe webhook event signatures.
-  webhook_secret: "env:STRIPE_WEBHOOK_SECRET"
+  stripe_webhook_secret: "env:STRIPE_WEBHOOK_SECRET"
   # Stripe Price IDs for each tier and billing interval.
-  prices:
+  price_ids:
     pro_monthly: "env:STRIPE_PRICE_PRO_MONTHLY"
     pro_annual: "env:STRIPE_PRICE_PRO_ANNUAL"
     business_monthly: "env:STRIPE_PRICE_BUSINESS_MONTHLY"
     business_annual: "env:STRIPE_PRICE_BUSINESS_ANNUAL"
     enterprise_monthly: "env:STRIPE_PRICE_ENTERPRISE_MONTHLY"
     enterprise_annual: "env:STRIPE_PRICE_ENTERPRISE_ANNUAL"
-  # Stripe embedded pricing table component ID (used by the Zaru frontend).
-  pricing_table_id: "env:STRIPE_PRICING_TABLE_ID"
 
 # ─── External SEAL Tooling Gateway ─────────────────────────────────
 # Optional. Omit to keep external tool routing disabled.
@@ -714,16 +713,16 @@ observability:
 
 Required. Identifies this node within the AEGIS cluster.
 
-| Key | Type | Required | Default | Description |
-|-----|------|----------|---------|-------------|
-| `id` | string | ✅ | — | Unique stable node identifier. UUID recommended. Fails validation if empty. |
-| `type` | enum | ✅ | — | `edge` \| `orchestrator` \| `hybrid` |
-| `region` | string | ❌ | null | Geographic region (e.g., `"us-east-1"`) |
-| `tags` | string[] | ❌ | `[]` | Capability tags matched against `execution_targets` in agent manifests |
-| `resources.cpu_cores` | u32 | ❌ | — | Available CPU cores |
-| `resources.memory_gb` | u32 | ❌ | — | Available RAM in GB |
-| `resources.disk_gb` | u32 | ❌ | — | Available disk in GB |
-| `resources.gpu` | bool | ❌ | `false` | GPU available |
+| Key                   | Type     | Required | Default | Description                                                                 |
+| --------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------- |
+| `id`                  | string   | ✅       | —       | Unique stable node identifier. UUID recommended. Fails validation if empty. |
+| `type`                | enum     | ✅       | —       | `edge` \| `orchestrator` \| `hybrid`                                        |
+| `region`              | string   | ❌       | null    | Geographic region (e.g., `"us-east-1"`)                                     |
+| `tags`                | string[] | ❌       | `[]`    | Capability tags matched against `execution_targets` in agent manifests      |
+| `resources.cpu_cores` | u32      | ❌       | —       | Available CPU cores                                                         |
+| `resources.memory_gb` | u32      | ❌       | —       | Available RAM in GB                                                         |
+| `resources.disk_gb`   | u32      | ❌       | —       | Available disk in GB                                                        |
+| `resources.gpu`       | bool     | ❌       | `false` | GPU available                                                               |
 
 ---
 
@@ -731,8 +730,8 @@ Required. Identifies this node within the AEGIS cluster.
 
 Optional. Docker image tag for AEGIS-owned services.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
+| Key         | Type   | Default            | Description                                                                                                                                                                            |
+| ----------- | ------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `image_tag` | string | `<binary version>` | Tag applied to all AEGIS-owned Docker images. Written by `aegis init --tag` and updated by `aegis update`. When absent, defaults to the version string embedded in the `aegis` binary. |
 
 ---
@@ -741,18 +740,18 @@ Optional. Docker image tag for AEGIS-owned services.
 
 Required array. At least one entry with at least one model is required.
 
-| Key | Type | Required | Default | Description |
-|-----|------|----------|---------|-------------|
-| `name` | string | ✅ | — | Unique provider name |
-| `type` | enum | ✅ | — | `openai` \| `anthropic` \| `ollama` \| `openai-compatible` |
-| `endpoint` | string | ✅ | — | API endpoint URL |
-| `api_key` | string | ❌ | null | API key. Supports `env:` and `secret:`. |
-| `enabled` | bool | ❌ | `true` | Whether this provider is active |
-| `models[].alias` | string | ✅ | — | Alias referenced in agent manifests |
-| `models[].model` | string | ✅ | — | Provider-side model identifier |
-| `models[].capabilities` | string[] | ✅ | — | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` |
-| `models[].context_window` | u32 | ✅ | — | Max context window in tokens |
-| `models[].cost_per_1k_tokens` | f64 | ❌ | `0.0` | Cost per 1K tokens (0.0 for free/local) |
+| Key                           | Type     | Required | Default | Description                                                |
+| ----------------------------- | -------- | -------- | ------- | ---------------------------------------------------------- |
+| `name`                        | string   | ✅       | —       | Unique provider name                                       |
+| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `ollama` \| `openai-compatible` |
+| `endpoint`                    | string   | ✅       | —       | API endpoint URL                                           |
+| `api_key`                     | string   | ❌       | null    | API key. Supports `env:` and `secret:`.                    |
+| `enabled`                     | bool     | ❌       | `true`  | Whether this provider is active                            |
+| `models[].alias`              | string   | ✅       | —       | Alias referenced in agent manifests                        |
+| `models[].model`              | string   | ✅       | —       | Provider-side model identifier                             |
+| `models[].capabilities`       | string[] | ✅       | —       | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` |
+| `models[].context_window`     | u32      | ✅       | —       | Max context window in tokens                               |
+| `models[].cost_per_1k_tokens` | f64      | ❌       | `0.0`   | Cost per 1K tokens (0.0 for free/local)                    |
 
 ---
 
@@ -760,13 +759,13 @@ Required array. At least one entry with at least one model is required.
 
 Optional. Controls runtime provider selection strategy.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `strategy` | enum | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
-| `default_provider` | string | null | Provider to use when no preference is specified |
-| `fallback_provider` | string | null | Provider to use if the primary fails |
-| `max_retries` | u32 | `3` | Maximum retry attempts on LLM failure |
-| `retry_delay_ms` | u64 | `1000` | Delay between retries in milliseconds |
+| Key                 | Type   | Default        | Description                                                                 |
+| ------------------- | ------ | -------------- | --------------------------------------------------------------------------- |
+| `strategy`          | enum   | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
+| `default_provider`  | string | null           | Provider to use when no preference is specified                             |
+| `fallback_provider` | string | null           | Provider to use if the primary fails                                        |
+| `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure                                       |
+| `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
 
 ---
 
@@ -774,26 +773,26 @@ Optional. Controls runtime provider selection strategy.
 
 Optional. Controls how agent containers are launched.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `bootstrap_script` | string | `assets/bootstrap.py` | Path to bootstrap script relative to orchestrator binary |
-| `default_isolation` | enum | `inherit` | `docker` \| `podman` \| `firecracker` \| `inherit` \| `process` |
-| `container_socket_path` | string | *(platform default)* | Container runtime socket path. Docker: `/var/run/docker.sock`. Podman rootless: `/run/user/<UID>/podman/podman.sock`. Podman system: `/run/podman/podman.sock`. Can be overridden via `CONTAINER_HOST` or `DOCKER_HOST` env vars. |
-| `container_network_mode` | string | null | Container network name for agent containers |
-| `orchestrator_url` | string | `http://localhost:8088` | Callback URL reachable from inside agent containers |
-| `nfs_server_host` | string | null | **Critical for volume mounts.** NFS server host as seen by the Docker daemon host OS. See platform table below. |
-| `nfs_port` | u16 | `2049` | NFS server port |
-| `nfs_mountport` | u16 | `2049` | NFS mountd port |
+| Key                      | Type   | Default                 | Description                                                                                                                                                                                                                       |
+| ------------------------ | ------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrap_script`       | string | `assets/bootstrap.py`   | Path to bootstrap script relative to orchestrator binary                                                                                                                                                                          |
+| `default_isolation`      | enum   | `inherit`               | `docker` \| `podman` \| `firecracker` \| `inherit` \| `process`                                                                                                                                                                   |
+| `container_socket_path`  | string | _(platform default)_    | Container runtime socket path. Docker: `/var/run/docker.sock`. Podman rootless: `/run/user/<UID>/podman/podman.sock`. Podman system: `/run/podman/podman.sock`. Can be overridden via `CONTAINER_HOST` or `DOCKER_HOST` env vars. |
+| `container_network_mode` | string | null                    | Container network name for agent containers                                                                                                                                                                                       |
+| `orchestrator_url`       | string | `http://localhost:8088` | Callback URL reachable from inside agent containers                                                                                                                                                                               |
+| `nfs_server_host`        | string | null                    | **Critical for volume mounts.** NFS server host as seen by the Docker daemon host OS. See platform table below.                                                                                                                   |
+| `nfs_port`               | u16    | `2049`                  | NFS server port                                                                                                                                                                                                                   |
+| `nfs_mountport`          | u16    | `2049`                  | NFS mountd port                                                                                                                                                                                                                   |
 
 **`nfs_server_host` by environment:**
 
-| Environment | Value |
-|-------------|-------|
-| WSL2 / Linux native | `"127.0.0.1"` |
-| Docker Desktop (macOS) | `"host.docker.internal"` |
-| Linux bridge network | `"172.17.0.1"` (Docker bridge gateway) |
-| Remote / VM host | `<physical host IP>` |
-| Via env var | `"env:AEGIS_NFS_HOST"` |
+| Environment            | Value                                  |
+| ---------------------- | -------------------------------------- |
+| WSL2 / Linux native    | `"127.0.0.1"`                          |
+| Docker Desktop (macOS) | `"host.docker.internal"`               |
+| Linux bridge network   | `"172.17.0.1"` (Docker bridge gateway) |
+| Remote / VM host       | `<physical host IP>`                   |
+| Via env var            | `"env:AEGIS_NFS_HOST"`                 |
 
 ---
 
@@ -801,16 +800,16 @@ Optional. Controls how agent containers are launched.
 
 Optional. Configures ports and TLS.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `bind_address` | string | `0.0.0.0` | Network interface to bind all listeners |
-| `port` | u16 | `8088` | HTTP REST API port |
-| `grpc_port` | u16 | `50051` | gRPC API port |
-| `orchestrator_endpoint` | string | null | WebSocket URL for edge → orchestrator connection (edge nodes only) |
-| `heartbeat_interval_seconds` | u64 | `30` | Health check ping interval |
-| `tls.cert_path` | string | — | TLS certificate path |
-| `tls.key_path` | string | — | TLS private key path |
-| `tls.ca_path` | string | null | CA certificate path (optional) |
+| Key                          | Type   | Default   | Description                                                        |
+| ---------------------------- | ------ | --------- | ------------------------------------------------------------------ |
+| `bind_address`               | string | `0.0.0.0` | Network interface to bind all listeners                            |
+| `port`                       | u16    | `8088`    | HTTP REST API port                                                 |
+| `grpc_port`                  | u16    | `50051`   | gRPC API port                                                      |
+| `orchestrator_endpoint`      | string | null      | WebSocket URL for edge → orchestrator connection (edge nodes only) |
+| `heartbeat_interval_seconds` | u64    | `30`      | Health check ping interval                                         |
+| `tls.cert_path`              | string | —         | TLS certificate path                                               |
+| `tls.key_path`               | string | —         | TLS private key path                                               |
+| `tls.ca_path`                | string | null      | CA certificate path (optional)                                     |
 
 ---
 
@@ -818,20 +817,20 @@ Optional. Configures ports and TLS.
 
 Optional. Configures the node's role in the multi-node cluster topology.
 
-| Key | Type | Required | Default | Description |
-|-----|------|----------|---------|-------------|
-| `enabled` | bool | ❌ | `false` | Enable cluster mode. |
-| `role` | enum | ✅ | `hybrid` | Node role: `controller` \| `worker` \| `hybrid` |
-| `controller_endpoint` | string | ❌ | — | gRPC endpoint of the controller node. Required for `role: worker`. |
-| `cluster_grpc_port` | u16 | ❌ | `50056` | Port for `NodeClusterService` (controllers/hybrids) |
-| `peers` | string[] | ❌ | `[]` | Static list of peer controller addresses |
-| `node_keypair_path` | string | ✅ | — | Path to the persistent Ed25519 keypair file for node identity |
-| `heartbeat_interval_secs` | u64 | ❌ | `30` | Interval in seconds for worker heartbeats |
-| `token_refresh_margin_secs` | u64 | ❌ | `120` | Token re-attestation margin in seconds |
-| `tls.enabled` | bool | ❌ | `true` | Enable TLS for cluster communication |
-| `tls.cert_path` | string | ❌ | — | Path to node TLS certificate |
-| `tls.key_path` | string | ❌ | — | Path to node TLS private key |
-| `tls.ca_cert` | string | ❌ | — | Path to CA certificate for peer verification |
+| Key                         | Type     | Required | Default  | Description                                                        |
+| --------------------------- | -------- | -------- | -------- | ------------------------------------------------------------------ |
+| `enabled`                   | bool     | ❌       | `false`  | Enable cluster mode.                                               |
+| `role`                      | enum     | ✅       | `hybrid` | Node role: `controller` \| `worker` \| `hybrid`                    |
+| `controller_endpoint`       | string   | ❌       | —        | gRPC endpoint of the controller node. Required for `role: worker`. |
+| `cluster_grpc_port`         | u16      | ❌       | `50056`  | Port for `NodeClusterService` (controllers/hybrids)                |
+| `peers`                     | string[] | ❌       | `[]`     | Static list of peer controller addresses                           |
+| `node_keypair_path`         | string   | ✅       | —        | Path to the persistent Ed25519 keypair file for node identity      |
+| `heartbeat_interval_secs`   | u64      | ❌       | `30`     | Interval in seconds for worker heartbeats                          |
+| `token_refresh_margin_secs` | u64      | ❌       | `120`    | Token re-attestation margin in seconds                             |
+| `tls.enabled`               | bool     | ❌       | `true`   | Enable TLS for cluster communication                               |
+| `tls.cert_path`             | string   | ❌       | —        | Path to node TLS certificate                                       |
+| `tls.key_path`              | string   | ❌       | —        | Path to node TLS private key                                       |
+| `tls.ca_cert`               | string   | ❌       | —        | Path to CA certificate for peer verification                       |
 
 ---
 
@@ -839,23 +838,23 @@ Optional. Configures the node's role in the multi-node cluster topology.
 
 Optional. Defaults to the `local_host` backend.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `backend` | enum | `local_host` | `seaweedfs` \| `local_host` |
-| `fallback_to_local` | bool | `true` | Gracefully fall back to local storage when SeaweedFS is unreachable |
-| `nfs_port` | u16 | `2049` | NFS Server Gateway listen port |
-| `seaweedfs.filer_url` | string | `http://localhost:8888` | SeaweedFS Filer endpoint |
-| `seaweedfs.mount_point` | string | `/var/lib/aegis/storage` | Host filesystem mount point |
-| `seaweedfs.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
-| `seaweedfs.default_size_limit_mb` | u64 | `1000` | Default per-volume size quota (MB) |
-| `seaweedfs.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
-| `seaweedfs.gc_interval_minutes` | u32 | `60` | Expired volume GC interval (minutes) |
-| `seaweedfs.s3_endpoint` | string | null | Optional SeaweedFS S3 gateway endpoint |
-| `seaweedfs.s3_region` | string | `us-east-1` | S3 gateway region |
-| `local_host.base_path` | string | `/var/lib/aegis/local-volumes` | Base directory for local volume storage |
-| `local_host.default_ttl_hours` | u32 | `24` | Default TTL for ephemeral volumes (hours) |
-| `local_host.default_size_limit_mb` | u64 | `1000` | Default per-volume quota (MB) |
-| `local_host.max_size_limit_mb` | u64 | `10000` | Hard ceiling on volume size (MB) |
+| Key                                | Type   | Default                        | Description                                                         |
+| ---------------------------------- | ------ | ------------------------------ | ------------------------------------------------------------------- |
+| `backend`                          | enum   | `local_host`                   | `seaweedfs` \| `local_host`                                         |
+| `fallback_to_local`                | bool   | `true`                         | Gracefully fall back to local storage when SeaweedFS is unreachable |
+| `nfs_port`                         | u16    | `2049`                         | NFS Server Gateway listen port                                      |
+| `seaweedfs.filer_url`              | string | `http://localhost:8888`        | SeaweedFS Filer endpoint                                            |
+| `seaweedfs.mount_point`            | string | `/var/lib/aegis/storage`       | Host filesystem mount point                                         |
+| `seaweedfs.default_ttl_hours`      | u32    | `24`                           | Default TTL for ephemeral volumes (hours)                           |
+| `seaweedfs.default_size_limit_mb`  | u64    | `1000`                         | Default per-volume size quota (MB)                                  |
+| `seaweedfs.max_size_limit_mb`      | u64    | `10000`                        | Hard ceiling on volume size (MB)                                    |
+| `seaweedfs.gc_interval_minutes`    | u32    | `60`                           | Expired volume GC interval (minutes)                                |
+| `seaweedfs.s3_endpoint`            | string | null                           | Optional SeaweedFS S3 gateway endpoint                              |
+| `seaweedfs.s3_region`              | string | `us-east-1`                    | S3 gateway region                                                   |
+| `local_host.base_path`             | string | `/var/lib/aegis/local-volumes` | Base directory for local volume storage                             |
+| `local_host.default_ttl_hours`     | u32    | `24`                           | Default TTL for ephemeral volumes (hours)                           |
+| `local_host.default_size_limit_mb` | u64    | `1000`                         | Default per-volume quota (MB)                                       |
+| `local_host.max_size_limit_mb`     | u64    | `10000`                        | Hard ceiling on volume size (MB)                                    |
 
 ---
 
@@ -863,8 +862,8 @@ Optional. Defaults to the `local_host` backend.
 
 Optional. Default: `false`.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
+| Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, and skill-import workflows. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function. |
 
 ---
@@ -873,20 +872,20 @@ Optional. Default: `false`.
 
 Optional array. Each entry defines an external MCP Tool Server process.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `name` | string | — | Unique server name on this node |
-| `enabled` | bool | `true` | Whether to start this server |
-| `executable` | string | — | Executable path |
-| `args` | string[] | `[]` | Command-line arguments |
-| `capabilities` | string[] | `[]` | Tool names this server provides (used for routing) |
-| `credentials` | map | `{}` | API keys/tokens injected as env vars. Values support `secret:`. |
-| `environment` | map | `{}` | Non-secret env vars for the server process |
-| `health_check.interval_seconds` | u64 | `60` | Health check interval |
-| `health_check.timeout_seconds` | u64 | `5` | Health check timeout |
-| `health_check.method` | string | `tools/list` | MCP method used to health-check the server |
-| `resource_limits.cpu_millicores` | u32 | `1000` | CPU limit (1000 = 1 core) |
-| `resource_limits.memory_mb` | u32 | `512` | Memory limit (MB) |
+| Key                              | Type     | Default      | Description                                                     |
+| -------------------------------- | -------- | ------------ | --------------------------------------------------------------- |
+| `name`                           | string   | —            | Unique server name on this node                                 |
+| `enabled`                        | bool     | `true`       | Whether to start this server                                    |
+| `executable`                     | string   | —            | Executable path                                                 |
+| `args`                           | string[] | `[]`         | Command-line arguments                                          |
+| `capabilities`                   | string[] | `[]`         | Tool names this server provides (used for routing)              |
+| `credentials`                    | map      | `{}`         | API keys/tokens injected as env vars. Values support `secret:`. |
+| `environment`                    | map      | `{}`         | Non-secret env vars for the server process                      |
+| `health_check.interval_seconds`  | u64      | `60`         | Health check interval                                           |
+| `health_check.timeout_seconds`   | u64      | `5`          | Health check timeout                                            |
+| `health_check.method`            | string   | `tools/list` | MCP method used to health-check the server                      |
+| `resource_limits.cpu_millicores` | u32      | `1000`       | CPU limit (1000 = 1 core)                                       |
+| `resource_limits.memory_mb`      | u32      | `512`        | Memory limit (MB)                                               |
 
 ---
 
@@ -894,13 +893,13 @@ Optional array. Each entry defines an external MCP Tool Server process.
 
 Optional. Enables cryptographic agent authorization via SEAL. Required in production.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `private_key_path` | string | — | Path to RSA private key PEM for signing `SecurityToken` JWTs |
-| `public_key_path` | string | — | Path to RSA public key PEM for verifying `SecurityToken` JWTs |
-| `issuer` | string | `aegis-orchestrator` | JWT `iss` claim |
-| `audiences` | string[] | `[aegis-agents]` | JWT `aud` claims |
-| `token_ttl_seconds` | u64 | `3600` | `SecurityToken` lifetime in seconds |
+| Key                 | Type     | Default              | Description                                                   |
+| ------------------- | -------- | -------------------- | ------------------------------------------------------------- |
+| `private_key_path`  | string   | —                    | Path to RSA private key PEM for signing `SecurityToken` JWTs  |
+| `public_key_path`   | string   | —                    | Path to RSA public key PEM for verifying `SecurityToken` JWTs |
+| `issuer`            | string   | `aegis-orchestrator` | JWT `iss` claim                                               |
+| `audiences`         | string[] | `[aegis-agents]`     | JWT `aud` claims                                              |
+| `token_ttl_seconds` | u64      | `3600`               | `SecurityToken` lifetime in seconds                           |
 
 ---
 
@@ -910,24 +909,24 @@ Optional array. Named permission boundaries assigned to agents at execution time
 
 Each entry (`SecurityContextDefinition`):
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `name` | string | — | Unique context name, referenced in agent manifests |
-| `description` | string | `""` | Human-readable description |
-| `capabilities` | array | `[]` | Tool permissions granted by this context |
-| `deny_list` | string[] | `[]` | Explicit tool deny list; overrides any matching capability |
+| Key            | Type     | Default | Description                                                |
+| -------------- | -------- | ------- | ---------------------------------------------------------- |
+| `name`         | string   | —       | Unique context name, referenced in agent manifests         |
+| `description`  | string   | `""`    | Human-readable description                                 |
+| `capabilities` | array    | `[]`    | Tool permissions granted by this context                   |
+| `deny_list`    | string[] | `[]`    | Explicit tool deny list; overrides any matching capability |
 
 Each `capabilities` entry (`CapabilityDefinition`):
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `tool_pattern` | string | Tool name pattern (e.g., `"fs.*"`, `"cmd.run"`, `"web.fetch"`, `"*"`) |
-| `path_allowlist` | string[] | Allowed filesystem path prefixes (for `fs.*` tools) |
-| `subcommand_allowlist` | object | Map of base command → allowed first positional arguments (for `cmd.run`). Example: `{cargo: ["build","test"]}`. |
-| `domain_allowlist` | string[] | Allowed network domain suffixes (for `web.*` tools) |
-| `rate_limit.calls` | u32 | Number of calls allowed per window |
-| `rate_limit.per_seconds` | u32 | Window size in seconds |
-| `max_response_size` | u64 | Max response size in bytes |
+| Key                      | Type     | Description                                                                                                     |
+| ------------------------ | -------- | --------------------------------------------------------------------------------------------------------------- |
+| `tool_pattern`           | string   | Tool name pattern (e.g., `"fs.*"`, `"cmd.run"`, `"web.fetch"`, `"*"`)                                           |
+| `path_allowlist`         | string[] | Allowed filesystem path prefixes (for `fs.*` tools)                                                             |
+| `subcommand_allowlist`   | object   | Map of base command → allowed first positional arguments (for `cmd.run`). Example: `{cargo: ["build","test"]}`. |
+| `domain_allowlist`       | string[] | Allowed network domain suffixes (for `web.*` tools)                                                             |
+| `rate_limit.calls`       | u32      | Number of calls allowed per window                                                                              |
+| `rate_limit.per_seconds` | u32      | Window size in seconds                                                                                          |
+| `max_response_size`      | u64      | Max response size in bytes                                                                                      |
 
 ---
 
@@ -935,14 +934,14 @@ Each `capabilities` entry (`CapabilityDefinition`):
 
 Optional. Configures the `cmd` Dispatch Protocol handler. This is an in-process handler — it is not an MCP server process.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `cmd.enabled` | bool | `true` | Enable `cmd.run` dispatch |
-| `cmd.default_timeout_secs` | u64 | `60` | Default subprocess timeout |
-| `cmd.max_timeout_ceiling_secs` | u64 | `300` | Maximum timeout an agent manifest may request |
-| `cmd.max_output_bytes` | u64 | `524288` | Max stdout + stderr per subprocess (512 KB) |
-| `cmd.max_concurrent_per_execution` | u32 | `1` | Max concurrent subprocesses per execution |
-| `cmd.global_env_denylist` | string[] | *(see sample)* | Env vars that must never be forwarded to agent subprocesses |
+| Key                                | Type     | Default        | Description                                                 |
+| ---------------------------------- | -------- | -------------- | ----------------------------------------------------------- |
+| `cmd.enabled`                      | bool     | `true`         | Enable `cmd.run` dispatch                                   |
+| `cmd.default_timeout_secs`         | u64      | `60`           | Default subprocess timeout                                  |
+| `cmd.max_timeout_ceiling_secs`     | u64      | `300`          | Maximum timeout an agent manifest may request               |
+| `cmd.max_output_bytes`             | u64      | `524288`       | Max stdout + stderr per subprocess (512 KB)                 |
+| `cmd.max_concurrent_per_execution` | u32      | `1`            | Max concurrent subprocesses per execution                   |
+| `cmd.global_env_denylist`          | string[] | _(see sample)_ | Env vars that must never be forwarded to agent subprocesses |
 
 ---
 
@@ -950,16 +949,16 @@ Optional. Configures the `cmd` Dispatch Protocol handler. This is an in-process 
 
 Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT validation (dev only; never in production).
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `realms[].slug` | string | — | Realm name matching the Keycloak configuration |
-| `realms[].issuer_url` | string | — | OIDC issuer URL |
-| `realms[].jwks_uri` | string | — | JWKS endpoint for JWT signature verification |
-| `realms[].audience` | string | — | Expected `aud` claim in tokens from this realm |
-| `realms[].kind` | enum | — | `system` \| `consumer` \| `tenant` |
-| `jwks_cache_ttl_seconds` | u32 | `300` | JWKS key cache TTL; refreshed automatically to support key rotation |
-| `claims.zaru_tier` | string | `zaru_tier` | Keycloak claim name carrying `ZaruTier` |
-| `claims.aegis_role` | string | `aegis_role` | Keycloak claim name carrying `AegisRole` |
+| Key                      | Type   | Default      | Description                                                         |
+| ------------------------ | ------ | ------------ | ------------------------------------------------------------------- |
+| `realms[].slug`          | string | —            | Realm name matching the Keycloak configuration                      |
+| `realms[].issuer_url`    | string | —            | OIDC issuer URL                                                     |
+| `realms[].jwks_uri`      | string | —            | JWKS endpoint for JWT signature verification                        |
+| `realms[].audience`      | string | —            | Expected `aud` claim in tokens from this realm                      |
+| `realms[].kind`          | enum   | —            | `system` \| `consumer` \| `tenant`                                  |
+| `jwks_cache_ttl_seconds` | u32    | `300`        | JWKS key cache TTL; refreshed automatically to support key rotation |
+| `claims.zaru_tier`       | string | `zaru_tier`  | Keycloak claim name carrying `ZaruTier`                             |
+| `claims.aegis_role`      | string | `aegis_role` | Keycloak claim name carrying `AegisRole`                            |
 
 ---
 
@@ -967,9 +966,9 @@ Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT val
 
 Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint. Requires `spec.iam` to be configured.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `enabled` | bool | `true` | Enforce JWT validation on gRPC methods |
+| Key              | Type     | Default                          | Description                                                                                      |
+| ---------------- | -------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `enabled`        | bool     | `true`                           | Enforce JWT validation on gRPC methods                                                           |
 | `exempt_methods` | string[] | `[/aegis.v1.InnerLoop/Generate]` | gRPC method full paths exempt from auth. The inner-loop bootstrap channel must always be exempt. |
 
 ---
@@ -978,16 +977,16 @@ Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint. Requires `spec
 
 Optional. Configures OpenBao as the secrets backend. Follows the Keymaster Pattern — agents never access OpenBao directly.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `backend.address` | string | — | OpenBao server URL |
-| `backend.auth_method` | string | `approle` | Authentication method. Only `approle` is currently supported. |
-| `backend.approle.role_id` | string | — | AppRole Role ID (public; safe to commit) |
+| Key                                 | Type   | Default             | Description                                                                                           |
+| ----------------------------------- | ------ | ------------------- | ----------------------------------------------------------------------------------------------------- |
+| `backend.address`                   | string | —                   | OpenBao server URL                                                                                    |
+| `backend.auth_method`               | string | `approle`           | Authentication method. Only `approle` is currently supported.                                         |
+| `backend.approle.role_id`           | string | —                   | AppRole Role ID (public; safe to commit)                                                              |
 | `backend.approle.secret_id_env_var` | string | `OPENBAO_SECRET_ID` | Name of the environment variable containing the AppRole Secret ID. Never commit the actual Secret ID. |
-| `backend.namespace` | string | — | OpenBao namespace (maps 1:1 to an IAM realm) |
-| `backend.tls.ca_cert` | string | null | CA certificate path |
-| `backend.tls.client_cert` | string | null | mTLS client certificate path |
-| `backend.tls.client_key` | string | null | mTLS client key path |
+| `backend.namespace`                 | string | —                   | OpenBao namespace (maps 1:1 to an IAM realm)                                                          |
+| `backend.tls.ca_cert`               | string | null                | CA certificate path                                                                                   |
+| `backend.tls.client_cert`           | string | null                | mTLS client certificate path                                                                          |
+| `backend.tls.client_key`            | string | null                | mTLS client key path                                                                                  |
 
 ---
 
@@ -995,11 +994,11 @@ Optional. Configures OpenBao as the secrets backend. Follows the Keymaster Patte
 
 Optional. PostgreSQL connection for persistent state (executions, patterns, workflows). If omitted, the daemon uses in-memory repositories (development mode only).
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `url` | string | — | PostgreSQL connection URL. Supports `env:` and `secret:`. |
-| `max_connections` | u32 | `5` | Maximum connections in the pool |
-| `connect_timeout_seconds` | u64 | `5` | Connection timeout |
+| Key                       | Type   | Default | Description                                               |
+| ------------------------- | ------ | ------- | --------------------------------------------------------- |
+| `url`                     | string | —       | PostgreSQL connection URL. Supports `env:` and `secret:`. |
+| `max_connections`         | u32    | `5`     | Maximum connections in the pool                           |
+| `connect_timeout_seconds` | u64    | `5`     | Connection timeout                                        |
 
 ---
 
@@ -1007,14 +1006,14 @@ Optional. PostgreSQL connection for persistent state (executions, patterns, work
 
 Optional. Temporal workflow engine configuration for durable workflow execution. If omitted, workflow orchestration features are unavailable.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `address` | string | `temporal:7233` | Temporal gRPC server address |
-| `worker_http_endpoint` | string | `http://localhost:3000` | HTTP endpoint for Temporal worker callbacks. Supports `env:`. |
-| `worker_secret` | string | null | Shared secret for authenticating worker callbacks. Supports `env:` and `secret:`. |
-| `namespace` | string | `default` | Temporal namespace |
-| `task_queue` | string | `aegis-agents` | Temporal task queue name |
-| `max_connection_retries` | i32 | `30` | Maximum number of connection retries when establishing the Temporal client. |
+| Key                      | Type   | Default                 | Description                                                                       |
+| ------------------------ | ------ | ----------------------- | --------------------------------------------------------------------------------- |
+| `address`                | string | `temporal:7233`         | Temporal gRPC server address                                                      |
+| `worker_http_endpoint`   | string | `http://localhost:3000` | HTTP endpoint for Temporal worker callbacks. Supports `env:`.                     |
+| `worker_secret`          | string | null                    | Shared secret for authenticating worker callbacks. Supports `env:` and `secret:`. |
+| `namespace`              | string | `default`               | Temporal namespace                                                                |
+| `task_queue`             | string | `aegis-agents`          | Temporal task queue name                                                          |
+| `max_connection_retries` | i32    | `30`                    | Maximum number of connection retries when establishing the Temporal client.       |
 
 ---
 
@@ -1022,10 +1021,10 @@ Optional. Temporal workflow engine configuration for durable workflow execution.
 
 Optional. Cortex memory and learning service configuration. If omitted or `grpc_url` is null, the daemon runs in **memoryless mode** — patterns are simply not stored.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `grpc_url` | string | null | Cortex gRPC service URL. Supports `env:`. |
-| `api_key` | string | null | API key for 100monkeys hosted Cortex (Zaru SaaS). Supports `env:` and `secret:` prefixes. When absent, the orchestrator connects without authentication (local/open cortex). |
+| Key        | Type   | Default | Description                                                                                                                                                                  |
+| ---------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grpc_url` | string | null    | Cortex gRPC service URL. Supports `env:`.                                                                                                                                    |
+| `api_key`  | string | null    | API key for 100monkeys hosted Cortex (Zaru SaaS). Supports `env:` and `secret:` prefixes. When absent, the orchestrator connects without authentication (local/open cortex). |
 
 ---
 
@@ -1035,24 +1034,24 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 
 ---
 
-### `spec.stripe`
+### `spec.billing`
 
-Optional. Configures Stripe billing integration. Omit all Stripe variables for self-hosted deployments where billing is not required. When `secret_key` is absent, all `/v1/billing/*` endpoints return `501 Not Implemented`.
+Optional. Configures Stripe billing integration. Omit this section for self-hosted deployments where billing is not required. When `stripe_secret_key` is absent, all `/v1/billing/*` endpoints return `501 Not Implemented`.
 
-| Key | Type | Required | Default | Description |
-|-----|------|----------|---------|-------------|
-| `secret_key` | string | Yes | — | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes. |
-| `publishable_key` | string | Yes | — | Stripe publishable key, passed to the frontend for Checkout and Pricing Table rendering. |
-| `webhook_secret` | string | Yes | — | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). |
-| `prices.pro_monthly` | string | Yes | — | Stripe Price ID for Pro tier, monthly billing. |
-| `prices.pro_annual` | string | Yes | — | Stripe Price ID for Pro tier, annual billing. |
-| `prices.business_monthly` | string | Yes | — | Stripe Price ID for Business tier, monthly billing. |
-| `prices.business_annual` | string | Yes | — | Stripe Price ID for Business tier, annual billing. |
-| `prices.enterprise_monthly` | string | Yes | — | Stripe Price ID for Enterprise tier, monthly billing. |
-| `prices.enterprise_annual` | string | Yes | — | Stripe Price ID for Enterprise tier, annual billing. |
-| `pricing_table_id` | string | No | — | Stripe embedded pricing table component ID, used by the Zaru frontend to render plan selection. |
+| Key                            | Type   | Required | Default | Description                                                                                                         |
+| ------------------------------ | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `stripe_secret_key`            | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
+| `stripe_webhook_secret`        | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
+| `price_ids.pro_monthly`        | string | No       | —       | Stripe Price ID for Pro tier, monthly billing.                                                                      |
+| `price_ids.pro_annual`         | string | No       | —       | Stripe Price ID for Pro tier, annual billing.                                                                       |
+| `price_ids.business_monthly`   | string | No       | —       | Stripe Price ID for Business tier, monthly billing.                                                                 |
+| `price_ids.business_annual`    | string | No       | —       | Stripe Price ID for Business tier, annual billing.                                                                  |
+| `price_ids.enterprise_monthly` | string | No       | —       | Stripe Price ID for Enterprise tier, monthly billing.                                                               |
+| `price_ids.enterprise_annual`  | string | No       | —       | Stripe Price ID for Enterprise tier, annual billing.                                                                |
 
 All fields support `env:` and `secret:` credential prefixes (see [Credential Resolution](#credential-resolution)).
+
+> **Note:** `publishable_key` and `pricing_table_id` are frontend-only variables configured on the Zaru client (via `STRIPE_PUBLISHABLE_KEY` and `STRIPE_PRICING_TABLE_ID` environment variables), not in the orchestrator config.
 
 ---
 
@@ -1060,9 +1059,9 @@ All fields support `env:` and `secret:` credential prefixes (see [Credential Res
 
 Optional. Configures forwarding of external tool invocations to the standalone SEAL tooling gateway.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `url` | string | null | gRPC endpoint URL of `aegis-seal-gateway` (example: `http://aegis-seal-gateway:50055`). |
+| Key   | Type   | Default | Description                                                                             |
+| ----- | ------ | ------- | --------------------------------------------------------------------------------------- |
+| `url` | string | null    | gRPC endpoint URL of `aegis-seal-gateway` (example: `http://aegis-seal-gateway:50055`). |
 
 If omitted, orchestrator does not forward unknown/external tools to the gateway and continues with built-in routing only.
 
@@ -1072,9 +1071,9 @@ If omitted, orchestrator does not forward unknown/external tools to the gateway 
 
 Optional. Upper bound on executions returned by a single `list_executions` request.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `max_execution_list_limit` | usize | `1000` | Maximum number of executions returned by a single `list_executions` request. Protects against excessive memory usage. |
+| Key                        | Type  | Default | Description                                                                                                           |
+| -------------------------- | ----- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `max_execution_list_limit` | usize | `1000`  | Maximum number of executions returned by a single `list_executions` request. Protects against excessive memory usage. |
 
 ---
 
@@ -1084,33 +1083,33 @@ Optional.
 
 #### `logging`
 
-| Key | Type | Default | Env Override | Description |
-|-----|------|---------|----------|-------------|
-| `logging.level` | enum | `info` | `RUST_LOG` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
-| `logging.format` | enum | `json` | `AEGIS_LOG_FORMAT` | `json` \| `text` |
-| `logging.file` | string | null | — | Log file path. Omit to write to stdout. |
-| `logging.otlp_endpoint` | string | null | `AEGIS_OTLP_ENDPOINT` | OTLP collector endpoint. Setting this enables OTLP log export. |
-| `logging.otlp_protocol` | enum | `grpc` | `AEGIS_OTLP_PROTOCOL` | `grpc` \| `http` |
-| `logging.otlp_headers` | map | `{}` | `AEGIS_OTLP_HEADERS` | Key-value headers sent with every OTLP export RPC. Values support `env:` and `secret:` prefixes. Env var uses comma-separated `key=value` pairs. |
-| `logging.otlp_min_level` | string | `info` | `AEGIS_OTLP_LOG_LEVEL` | Minimum log level forwarded to OTLP (does not affect stdout). |
-| `logging.otlp_service_name` | string | `aegis-orchestrator` | `AEGIS_OTLP_SERVICE_NAME` | `service.name` resource attribute |
-| `logging.otlp_batch.max_queue_size` | u32 | `2048` | — | Maximum buffered records before export |
-| `logging.otlp_batch.scheduled_delay_ms` | u64 | `5000` | — | Batch flush interval (ms) |
-| `logging.otlp_batch.max_export_batch_size` | u32 | `512` | — | Records per export RPC |
-| `logging.otlp_batch.export_timeout_ms` | u64 | `10000` | — | Per-call timeout (ms) |
-| `logging.otlp_tls.verify` | bool | `true` | — | Verify OTLP endpoint TLS certificate |
-| `logging.otlp_tls.ca_cert_path` | string | null | — | Custom CA certificate for self-signed backends |
+| Key                                        | Type   | Default              | Env Override              | Description                                                                                                                                      |
+| ------------------------------------------ | ------ | -------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `logging.level`                            | enum   | `info`               | `RUST_LOG`                | `error` \| `warn` \| `info` \| `debug` \| `trace`                                                                                                |
+| `logging.format`                           | enum   | `json`               | `AEGIS_LOG_FORMAT`        | `json` \| `text`                                                                                                                                 |
+| `logging.file`                             | string | null                 | —                         | Log file path. Omit to write to stdout.                                                                                                          |
+| `logging.otlp_endpoint`                    | string | null                 | `AEGIS_OTLP_ENDPOINT`     | OTLP collector endpoint. Setting this enables OTLP log export.                                                                                   |
+| `logging.otlp_protocol`                    | enum   | `grpc`               | `AEGIS_OTLP_PROTOCOL`     | `grpc` \| `http`                                                                                                                                 |
+| `logging.otlp_headers`                     | map    | `{}`                 | `AEGIS_OTLP_HEADERS`      | Key-value headers sent with every OTLP export RPC. Values support `env:` and `secret:` prefixes. Env var uses comma-separated `key=value` pairs. |
+| `logging.otlp_min_level`                   | string | `info`               | `AEGIS_OTLP_LOG_LEVEL`    | Minimum log level forwarded to OTLP (does not affect stdout).                                                                                    |
+| `logging.otlp_service_name`                | string | `aegis-orchestrator` | `AEGIS_OTLP_SERVICE_NAME` | `service.name` resource attribute                                                                                                                |
+| `logging.otlp_batch.max_queue_size`        | u32    | `2048`               | —                         | Maximum buffered records before export                                                                                                           |
+| `logging.otlp_batch.scheduled_delay_ms`    | u64    | `5000`               | —                         | Batch flush interval (ms)                                                                                                                        |
+| `logging.otlp_batch.max_export_batch_size` | u32    | `512`                | —                         | Records per export RPC                                                                                                                           |
+| `logging.otlp_batch.export_timeout_ms`     | u64    | `10000`              | —                         | Per-call timeout (ms)                                                                                                                            |
+| `logging.otlp_tls.verify`                  | bool   | `true`               | —                         | Verify OTLP endpoint TLS certificate                                                                                                             |
+| `logging.otlp_tls.ca_cert_path`            | string | null                 | —                         | Custom CA certificate for self-signed backends                                                                                                   |
 
 #### `metrics`
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `metrics.enabled` | bool | `true` | Enable Prometheus metrics |
-| `metrics.port` | u16 | `9091` | Prometheus metrics exposition port |
-| `metrics.path` | string | `/metrics` | HTTP path for scraping |
+| Key               | Type   | Default    | Description                        |
+| ----------------- | ------ | ---------- | ---------------------------------- |
+| `metrics.enabled` | bool   | `true`     | Enable Prometheus metrics          |
+| `metrics.port`    | u16    | `9091`     | Prometheus metrics exposition port |
+| `metrics.path`    | string | `/metrics` | HTTP path for scraping             |
 
 #### `tracing`
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
+| Key               | Type | Default | Description                                  |
+| ----------------- | ---- | ------- | -------------------------------------------- |
 | `tracing.enabled` | bool | `false` | Enable distributed tracing via OpenTelemetry |
