@@ -283,6 +283,66 @@ For the full `builtin_dispatchers` and `subcommand_allowlist` field schemas, see
 
 ---
 
+## Orchestrator-Native Management Tools
+
+**Used for:** `aegis.file.*`, `aegis.volume.*`, `aegis.git.*`, `aegis.script.*`
+
+These tool families are handled entirely in-process by the orchestrator. Each call passes through `SealMiddleware` (signature verification, JWT validation, policy check) and then dispatches to an internal Rust handler rather than an external MCP server process, the container's `bootstrap.py`, or a separate tool daemon. Results are returned synchronously to the agent inner loop.
+
+Because these handlers run in the orchestrator address space, credential isolation is automatic (the orchestrator holds all relevant credentials — Git remote tokens, storage backend credentials, tenant scope — and the agent container never sees them) and every invocation publishes the same `MCPToolEvent` variants as the other routing paths for auditability.
+
+### `aegis.file.*` — workspace filesystem operations
+
+Operate on a workspace volume through the `AegisFSAL`. They share the same authorization boundary as the `fs.*` tools: path canonicalization, UID/GID squashing, `FilesystemPolicy` enforcement, quota tracking, and `StorageEvent` publication. The difference is naming and scope — `aegis.file.*` tools explicitly address a named volume and are invokable outside an execution context (for example, from Zaru canvas sessions operating on persistent workspaces).
+
+| Tool | Description |
+|---|---|
+| `aegis.file.list` | List entries in a directory on a workspace volume. |
+| `aegis.file.read` | Read the bytes (or decoded text) of a file on a workspace volume. |
+| `aegis.file.write` | Write content to a file, creating or overwriting as needed. |
+| `aegis.file.delete` | Remove a file or directory entry. |
+| `aegis.file.mkdir` | Create a directory (including parents) on a workspace volume. |
+
+### `aegis.volume.*` — tenant-scoped volume CRUD
+
+Manage the `Volume` aggregate at the orchestrator level. These tools are routed to the `VolumeManager` and operate on the SeaweedFS (or configured `StorageProvider`) directory that backs the volume, not on individual files inside it.
+
+| Tool | Description |
+|---|---|
+| `aegis.volume.create` | Provision a new volume in the caller's tenant with the requested ownership, size limit, and access mode. |
+| `aegis.volume.list` | Enumerate volumes visible to the caller's tenant. |
+| `aegis.volume.delete` | Decommission a volume; triggers the `Deleting → Deleted` state transition and SeaweedFS directory cleanup. |
+| `aegis.volume.quota` | Read the current size limit and usage for a volume. |
+
+### `aegis.git.*` — git repository bindings
+
+Bind one or more Git repositories into a workspace volume and maintain a working copy that both agents and container steps can read and modify. The orchestrator handles clone, fetch, and refresh against the remote and write-back operations (commit, push, diff) from the local working directory — including for long-running Zaru canvas sessions where the workspace persists between agent executions.
+
+| Tool | Description |
+|---|---|
+| `aegis.git.clone` | Clone a remote repository into a workspace volume and create a repository binding. |
+| `aegis.git.list` | List repository bindings attached to a workspace volume. |
+| `aegis.git.status` | Report working-tree status (staged, unstaged, untracked) for a repository binding. |
+| `aegis.git.refresh` | Fetch from the remote and fast-forward the working copy of a repository binding. |
+| `aegis.git.delete` | Remove a repository binding and clean up its working directory. |
+| `aegis.git.commit` | Stage and commit working-directory changes back to the repository binding. |
+| `aegis.git.push` | Push committed changes to the configured remote. |
+| `aegis.git.diff` | Produce a diff of working-directory, staged, or committed changes for a binding. |
+
+### `aegis.script.*` — saved TypeScript programs
+
+Store and manage named TypeScript programs as versioned artifacts on the orchestrator. Saved scripts are the persistence backend for Zaru code mode and for reusable execution primitives authored by agents or operators. Every save creates a new version; earlier versions remain retrievable until the script is deleted.
+
+| Tool | Description |
+|---|---|
+| `aegis.script.save` | Create or update a script; each save records a new version in the script's history. |
+| `aegis.script.list` | List saved scripts visible to the caller. |
+| `aegis.script.get` | Retrieve a script by name — either the latest version or a specific historical version. |
+| `aegis.script.update` | Update an existing script's metadata or source; equivalent to `save` for an existing name. |
+| `aegis.script.delete` | Delete a script and all its historical versions. |
+
+---
+
 ## Policy Violation Types
 
 When a tool call is rejected, the orchestrator returns a structured error to the agent and publishes a `ToolPolicyViolation` or `CommandPolicyViolation` event. The variant describes the specific rule that fired:
@@ -309,6 +369,10 @@ When a tool call is rejected, the orchestrator returns a structured error to the
 | `cmd.run` | `subcommand_allowlist` | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py` |
 | `web.fetch`, `web.search` | Domain allowlist + rate limit | Path 2 — SEAL External | `web-search` Tool Server on host |
 | `email.send`, `email.read` | Domain and account allowlist | Path 2 — SEAL External | `gmail-tools` Tool Server on host |
+| `aegis.file.*` | Filesystem path allowlist + traversal check (scoped to a named volume) | Orchestrator-native | `AegisFSAL` on orchestrator host; operates against a named workspace volume |
+| `aegis.volume.*` | Tenant ownership check | Orchestrator-native | `VolumeManager` on orchestrator host; talks to `StorageProvider` |
+| `aegis.git.*` | Tenant + volume ownership check; remote URL allowlist on `clone` and `push` | Orchestrator-native | In-process Git handler on orchestrator host; maintains working copy on a workspace volume |
+| `aegis.script.*` | Tenant ownership check | Orchestrator-native | In-process script registry on orchestrator host; versioned storage in PostgreSQL |
 | Any unregistered tool | — | Rejected before routing | `ToolPolicyViolation` event emitted, 403 returned |
 
 ---
