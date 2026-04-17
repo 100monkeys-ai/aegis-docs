@@ -1,13 +1,13 @@
 ---
 title: MCP Tool Reference
-description: Complete input and output schemas for all 64 AEGIS MCP tools — 61 built-in orchestrator tools and the Zaru-only zaru.init, zaru.mode, and zaru.docs tools — with availability by context and Zaru conversation mode.
+description: Complete input and output schemas for all 86 AEGIS MCP tools — 83 built-in orchestrator tools and the Zaru-only zaru.init, zaru.mode, and zaru.docs tools — with availability by context and Zaru conversation mode.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
 
-Tool count: **64** total — 61 built-in orchestrator tools + 3 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`).
+Tool count: **86** total — 83 built-in orchestrator tools + 3 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`).
 
 ---
 
@@ -26,7 +26,20 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
 `aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
-`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`, `zaru.init`, `zaru.mode`, `zaru.docs`
+`aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`,
+`aegis.file.list`, `aegis.file.read`, `aegis.file.write`, `aegis.file.delete`, `aegis.file.mkdir`,
+`aegis.volume.create`, `aegis.volume.list`, `aegis.volume.delete`, `aegis.volume.quota`,
+`aegis.git.clone`, `aegis.git.list`, `aegis.git.status`, `aegis.git.refresh`,
+`aegis.git.delete`, `aegis.git.commit`, `aegis.git.push`, `aegis.git.diff`,
+`aegis.script.save`, `aegis.script.list`, `aegis.script.get`, `aegis.script.update`,
+`aegis.script.delete`,
+`zaru.init`, `zaru.mode`, `zaru.docs`
+
+<Callout type="info">
+  Volume, file, git, and script tools are available to every tier — Free, Pro, Business, and
+  Enterprise. The backend enforces per-tier storage, bandwidth, and count quotas; the
+  tool-availability gate itself is uniform across tiers.
+</Callout>
 
 **System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
 registered by platform operators:
@@ -49,9 +62,9 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 | Zaru Chat — agentic mode | `zaru.init` + `zaru.mode` + `zaru.docs` + agent/task management subset | See mode table below |
 | Zaru Chat — execute mode | `zaru.init` + `zaru.mode` + `zaru.docs` + execute pipeline tools | See mode table below |
 | Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + `zaru.docs` + workflow/agent design subset | See mode table below |
-| Zaru Chat — operator mode | All 64 tools | No filtering applied |
-| AEGIS agent inner loop | All 61 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
-| External SEAL caller | All 61 built-in tools | Filtered by `SecurityContext` only; no mode concept |
+| Zaru Chat — operator mode | All 86 tools | No filtering applied |
+| AEGIS agent inner loop | All 83 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
+| External SEAL caller | All 83 built-in tools | Filtered by `SecurityContext` only; no mode concept |
 
 See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full routing pipeline.
 
@@ -119,7 +132,7 @@ Only `zaru.init`, `zaru.mode`, and `zaru.docs` are exposed. The model cannot inv
 
 ### Operator Mode
 
-All 64 tools are available — no filtering is applied.
+All 86 tools are available — no filtering is applied.
 
 ---
 
@@ -188,6 +201,28 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.system.info` | system | true | — | Op |
 | `aegis.system.config` | system | true | — | Op |
 | `aegis.runtime.list` | runtime | true | — | Op |
+| `aegis.file.list` | file | true | `volume_id`, `path` | Op |
+| `aegis.file.read` | file | true | `volume_id`, `path` | Op |
+| `aegis.file.write` | file | false | `volume_id`, `path`, `content` | Op |
+| `aegis.file.delete` | file | false | `volume_id`, `path` | Op |
+| `aegis.file.mkdir` | file | false | `volume_id`, `path` | Op |
+| `aegis.volume.create` | volume | false | `label`, `size_limit_bytes` | Op |
+| `aegis.volume.list` | volume | true | — | Op |
+| `aegis.volume.delete` | volume | false | `volume_id` | Op |
+| `aegis.volume.quota` | volume | true | — | Op |
+| `aegis.git.clone` | git | false | `repo_url`, `label` | Op |
+| `aegis.git.list` | git | true | — | Op |
+| `aegis.git.status` | git | true | `binding_id` | Op |
+| `aegis.git.refresh` | git | false | `binding_id` | Op |
+| `aegis.git.delete` | git | false | `binding_id` | Op |
+| `aegis.git.commit` | git | false | `binding_id`, `message` | Op |
+| `aegis.git.push` | git | false | `binding_id` | Op |
+| `aegis.git.diff` | git | true | `binding_id` | Op |
+| `aegis.script.save` | script | false | `name`, `code` | Op |
+| `aegis.script.list` | script | true | — | Op |
+| `aegis.script.get` | script | true | `id` | Op |
+| `aegis.script.update` | script | false | `id`, `name`, `code` | Op |
+| `aegis.script.delete` | script | false | `id` | Op |
 | `zaru.init` | zaru | N/A | — | C, Ag, Ex, Ar, Op |
 | `zaru.mode` | zaru | N/A | `target_mode`, `reason` | C, Ag, Ex, Ar, Op |
 | `zaru.docs` | zaru | N/A | `query` | C, Ag, Ex, Ar, Op |
@@ -1901,6 +1936,404 @@ List all supported standard runtime environments (language/version pairs). Call 
   "custom_runtime_supported": true
 }
 ```
+
+---
+
+## Volume Filesystem Tools (`aegis.file.*`)
+
+These tools operate on files inside tenant-scoped persistent volumes. Every call is authorized
+against the caller's bearer token — callers can only reach volumes they own. Paths are resolved
+relative to the volume root. Volume ownership, quota, and tier limits are enforced by the
+orchestrator backend; the tool-availability gate itself is uniform across all tiers.
+
+<Callout type="info">
+  The `aegis.file.*` family is distinct from the agent-workspace `fs.*` family. `fs.*` operates on
+  the mounted ephemeral workspace inside a running agent container; `aegis.file.*` operates on the
+  caller's persistent user volumes by `volume_id`.
+</Callout>
+
+### `aegis.file.list`
+
+List directory contents in a user volume.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the target volume. |
+| `path` | `string` | Yes | — | Directory path relative to the volume root. |
+
+**Output:** Directory listing with entry names and `file` / `directory` type discriminators.
+
+### `aegis.file.read`
+
+Read the contents of a file in a user volume.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the target volume. |
+| `path` | `string` | Yes | — | File path relative to the volume root. |
+
+**Output:** File contents. Text files return inline string content. Binary files return a
+base64-encoded payload or a short-lived download URL depending on size.
+
+### `aegis.file.write`
+
+Write content to a file in a user volume. Creates the file if it does not exist and overwrites it
+if it does.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the target volume. |
+| `path` | `string` | Yes | — | File path relative to the volume root. |
+| `content` | `string` | Yes | — | File content. Binary payloads must be base64-encoded by the caller. |
+
+**Output:** Confirmation with path and bytes written. Fails if the write would exceed the
+volume's quota.
+
+### `aegis.file.delete`
+
+<Callout type="warn">
+  `aegis.file.delete` is destructive and irreversible.
+</Callout>
+
+Delete a file or directory in a user volume.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the target volume. |
+| `path` | `string` | Yes | — | File or directory path relative to the volume root. |
+
+**Output:** Confirmation with the deleted path.
+
+### `aegis.file.mkdir`
+
+Create a directory in a user volume, including any missing parent directories.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the target volume. |
+| `path` | `string` | Yes | — | Directory path relative to the volume root. |
+
+**Output:** Confirmation with the created path.
+
+---
+
+## Git Repository Tools (`aegis.git.*`)
+
+Manage SeaweedFS-backed git repository bindings. A *binding* pairs a remote repository with a
+persistent volume mounted at `/workspace/{label}`. The clone is performed asynchronously —
+`aegis.git.clone` returns immediately with the binding in a `Pending`/`Cloning` state; use
+`aegis.git.status` to poll until ready. `aegis.git.commit`, `aegis.git.push`, and `aegis.git.diff`
+enable canvas-style write-back against the bound volume.
+
+### `aegis.git.clone`
+
+Create a git repo binding and trigger an asynchronous clone into a workspace volume.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `repo_url` | `string` | Yes | — | Repository URL (`https://...` or `git@...`). |
+| `label` | `string` | Yes | — | Human-readable binding name; the clone is mounted at `/workspace/{label}`. |
+| `credential_binding_id` | `string` | No | — | UUID of a credential binding (SSH key or API key) for private repos. |
+| `git_ref` | `object` | No | `{ kind: "branch", value: "main" }` | Git ref to check out. Fields: `kind` (`branch` / `tag` / `commit`) and `value`. |
+| `sparse_paths` | `array` | No | — | Optional list of sparse-checkout paths. |
+| `auto_refresh` | `boolean` | No | `false` | Enable webhook-driven auto-refresh. |
+| `shallow` | `boolean` | No | `true` | Perform a shallow clone. |
+
+**Output:** The newly created binding DTO with status `Pending` or `Cloning`.
+
+### `aegis.git.list`
+
+List the caller's git repo bindings.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `page` | `integer` | No | — | Pagination page number. |
+| `limit` | `integer` | No | — | Maximum results per page. |
+
+**Output:** Paginated list of binding DTOs.
+
+### `aegis.git.status`
+
+Get clone/refresh status for a git repo binding. Returns the binding with its current status,
+last commit SHA, and `last_cloned_at` timestamp.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+
+**Output:** Binding DTO with status and most recent commit information.
+
+### `aegis.git.refresh`
+
+Trigger a fetch + checkout to update the bound volume to the latest remote HEAD (for branch refs)
+or re-verify the pinned ref (for tag / commit refs).
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+
+**Output:** Confirmation with updated status fields.
+
+### `aegis.git.delete`
+
+<Callout type="warn">
+  Deletes the binding and cascade-deletes the associated volume. Any uncommitted or unpushed work
+  in the bound volume is lost.
+</Callout>
+
+Soft-delete a git repo binding and cascade-delete the associated volume.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+
+**Output:** Confirmation of deletion.
+
+### `aegis.git.commit`
+
+Stage all changes in the bound volume and commit with the given message. Returns the new commit
+SHA. Fails if there are no changes to commit.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+| `message` | `string` | Yes | — | Commit message. |
+
+**Output:** Object containing the new commit SHA.
+
+### `aegis.git.push`
+
+Push committed changes to the remote. Requires a `credential_binding_id` set on the binding for
+authenticated remotes.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+| `remote` | `string` | No | `origin` | Remote name. |
+| `ref` | `string` | No | current branch | Ref to push. |
+
+**Output:** Confirmation of push with remote and ref details.
+
+### `aegis.git.diff`
+
+Return the unified diff of the bound volume's working tree (or index, if `staged: true`). Read-only.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+| `staged` | `boolean` | No | `false` | If `true`, return the diff of the index against `HEAD`. |
+
+**Output:** Unified-diff text.
+
+---
+
+## Script Library Tools (`aegis.script.*`)
+
+Persist and retrieve saved TypeScript programs in the caller's script library. Scripts are
+tenant-scoped; names are unique per tenant. Updates bump a monotonic version number and append to
+the script's version history. Deletes are soft — version history is retained for audit and the
+name reservation is released.
+
+### `aegis.script.save`
+
+Persist a TypeScript program to the caller's script library.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | `string` | Yes | — | Unique script name (≤128 bytes; no `/` or `\`). Duplicate names return 409. |
+| `code` | `string` | Yes | — | TypeScript program source (≤256 KiB). |
+| `description` | `string` | No | — | Optional free-form description (≤2 KiB). |
+| `tags` | `array` | No | — | Optional tags — lowercase alphanumeric plus `-` / `_`, ≤32 chars each, ≤16 tags. |
+
+**Output:** The saved script DTO with its assigned `id` and `version: 1`.
+
+### `aegis.script.list`
+
+List the caller's saved scripts with optional filters.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `tag` | `string` | No | — | Filter scripts that contain this tag. |
+| `q` | `string` | No | — | Case-insensitive substring filter on script name. |
+
+**Output:** Array of script DTOs (without the `versions` field).
+
+### `aegis.script.get`
+
+Retrieve a saved script by ID, including its full version history.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `id` | `string` | Yes | — | UUID of the saved script. |
+
+**Output:** Script DTO with `versions` array. Returns 404 for scripts the caller does not own.
+
+### `aegis.script.update`
+
+Update a saved script. Bumps the version monotonically and appends to the script's version history.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `id` | `string` | Yes | — | UUID of the saved script. |
+| `name` | `string` | Yes | — | Script name (≤128 bytes). |
+| `code` | `string` | Yes | — | TypeScript program source (≤256 KiB). |
+| `description` | `string` | No | — | Optional free-form description. |
+| `tags` | `array` | No | — | Optional tags. |
+
+**Output:** Updated script DTO with the new version number.
+
+### `aegis.script.delete`
+
+<Callout type="info">
+  `aegis.script.delete` is a soft delete — the name reservation is released and new scripts may
+  reuse the name, but the version history is retained for audit.
+</Callout>
+
+Soft-delete a saved script.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `id` | `string` | Yes | — | UUID of the saved script. |
+
+**Output:** Empty body on success.
+
+---
+
+## Volume Management Tools (`aegis.volume.*`)
+
+Create, list, and manage tenant-scoped persistent volumes. Volumes are backed by SeaweedFS and
+subject to per-tier quotas enforced by the orchestrator backend. Every call is authorized against
+the caller's bearer token — callers can only see and modify volumes they own.
+
+### `aegis.volume.create`
+
+Provision a new persistent volume with a specified storage quota.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `label` | `string` | Yes | — | Human-readable volume name. |
+| `size_limit_bytes` | `integer` | Yes | — | Storage quota in bytes. Must fall within the caller's tier quota. |
+
+**Output:** The created volume DTO, including its `volume_id`.
+
+### `aegis.volume.list`
+
+List all persistent volumes owned by the current user.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+*No parameters — accepts an empty object `{}`.*
+
+**Output:** Array of volume DTOs.
+
+### `aegis.volume.delete`
+
+<Callout type="warn">
+  Deleting a volume is destructive and irreversible. All files stored in the volume are removed.
+</Callout>
+
+Delete a persistent user volume and all of its contents.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the volume to delete. |
+
+**Output:** Confirmation of deletion.
+
+### `aegis.volume.quota`
+
+Get storage quota usage for the current user.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+*No parameters — accepts an empty object `{}`.*
+
+**Output:** Quota summary — total bytes allowed by the caller's tier and bytes currently used
+across their volumes.
 
 ---
 

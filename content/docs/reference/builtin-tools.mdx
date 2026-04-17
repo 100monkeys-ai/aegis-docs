@@ -96,6 +96,28 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/agents
 | `aegis.system.info` | `true` | Read-only node status query |
 | `aegis.system.config` | `true` | Read-only configuration access |
 | `aegis.runtime.list` | `true` | Read-only runtime listing |
+| `aegis.file.list` | `true` | Read-only volume directory listing |
+| `aegis.file.read` | `true` | Read-only file content read |
+| `aegis.file.write` | `false` | State-mutating — writes file content in a user volume |
+| `aegis.file.delete` | `false` | Destructive — removes a file or directory from a user volume |
+| `aegis.file.mkdir` | `false` | State-mutating — creates a directory in a user volume |
+| `aegis.volume.create` | `false` | State-mutating — provisions a new persistent volume |
+| `aegis.volume.list` | `true` | Read-only volume listing |
+| `aegis.volume.delete` | `false` | Destructive — deletes a volume and all contents |
+| `aegis.volume.quota` | `true` | Read-only quota usage lookup |
+| `aegis.git.clone` | `false` | State-mutating — creates a binding and triggers clone |
+| `aegis.git.list` | `true` | Read-only binding listing |
+| `aegis.git.status` | `true` | Read-only clone/refresh status lookup |
+| `aegis.git.refresh` | `false` | State-mutating — fetches and checks out the pinned ref |
+| `aegis.git.delete` | `false` | Destructive — soft-deletes binding and cascades to volume |
+| `aegis.git.commit` | `false` | State-mutating — stages and commits workdir changes |
+| `aegis.git.push` | `false` | State-mutating — pushes commits to the remote |
+| `aegis.git.diff` | `true` | Read-only unified diff of workdir or index |
+| `aegis.script.save` | `false` | State-mutating — persists a new TypeScript program |
+| `aegis.script.list` | `true` | Read-only script listing |
+| `aegis.script.get` | `true` | Read-only script fetch with version history |
+| `aegis.script.update` | `false` | State-mutating — updates a script and bumps its version |
+| `aegis.script.delete` | `false` | Destructive — soft-deletes a saved script |
 
 These defaults can be overridden per-tool in the node configuration. `skip_judge` is an **operator-level** flag — agents cannot influence it.
 
@@ -159,8 +181,18 @@ The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
 | `fs.grep`, `fs.glob` | `pattern`, `path` |
 | `web.search` | `query` |
 | `web.fetch` | `url` |
+| `aegis.file.list`, `aegis.file.read`, `aegis.file.delete`, `aegis.file.mkdir` | `volume_id`, `path` |
+| `aegis.file.write` | `volume_id`, `path`, `content` |
+| `aegis.volume.create` | `label`, `size_limit_bytes` |
+| `aegis.volume.delete` | `volume_id` |
+| `aegis.git.clone` | `repo_url`, `label` |
+| `aegis.git.status`, `aegis.git.refresh`, `aegis.git.delete`, `aegis.git.push`, `aegis.git.diff` | `binding_id` |
+| `aegis.git.commit` | `binding_id`, `message` |
+| `aegis.script.save` | `name`, `code` |
+| `aegis.script.get`, `aegis.script.delete` | `id` |
+| `aegis.script.update` | `id`, `name`, `code` |
 
-Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string.
+Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`, `aegis.volume.list`, `aegis.volume.quota`, `aegis.git.list`, `aegis.script.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string. `aegis.git.list` accepts optional `page` / `limit` integers. `aegis.script.list` accepts optional `tag` and `q` filter strings.
 
 ---
 
