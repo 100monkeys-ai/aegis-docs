@@ -21,20 +21,27 @@ server overhead, instant results.
 The execution sandbox has access to the AEGIS SDK but no filesystem, raw network, or Node.js
 APIs. All platform operations go through the SDK's authenticated API calls.
 
+SDK bindings are prefixed with `external_` (e.g. `external_listAgents`) and every call takes
+an object argument — use `{}` when no parameters are needed. Zaru handles this automatically
+when writing programs.
+
 ---
 
-## Available SDK Methods
+## SDK Bindings
 
-| Method | Description |
-|---|---|
-| `listAgents()` | List all registered agents |
-| `searchAgents(query)` | Search agents by name or description |
-| `executeTask(agentId, input)` | Execute an agent with input |
-| `waitForTask(executionId)` | Wait for an execution to complete |
-| `getTaskStatus(executionId)` | Check execution status |
-| `getExecutionFile(executionId, path)` | Retrieve a file from execution output |
-| `listTools()` | List available SEAL tools |
-| `searchTools(query)` | Search tools by keyword |
+All SDK bindings are available inside the QuickJS sandbox as `external_*` functions. Every
+call takes an object argument, even when no parameters are required.
+
+| Binding                                             | Description                           |
+| --------------------------------------------------- | ------------------------------------- |
+| `external_listAgents({})`                           | List all registered agents            |
+| `external_searchAgents({ query })`                  | Search agents by name or description  |
+| `external_executeTask({ agent_id, input })`         | Execute an agent with input           |
+| `external_waitForTask({ execution_id })`            | Wait for an execution to complete     |
+| `external_getTaskStatus({ execution_id })`          | Check execution status                |
+| `external_getExecutionFile({ execution_id, path })` | Retrieve a file from execution output |
+| `external_listTools({})`                            | List available SEAL tools             |
+| `external_searchTools({ query })`                   | Search tools by keyword               |
 
 ---
 
@@ -47,13 +54,13 @@ A simple conversation showing Live Mode in action:
 Zaru writes and executes:
 
 ```typescript
-const agents = await listAgents();
-const match = agents.find(a =>
-  a.description?.toLowerCase().includes("summar")
+const agents = await external_listAgents({});
+const match = agents.find((a) =>
+  a.description?.toLowerCase().includes("summar"),
 );
 return {
   total: agents.length,
-  match: match ? { name: match.name, id: match.id } : null
+  match: match ? { name: match.name, id: match.id } : null,
 };
 ```
 
@@ -64,15 +71,32 @@ in follow-up messages.
 
 ## Saving Scripts
 
-When Zaru writes a useful program, you can ask it to save the script for later reuse. Saved
-scripts appear in the **Scripts** panel in the right sidebar. Script persistence is coming
-soon.
+Useful programs can be saved to your script library. Ask Zaru to save a script in chat —
+it'll call `zaru.script.save` with a name, description, and optional tags. Saved scripts
+appear in the **Scripts** tab in the right-side context panel.
+
+From the Scripts tab you can:
+
+- **Search and filter** by name, description, or tag.
+- **Preview** the source with syntax highlighting by clicking a script.
+- **Run** a script — the source executes immediately in the QuickJS sandbox and the result
+  appears in the chat.
+- **Insert** the source into the chat input as a TypeScript code block so Zaru can review,
+  modify, or extend it before running.
+- **Fork** a script — makes a copy under your ownership with `(copy)` appended to the name.
+  Useful as a starting point for a variant.
+- **Delete** a script — soft-deletes it from your library. Version history is retained for
+  audit purposes.
+
+Scripts are scoped to your account and invisible to other users. A saved script has a
+monotonically increasing version number; each update appends to the version history.
 
 ---
 
 ## Limitations
 
-- No direct filesystem access — use SDK methods for file operations
+- No direct filesystem access in Live Mode — switch to **Code Mode** for workspace file
+  operations, or use SDK methods for platform-managed files like execution artefacts.
 - No raw network requests — all API calls go through the SDK
 - Execution timeout: 30 seconds per program
 - No Node.js built-in modules (`fs`, `path`, `http`, etc.)
@@ -91,5 +115,7 @@ enabled, the **Live** mode option appears in the chat mode selector.
 
 - [Zaru Overview](/docs/zaru/overview) — conversation modes, tier routing, and the Glass
   Laboratory UX
+- [Code Mode](/docs/zaru/code-mode) — split-pane canvas for building browser apps with live
+  preview; file writes, git, and the same Scripts tab
 - [Running Code with Execute Mode](/docs/zaru/execute-mode) — single-shot code execution
   with container isolation
