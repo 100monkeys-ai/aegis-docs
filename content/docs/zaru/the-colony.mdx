@@ -17,16 +17,28 @@ The **Members** tab shows everyone in your organization.
 
 ### Inviting Members
 
-Click **Invite Member** and enter the recipient's email address. They receive an invitation
-link and join your organization when they accept.
+Click **Invite Member** and enter the recipient's email address. The invitation link is
+bound to that email address — only the same email can redeem it. When the invitee
+authenticates and accepts, they become an active member of your team, their seat is
+added to your subscription automatically, and their paid-tier access is covered by the
+team subscription for as long as they remain a member.
 
-Team features are available on Business and Enterprise tiers. Free and Pro accounts operate
-as single-user tenants.
+You can cancel a pending invitation at any time from the member list; cancelled
+invitations cannot be redeemed even if the email was already delivered. You can also
+resend a pending invitation if the original email was missed.
+
+Team features are available on Pro, Business, and Enterprise tiers. Free accounts cannot
+create or join teams. Pro teams are capped at 5 seats, Business teams at 25 seats, and
+Enterprise teams have unlimited seats.
 
 ### Removing Members
 
-Click the three-dot menu next to a member and select **Remove**. Removing a member revokes
-their access to all shared agents, workflows, and volumes within the organization.
+Click the three-dot menu next to a member and select **Remove**. Removing a member
+revokes their access to all shared agents, workflows, and volumes within the
+organization, removes their seat from your subscription on the next invoice, and returns
+their tier assignment to whatever their personal account entitles them to (Free if they
+do not have a personal subscription). Removal is immediate — the member loses access as
+soon as the action completes.
 
 ### Updating Roles
 
@@ -78,6 +90,13 @@ methods, download invoices, and change between monthly and annual billing.
 
 ### Per-Seat Pricing
 
-Business and Enterprise tiers use per-seat pricing. Each member in your organization counts
-as a seat. Adding or removing members adjusts your next invoice automatically via Stripe's
-prorated billing.
+Pro, Business, and Enterprise tiers use per-seat pricing when operated as teams. Each
+active member in your organization counts as one seat. Seats increment automatically
+the moment an invitee accepts their invitation, and decrement automatically the moment
+a member is removed or leaves. Every seat change is prorated on your next invoice
+through Stripe.
+
+As long as a member is active in your team, their paid-tier access is covered by the
+team subscription — they do not need their own individual subscription while they are on
+the team. When they leave, that coverage ends and they fall back to their personal
+subscription tier (Free if they do not have one).
