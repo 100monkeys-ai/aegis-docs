@@ -1,0 +1,97 @@
+---
+title: Code Mode
+description: Build browser apps with live preview — vibe-code inside Zaru with no local dev environment.
+---
+
+# Code Mode
+
+Code Mode is Zaru's vibe-coding canvas. You describe what you want to build, Zaru writes the
+files directly into a workspace, and a live preview renders beside the chat. No local dev
+environment, no terminal, no build toolchain — just describe, watch, and iterate.
+
+---
+
+## How It Works
+
+1. Switch to **Code** mode using the mode selector in the chat toolbar.
+2. Open The Studio from the sidebar and create a new canvas session.
+3. Describe your app in chat. Zaru writes files directly to the workspace volume.
+4. The preview panel on the right renders your app as files land.
+5. Iterate — ask for changes, Zaru edits the files, the preview updates.
+6. For git-linked workspaces, commit and push from the git panel when you're ready.
+
+---
+
+## The Studio
+
+The Studio is Code Mode's split-pane canvas: chat on the left, an optional code editor in the
+middle, and the live preview on the right. The editor is there when you want to tweak
+something by hand and is collapsible when you don't — most sessions live comfortably in the
+chat-and-preview view, with the editor as a drop-down when you need it.
+
+---
+
+## Workspace Modes
+
+| Workspace Mode | Description                                                                                                                               | Availability              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| **Ephemeral**  | A throwaway canvas that lives only for the session. Nothing persists once you close it. Ideal for quick sketches and one-off experiments. | Every tier                |
+| **Persistent** | Attaches the canvas to a persistent volume in The Workshop. Your files stay between sessions and count against your storage quota.        | Pro, Business, Enterprise |
+| **Git-Linked** | Attaches the canvas to an existing git repository from The Workshop. Commits and pushes go back to the remote.                            | Pro, Business, Enterprise |
+
+---
+
+## Git Workflow
+
+Code Mode treats writing files and publishing changes as two different things. File edits are
+the fast creative loop — Zaru writes freely so you can iterate without friction. Commits and
+pushes touch a remote and can't be undone, so by default Zaru writes files and waits for your
+go-ahead before publishing anything.
+
+- Review changes in the **Git Panel** beside the preview — inline diffs per file.
+- Click **Commit** when you're ready. The commit message is optional; ask Zaru to suggest one
+  if you'd like.
+- Click **Push** to publish to the remote.
+- If you say "commit this" or "push it" in chat, Zaru will do it for you.
+
+---
+
+## Example
+
+A short session in Code Mode:
+
+> **You:** Build me a simple todo list app. Plain JS, no frameworks.
+>
+> **Zaru:** _(writes `index.html`, `app.js`, and `style.css` in one pass)_
+> I've scaffolded a todo list with add / toggle / delete. Check the preview — you can start
+> adding items right away.
+>
+> **You:** Make the completed items strike-through instead of grayed out.
+>
+> **Zaru:** _(updates `style.css`)_
+> Updated — completed items now show with a strike-through.
+
+Notice that Zaru writes the code to the workspace rather than pasting it back into the chat.
+The preview is the source of truth; the editor is there if you want to inspect the files.
+
+---
+
+## Limitations
+
+- Preview runs entirely in your browser — no server-side rendering.
+- No native Node modules and no complex build pipelines (Webpack configs, Next.js server
+  functions, and similar setups are out of scope).
+- `.ts`, `.tsx`, and `.jsx` files are transformed in-browser before preview. The transform
+  supports standard TypeScript and JSX but not decorators, experimental syntax, or
+  TypeScript-only features that require full type checking at compile time.
+- Persistent workspaces count against your storage quota.
+- Git-linked workspaces share the same repository lifecycle as regular git volumes.
+
+---
+
+## Related
+
+- [Chat](./chat) — the basic conversational mode
+- [Live Mode](./live-mode) — execute TypeScript directly in chat (no file writes)
+- [The Workshop](./the-workshop) — manage workspace volumes and git repositories
+- [Execute Mode](./execute-mode) — one-shot intent-to-execution
