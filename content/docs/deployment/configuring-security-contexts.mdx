@@ -5,7 +5,7 @@ description: Define named SecurityContext boundaries to control which MCP tools 
 
 # Configuring Security Contexts
 
-A **SecurityContext** is a named set of capability rules that controls exactly which MCP tools an agent may invoke — and with what arguments. Every agent execution runs within exactly one SecurityContext. If a tool call is not permitted by the context, it is blocked by the SEAL gateway before reaching any tool server.
+A **SecurityContext** is a named set of capability rules that controls exactly which MCP tools an agent may invoke — and with what arguments. Every agent execution runs within exactly one SecurityContext. If a tool call is not permitted by the context, it is blocked by the orchestrator's policy engine before the tool is dispatched.
 
 SecurityContexts are defined in your `aegis-config.yaml` under `spec.security_contexts` and referenced by name from your agent manifest.
 
@@ -76,7 +76,7 @@ Because `aegis-system-agent-runtime` is built in, you do not define it in `aegis
     - "aegis.system.config"
 ```
 
-The `path_allowlist` on `fs.*` means that all filesystem tools — reads, writes, edits, deletes — are restricted to paths under `/workspace`. Attempts to access `/etc`, `/agent`, or any other path are rejected by the SEAL gateway before the tool server is reached.
+The `path_allowlist` on `fs.*` means that all filesystem tools — reads, writes, edits, deletes — are restricted to paths under `/workspace`. Attempts to access `/etc`, `/agent`, or any other path are rejected by the orchestrator's policy engine before the tool is dispatched.
 
 ---
 
@@ -312,7 +312,7 @@ The `aegis-system-operator` SecurityContext grants platform operators access to 
 
 ### Tool Categories
 
-Tools exposed by the SEAL gateway are classified into three categories:
+Built-in tools exposed by the orchestrator are classified into three categories:
 
 | Category | Description | Availability |
 |----------|-------------|-------------|
