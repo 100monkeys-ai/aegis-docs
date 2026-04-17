@@ -1,20 +1,20 @@
 {
-  "title": "Zaru",
-  "pages": [
-    "overview",
-    "chat",
-    "context-panel",
-    "the-architect",
-    "the-colony",
-    "the-workshop",
-    "vault",
-    "control-plane",
-    "pricing",
-    "api-keys",
-    "invites",
-    "mcp-client-setup",
-    "execute-mode",
-    "live-mode",
-    "code-mode"
-  ]
+    "title": "Zaru",
+    "pages": [
+        "overview",
+        "chat",
+        "context-panel",
+        "the-architect",
+        "the-colony",
+        "the-workshop",
+        "vault",
+        "control-plane",
+        "pricing",
+        "api-keys",
+        "invites",
+        "mcp-client-setup",
+        "execute-mode",
+        "live-mode",
+        "code-mode"
+    ]
 }
