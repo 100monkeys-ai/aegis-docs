@@ -13,6 +13,7 @@
         "api-keys",
         "invites",
         "mcp-client-setup",
+        "mcp-tools",
         "execute-mode",
         "live-mode",
         "code-mode"
