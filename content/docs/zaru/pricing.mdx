@@ -19,8 +19,8 @@ deployment options.
 | Agent count | Limited | Unlimited | Unlimited | Unlimited |
 | Persistent storage | Limited | 10 GB | 50 GB | 100 GB |
 | Execution timeout | 5 min | 30 min | 4 hours | 24 hours |
-| Seats | 1 | 1 | Per-seat pricing | Per-seat pricing |
-| Teams and orgs | — | — | Yes | Yes |
+| Seats | 1 | 1 | 5 included | 10 included |
+| Colony (teams) | — | — | Yes | Yes |
 | SAML SSO | — | — | — | Yes |
 | Self-hosted / air-gapped | — | — | — | Yes |
 | Priority support | — | — | Yes | Yes |
@@ -39,16 +39,17 @@ per day.
 
 ### Pro
 
-Everything in Free, plus higher capacity for serious individual use. 5 concurrent executions,
-30-minute timeout, 10 GB persistent storage, and BYOK model support. Rate limits: 10 agent
-executions per minute, 200 per day. BYOK users are exempt from LLM-specific rate limits.
+Everything in Free, plus higher capacity for serious individual use. Pro is a personal-only
+tier — it does not include a colony or seats. 5 concurrent executions, 30-minute timeout,
+10 GB persistent storage, and BYOK model support. Rate limits: 10 agent executions per
+minute, 200 per day. BYOK users are exempt from LLM-specific rate limits.
 
 ### Business
 
-Everything in Pro, plus team and organization features. Per-seat pricing for your team, 50+
-concurrent executions, 4-hour timeout, 50 GB storage, custom agent and workflow manifests,
-audit logs with 90-day retention, and priority support. Rate limits: 30 agent executions
-per minute, 1,000 per day. Limits are customizable per tenant.
+Everything in Pro, plus team features. Create a colony with 5 included seats — every active
+member operates at Business tier, covered by the team's subscription. Add more seats for
+$15/month each. 50+ concurrent executions, 4-hour timeout, 50 GB storage, custom agent and
+workflow manifests, audit logs with 90-day retention, and priority support.
 
 ### Enterprise
 
@@ -68,16 +69,12 @@ compared to monthly pricing.
 
 ### Per-Seat Pricing
 
-Pro, Business, and Enterprise teams are billed per seat. Each active member in your
-organization counts as one seat, and the owner pays for all seats on a single
-subscription. When you invite a teammate, their access is covered by your team
-subscription from the moment they accept until they leave. Leaving a team revokes that
-coverage — individual users must hold their own subscription to retain paid-tier
-features outside of the team.
-
-Seat counts update automatically: accepting an invitation increments the count, removing
-or losing a member decrements it, and every change is prorated on the next invoice
-through Stripe. No manual seat purchases or cancellations are required.
+Business and Enterprise plans are team plans. Business includes 5 seats, Enterprise
+includes 10 seats. Additional seats can be purchased at any time. When you invite a
+teammate, their access is covered by the team subscription from the moment they accept —
+they operate at the team tier everywhere, not just inside the team workspace. Active
+memberships elevate tier; when a member leaves, they revert to their personal
+subscription tier (Free if they don't have one).
 
 ### How to Upgrade
 
