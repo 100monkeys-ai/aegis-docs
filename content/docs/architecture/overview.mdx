@@ -31,7 +31,7 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 | Platform deployment | Podman Kube YAML + Makefile ([aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy)) |
 | Reverse proxy | Caddy (automatic TLS via ACME) |
 | Log aggregation | Loki + Promtail |
-| Distributed tracing | Jaeger (OTLP) |
+| Distributed tracing | otelcol-contrib (OTLP receiver) → Jaeger |
 | Metrics & alerting | Prometheus + Grafana |
 
 ---

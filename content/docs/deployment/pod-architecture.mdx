@@ -38,8 +38,9 @@ The AEGIS platform deploys as a set of Podman pods, each grouping related contai
 │                                                               │
 │  pod-observability                    pod-seal-gateway        │
 │  ┌──────────────────────────────┐    ┌──────────────────┐   │
-│  │jaeger     :16686 :4317 :4318│    │seal-gateway      │   │
-│  │prometheus :9090              │    │:8089 :50055      │   │
+│  │otelcol    :4317 :4318 :13133│    │seal-gateway      │   │
+│  │jaeger     :16686             │    │:8089 :50055      │   │
+│  │prometheus :9090              │    │                  │   │
 │  │grafana    :3300              │    │                  │   │
 │  │loki       :3100              │    │                  │   │
 │  │promtail   :9080              │    │                  │   │
@@ -175,7 +176,8 @@ Full monitoring stack: distributed tracing, metrics, dashboards, and log aggrega
 
 | Container | Image | Ports |
 |-----------|-------|-------|
-| jaeger | `jaegertracing/all-in-one:1.55` | 16686 (UI), 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
+| otelcol-contrib | `otel/opentelemetry-collector-contrib:0.99.0` | 4317 (OTLP gRPC), 4318 (OTLP HTTP), 13133 (health) |
+| jaeger | `jaegertracing/all-in-one:1.55` | 16686 (UI) |
 | prometheus | `prom/prometheus:v2.51.0` | 9090 |
 | grafana | `grafana/grafana:10.4.0` | 3300 (mapped from 3000) |
 | loki | `grafana/loki:3.0.0` | 3100 |
@@ -245,7 +247,7 @@ Containers within the same pod communicate via `localhost`. Cross-pod communicat
 | pod-core | pod-temporal | gRPC :7233 | Workflow execution |
 | pod-core | pod-secrets | HTTP :8200 | Credential resolution |
 | pod-core | pod-storage | HTTP :8888 | Volume backend (SeaweedFS filer) |
-| pod-core | pod-observability | gRPC :4317 | OTLP trace/log export |
+| pod-core | pod-observability | gRPC :4317 | OTLP trace/log export (to otelcol) |
 | pod-temporal (worker) | pod-core | gRPC :50051 | Worker activity execution |
 | pod-temporal (worker) | pod-database | TCP :5432 | Workflow state |
 | pod-observability (promtail) | pod-observability (loki) | HTTP :3100 | Log shipping |

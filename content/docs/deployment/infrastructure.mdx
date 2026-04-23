@@ -39,7 +39,8 @@ secrets management and TLS termination.
 | SeaweedFS | 3.60+ | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓ |
 | OpenBao | 2.0+ | Secrets management | Recommended |
 | Caddy | 2.9+ | Reverse proxy with automatic TLS | Production only |
-| Jaeger | 1.55+ | Distributed tracing (OTLP collector) | Recommended |
+| otelcol-contrib | 0.99+ | OTLP fan-out (logs → Loki, traces → Jaeger) | Required |
+| Jaeger | 1.55+ | Distributed tracing | Recommended |
 | Prometheus | 2.51+ | Metrics collection and alerting | Recommended |
 | Grafana | 10.4+ | Dashboards and visualization | Recommended |
 | Loki | 3.0+ | Log aggregation | Recommended |
@@ -178,7 +179,7 @@ aegis daemon start --config ./aegis-config.yaml
 | 8080 | HTTP | SeaweedFS Volume | storage | Internal only |
 | 8888 | HTTP | SeaweedFS Filer | storage | Internal only |
 | 16686 | HTTP | Jaeger UI | observability | Internal / proxied |
-| 4317 | gRPC | OTLP Collector | observability | Internal only |
+| 4317 | gRPC | otelcol OTLP gRPC | observability | Internal only |
 | 9090 | HTTP | Prometheus | observability | Internal / proxied |
 | 3300 | HTTP | Grafana | observability | Internal / proxied |
 | 3100 | HTTP | Loki | observability | Internal only |
@@ -187,7 +188,8 @@ aegis daemon start --config ./aegis-config.yaml
 | 3000 | HTTP | Zaru Client | zaru | Internal / proxied |
 | 3001 | HTTP | Zaru MCP Server | zaru | Internal / proxied |
 | 8180 | HTTP | Keycloak IAM | iam | Internal / proxied |
-| 4318 | HTTP | OTLP Collector HTTP | observability | Internal only |
+| 4318 | HTTP | otelcol OTLP HTTP | observability | Internal only |
+| 13133 | HTTP | otelcol health | observability | Internal only |
 | 50052 | gRPC | Cortex Embedding Service | cortex | Internal only |
 | 6333 | HTTP | Qdrant Vector DB | cortex | Internal only |
 | 6334 | gRPC | Qdrant gRPC | cortex | Internal only |

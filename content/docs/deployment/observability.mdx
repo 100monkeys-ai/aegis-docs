@@ -17,7 +17,8 @@ The `pod-observability` pod in [aegis-deploy](https://github.com/100monkeys-ai/a
 
 | Component | Version | Port | Purpose |
 |-----------|---------|------|---------|
-| **Jaeger** | 1.55 | 16686 (UI), 4317 (OTLP gRPC), 4318 (OTLP HTTP) | Distributed tracing |
+| **otelcol-contrib** | 0.99 | 4317 (OTLP gRPC), 4318 (OTLP HTTP), 13133 (health) | OTLP fan-out — logs to Loki, traces to Jaeger |
+| **Jaeger** | 1.55 | 16686 (UI) | Distributed tracing |
 | **Prometheus** | 2.51 | 9090 | Metrics collection and alerting |
 | **Grafana** | 10.4 | 3300 | Dashboards and visualization |
 | **Loki** | 3.0 | 3100 | Log aggregation |
