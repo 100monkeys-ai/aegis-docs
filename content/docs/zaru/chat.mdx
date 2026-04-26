@@ -55,6 +55,32 @@ organized chronologically with the most recent at the top.
 
 ---
 
+## File Uploads in Chat
+
+Agentic and Workflow modes surface a paperclip icon next to the chat input. Use it to attach files to your next message. The affordance is hidden in Chat, Execute, and other modes — uploaded files are only meaningful when the conversation can dispatch agents or workflows that consume them.
+
+### Attaching Files
+
+There are three ways to attach a file:
+
+- Click the paperclip icon and pick one or more files from your local machine.
+- Drag and drop files onto the chat input.
+- Paste a file directly with `Ctrl/Cmd+V` (useful for screenshots).
+
+Multiple files per message are supported. Each upload renders a chip showing filename, progress, and a remove button. The send button stays disabled until every in-flight upload completes.
+
+### Where Uploads Live
+
+Files land in the `chat-attachments` volume in your tenant. The volume is provisioned automatically the first time you upload — you do not need to create it. Uploads count against your storage quota like any other persistent volume.
+
+You can browse, rename, move, or delete uploaded files from [The Workshop](/docs/zaru/the-workshop) at any time. Power users who want to redirect a chat upload to a different volume can use the chevron next to the paperclip to choose a destination.
+
+### How Agents See Your Files
+
+When you send a message with attachments, Zaru passes the file references along with the dispatch as a structured `attachments` field — the model never has to reason about file IDs. Agents and workflows that declare `attachments` in their input schema receive the references directly and read file contents through the platform's read-only attachment tool.
+
+---
+
 ## The Glass Laboratory
 
 The Glass Laboratory is the real-time context panel on the right side of the chat interface.

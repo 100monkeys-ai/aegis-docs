@@ -127,6 +127,15 @@ For complex types (arrays, nested objects), the inputs are also written to a `pa
 file in the workspace. The generated code can read from this file if direct embedding is
 not appropriate.
 
+### Attachments
+
+`aegis.execute.intent` accepts an optional `attachments` array of `AttachmentRef` objects
+(`{volume_id, path, name, mime_type, size, sha256?}`). When provided, the file references are
+forwarded to the generated execution and become available to the generated code through
+`/workspace/params.json` and the `INTENT_INPUTS` environment variable. The generated code reads
+each file's bytes via the platform's read-only attachment tool — no manual download step is
+required.
+
 ---
 
 ## Workspace and Storage

@@ -443,6 +443,33 @@ aegis agent run document-processor \
   --input '{"document_url": "https://example.com/report.pdf", "output_format": "json", "max_pages": 10}'
 ```
 
+**Attachments example.** Agents that process files uploaded via Zaru chat or attached programmatically through the SDK declare an `attachments` field in their input schema and pair it with the `aegis.attachment.read` tool. Such agents must be `type: system` to access `aegis.attachment.read`.
+
+```yaml
+spec:
+  type: system
+  input_schema:
+    type: object
+    properties:
+      attachments:
+        type: array
+        items:
+          type: object
+          properties:
+            volume_id: { type: string }
+            path: { type: string }
+            name: { type: string }
+            mime_type: { type: string }
+            size: { type: integer }
+            sha256: { type: string }
+          required: [volume_id, path, name, mime_type, size]
+    required: [attachments]
+  tools:
+    - aegis.attachment.read
+```
+
+When the orchestrator dispatches an execution with `attachments` populated, the references appear in the agent's prompt context (`{{attachments}}`), in `INTENT_INPUTS` as `params.input.attachments`, and in `/workspace/params.json`. The agent calls `aegis.attachment.read({volume_id, path})` once per file it needs to read.
+
 > **Note:** `spec.input_schema` is a schema descriptor — it declares what inputs the agent accepts and validates them at invocation time. It is distinct from `spec.task.input_data`, which is a map of default runtime values injected into the container environment at startup and is not validated.
 
 > **Judge agents:** When an agent is used as a judge in a `semantic` or `multi_judge` validator, its `input_schema` property names determine how the orchestrator maps evaluation data (output content, objective, criteria, etc.) to the judge's prompt. Declaring `input_schema` in a judge manifest gives the judge structured access to all evaluation fields rather than receiving raw string content. See [Judge Input Schema](/docs/agents/validation-guide#judge-input-schema) for the canonical property names.

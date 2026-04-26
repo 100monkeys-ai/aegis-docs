@@ -63,3 +63,16 @@ contents.
 - Delete files or directories
 
 Files stored in volumes are accessible to any agent execution that has the volume attached.
+
+---
+
+## The `chat-attachments` Volume
+
+`chat-attachments` is a reserved volume name used by the chat upload affordance. It is provisioned automatically the first time you upload a file from the chat input — you do not need to create it manually.
+
+- It behaves like any other persistent volume: it appears in your volume list, you can browse and download its contents from the **Files** tab, and you can move, rename, or delete files in it.
+- It counts against your tier's storage quota.
+- You can also upload to `chat-attachments` directly from the file manager — for example, to seed it with a file before referencing it in conversation.
+- Deleting `chat-attachments` is permitted; the next chat upload re-provisions it.
+
+See [File Uploads in Chat](/docs/zaru/chat#file-uploads-in-chat) for the chat-side flow.

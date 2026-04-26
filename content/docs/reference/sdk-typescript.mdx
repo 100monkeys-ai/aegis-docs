@@ -83,7 +83,7 @@ interface AegisClientOptions {
 | | `lookupAgent(name)` | Look up an agent by name |
 | | `updateAgent(agentId, payload)` | Update an agent's configuration |
 | | `deleteAgent(agentId)` | Delete a deployed agent |
-| | `executeAgent(agentId, input, intent?, contextOverrides?)` | Execute an agent directly (alias route) |
+| | `executeAgent(agentId, input, intent?, contextOverrides?, attachments?)` | Execute an agent directly (alias route) |
 | | `listAgentVersions(agentId)` | List version history for an agent |
 | | `updateAgentScope(agentId, payload)` | Update an agent's visibility scope |
 | | `streamAgentEvents(agentId)` | Stream SSE events for an agent |
@@ -94,7 +94,8 @@ interface AegisClientOptions {
 | | `deleteWorkflow(name)` | Delete a workflow definition |
 | | `listWorkflowVersions(name)` | List version history for a workflow |
 | | `updateWorkflowScope(name, payload)` | Update a workflow's visibility scope |
-| | `runWorkflow(name, payload)` | Run a workflow by name |
+| | `runWorkflow(name, payload)` | Run a workflow by name (payload may include `attachments`) |
+| | `executeWorkflow(name, input, attachments?)` | Run a workflow with typed input and optional attachments |
 | | `executeTemporalWorkflow(payload)` | Execute a Temporal workflow |
 | | `registerTemporalWorkflow(payload)` | Register a Temporal workflow (alias) |
 | **Workflow Execution Management** | | |
@@ -104,7 +105,8 @@ interface AegisClientOptions {
 | | `signalWorkflowExecution(executionId, payload)` | Send a signal to a running workflow |
 | | `cancelWorkflowExecution(executionId)` | Cancel a running workflow execution |
 | **Execution** | | |
-| | `startExecution(agentId, input, contextOverrides?, intent?)` | Start an agent execution |
+| | `startExecution(agentId, input, contextOverrides?, intent?, attachments?)` | Start an agent execution |
+| | `attachToVolume(volumeId, blobOrPath)` | Stream a file into a user volume; returns an `AttachmentRef` |
 | | `streamExecution(executionId, token?)` | Stream execution events (SSE) |
 | | `getExecution(executionId)` | Get execution details by ID |
 | | `listExecutions()` | List all executions |
@@ -261,7 +263,7 @@ Delete a deployed agent.
 
 **Returns:** `Promise<any>`
 
-### `executeAgent(agentId, input, intent?, contextOverrides?)`
+### `executeAgent(agentId, input, intent?, contextOverrides?, attachments?)`
 
 Execute an agent via the direct route.
 
@@ -271,6 +273,7 @@ Execute an agent via the direct route.
 | `input` | `string` | Task prompt |
 | `intent` | `string` | Optional semantic intent for routing |
 | `contextOverrides` | `any` | Optional context overrides |
+| `attachments` | `AttachmentRef[]` | Optional file references the agent should be able to read. Each entry has `volumeId`, `path`, `name`, `mimeType`, `size`, and optional `sha256`. Build entries with `attachToVolume`. |
 
 **Returns:** `Promise<{ execution_id: string }>`
 
@@ -296,7 +299,7 @@ Stream real-time SSE events for all executions of a given agent.
 
 ## Execution
 
-### `startExecution(agentId, input, contextOverrides?, intent?)`
+### `startExecution(agentId, input, contextOverrides?, intent?, attachments?)`
 
 Start a new agent execution. Returns the execution ID immediately; use `streamExecution` to follow progress.
 
@@ -316,6 +319,7 @@ console.log(execution_id); // "exec-uuid"
 | `input` | `string` | The task prompt / instruction |
 | `contextOverrides` | `any` | Optional context overrides for the execution |
 | `intent` | `string` | Optional semantic intent label for discovery routing |
+| `attachments` | `AttachmentRef[]` | Optional file references. The receiving agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`. |
 
 **Returns:** `Promise<StartExecutionResponse>`
 
@@ -324,6 +328,31 @@ interface StartExecutionResponse {
   execution_id: string;
 }
 ```
+
+### `attachToVolume(volumeId, blobOrPath)`
+
+Stream a file into a user volume and return an `AttachmentRef` ready to pass to `startExecution`,
+`executeAgent`, `executeWorkflow`, or any other dispatch entrypoint that accepts an `attachments`
+array. Pass the reserved name `"chat-attachments"` as `volumeId` to lazy-provision the standard
+chat-uploads volume on first call.
+
+```typescript
+const ref = await client.attachToVolume('chat-attachments', file);
+const { execution_id } = await client.executeAgent(
+  'document-summarizer',
+  'Produce a one-paragraph executive summary.',
+  undefined,
+  undefined,
+  [ref],
+);
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `volumeId` | `string` | UUID of an existing user volume, or the literal `"chat-attachments"` to lazy-provision the chat-uploads volume on first call. |
+| `blobOrPath` | `Blob \| File \| string` | A `Blob`/`File` (browser) or a filesystem path (Node). The upload is streamed — no in-memory buffering. |
+
+**Returns:** `Promise<AttachmentRef>` with `volumeId`, `path`, `name`, `mimeType`, `size`, and `sha256`.
 
 ### `streamExecution(executionId, token?)`
 

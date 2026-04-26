@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
 
-Tool count: **86** total — 83 built-in orchestrator tools + 3 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`).
+Tool count: **87** total — 84 built-in orchestrator tools + 3 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`).
 
 ---
 
@@ -44,7 +44,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 **System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
 registered by platform operators:
 `aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.create`, `aegis.workflow.update`,
-`aegis.workflow.promote`, `aegis.workflow.demote`
+`aegis.workflow.promote`, `aegis.workflow.demote`, `aegis.attachment.read`
 
 **Operator-only tools** — only available via operator SEAL sessions:
 `aegis.agent.delete`, `aegis.workflow.delete`, `aegis.workflow.remove`, `aegis.task.remove`,
@@ -193,6 +193,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.task.logs` | task | true | `execution_id` | Ag, Op |
 | `aegis.task.wait` | task | true | `execution_id` | Ag, Ar, Op |
 | `aegis.execution.file` | execution | true | `execution_id`, `path` | Ag, Ex, Ar, Op |
+| `aegis.attachment.read` | attachment | true | `volume_id`, `path` | System-tier only |
 | `aegis.execute.intent` | execute | false | `intent` | Ex, Op |
 | `aegis.execute.status` | execute | true | `pipeline_execution_id` | Ex, Op |
 | `aegis.execute.wait` | execute | true | `execution_id` | Ex, Op |
@@ -673,6 +674,7 @@ Generates an Agent manifest from a natural-language intent.
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
 | `input` | `string` | Yes | — | Natural-language intent for the agent to create. |
+| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated agent should be wired to read. When present, the generation pipeline declares `attachments` in the new agent's `input_schema` and grants it `aegis.attachment.read`. |
 
 <Callout type="info">
   This tool returns an `execution_id` immediately and starts an async authoring loop. Use
@@ -1382,6 +1384,7 @@ Starts a new agent execution (task) by agent UUID or name.
 | `agent_id` | `string` | Yes | — | UUID or name of the agent to execute. |
 | `intent` | `string` | No | — | Natural-language description of what the agent should accomplish. Steers the LLM prompt directly. Complementary to structured `input`. |
 | `input` | `object` | No | — | Structured data for the agent, validated against `spec.input_schema` when declared. The well-known sub-field `input.prompt` (string) holds the full task instructions or user request. |
+| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the agent should read. The agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools` to consume them. |
 | `version` | `string` | No | latest | Semantic version of the agent to execute. When omitted, the latest deployed version is used. |
 
 <Callout type="info">
@@ -1638,6 +1641,34 @@ Text files include their content inline in the `content` field so LLMs can consu
 
 ---
 
+## Attachment Tools (`aegis.attachment.*`)
+
+### `aegis.attachment.read`
+
+Reads the bytes of an attached file from a user volume. Platform-internal: only available to system-tier agents (those running under `security_context: aegis-system-agent-runtime` or `aegis-system-operator`). User-tier agents do not see this tool in `aegis.tools.list` and direct calls return `ToolNotAllowed`. Tenant-scoped — the orchestrator validates that the caller's tenant matches the volume's owner before reading.
+
+This is the read path for files dispatched via the `attachments` field on `aegis.task.execute`, `aegis.agent.generate`, and `aegis.execute.intent`. Generated agents that consume attachments declare it in `spec.tools` and call it once per attachment they need to read.
+
+**Access:** System
+
+**`skip_judge`:** `true`
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `volume_id` | `string` | Yes | — | UUID of the volume containing the attachment. Typically the `volume_id` of an `AttachmentRef` from the dispatch's `attachments` array. |
+| `path` | `string` | Yes | — | Path inside the volume. Typically the `path` of an `AttachmentRef` from the dispatch's `attachments` array. |
+
+**Output schema:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | `string` | File contents, base64-encoded. |
+| `mime_type` | `string` | MIME type detected by content-sniffing. |
+| `size` | `integer` | Size of the file in bytes. |
+| `sha256` | `string` | Hex-encoded SHA-256 digest of the file bytes. |
+
+---
+
 ## Execute Pipeline Tools (`aegis.execute.*`)
 
 These tools power Execute mode in Zaru and the intent-to-execution API. They run a multi-step
@@ -1656,6 +1687,7 @@ Starts the intent-to-execution pipeline: discovers or generates an agent, writes
 |----------|------|----------|---------|-------------|
 | `intent` | `string` | Yes | — | Natural-language description of what to execute (e.g. `"resize images in /workspace to 800x600"`). |
 | `inputs` | `object` | No | — | Optional structured inputs passed to the pipeline. |
+| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated execution should be able to read. References are passed deterministically to the generated code agent and surface in its workspace. |
 | `volume_id` | `string` | No | ephemeral | Optional persistent volume ID to use as workspace. When omitted, an ephemeral volume is created. |
 | `language` | `string` | No | `python` | Execution language. One of: `python`, `javascript`, `bash`. |
 | `timeout_seconds` | `integer` | No | — | Optional execution timeout in seconds. |

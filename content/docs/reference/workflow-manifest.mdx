@@ -288,6 +288,31 @@ aegis workflow run invoice-pipeline \
   --input '{"document_text": "Invoice #1234...", "vendor_id": "acme-corp", "currency": "USD"}'
 ```
 
+**Attachments example.** Workflows that consume uploaded files declare an `attachments` array in `metadata.input_schema`. The validated array is exposed to every state via `{{input.attachments}}` and can be propagated to states that dispatch agents capable of reading attachments.
+
+```yaml
+metadata:
+  name: document-pipeline
+  input_schema:
+    type: object
+    properties:
+      attachments:
+        type: array
+        items:
+          type: object
+          properties:
+            volume_id: { type: string }
+            path: { type: string }
+            name: { type: string }
+            mime_type: { type: string }
+            size: { type: integer }
+            sha256: { type: string }
+          required: [volume_id, path, name, mime_type, size]
+    required: [attachments]
+```
+
+States that dispatch agents to process the attachments forward `{{input.attachments}}` into the agent's input. The receiving agent must declare its own `attachments` field in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`.
+
 > **Scope:** Workflows are deployed at Tenant scope by default. Use `--scope user` for personal workflows or `--scope global` for platform-wide workflows (requires operator role). After deployment, use `aegis workflow promote` and `aegis workflow demote` to change scope. Scope is not a manifest field — it is controlled via the CLI `--scope` flag or API parameter at deploy time.
 
 ### `metadata.output_schema`

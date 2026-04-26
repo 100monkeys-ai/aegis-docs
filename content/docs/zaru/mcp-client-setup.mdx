@@ -150,6 +150,20 @@ Available modes: `chat`, `agentic`, `workflow`, `execute`.
 
 ---
 
+## Client Capabilities
+
+The Zaru web client at [ask.myzaru.com](https://ask.myzaru.com) declares a fixed set of capabilities at session start. External MCP clients (Claude Code, Claude Desktop, Cursor, Windsurf, VS Code Copilot, Gemini CLI, custom integrations) do not declare any of these — the capabilities reflect UI surfaces that only the Zaru web client provides.
+
+| Capability | Surface | Modes where active |
+|---|---|---|
+| `live` | In-browser TypeScript execution against your live session | `live` mode |
+| `vibecode` | Vibe-Code Canvas — collaborative coding workspace | `vibecode` mode |
+| `chat-uploads` | Paperclip / drag-drop / paste file uploads on the chat input | `agentic`, `workflow` |
+
+Capability gating is purely additive: external clients see the same tool catalog and the same prompts minus the capability-specific guidance. If a client does not declare `chat-uploads`, the prompt omits attachment instructions and the platform rejects out-of-band attachment payloads on tool calls.
+
+---
+
 ## Switching Modes
 
 During a session, say "switch to workflow mode" and the assistant will call `zaru.mode` to change modes with updated tools and behavior.

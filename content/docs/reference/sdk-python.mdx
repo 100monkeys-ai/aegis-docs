@@ -63,7 +63,7 @@ async with AegisClient(
 | | `lookup_agent(name)` | Look up an agent by name |
 | | `update_agent(agent_id, payload)` | Update an agent's configuration |
 | | `delete_agent(agent_id)` | Delete a deployed agent |
-| | `execute_agent(agent_id, input, intent?, context_overrides?)` | Execute an agent directly (alias route) |
+| | `execute_agent(agent_id, input, intent?, context_overrides?, attachments?)` | Execute an agent directly (alias route) |
 | | `list_agent_versions(agent_id)` | List version history for an agent |
 | | `update_agent_scope(agent_id, payload)` | Update an agent's visibility scope |
 | | `stream_agent_events(agent_id)` | Stream SSE events for an agent |
@@ -74,7 +74,8 @@ async with AegisClient(
 | | `delete_workflow(name)` | Delete a workflow definition |
 | | `list_workflow_versions(name)` | List version history for a workflow |
 | | `update_workflow_scope(name, payload)` | Update a workflow's visibility scope |
-| | `run_workflow(name, payload)` | Run a workflow by name |
+| | `run_workflow(name, payload)` | Run a workflow by name (payload may include `attachments`) |
+| | `execute_workflow(name, input, attachments?)` | Run a workflow by name with typed input and optional attachments |
 | | `execute_temporal_workflow(payload)` | Execute a Temporal workflow |
 | | `register_temporal_workflow(payload)` | Register a Temporal workflow (alias) |
 | **Workflow Execution Management** | | |
@@ -84,7 +85,8 @@ async with AegisClient(
 | | `signal_workflow_execution(execution_id, payload)` | Send a signal to a running workflow execution |
 | | `cancel_workflow_execution(execution_id)` | Cancel a running workflow execution |
 | **Execution** | | |
-| | `start_execution(agent_id, input, intent?, context_overrides?)` | Start an agent execution |
+| | `start_execution(agent_id, input, intent?, context_overrides?, attachments?)` | Start an agent execution |
+| | `attach_to_volume(volume_id, file)` | Stream a local file into a user volume; returns an `AttachmentRef` |
 | | `stream_execution(execution_id, token?)` | Stream execution events (SSE) |
 | | `get_execution(execution_id)` | Get execution details by ID |
 | | `list_executions()` | List all executions |
@@ -258,7 +260,7 @@ Delete a deployed agent.
 
 ---
 
-#### `execute_agent(agent_id, input, intent?, context_overrides?)`
+#### `execute_agent(agent_id, input, intent?, context_overrides?, attachments?)`
 
 Execute an agent via the direct `POST /v1/agents/{agent_id}/execute` route.
 
@@ -270,6 +272,7 @@ Execute an agent via the direct `POST /v1/agents/{agent_id}/execute` route.
 | `input` | `str` | Task prompt |
 | `intent` | `Optional[str]` | Semantic intent for routing |
 | `context_overrides` | `Any` | Optional context overrides |
+| `attachments` | `Optional[List[AttachmentRef]]` | File references to forward to the agent. Each entry has `volume_id`, `path`, `name`, `mime_type`, `size`, and an optional `sha256`. Build entries with `attach_to_volume`. |
 
 **Returns:** `Dict[str, Any]` with `execution_id`.
 
@@ -301,7 +304,7 @@ Stream real-time SSE events for all executions of a given agent.
 
 ### Execution
 
-#### `start_execution(agent_id, input, intent?, context_overrides?)`
+#### `start_execution(agent_id, input, intent?, context_overrides?, attachments?)`
 
 Start an agent execution and receive an execution ID for streaming.
 
@@ -329,8 +332,37 @@ async with AegisClient(
 | `input` | `str` | Task prompt for the agent |
 | `intent` | `Optional[str]` | Semantic intent label for discovery routing |
 | `context_overrides` | `Any` | Optional context overrides |
+| `attachments` | `Optional[List[AttachmentRef]]` | File references the agent should be able to read. Each entry has `volume_id`, `path`, `name`, `mime_type`, `size`, and optional `sha256`. The receiving agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`. |
 
 **Returns:** `StartExecutionResponse` with `execution_id: str`.
+
+---
+
+#### `attach_to_volume(volume_id, file)`
+
+Stream a local file into a user volume and return an `AttachmentRef` ready to pass to
+`start_execution`, `execute_agent`, `execute_workflow`, or any other dispatch entrypoint that
+accepts an `attachments` array. Pass the reserved name `"chat-attachments"` as `volume_id` to
+lazy-provision the standard chat-uploads volume on first call.
+
+```python
+async with AegisClient(...) as client:
+    ref = await client.attach_to_volume("chat-attachments", "report.pdf")
+    result = await client.execute_agent(
+        agent_id="document-summarizer",
+        input="Produce a one-paragraph executive summary.",
+        attachments=[ref],
+    )
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `volume_id` | `str` | UUID of an existing user volume, or the literal `"chat-attachments"` to lazy-provision the chat-uploads volume on first call. |
+| `file` | `str \| Path \| BinaryIO` | Path to a local file or an open binary file-like object. The upload is streamed — bytes are not buffered in memory. |
+
+**Returns:** `AttachmentRef` with `volume_id`, `path`, `name`, `mime_type`, `size`, and `sha256`.
 
 ---
 

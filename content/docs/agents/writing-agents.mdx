@@ -157,6 +157,33 @@ spec:
 
 Callers then pass `--input '{"repo_url": "https://github.com/org/repo", "dry_run": false}'` instead of a plain string. See the [Agent Manifest Reference](/docs/reference/agent-manifest#specinput_schema) for the full field specification.
 
+### Agents That Read Uploaded Files
+
+If your agent processes files uploaded via Zaru chat or attached programmatically through the SDK, declare an `attachments` array in `spec.input_schema` and add `aegis.attachment.read` to `spec.tools`. Such agents must be `type: system` — `aegis.attachment.read` is platform-internal and only available to system-tier agents.
+
+```yaml
+spec:
+  type: system
+  input_schema:
+    type: object
+    properties:
+      attachments:
+        type: array
+        items:
+          type: object
+          properties:
+            volume_id: { type: string }
+            path: { type: string }
+            name: { type: string }
+            mime_type: { type: string }
+            size: { type: integer }
+    required: [attachments]
+  tools:
+    - aegis.attachment.read
+```
+
+The references appear in the prompt context as `{{attachments}}` and in `/workspace/params.json`. Each file is read on demand with `aegis.attachment.read({volume_id, path})`.
+
 ---
 
 ## Step 3: Deploy the Agent

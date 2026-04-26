@@ -39,6 +39,18 @@ To switch modes mid-session, tell the assistant to switch — it calls `zaru.mod
 
 ---
 
+## Client Capabilities and Mode Gating
+
+Some Zaru affordances are surfaced via **client capabilities** declared at session start. The Zaru web client declares `live`, `vibecode`, and `chat-uploads`. External MCP clients do not declare any of these.
+
+The `chat-uploads` capability gates the chat input's file-upload UI (paperclip icon, drag-and-drop, paste). It is bound to `agentic` and `workflow` modes only — in those modes the upload affordance appears, the system prompt teaches the model how attachments flow through dispatches, and tool calls to `aegis.task.execute`, `aegis.agent.generate`, and `aegis.execute.intent` may carry an `attachments` array.
+
+Other modes (`chat`, `execute`, `live`, `vibecode`, operator) do not surface the upload affordance, even when the capability is declared. External clients that do not declare `chat-uploads` see no attachment guidance and the platform rejects out-of-band attachment payloads as a defense-in-depth check.
+
+See [File Uploads in Chat](/docs/zaru/chat#file-uploads-in-chat) for the user-facing flow.
+
+---
+
 ## Zaru Client Tools — All Modes
 
 These three tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.
