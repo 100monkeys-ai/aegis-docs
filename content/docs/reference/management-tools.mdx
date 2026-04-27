@@ -266,7 +266,7 @@ Lists workflow executions for the current tenant, optionally filtered to a singl
 | `offset` | `integer` | ❌ | `0` | Pagination offset. |
 | `tenant_id` | `string` | ❌ | local tenant | Optional tenant override. |
 
-**Returns:** A paginated list of execution summaries including `execution_id`, `workflow_id`, `status`, `current_state`, and timestamps.
+**Returns:** A paginated list of execution summaries including `execution_id`, `workflow_id`, `status`, `current_state`, `summary` (string or `null` — a derived, whitespace-collapsed preview of the execution's `intent`, capped at 160 characters with `…` overflow), and timestamps.
 
 ### `aegis.workflow.executions.get`
 
@@ -634,7 +634,7 @@ Lists recent task executions, optionally filtered by agent.
 | `agent_id` | `string` | ❌ | — | Filter results to executions of a specific agent UUID. |
 | `limit` | `integer` | ❌ | `20` | Maximum number of results to return. |
 
-**Returns:** A list of execution summaries including `id`, `agent_id`, `status`, and `started_at`.
+**Returns:** A list of execution summaries including `id`, `agent_id`, `status`, `started_at`, and `summary` (string or `null` — a derived, whitespace-collapsed preview of the execution's `intent`, capped at 160 characters with `…` overflow).
 
 ### `aegis.task.logs`
 
