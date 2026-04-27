@@ -311,7 +311,7 @@ metadata:
     required: [attachments]
 ```
 
-States that dispatch agents to process the attachments forward `{{input.attachments}}` into the agent's input. The receiving agent must declare its own `attachments` field in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`.
+States that dispatch agents to process the attachments forward `{{input.attachments}}` into the agent's input. The workflow engine renders this Handlebars expression at the state transition (resolving against the live Blackboard), and the resulting array is carried on the dispatch's `attachments` field. The receiving agent must declare its own `attachments` field in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`. Inside the receiving agent, attachments are surfaced as `input.attachments` in the substituted prompt input — the agent's `task.instruction` references them in prose, not via Handlebars iteration (the agent's instruction body is not re-rendered at runtime).
 
 > **Scope:** Workflows are deployed at Tenant scope by default. Use `--scope user` for personal workflows or `--scope global` for platform-wide workflows (requires operator role). After deployment, use `aegis workflow promote` and `aegis workflow demote` to change scope. Scope is not a manifest field — it is controlled via the CLI `--scope` flag or API parameter at deploy time.
 

@@ -468,7 +468,9 @@ spec:
     - aegis.attachment.read
 ```
 
-When the orchestrator dispatches an execution with `attachments` populated, the references appear in the agent's prompt context (`{{attachments}}`), in `INTENT_INPUTS` as `params.input.attachments`, and in `/workspace/params.json`. The agent calls `aegis.attachment.read({volume_id, path})` once per file it needs to read.
+When the orchestrator dispatches an execution with `attachments` populated, the references are merged into the agent's JSON `input` under the key `attachments` before the prompt template is rendered. The agent's LLM reads them at `input.attachments` from the substituted `{{input}}` JSON. The same array is also exposed in `INTENT_INPUTS` as `params.input.attachments` and in `/workspace/params.json`. The agent calls `aegis.attachment.read({volume_id, path})` once per file it needs to read.
+
+The agent's `spec.task.instruction` must reference `input.attachments` in prose. The instruction body is not Handlebars-rendered at runtime — `{{instruction}}` is substituted into `prompt_template` as raw text — so iteration syntax such as `{{#each attachments}}` or `{{this.volume_id}}` is rejected by the agent generator's validation and would otherwise reach the LLM as literal text.
 
 > **Note:** `spec.input_schema` is a schema descriptor — it declares what inputs the agent accepts and validates them at invocation time. It is distinct from `spec.task.input_data`, which is a map of default runtime values injected into the container environment at startup and is not validated.
 

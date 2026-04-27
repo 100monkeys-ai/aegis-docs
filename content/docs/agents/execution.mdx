@@ -254,15 +254,19 @@ Workflows without `output_template` complete as before -- the Blackboard is capt
 
 ## Attachments Propagation
 
-When a dispatch carries an `attachments` array (e.g. from a Zaru chat upload, an SDK call, or an enclosing workflow state), the orchestrator surfaces those references in three places inside the running container, mirroring the standard input hydration pipeline:
+When a dispatch carries an `attachments` array (e.g. from a Zaru chat upload, an SDK call, or an enclosing workflow state), the orchestrator merges those references into the agent's JSON `input` under the key `attachments` before the prompt is built. If the caller's `input` is a JSON object, `attachments` is added as a sibling key. If the caller's `input` is a scalar (string, number) and attachments are non-empty, the orchestrator wraps it as `{ "value": <scalar>, "attachments": [...] }`. The merged input is what the agent's LLM sees when `{{input}}` is substituted into the agent's prompt template.
+
+The same merged input also reaches the running container through the standard hydration surfaces:
 
 | Surface | Where it appears |
 |---|---|
-| Handlebars context | `{{attachments}}` resolves to the array; individual entries are addressable via `{{attachments.[0].name}}` etc. |
+| LLM prompt | The substituted `{{input}}` JSON contains `input.attachments`. The agent's `task.instruction` references `input.attachments` in prose. |
 | Environment | `INTENT_INPUTS` JSON contains `params.input.attachments`. |
 | Filesystem | `/workspace/params.json` includes `attachments` in its `input` object. |
 
 Each `AttachmentRef` is `{ volume_id, path, name, mime_type, size, sha256? }`. The agent reads the actual bytes by calling `aegis.attachment.read({ volume_id, path })`, which returns base64 content plus MIME, size, and SHA-256. The tool is read-only and tenant-scoped. Agents that consume attachments must declare them in `spec.input_schema`, include `aegis.attachment.read` in `spec.tools`, and be `type: system`.
+
+> Agent `task.instruction` is not re-rendered as a Handlebars template at runtime — the orchestrator substitutes `{{instruction}}` into `prompt_template` once, and the result is passed to the LLM as raw text. To loop over attachments, the instruction describes the loop in prose (e.g. "for each entry in `input.attachments`, call `aegis.attachment.read({volume_id, path})`"); embedding `{{#each attachments}}` in the instruction body would reach the LLM as literal text and is rejected by the agent generator's validation.
 
 ---
 

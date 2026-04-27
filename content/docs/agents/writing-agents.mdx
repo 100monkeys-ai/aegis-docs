@@ -182,7 +182,9 @@ spec:
     - aegis.attachment.read
 ```
 
-The references appear in the prompt context as `{{attachments}}` and in `/workspace/params.json`. Each file is read on demand with `aegis.attachment.read({volume_id, path})`.
+The orchestrator merges the dispatched `attachments` array into the agent's JSON `input` under the key `attachments` before rendering the prompt. The agent's LLM reads them at `input.attachments` from the substituted `{{input}}` JSON; the same array is also written to `/workspace/params.json` and `INTENT_INPUTS`. Each file is read on demand with `aegis.attachment.read({volume_id, path})`.
+
+In `spec.task.instruction`, describe the per-attachment loop in prose ("for each entry in `input.attachments`, call `aegis.attachment.read(...)`...") — the instruction body is not Handlebars-rendered at runtime, so iteration syntax like `{{#each attachments}}` would be sent to the LLM as literal text and is rejected by validation.
 
 ---
 
