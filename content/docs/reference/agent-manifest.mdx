@@ -396,14 +396,15 @@ The following JSON Schema property types are supported. The Zaru client context 
 | `object` | Nested form group |
 | `array` | Repeatable row builder |
 
-#### `intent` and `input`
+#### `intent`, `input`, and `attachments`
 
-Every agent invocation accepts two optional fields on the execution request:
+Every agent invocation accepts three optional fields on the execution request:
 
 - **`intent`** — natural-language steering. Describes what the caller wants the agent to achieve. Always available as `{{intent}}` in prompt templates (empty string when absent).
 - **`input`** — structured data for the execution. When `input_schema` is declared, `input` must conform to it (validated before dispatch; rejection = HTTP 422). Available as `{{input}}` (full JSON blob) and `{{input.KEY}}` (dot-notation when the value is an object).
+- **`attachments`** — array of typed file references (`{ volume_id, path, name, mime_type, size, sha256? }`) describing files staged in tenant-scoped volumes. Merged into the agent's JSON `input` under the key `attachments` before prompt rendering, so the LLM reads them via `input.attachments` from the substituted `{{input}}` slot. Also surfaced in `INTENT_INPUTS` and `/workspace/params.json`. Available across every dispatch entry point (CLI, SDKs, MCP tools, REST, gRPC). See the *Attachments example* below.
 
-These are complementary, not alternatives — `intent` steers the LLM with natural language; `input` supplies typed data.
+These are complementary, not alternatives — `intent` steers the LLM with natural language; `input` supplies typed data; `attachments` carries file references the agent reads on demand via `aegis.attachment.read`.
 
 | `intent` | `input` | Rendered prompt |
 |---|---|---|

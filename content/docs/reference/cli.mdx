@@ -419,16 +419,22 @@ aegis task execute python-coder --context '{"repo_url":"https://github.com/examp
 aegis task execute python-coder --input @input.json --follow
 aegis task execute python-coder --input @input.json --context @context.yaml --follow
 aegis task execute python-coder --input @input.json --output json
+aegis task execute pdf-summarizer --attachment 1bcd...:reports/q3.pdf --attachment 1bcd...:reports/q4.pdf
+aegis task execute pdf-summarizer --attachments @refs.json
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--input <value>`, `-i` | empty object | Inline JSON/YAML, `@file`, or a plain string. |
 | `--context <dict>` | none | Context override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object. |
+| `--attachments <json>` | none | File references in the canonical JSON form. Inline JSON array of `AttachmentRef` objects (`[{"volume_id":"...","path":"...","name":"...","mime_type":"...","size":N,"sha256":"..."}]`) or `@file` to read from disk. The receiving agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`. |
+| `--attachment <volume_id:path>` | none | Shorthand. Repeatable. Each occurrence names one file by `volume_id` and `path` within the volume; the CLI stat-s the file via the orchestrator's volume metadata API and constructs the corresponding `AttachmentRef` (filling in `name`, `mime_type`, `size`, and `sha256`). Mutually exclusive with `--attachments`. |
 | `--wait`, `-w` | `false` | Block until the execution completes. |
 | `--follow`, `-f` | `false` | Stream execution logs. |
 
 `--context` injects top-level execution variables for that run only. The value must be a JSON or YAML object. Reserved built-in execution keys are rejected by the orchestrator.
+
+Use `--attachment` for ad-hoc invocations where you know the volume and path; use `--attachments` (or `--attachments @file.json`) when the references come from automation, an API response, or a script that has already gathered the full `AttachmentRef` shape. Passing both forms in one invocation is rejected before dispatch.
 
 ### `aegis task status <EXECUTION_ID>`
 
@@ -519,6 +525,8 @@ aegis workflow run dev-pipeline --blackboard @blackboard.yaml
 aegis workflow run dev-pipeline --param branch=main --param env=staging --follow
 aegis workflow run dev-pipeline --wait
 aegis workflow run dev-pipeline --input @input.yaml --output json
+aegis workflow run review-pipeline --attachment 1bcd...:reports/q3.pdf
+aegis workflow run review-pipeline --attachments @refs.json
 ```
 
 | Flag | Default | Description |
@@ -526,6 +534,8 @@ aegis workflow run dev-pipeline --input @input.yaml --output json
 | `--input <json>`, `-i` | empty object | Workflow input as inline JSON/YAML or `@file`. Must deserialize to an object. |
 | `--param <key=value>`, `-p` | none | Individual workflow input values merged into the input object. Values are parsed as JSON when possible, otherwise treated as strings. |
 | `--blackboard <dict>` | none | Startup blackboard override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object. |
+| `--attachments <json>` | none | File references in the canonical JSON form. Inline JSON array of `AttachmentRef` objects or `@file`. Forwarded to every agent state that declares `attachments` in its `input_schema`. |
+| `--attachment <volume_id:path>` | none | Shorthand. Repeatable. Each occurrence names one file by `volume_id` and `path`; the CLI resolves it to a full `AttachmentRef` via the orchestrator's volume metadata API. Mutually exclusive with `--attachments`. |
 | `--follow`, `-f` | `false` | Stream workflow logs after the execution starts. |
 | `--wait`, `-w` | `false` | Block until the workflow execution completes. |
 
