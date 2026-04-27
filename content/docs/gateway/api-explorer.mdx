@@ -1,0 +1,234 @@
+---
+title: API Explorer
+description: A thin proxy that issues a single HTTP call against a registered API spec and returns only the JSONPath-selected fields — designed to keep agent contexts small.
+---
+
+# API Explorer
+
+The API Explorer is a one-shot read endpoint. It takes a registered API spec, an `operationId`, a parameters object, and a list of JSONPath expressions, then issues exactly one upstream HTTP request and returns **only the selected fields**.
+
+It exists for the same reason workflows do — to keep credentials out of agent code — plus one more: agents have small, expensive context windows. A list of 10,000 GitHub repositories with full metadata blows past any context budget. A list of 10,000 `full_name` strings does not.
+
+<Callout type="info">
+  The explorer is a control-plane convenience, not a SEAL-invoke target. Calls require an operator JWT, not a SEAL session token.
+</Callout>
+
+---
+
+## When to use the explorer
+
+| Use the explorer when | Use a workflow when |
+|---|---|
+| You need a single HTTP call's result, sliced. | You need to chain calls, threading values from one response into the next. |
+| The agent only needs a handful of fields out of a large payload. | The result of every step matters and must round-trip back to the agent. |
+| The call is read-only and idempotent. | The operation has side effects you want named, audited, and replayable. |
+| You want to discover an API surface ad-hoc before deciding what to wrap. | You have a stable, repeatable sequence worth committing as a tool. |
+
+---
+
+## Request shape
+
+`POST /v1/explorer` accepts:
+
+| Field | Type | Required | Purpose |
+|---|---|---|---|
+| `execution_id` | string | yes | Correlation ID written into every audit event for this request. |
+| `api_spec_id` | string (UUID) | yes | The registered spec the operation belongs to. |
+| `operation_id` | string | yes | Must match an `operationId` defined in the referenced spec. |
+| `parameters` | object | yes | Forwarded as the request body of the upstream call. |
+| `fields` | string[] | yes | List of JSONPath expressions; only these are returned in `sliced_data`. |
+| `include_hateoas_hints` | bool | yes | When `true`, the response includes a list of every `operationId` in the same spec, useful as a discovery affordance for an agent that wants to keep exploring. |
+
+Two honest gaps relative to what you might expect:
+
+- **`parameters` is sent as the request body.** It is not split into `path`, `query`, `header`, and `body` buckets the way OpenAPI describes parameters. The explorer concatenates `base_url` + the operation's literal `path` and posts/gets `parameters` as the body. Operations whose paths or query strings need parameterization are not currently expressible through the explorer.
+- **There is no per-call header override.** Headers come from the credential resolver as configured on the spec.
+
+These match the [authoring-workflows limitations](/docs/gateway/authoring-workflows#current-step-limitations) — both surfaces share the same HTTP-call layer.
+
+---
+
+## Response shape
+
+```json
+{
+  "sliced_data": {
+    "$.items[*].full_name": ["alice/repo-a", "alice/repo-b"]
+  },
+  "hints": {
+    "related_operations": ["list_repos", "get_repo", "create_issue"]
+  },
+  "operation_metadata": { "status": 200 }
+}
+```
+
+- `sliced_data` is a map keyed by **the original JSONPath expression you supplied**. Each value is an array of every match the path produced against the upstream response. The keys are the literal expressions, not parsed names — `$.items[*].full_name` stays as `$.items[*].full_name`.
+- `hints` is `null` unless `include_hateoas_hints` was `true`.
+- `operation_metadata` currently exposes only the upstream HTTP status code.
+
+The full upstream response body is **not** included. If you want everything, supply `["$"]` as your single field.
+
+---
+
+## JSONPath cheat sheet
+
+The explorer uses [`jsonpath_lib`](https://crates.io/crates/jsonpath_lib).
+
+| Expression | Meaning |
+|---|---|
+| `$` | The root document. Useful when you really do want the whole payload. |
+| `$.field` | A direct child. |
+| `$..field` | Recursive descent — every `field` anywhere in the tree. |
+| `$.items[0]` | First element of the array. |
+| `$.items[*]` | Every element of the array. |
+| `$.items[0:5]` | Slice — first five elements. |
+| `$.items[?(@.status=='ready')]` | Filter expression. |
+| `$.*` | Every value of an object (wildcard). |
+
+Filter expressions (`[?(...)]`) are supported but the dialect is limited compared to JSONPath-Plus: equality on string and number literals works, but more elaborate predicates (regex matches, function calls) may parse but produce empty results. Validate in the explorer itself before relying on a filter inside a workflow extractor.
+
+---
+
+## Worked examples
+
+### Listing GitHub repository names
+
+You have a registered API spec for a GitHub-shaped API with an operation `list_my_repos` that returns an array of repository objects. You want the agent to see only the names.
+
+```bash
+curl -X POST https://gateway.example.com/v1/explorer \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "execution_id": "explore-repos-001",
+    "api_spec_id": "8b3a4c1e-9f2d-4a1c-b0a7-2e5f7d6c1a44",
+    "operation_id": "list_my_repos",
+    "parameters": {},
+    "fields": ["$[*].full_name"],
+    "include_hateoas_hints": false
+  }'
+```
+
+Response:
+
+```json
+{
+  "sliced_data": {
+    "$[*].full_name": ["alice/dotfiles", "alice/aegis-experiments", "alice/prompt-lab"]
+  },
+  "hints": null,
+  "operation_metadata": { "status": 200 }
+}
+```
+
+The agent sees three strings instead of the full repo metadata blob. The audit log records that the upstream returned 187 KiB and the slice returned 142 bytes.
+
+### Pulling identifying fields from a paginated list
+
+You want both `id` and `email` for every user in a single page of a `/users` operation. JSONPath does not collapse two parallel selections into a list of pairs — issue them as two distinct fields and let the agent zip them on the receiving end.
+
+```bash
+curl -X POST https://gateway.example.com/v1/explorer \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "execution_id": "explore-users-001",
+    "api_spec_id": "8b3a4c1e-9f2d-4a1c-b0a7-2e5f7d6c1a44",
+    "operation_id": "list_users",
+    "parameters": {},
+    "fields": ["$.data[*].id", "$.data[*].email"],
+    "include_hateoas_hints": false
+  }'
+```
+
+Response:
+
+```json
+{
+  "sliced_data": {
+    "$.data[*].id":    ["u-1", "u-2", "u-3"],
+    "$.data[*].email": ["alice@example.com", "bob@example.com", "carol@example.com"]
+  },
+  "hints": null,
+  "operation_metadata": { "status": 200 }
+}
+```
+
+The order of arrays mirrors document order from the upstream response, so the i-th `id` lines up with the i-th `email`. There is no built-in pagination — issue another explorer call for the next page.
+
+### Reaching a deeply nested config field
+
+```bash
+curl -X POST https://gateway.example.com/v1/explorer \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "execution_id": "explore-config-001",
+    "api_spec_id": "8b3a4c1e-9f2d-4a1c-b0a7-2e5f7d6c1a44",
+    "operation_id": "get_cluster",
+    "parameters": { "cluster_id": "primary" },
+    "fields": ["$.config.database.replicas"],
+    "include_hateoas_hints": true
+  }'
+```
+
+Response:
+
+```json
+{
+  "sliced_data": {
+    "$.config.database.replicas": [3]
+  },
+  "hints": {
+    "related_operations": ["get_cluster", "list_clusters", "update_cluster", "delete_cluster"]
+  },
+  "operation_metadata": { "status": 200 }
+}
+```
+
+Even single scalars come back wrapped in an array — this is consistent with JSONPath semantics where every selection is a list of matches.
+
+---
+
+## Auth
+
+The explorer endpoint sits on the operator-JWT side of the gateway, alongside `/v1/specs` and `/v1/workflows`. SEAL session tokens are not accepted here. Agents that want explorer-like behavior at runtime invoke a workflow whose single step calls the same operation — the workflow surface is the agent-facing one.
+
+The credential resolution path that handles the upstream call is the **API spec's own** `credential_path`. Whatever strategy you picked at registration (StaticRef, SystemJit, HumanDelegated, Auto, UserBound) is what the explorer uses. There is no per-explorer-call credential override.
+
+---
+
+## Audit events
+
+Every explorer request emits a single `ExplorerRequestExecuted` event capturing:
+
+- the `execution_id` you supplied
+- the `api_spec_id` and `operation_id`
+- the list of JSONPath expressions
+- `response_bytes_before_slice` — the size of the raw upstream body
+- `response_bytes_after_slice` — the size of the JSON-encoded `sliced_data`
+- the timestamp
+
+The body itself is **not** captured in the event — only the byte counts. If you need full request/response capture, run the explorer's underlying call against an upstream behind your own proxy, or correlate against your upstream's own access logs using `execution_id`.
+
+A failed credential exchange emits `CredentialExchangeFailed` instead, and the explorer call returns the error from the credential resolver.
+
+---
+
+## Common errors
+
+| Status | Cause |
+|---|---|
+| `400 Validation` | A `fields` entry is not a valid JSONPath expression. The error message names the offending field. |
+| `404 NotFound` | `api_spec_id` does not resolve, or `operation_id` is not declared in the resolved spec. |
+| `401 Unauthorized` | Missing or invalid operator JWT. |
+
+A non-2xx upstream response is **not** a 4xx on the explorer call — the upstream status is surfaced in `operation_metadata.status` and `sliced_data` is computed against whatever body the upstream returned. If you want errors to fail loudly, check `operation_metadata.status` on the client side.
+
+---
+
+## Next steps
+
+- [Registering API Specs](/docs/gateway/registering-api-specs) — every explorer call needs a registered spec.
+- [Authoring Workflows](/docs/gateway/authoring-workflows) — to commit a successful explorer pattern as a reusable tool.
+- [Observability](/docs/gateway/observability) — the audit events the explorer emits are visible through the same surface as every other gateway event.

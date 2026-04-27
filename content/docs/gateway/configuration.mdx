@@ -1,0 +1,456 @@
+---
+title: Configuration
+description: Complete configuration reference — file discovery, YAML schema, environment variable overrides, precedence, and worked examples.
+---
+
+# Configuration
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The SEAL Gateway reads its configuration from a YAML manifest, then layers
+environment-variable overrides on top. This page is the canonical reference
+for every field, every environment variable, and the precedence rules that
+decide who wins when both are set.
+
+If you are looking for a working starting point rather than a reference,
+copy the file from the [Quickstart](/docs/gateway/quickstart) and skim the
+[examples below](#examples).
+
+---
+
+## Configuration File Discovery
+
+On startup the gateway walks this list and loads the **first file that
+exists**. It does not merge multiple files.
+
+| Order | Location | Notes |
+|---|---|---|
+| 1 | Path in `SEAL_GATEWAY_CONFIG_PATH` | Explicit override; fails fast if unreadable. |
+| 2 | `./seal-gateway-config.yaml` | Working directory of the process. |
+| 3 | `~/.aegis/seal-gateway-config.yaml` | Per-user config on Unix and macOS. |
+| 4 | `/etc/aegis/seal-gateway-config.yaml` (Unix) | System-wide on Linux, BSDs, macOS. |
+| 4 | `%PROGRAMDATA%\Aegis\seal-gateway-config.yaml` (Windows) | System-wide on Windows. |
+
+If none of those files is readable, the gateway falls back to a built-in
+default manifest (the same one you can read at the top of
+[`seal-gateway-config.yaml`](#full-yaml-schema) below) and applies any env
+var overrides on top. That is enough to start a gateway in development; in
+production you should always provide an explicit file.
+
+<Callout type="info">
+Set <code>SEAL_GATEWAY_CONFIG_PATH</code> in your container manifest, systemd
+unit, or shell. It is the only discovery rule that fails loudly when the
+file is missing — the others fall through silently.
+</Callout>
+
+---
+
+## Full YAML Schema
+
+Every field with its meaning. Optional fields can be omitted; defaults are
+shown in the comments.
+
+```yaml
+apiVersion: seal.100monkeys.ai/v1
+kind: SealGatewayConfig
+
+# ----------------------------------------------------------------------
+# metadata — purely informational; surfaced in /health and the web UI.
+# ----------------------------------------------------------------------
+metadata:
+  name: aegis-seal-gateway
+  version: "1.0.0"
+
+spec:
+
+  # --------------------------------------------------------------------
+  # network — bind addresses for the two listeners.
+  # --------------------------------------------------------------------
+  network:
+    # HTTP/1.1 + HTTP/2 listener. Operator API, invocation API, web UI,
+    # Swagger UI, /health, /openapi.json all live here.
+    bind_addr: "0.0.0.0:8089"
+
+    # gRPC listener. ToolWorkflowService and GatewayInvocationService.
+    grpc_bind_addr: "0.0.0.0:50055"
+
+  # --------------------------------------------------------------------
+  # database — single connection string. SQLite or Postgres.
+  # --------------------------------------------------------------------
+  database:
+    # sqlite://  -> embedded, single-node, no UserBound credentials
+    # postgres:// or postgresql:// -> multi-tenant, multi-replica, full
+    #                                 credential resolution
+    url: "sqlite://gateway.db"
+
+  # --------------------------------------------------------------------
+  # auth — verification keys, issuers, audiences, and the dev kill switch.
+  # --------------------------------------------------------------------
+  auth:
+    # When true, the gateway accepts every request without verifying
+    # signatures, JWTs, or JTIs. DEVELOPMENT ONLY.
+    disabled: false
+
+    # JWKS endpoint for operator JWTs (the bearer tokens that hit
+    # /v1/specs, /v1/workflows, /v1/cli-tools, etc.). Typically your
+    # Keycloak realm's certs URL.
+    operator_jwks_uri: ""
+
+    # How long to cache the JWKS document before refetching.
+    jwks_cache_ttl_secs: 300
+
+    # Expected `iss` claim on operator JWTs.
+    operator_jwt_issuer: "aegis-keycloak"
+
+    # Expected `aud` claim on operator JWTs.
+    operator_jwt_audience: "aegis-seal-gateway"
+
+    # JWT claim used to authorize operator role (default "aegis_role").
+    # The gateway expects this claim to contain "operator" or
+    # "platform-admin" for control-plane writes.
+    operator_role_claim: "aegis_role"
+
+    # PEM-encoded Ed25519 public key used to verify SEAL envelopes on
+    # /v1/invoke. This is the public half of the agent issuer's key.
+    seal_jwt_public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      ...
+      -----END PUBLIC KEY-----
+
+    # Expected `iss` claim on SEAL security tokens.
+    seal_jwt_issuer: "aegis-orchestrator"
+
+    # Expected `aud` claim on SEAL security tokens.
+    seal_jwt_audience: "aegis-agents"
+
+  # --------------------------------------------------------------------
+  # credentials — backends for the credential resolver.
+  # --------------------------------------------------------------------
+  credentials:
+    # OpenBao address for SystemJit and StaticRef resolution. Leave null
+    # to disable OpenBao-backed credentials.
+    openbao_addr: null
+
+    # Token used to authenticate to OpenBao. In production prefer
+    # AppRole or Kubernetes auth and inject the token at boot.
+    openbao_token: null
+
+    # KV v2 mount where StaticRef secrets live (default "secret").
+    openbao_kv_mount: "secret"
+
+    # Keycloak token-exchange endpoint for the HumanDelegated path.
+    # Format: https://<keycloak>/realms/<realm>/protocol/openid-connect/token
+    keycloak_token_exchange_url: null
+
+    # Confidential client id used for token exchange.
+    keycloak_client_id: null
+
+    # Client secret matching keycloak_client_id.
+    keycloak_client_secret: null
+
+  # --------------------------------------------------------------------
+  # cli — ephemeral container tooling.
+  # --------------------------------------------------------------------
+  cli:
+    # Override the resolved container CLI. Defaults: try podman, then
+    # docker. Set explicitly to skip discovery.
+    container_cli: null
+
+    # LLM endpoint that decides whether a CLI invocation's *intent*
+    # matches the per-tool policy. Required for tools registered with
+    # require_semantic_judge: true. If unset, those tools fail closed.
+    semantic_judge_url: null
+
+    # NFS server settings used when a registered CLI tool mounts a
+    # shared volume. Defaults are 127.0.0.1 / 2049 / 20048.
+    nfs_server_host: "127.0.0.1"
+    nfs_port: 2049
+    nfs_mount_port: 20048
+
+    # Optional aegis-orchestrator base URL for native tools that proxy
+    # volume / file operations through the orchestrator. Leave null
+    # when running standalone.
+    orchestrator_url: null
+
+  # --------------------------------------------------------------------
+  # ui — built-in inspection console at /.
+  # --------------------------------------------------------------------
+  ui:
+    enabled: true
+```
+
+---
+
+## Environment Variable Reference
+
+Every variable below maps to a YAML field and overrides it when set. Names
+match those parsed by `src/infrastructure/config.rs`.
+
+| Variable | Default | Required when | Description / YAML field |
+|---|---|---|---|
+| `SEAL_GATEWAY_CONFIG_PATH` | unset | Always preferred | Path to the YAML manifest. Highest-precedence file discovery rule. |
+| `SEAL_GATEWAY_BIND` | `0.0.0.0:8089` | Always optional | `spec.network.bind_addr` |
+| `SEAL_GATEWAY_GRPC_BIND` | `0.0.0.0:50055` | Always optional | `spec.network.grpc_bind_addr` |
+| `SEAL_GATEWAY_DB` | `sqlite://gateway.db` | Production | `spec.database.url`. Set to a `postgres://` DSN for production. |
+| `SEAL_GATEWAY_OPERATOR_JWKS_URI` | empty | `auth.disabled: false` | `spec.auth.operator_jwks_uri` |
+| `SEAL_GATEWAY_JWKS_CACHE_TTL_SECS` | `300` | Always optional | `spec.auth.jwks_cache_ttl_secs` |
+| `SEAL_GATEWAY_OPERATOR_JWT_ISSUER` | `aegis-keycloak` | Always optional | `spec.auth.operator_jwt_issuer` |
+| `SEAL_GATEWAY_OPERATOR_JWT_AUDIENCE` | `aegis-seal-gateway` | Always optional | `spec.auth.operator_jwt_audience` |
+| `SEAL_GATEWAY_SEAL_JWT_PUBLIC_KEY_PEM` | empty | `auth.disabled: false` | `spec.auth.seal_jwt_public_key_pem`. The Ed25519 public key that signs SEAL envelopes. |
+| `SEAL_GATEWAY_SEAL_JWT_ISSUER` | `aegis-orchestrator` | Always optional | `spec.auth.seal_jwt_issuer` |
+| `SEAL_GATEWAY_SEAL_JWT_AUDIENCE` | `aegis-agents` | Always optional | `spec.auth.seal_jwt_audience` |
+| `SEAL_GATEWAY_AUTH_DISABLED` | `false` | Never (dev only) | `spec.auth.disabled`. Set to `true` to bypass all SEAL/JWT verification. |
+| `SEAL_GATEWAY_OPENBAO_ADDR` | unset | `SystemJit` / `StaticRef` paths | `spec.credentials.openbao_addr` |
+| `SEAL_GATEWAY_OPENBAO_TOKEN` | unset | OpenBao addr is set | `spec.credentials.openbao_token` |
+| `SEAL_GATEWAY_OPENBAO_KV_MOUNT` | `secret` | Always optional | `spec.credentials.openbao_kv_mount` |
+| `SEAL_GATEWAY_KEYCLOAK_TOKEN_EXCHANGE_URL` | unset | `HumanDelegated` path | `spec.credentials.keycloak_token_exchange_url` |
+| `SEAL_GATEWAY_KEYCLOAK_CLIENT_ID` | unset | `HumanDelegated` path | `spec.credentials.keycloak_client_id` |
+| `SEAL_GATEWAY_KEYCLOAK_CLIENT_SECRET` | unset | `HumanDelegated` path | `spec.credentials.keycloak_client_secret` |
+| `SEAL_GATEWAY_SEMANTIC_JUDGE_URL` | unset | Tools with `require_semantic_judge: true` | `spec.cli.semantic_judge_url` |
+| `SEAL_GATEWAY_UI_ENABLED` | `true` | Always optional | `spec.ui.enabled` |
+| `SEAL_GATEWAY_NFS_HOST` | `127.0.0.1` | Tools mount NFS | `spec.cli.nfs_server_host` |
+| `SEAL_GATEWAY_NFS_PORT` | `2049` | Tools mount NFS | `spec.cli.nfs_port` |
+| `SEAL_GATEWAY_NFS_MOUNT_PORT` | `20048` | Tools mount NFS | `spec.cli.nfs_mount_port` |
+| `RUST_LOG` | `info` | Always optional | `tracing-subscriber` filter directive. See [Observability](/docs/gateway/observability). |
+
+The YAML manifest also accepts the literal string `env:SEAL_GATEWAY_OPERATOR_JWKS_URI`
+(and similar) as a value — that form tells the loader to read the variable
+at startup rather than embedding the secret in the file. Useful for keeping
+sensitive values out of ConfigMaps.
+
+---
+
+## Precedence
+
+The rules, in order:
+
+1. **Environment variables override file values.** If both are set, the env
+   var wins.
+2. **File discovery is first-match-wins.** The gateway never merges
+   multiple files. If a higher-precedence file is missing a field, the
+   built-in default applies — it does not fall through to the next file.
+3. **Built-in defaults apply only to fields the file omits.** Setting
+   `network.bind_addr: ""` is not the same as omitting it; the empty
+   string will fail bind.
+
+A worked example. Given this file:
+
+```yaml
+spec:
+  network:
+    bind_addr: "0.0.0.0:9000"
+  database:
+    url: "sqlite://./dev.db"
+```
+
+…and these env vars:
+
+```bash
+SEAL_GATEWAY_DB=postgres://gateway@db:5432/gateway
+SEAL_GATEWAY_GRPC_BIND=127.0.0.1:50055
+```
+
+…the effective configuration is:
+
+| Field | Value | Source |
+|---|---|---|
+| `bind_addr` | `0.0.0.0:9000` | File |
+| `grpc_bind_addr` | `127.0.0.1:50055` | Env |
+| `database.url` | `postgres://gateway@db:5432/gateway` | Env (file overridden) |
+| `auth.disabled` | `false` | Default |
+| `ui.enabled` | `true` | Default |
+| …everything else | defaults | Default |
+
+---
+
+## Examples
+
+### Development — auth disabled, SQLite
+
+The shortest path to a running gateway. Drop this in
+`./seal-gateway-config.yaml` and run the binary:
+
+```yaml
+apiVersion: seal.100monkeys.ai/v1
+kind: SealGatewayConfig
+metadata:
+  name: dev-gateway
+  version: "1.0.0"
+spec:
+  network:
+    bind_addr: "127.0.0.1:8089"
+    grpc_bind_addr: "127.0.0.1:50055"
+  database:
+    url: "sqlite://./dev-gateway.db"
+  auth:
+    disabled: true
+    operator_jwks_uri: ""
+    jwks_cache_ttl_secs: 300
+    operator_jwt_issuer: "dev"
+    operator_jwt_audience: "dev"
+    seal_jwt_public_key_pem: ""
+    seal_jwt_issuer: "dev"
+    seal_jwt_audience: "dev"
+  credentials:
+    openbao_kv_mount: "secret"
+  cli:
+    nfs_server_host: "127.0.0.1"
+    nfs_port: 2049
+    nfs_mount_port: 20048
+  ui:
+    enabled: true
+```
+
+```bash
+RUST_LOG=info,aegis_seal_gateway=debug ./aegis-seal-gateway
+```
+
+<Callout type="warn">
+<code>auth.disabled: true</code> bypasses every cryptographic check. Use it
+on a workstation behind localhost only. Never expose an auth-disabled
+gateway on a routable interface.
+</Callout>
+
+### Production — Keycloak operator JWTs + OpenBao credentials
+
+Single-tenant production. Operator API is gated by Keycloak; SEAL envelopes
+are verified against a fixed Ed25519 public key; secrets resolve through
+OpenBao.
+
+```yaml
+# /etc/aegis/seal-gateway-config.yaml
+apiVersion: seal.100monkeys.ai/v1
+kind: SealGatewayConfig
+metadata:
+  name: aegis-seal-gateway
+  version: "1.0.0"
+spec:
+  network:
+    bind_addr: "0.0.0.0:8089"
+    grpc_bind_addr: "0.0.0.0:50055"
+  database:
+    url: "postgres://gateway@postgres.internal:5432/gateway"
+  auth:
+    disabled: false
+    operator_jwks_uri: "https://keycloak.internal/realms/aegis/protocol/openid-connect/certs"
+    jwks_cache_ttl_secs: 300
+    operator_jwt_issuer: "https://keycloak.internal/realms/aegis"
+    operator_jwt_audience: "aegis-seal-gateway"
+    seal_jwt_public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEA...REPLACE_WITH_ISSUER_PUBKEY...
+      -----END PUBLIC KEY-----
+    seal_jwt_issuer: "aegis-orchestrator"
+    seal_jwt_audience: "aegis-agents"
+  credentials:
+    openbao_addr: "http://openbao.internal:8200"
+    openbao_kv_mount: "secret"
+  cli:
+    nfs_server_host: "storage.internal"
+    nfs_port: 2049
+    nfs_mount_port: 20048
+  ui:
+    enabled: true
+```
+
+Companion env file (loaded by systemd or `docker --env-file`):
+
+```bash
+SEAL_GATEWAY_CONFIG_PATH=/etc/aegis/seal-gateway-config.yaml
+SEAL_GATEWAY_DB=postgres://gateway:REDACTED@postgres.internal:5432/gateway
+SEAL_GATEWAY_OPENBAO_TOKEN=hvs.REDACTED
+RUST_LOG=info,aegis_seal_gateway=info
+```
+
+The DB password and OpenBao token live only in the env file (which is
+mode-`0600` and owned by the service user). Everything else is in the
+ConfigMap-shaped YAML.
+
+### Multi-tenant SaaS — Postgres + OpenBao + Keycloak token exchange + semantic judge
+
+The full stack: tenant-scoped credentials with `UserBound` resolution,
+HumanDelegated upstream tokens via Keycloak, and a semantic judge in front
+of CLI tooling.
+
+```yaml
+apiVersion: seal.100monkeys.ai/v1
+kind: SealGatewayConfig
+metadata:
+  name: seal-gateway-prod
+  version: "1.0.0"
+spec:
+  network:
+    bind_addr: "0.0.0.0:8089"
+    grpc_bind_addr: "0.0.0.0:50055"
+  database:
+    url: "postgres://gateway@pg-primary:5432/gateway?sslmode=require"
+  auth:
+    disabled: false
+    operator_jwks_uri: "https://id.example.com/realms/aegis/protocol/openid-connect/certs"
+    jwks_cache_ttl_secs: 300
+    operator_jwt_issuer: "https://id.example.com/realms/aegis"
+    operator_jwt_audience: "aegis-seal-gateway"
+    operator_role_claim: "aegis_role"
+    seal_jwt_public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEA...REPLACE...
+      -----END PUBLIC KEY-----
+    seal_jwt_issuer: "aegis-orchestrator"
+    seal_jwt_audience: "aegis-agents"
+  credentials:
+    openbao_addr: "https://openbao.internal:8200"
+    openbao_kv_mount: "tenant-secrets"
+    keycloak_token_exchange_url: "https://id.example.com/realms/aegis/protocol/openid-connect/token"
+    keycloak_client_id: "seal-gateway-exchange"
+  cli:
+    semantic_judge_url: "https://judge.internal/v1/evaluate"
+    nfs_server_host: "fsal.internal"
+    nfs_port: 2049
+    nfs_mount_port: 20048
+  ui:
+    enabled: false   # disabled on tenant-facing replicas
+```
+
+```bash
+SEAL_GATEWAY_OPENBAO_TOKEN=hvs.REDACTED
+SEAL_GATEWAY_KEYCLOAK_CLIENT_SECRET=REDACTED
+SEAL_GATEWAY_DB=postgres://gateway:REDACTED@pg-primary:5432/gateway?sslmode=require
+RUST_LOG=info,aegis_seal_gateway=info
+```
+
+`UserBound` credential resolution is implicit on Postgres deployments —
+when a workflow references a `UserBound` credential, the resolver consults
+the `credential_bindings` and `credential_grants` tables in the gateway
+database.
+
+---
+
+## Logging Configuration
+
+Logging is controlled exclusively by `RUST_LOG`, parsed by
+`tracing-subscriber::EnvFilter`. The format is a comma-separated list of
+directives, each either a level (`info`, `debug`, `trace`) or a
+`target=level` pair.
+
+| `RUST_LOG` value | Effect |
+|---|---|
+| _(unset)_ | Equivalent to `info`. |
+| `info` | INFO across all crates. Reasonable default. |
+| `info,aegis_seal_gateway=debug` | Crate-level debug for the gateway, INFO for everything else. |
+| `info,aegis_seal_gateway::application=trace` | Trace into the application layer (workflow, CLI, credential resolution). |
+| `info,sqlx=warn,h2=warn` | Quiet noisy infrastructure crates while keeping app logs readable. |
+| `error` | Errors only. Useful for high-volume production where logs cost money. |
+
+Restart the gateway to pick up a new filter — there is no live-reload
+endpoint. See [Observability](/docs/gateway/observability) for log routing
+recipes.
+
+---
+
+## Next Steps
+
+- **Run it in production**: [Deployment](/docs/gateway/deployment).
+- **Wire authentication keys end-to-end**:
+  [Authentication](/docs/gateway/authentication).
+- **Connect credential backends**:
+  [Credential Resolution](/docs/gateway/credential-resolution).

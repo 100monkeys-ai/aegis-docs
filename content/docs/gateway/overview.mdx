@@ -1,0 +1,304 @@
+---
+title: Overview
+description: A standalone, signed-envelope tooling gateway that puts policy, credentials, and audit between automated clients and arbitrary upstream tools.
+---
+
+# SEAL Gateway
+
+The **SEAL Gateway** is a standalone tool-orchestration daemon. It sits between
+automated clients (LLM agents, MCP clients, internal scripts, CI runners) and
+arbitrary upstream tools — REST APIs, CLI binaries, multi-step workflows — and
+enforces a cryptographically signed, policy-evaluated envelope around every
+call. You can run it without the AEGIS Orchestrator and without Zaru: a single
+binary, a config file, a SQLite database, and you are in business.
+
+If you have agents calling raw HTTP APIs, shelling out to `kubectl`, or invoking
+`gh`, `terraform`, `aws`, or any other CLI directly, the gateway is the
+correctness layer you have been writing piecemeal. It centralizes:
+
+- **Authentication** of the calling agent (Ed25519-signed envelopes, JWT scopes)
+- **Authorization** against named security contexts (deny-list + capability scan)
+- **Credential resolution** so secrets never live in agent prompts or
+  environment variables
+- **Audit** of every action as a structured domain event
+- **Sandboxing** of CLI tools in ephemeral containers with allowlists
+- **Response slicing** of large API payloads via JSONPath, server-side
+
+---
+
+## Why It Exists
+
+Letting an LLM agent call a raw REST API or shell out to a CLI is the path of
+least resistance. It is also the path of:
+
+- **Credential leakage** — API keys end up in prompts, logs, and trace exports
+- **Unauditable actions** — there is no record of *which agent* called *which
+  tool* with *what arguments* under *which identity*
+- **Unbounded blast radius** — an agent that can `curl` anywhere can also
+  `curl` your internal admin endpoints, S3 buckets, or cloud metadata service
+- **Replay attacks** — captured tool calls can be replayed by anyone holding
+  the bytes
+- **Tenancy bleed** — a multi-tenant deployment that lets agents share a
+  credential pool will leak data across tenants the first time someone
+  templates the wrong variable
+
+The gateway closes these holes by making every tool call go through a single
+choke point that verifies the caller, evaluates the call against a named
+security policy, injects the credential at the last possible moment, and writes
+an audit record before responding.
+
+---
+
+## Three Core Capabilities
+
+### 1. REST Workflow Compilation
+
+Register an OpenAPI 3.0 specification with the gateway. The gateway parses it,
+indexes operations by `operationId`, and lets you build chainable, templated
+**Tool Workflows** that compose multiple HTTP calls into a single named tool.
+
+Each workflow step can:
+
+- Reference an OpenAPI operation by id (or specify method + path directly)
+- Template the request body with [Handlebars](https://handlebarsjs.com/) using
+  earlier step outputs
+- Extract values from response bodies via JSONPath into variables that later
+  steps can reference
+- Define an `on_error` policy: `fail` aborts the workflow, `continue` keeps
+  going
+
+Example pattern: "search for a customer by email, then list the last 10 invoices
+for the matching customer id, then aggregate the total." That is one tool the
+agent calls, three HTTP calls the gateway makes, one credential resolved, one
+audit trail.
+
+### 2. Ephemeral CLI Invocation
+
+Register a CLI tool — `kubectl`, `gh`, `terraform`, `aws`, `psql`, anything
+that runs in a container. The gateway:
+
+- Pulls the configured Docker image (or uses a pinned digest)
+- Enforces a per-tool `allowed_subcommands` allowlist
+- Optionally routes the requested invocation through a **semantic judge**
+  (an LLM endpoint) that decides whether the *intent* of the call is permitted
+- Mounts only the directories the tool needs
+- Times out after the per-tool default
+- Captures stdout, stderr, and exit code as a structured event
+
+The container is destroyed after the call. There is no shared shell, no
+persistent state, and no opportunity for one invocation to influence the next.
+
+### 3. JSONPath API Explorer
+
+Real APIs return enormous payloads. Loading a 200 KB JSON blob into an LLM
+context window to extract three fields is wasteful and error-prone. The
+**Explorer** endpoint lets you call any registered OpenAPI operation and slice
+the response server-side:
+
+```text
+POST /v1/explorer
+{
+  "api_spec_id": "stripe",
+  "operation_id": "ListCustomers",
+  "fields": [
+    "$.data[*].id",
+    "$.data[*].email",
+    "$.data[*].created"
+  ]
+}
+```
+
+The gateway makes the upstream call, evaluates each JSONPath against the
+response, and returns only the requested slices. The audit event records both
+the pre-slice and post-slice byte counts so you can track how much context you
+saved.
+
+### The Trust Layer
+
+Wrapping the three capabilities above is **SEAL** — the Signed Envelope
+Attestation Layer. Every invocation arrives as an envelope containing:
+
+- A **payload** describing the tool call
+- An **Ed25519 signature** over the payload, verified against the issuer's
+  public key
+- A **JWT security token** carrying the caller's identity, tenant, scopes,
+  and a unique `jti` for replay protection
+- A **timestamp** validated against a 30-second freshness window
+- A **JTI replay cache** that rejects any envelope whose token id has been
+  seen before
+
+If any of those checks fails, the call is rejected before any policy
+evaluation, credential resolution, or upstream traffic occurs.
+
+---
+
+## Architecture
+
+```text
+                     +---------------------------+
+                     |      SEAL Envelope        |
+                     |  payload + sig + JWT      |
+                     +-------------+-------------+
+                                   |
+                                   v
++------------------------------------------------------------------+
+|                         SEAL Gateway                             |
+|                                                                  |
+|  +----------+   +-----------+   +-----------+   +-------------+  |
+|  |  Auth    |-->|  Policy   |-->| Credential|-->|  Execution  |  |
+|  |  (sig +  |   |  (Sec.    |   |  Resolver |   |  Engine     |  |
+|  |  JWT +   |   |  Context) |   |  (5 paths)|   |             |  |
+|  |  JTI)    |   |           |   |           |   |             |  |
+|  +----------+   +-----------+   +-----------+   +------+------+  |
+|                                                        |         |
+|                  +------------+ +-----------+ +--------+------+  |
+|                  | Workflow   | | Ephemeral | |  API Explorer |  |
+|                  | Engine     | | CLI       | |  (JSONPath)   |  |
+|                  +-----+------+ +-----+-----+ +--------+------+  |
+|                        |              |                |         |
+|                        v              v                v         |
+|              +------------------+ +--------+  +----------------+ |
+|              |  Audit Event Bus | | Docker |  | Upstream APIs  | |
+|              |  (gateway_events)| |  /OCI  |  | (HTTP/HTTPS)   | |
+|              +------------------+ +--------+  +----------------+ |
+|                                                                  |
++------------------------------------------------------------------+
+```
+
+Each box is a thin layer; failure at any layer short-circuits the request and
+emits an audit event describing which layer rejected it.
+
+---
+
+## Deployment Topologies
+
+The gateway runs in three reasonable shapes. Pick the one that matches your
+team size and tenancy model.
+
+### Single-Node SQLite
+
+The default. One container, one config file, a SQLite file at
+`/data/gateway.db` for state. No external dependencies beyond OpenBao if you
+want dynamic credentials. Suitable for:
+
+- A development laptop
+- A single team's internal tooling host
+- A demo or proof of concept
+- Air-gapped environments where you do not want a Postgres dependency
+
+User-bound credential resolution (the `UserBound` path) requires Postgres and
+is unavailable in SQLite mode; every other capability works.
+
+### Multi-Tenant Postgres
+
+Same binary, `database.url` set to a Postgres DSN. Postgres unlocks:
+
+- The `UserBound` credential resolution path, which reads
+  `credential_bindings` and `credential_grants` tables to scope secrets to a
+  specific user
+- Higher write throughput on the `gateway_events` audit table
+- Standard Postgres operational tooling (replicas, backups, point-in-time
+  recovery)
+
+Use this when you are running the gateway as a shared service across multiple
+tenants, multiple teams, or as the back end for a SaaS product.
+
+### AEGIS-Integrated
+
+The same binary, run alongside the AEGIS Orchestrator. The orchestrator issues
+the SEAL envelopes that the gateway verifies, and the gateway is the single
+egress point for all agent tool traffic. See
+[Integration with AEGIS](/docs/gateway/integration-with-aegis) for the
+identity-bridging, tenant-mapping, and security-context-routing details.
+
+---
+
+## Who Is This For?
+
+### DevOps engineers automating internal REST APIs
+
+You have a half-dozen internal services with OpenAPI specs and a backlog of
+"can the bot do X" requests. Today you write bespoke MCP servers or REST
+wrappers for each one. With the gateway, you register the OpenAPI spec once,
+compile a few workflows that match common request shapes, and point every
+agent at the gateway. Adding a new service is a `POST /v1/specs`; adding a
+new tool is a `POST /v1/workflows`. No code, no redeploys.
+
+### SRE giving on-call agents safe `kubectl` / `gh` / `terraform`
+
+You want your incident-response agents to be able to run `kubectl get pods`
+and `gh issue create` but not `kubectl delete` or `terraform destroy`. The
+gateway's ephemeral CLI tooling gives you a per-tool `allowed_subcommands`
+allowlist, container isolation, and an optional LLM semantic judge that vetoes
+calls whose intent does not match the policy — even if the literal subcommand
+is in the allowlist.
+
+### AI engineers building MCP clients
+
+You are building an agent product and you do not want to write tool servers.
+You want OpenAPI in, policy-enforced tool calls out. The gateway is that. You
+get SEAL-verified invocation, multi-tenant isolation, and an audit trail
+without writing a single tool server.
+
+---
+
+## Comparison
+
+| Dimension | SEAL Gateway | Raw MCP server | Direct API access |
+|---|---|---|---|
+| Auth model | Ed25519 envelope + JWT + JTI | Per-server, ad hoc | API key in env var |
+| Policy enforcement | Named SecurityContext, deny-list + capabilities | Server-by-server, hand-rolled | None |
+| Credential injection | 5 resolution paths, per-call | Hardcoded or env-var | In the prompt |
+| Audit | Structured events for every action | Whatever the server logs | None |
+| Multi-tenancy | First-class, tenant-scoped credentials and contexts | None | None |
+| Replay protection | Mandatory JTI + freshness window | None | None |
+| CLI sandboxing | Ephemeral container per call, allowlist, semantic judge | Up to the server author | Whatever the host allows |
+
+---
+
+## Capability Matrix
+
+What is in the box today, what is partial, and what is on the roadmap.
+
+| Capability | Status |
+|---|---|
+| OpenAPI spec registration (REST) | Implemented |
+| Tool workflow registration and execution | Implemented |
+| Ephemeral CLI tools in containers | Implemented |
+| Semantic-judge gating for CLI tools | Implemented |
+| JSONPath API Explorer | Implemented |
+| SEAL envelope verification (Ed25519) | Implemented |
+| JWT verification (issuer / audience / scopes / expiry) | Implemented |
+| JTI replay protection with background cleanup | Implemented |
+| 30-second freshness window | Implemented |
+| Named security contexts with deny-list + capabilities | Implemented |
+| `SystemJit` credential path (OpenBao dynamic) | Implemented |
+| `HumanDelegated` credential path (Keycloak token exchange) | Implemented |
+| `Auto` credential path | Implemented |
+| `StaticRef` credential path (OpenBao KV) | Implemented |
+| `UserBound` credential path (Postgres + grants) | Implemented |
+| Tenant-scoped credentials and isolation | Implemented |
+| Multi-tenancy across security contexts | Implemented |
+| Structured audit events (`gateway_events` table) | Implemented |
+| Built-in web UI for inspection and audit | Implemented |
+| HTTP control plane (`/v1/specs`, `/v1/workflows`, etc.) | Implemented |
+| gRPC services (`ToolWorkflowService`, `GatewayInvocationService`) | Implemented |
+| Container runtime support (Docker / Podman) | Implemented |
+| Attestation | Partial — signature verification only; no separate attestation service |
+| Native tool catalog | Partial — deprecated; infrastructure retained for compatibility |
+| Prometheus metrics endpoint | Not yet |
+| OpenTelemetry trace export | Not yet |
+| Per-tool / per-tenant rate limiting | Not yet |
+| Distributed / clustered gateway deployment | Not yet |
+| Custom protocol versions (beyond `protocol/v1`) | Not yet |
+
+---
+
+## Next Steps
+
+- **Get something running**: [Quickstart](/docs/gateway/quickstart) — zero to a
+  signed tool call in ten minutes.
+- **Build the mental model**: [Concepts](/docs/gateway/concepts) — the eleven
+  ideas the rest of the docs assume.
+- **Run it for real**: [Deployment](/docs/gateway/deployment) — production
+  topologies, Postgres, container orchestration, and key management.

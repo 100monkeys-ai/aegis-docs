@@ -1,0 +1,603 @@
+---
+title: Management API (REST)
+description: Complete REST reference for the SEAL Gateway control plane — API specs, workflows, CLI tools, SEAL sessions, security contexts, and unified tool catalog.
+---
+
+# Management API (REST)
+
+The SEAL Gateway exposes a REST control plane for registering and managing the artifacts it polices: API specifications, tool workflows, ephemeral CLI tools, SEAL sessions, and security contexts. This is the canonical reference for every endpoint the gateway routes.
+
+For invocation surfaces (`POST /v1/invoke`) see the [SEAL Protocol](/docs/gateway/seal-protocol) page. For the gRPC complement see the [gRPC API](/docs/gateway/grpc-api).
+
+---
+
+## Conventions
+
+### Base URL
+
+```text
+http://gateway-host:8089
+```
+
+The default HTTP bind is `0.0.0.0:8089`. TLS termination is typically performed by an upstream proxy or service mesh.
+
+### Authentication
+
+Every endpoint on this page requires:
+
+```text
+Authorization: Bearer <operator-jwt>
+```
+
+The JWT is validated against the gateway's configured JWKS, issuer, audience, and operator role claim. The two **invocation** endpoints (`POST /v1/invoke`, `POST /v1/seal/invoke`) authenticate via SEAL envelope instead — see the [SEAL Protocol](/docs/gateway/seal-protocol) page.
+
+The Web UI (`GET /`) and the OpenAPI surface (`GET /openapi.json`, `GET /api-docs`) are not authenticated by default; gate them with your reverse proxy if you expose the gateway externally.
+
+### Tenant Identity
+
+Tenant identity is derived from the operator JWT — there is **no `X-Tenant-Id` header**. List endpoints automatically filter by the caller's tenant; create endpoints stamp the new resource with the caller's tenant.
+
+### Content-Type
+
+```text
+Content-Type: application/json
+```
+
+All request and response bodies are JSON. There is no form-encoded variant.
+
+### Error Envelope
+
+Errors return a JSON body with at minimum an `error` field:
+
+```json
+{ "error": "spec not found" }
+```
+
+SEAL-specific errors (returned only from the invocation endpoints, but documented here for completeness) carry a structured payload:
+
+```json
+{
+  "code": 2001,
+  "error": "tool 'fs.delete' is denied by SecurityContext 'research-safe'",
+  "request_id": "9b3a1c2e-..."
+}
+```
+
+| HTTP status | Meaning |
+|---|---|
+| `400` | Validation error — body fields missing or malformed. |
+| `401` | Missing or invalid operator JWT, or SEAL signature verification failed. |
+| `403` | Authenticated but lacking the operator role claim, or SEAL policy denial. |
+| `404` | Resource not found. |
+| `500` | Internal error — check gateway logs. |
+
+### Pagination
+
+There is **no pagination** on list endpoints. They return the full set scoped to the caller's tenant. This is appropriate at current scale; treat as a known limitation if your tenant accumulates thousands of registrations.
+
+---
+
+## API Specs
+
+API specs are OpenAPI 3.x documents the gateway parses to extract operations. Workflows are built by referencing operations from a registered spec.
+
+### `POST /v1/specs`
+
+Register a new API spec.
+
+**Request body:**
+
+```json
+{
+  "name": "github-public",
+  "base_url": "https://api.github.com",
+  "source_url": "https://docs.github.com/openapi/v3.json",
+  "inline_json": null,
+  "source_fetch_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+  "credential_path": { "kind": "Static", "key": "github-pat" }
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Human-readable spec name (unique per tenant). |
+| `base_url` | yes | Origin where the upstream API lives. Templates resolve operation URLs against this. |
+| `source_url` | optional | Canonical pointer to the spec. Used for deduplication: registering the same `source_url` twice returns the existing spec id. |
+| `inline_json` | optional | The full OpenAPI document inline. Use this if the spec is local. |
+| `source_fetch_url` | optional | URL the gateway fetches the spec from at registration time. Mutually exclusive with `inline_json` — exactly one must be provided. |
+| `credential_path` | yes | How the gateway resolves credentials when calling this API. See [Credential Resolution](/docs/gateway/credential-resolution). |
+
+**Response (200):**
+
+```json
+{ "id": "1c4f2a8e-...." }
+```
+
+If a spec with the same `source_url` already exists, the response includes `"deduplicated": true`.
+
+**Errors:** `400` (neither `inline_json` nor `source_fetch_url` provided, or spec parsing failed), `401`.
+
+```bash
+curl -X POST http://gateway:8089/v1/specs \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "github-public",
+    "base_url": "https://api.github.com",
+    "source_fetch_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+    "credential_path": { "kind": "Static", "key": "github-pat" }
+  }'
+```
+
+### `GET /v1/specs`
+
+List all registered specs scoped to the caller's tenant.
+
+**Response (200):**
+
+```json
+[
+  {
+    "id": "1c4f2a8e-...",
+    "name": "github-public",
+    "base_url": "https://api.github.com",
+    "source_url": "...",
+    "operations": { "repos/get": { ... }, "...": { ... } }
+  }
+]
+```
+
+```bash
+curl http://gateway:8089/v1/specs -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+### `GET /v1/specs/{id}`
+
+Fetch a single spec by UUID.
+
+**Response (200):** the full spec record (same shape as list elements above).
+
+**Errors:** `400` (invalid UUID), `404` (not found).
+
+```bash
+curl http://gateway:8089/v1/specs/1c4f2a8e-... \
+  -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+### `DELETE /v1/specs/{id}`
+
+Delete a spec. Workflows that reference this spec will subsequently fail to invoke; deletion does **not** cascade to workflows — clean those up first.
+
+**Response (200):**
+
+```json
+{ "deleted": true }
+```
+
+```bash
+curl -X DELETE http://gateway:8089/v1/specs/1c4f2a8e-... \
+  -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+---
+
+## Tool Workflows
+
+Tool workflows compose multiple HTTP operations from a registered API spec into a single named, invocable tool.
+
+### `POST /v1/workflows`
+
+Register a workflow.
+
+**Request body:**
+
+```json
+{
+  "name": "create-github-issue",
+  "description": "Create a GitHub issue with a given title and body.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "owner": { "type": "string" },
+      "repo":  { "type": "string" },
+      "title": { "type": "string" },
+      "body":  { "type": "string" }
+    },
+    "required": ["owner", "repo", "title"]
+  },
+  "api_spec_id": "1c4f2a8e-...",
+  "steps": [
+    {
+      "name": "create",
+      "operation_id": "issues/create",
+      "body_template": "{ \"title\": \"{{ input.title }}\", \"body\": \"{{ input.body }}\" }",
+      "extractors": { "issue_number": "$.number", "html_url": "$.html_url" },
+      "on_error": "AbortWorkflow"
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Workflow name (unique per tenant). |
+| `description` | yes | Human-readable description; surfaced in the unified tool catalog. |
+| `input_schema` | yes | JSON Schema for the workflow's input. |
+| `api_spec_id` | yes | UUID of an already-registered API spec. Validated. |
+| `steps` | yes | Ordered list of `WorkflowStep`. Each step's `operation_id` must exist in the referenced spec. |
+
+`WorkflowStep` fields:
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Step identifier (used in extractor references). |
+| `operation_id` | yes | OpenAPI `operationId` from the referenced spec. |
+| `body_template` | yes | Handlebars-style template producing the request body. |
+| `extractors` | yes | Map of `key → JSONPath` for pulling values out of each step's response. |
+| `on_error` | yes | One of `"AbortWorkflow"`, `"Continue"`, `"RetryN(<n>)"` where `<n>` is a small integer. |
+
+**Response (200):**
+
+```json
+{ "id": "9a7b3c1f-..." }
+```
+
+**Errors:** `400` (unknown `api_spec_id`, step references unknown `operation_id`, schema invalid), `401`.
+
+```bash
+curl -X POST http://gateway:8089/v1/workflows \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d @workflow.json
+```
+
+### `GET /v1/workflows`
+
+List workflows scoped to the caller's tenant.
+
+```bash
+curl http://gateway:8089/v1/workflows -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+### `GET /v1/workflows/{id}`
+
+Fetch one workflow by UUID.
+
+**Errors:** `400` (invalid UUID), `404` (not found).
+
+### `DELETE /v1/workflows/{id}`
+
+Delete a workflow.
+
+**Response (200):**
+
+```json
+{ "deleted": true }
+```
+
+### Workflows Are Immutable
+
+> **There is no `PUT /v1/workflows/{id}`.** The REST control plane does not support in-place workflow updates.
+
+To change a workflow, **delete and re-register**:
+
+```bash
+# 1. Delete the existing workflow.
+curl -X DELETE http://gateway:8089/v1/workflows/9a7b3c1f-... \
+  -H "Authorization: Bearer $OPERATOR_JWT"
+
+# 2. Register the new definition.
+curl -X POST http://gateway:8089/v1/workflows \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d @workflow.v2.json
+```
+
+The replacement receives a new UUID. Update any caller that references the workflow by id; callers that reference by `name` (the unified tool catalog uses names) continue to work transparently after the re-registration.
+
+<Callout type="info">
+The gRPC API exposes an `UpdateWorkflow` RPC. This is intentional asymmetry:
+the gRPC surface is for trusted internal callers (orchestrator, control loops),
+while the REST surface enforces immutability for operator-driven flows. See the
+[gRPC API](/docs/gateway/grpc-api) page for details.
+</Callout>
+
+---
+
+## CLI Tools
+
+CLI tools are ephemeral container-based tools the gateway invokes via `docker run` (or Podman). They have allowlisted subcommands and optional semantic-judge gating.
+
+### `POST /v1/cli-tools`
+
+Register a CLI tool.
+
+**Request body:**
+
+```json
+{
+  "name": "kubectl",
+  "description": "Read-only kubectl against a managed kubeconfig.",
+  "docker_image": "ghcr.io/100monkeys-ai/kubectl-tool:1.29",
+  "allowed_subcommands": ["get", "describe", "logs", "top"],
+  "require_semantic_judge": true,
+  "default_timeout_seconds": 60,
+  "registry_credential_path": { "kind": "Static", "key": "ghcr-token" }
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Unique tool name within the tenant. |
+| `description` | yes | Human-readable description for the unified tool catalog. |
+| `docker_image` | yes | Container image (with tag) to run. |
+| `allowed_subcommands` | yes | Subcommands the caller may invoke. Anything else is denied. |
+| `require_semantic_judge` | yes | If `true`, the gateway routes the call through the configured semantic judge before execution. |
+| `default_timeout_seconds` | yes | Wall-clock timeout per invocation. |
+| `registry_credential_path` | optional | Resolution path for pulling the image from a private registry. |
+
+**Response (200):**
+
+```json
+{ "saved": true }
+```
+
+```bash
+curl -X POST http://gateway:8089/v1/cli-tools \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d @kubectl-tool.json
+```
+
+### `GET /v1/cli-tools`
+
+List CLI tools scoped to the caller's tenant.
+
+### `DELETE /v1/cli-tools/{name}`
+
+Delete a CLI tool by **name** (not UUID — CLI tools are addressed by name).
+
+**Response (200):**
+
+```json
+{ "deleted": true }
+```
+
+```bash
+curl -X DELETE http://gateway:8089/v1/cli-tools/kubectl \
+  -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+> **Note:** there is no `GET /v1/cli-tools/{name}` for fetching a single CLI tool — list and filter client-side, or use `GET /v1/tools` for the unified catalog view.
+
+---
+
+## SEAL Sessions
+
+A SEAL session binds an ephemeral Ed25519 public key to a `SecurityContext` for the lifetime of one execution. Sessions are typically created by the orchestrator before the agent container starts.
+
+### `POST /v1/seal/sessions`
+
+Create or update a session.
+
+**Request body:**
+
+```json
+{
+  "execution_id": "exec-8a9f7b3c",
+  "agent_id": "agent-8a9f7b3c",
+  "security_context": "research-safe",
+  "public_key_b64": "<32-byte Ed25519 public key, base64>",
+  "security_token": "eyJhbGciOi...",
+  "session_status": "Active",
+  "expires_at": "2026-04-27T12:00:00Z",
+  "allowed_tool_patterns": ["web.*", "fs.read"]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `execution_id` | yes | Primary key of the session. Re-posting the same `execution_id` upserts. |
+| `agent_id` | yes | Caller identity stamped onto the session. |
+| `security_context` | yes | Name of the `SecurityContext` to bind. Must already exist. |
+| `public_key_b64` | yes | The caller's session Ed25519 public key. |
+| `security_token` | yes | Pre-issued `security_token` JWT (orchestrator-provisioned model). |
+| `session_status` | optional | Defaults to `Active`. |
+| `expires_at` | optional | RFC3339 timestamp. Defaults to now + 1 hour. |
+| `allowed_tool_patterns` | optional | Subset filter on top of the `SecurityContext` capabilities. Defaults to `["*"]` (all). |
+
+**Response (200):**
+
+```json
+{ "saved": true }
+```
+
+```bash
+curl -X POST http://gateway:8089/v1/seal/sessions \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d @session.json
+```
+
+### `GET /v1/seal/sessions`
+
+List active sessions for the caller's tenant. Operator-only.
+
+### `GET /v1/seal/sessions/{execution_id}`
+
+Fetch one session by execution id.
+
+**Errors:** `404` (not found).
+
+### `DELETE /v1/seal/sessions/{execution_id}`
+
+Revoke a session. Subsequent envelopes presenting this session's token will fail with `1006 SESSION_INACTIVE`.
+
+**Response (200):**
+
+```json
+{ "status": "revoked" }
+```
+
+**Errors:** `404` (session not found or already revoked).
+
+```bash
+curl -X DELETE http://gateway:8089/v1/seal/sessions/exec-8a9f7b3c \
+  -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+---
+
+## Security Contexts
+
+A `SecurityContext` is a named permission boundary. SEAL sessions reference a context by name; the gateway evaluates each call against that context.
+
+### `POST /v1/security-contexts`
+
+Create or update a security context (upsert by `name`).
+
+**Request body:**
+
+```json
+{
+  "name": "research-safe",
+  "capabilities": [
+    {
+      "tool_pattern": "web.fetch",
+      "domain_allowlist": ["*.wikipedia.org", "*.arxiv.org"],
+      "rate_limit": { "calls": 20, "per_seconds": 60 }
+    },
+    {
+      "tool_pattern": "fs.read",
+      "path_allowlist": ["/workspace"]
+    }
+  ],
+  "deny_list": ["fs.delete", "shell.*"],
+  "description": "Read-only research context."
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Context name (unique per tenant). |
+| `capabilities` | yes | List of capability records. Each describes a tool pattern and its constraints. See [Security Contexts](/docs/gateway/security-contexts). |
+| `deny_list` | optional | Tool patterns that are always denied, even if a capability would otherwise allow them. Default `[]`. |
+| `description` | optional | Human-readable description. |
+
+**Response (200):**
+
+```json
+{ "saved": true }
+```
+
+**Errors:** `400` (empty name, invalid capability shape).
+
+### `GET /v1/security-contexts`
+
+List security contexts scoped to the caller's tenant.
+
+### `GET /v1/security-contexts/{name}`
+
+Fetch one security context by name.
+
+**Errors:** `404` (not found).
+
+> **Note:** there is no `DELETE /v1/security-contexts/{name}`. Contexts are forever-additive in the current implementation; if you need to retire a context, repoint sessions away from it and let it age out of use.
+
+---
+
+## Unified Tool Catalog
+
+### `GET /v1/tools`
+
+Returns workflows, CLI tools, and the gateway's native tools as a unified list with consistent shape. This is the endpoint the unified tool catalog UI and downstream clients use to discover what is callable.
+
+**Response (200):**
+
+```json
+[
+  {
+    "name": "create-github-issue",
+    "description": "Create a GitHub issue with a given title and body.",
+    "kind": "workflow",
+    "input_schema": { "type": "object", "properties": { ... }, "required": [ ... ] },
+    "tags": ["workflow"],
+    "category": "external"
+  },
+  {
+    "name": "kubectl",
+    "description": "Read-only kubectl against a managed kubeconfig.",
+    "kind": "cli",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "subcommand": { "type": "string", "enum": ["get", "describe", "logs", "top"] },
+        "args":       { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["subcommand"]
+    },
+    "tags": ["cli", "judged"],
+    "category": "external"
+  },
+  {
+    "name": "volume.read",
+    "description": "Read bytes from a tenant-scoped storage volume.",
+    "kind": "native",
+    "input_schema": { ... },
+    "tags": ["native", "volume"],
+    "category": "internal"
+  }
+]
+```
+
+| Field | Description |
+|---|---|
+| `name` | Tool name; unique within the tenant across all kinds. |
+| `description` | Human-readable description. |
+| `kind` | One of `"workflow"`, `"cli"`, `"native"`. |
+| `input_schema` | JSON Schema for the tool's input. |
+| `tags` | Free-form tags. CLI tools that require semantic-judge gating are tagged `judged`. |
+| `category` | `"external"` for tools that call out, `"internal"` for built-in gateway tools. |
+
+```bash
+curl http://gateway:8089/v1/tools -H "Authorization: Bearer $OPERATOR_JWT"
+```
+
+---
+
+## Invocation Surfaces
+
+These endpoints are not part of the operator control plane but are documented here so the full routing surface is visible in one place.
+
+### `POST /v1/invoke`
+
+Authenticated by SEAL envelope, **not** operator JWT. Submits a signed envelope for evaluation and execution. The path `POST /v1/seal/invoke` is an alias for the same handler.
+
+See the [SEAL Protocol](/docs/gateway/seal-protocol) page for envelope construction and the per-call evaluation flow.
+
+### `POST /v1/explorer`
+
+Authenticated by operator JWT. Drives the API explorer surface — given a registered spec id and an `operation_id`, performs a real call against the upstream API with response slicing applied. See the [API Explorer](/docs/gateway/api-explorer) page.
+
+---
+
+## Health and UI
+
+### `GET /health`
+
+Liveness probe. Returns `200 OK` with body `ok`. Unauthenticated.
+
+```bash
+curl http://gateway:8089/health
+```
+
+### `GET /`
+
+The gateway Web UI, served when `ui.enabled: true` in config. Static HTML + JS at `/`, `/ui/app.js`, `/ui/styles.css`. Unauthenticated by default; gate at the proxy layer if exposed.
+
+<Callout type="info">
+The gateway also exposes a live Swagger UI at `/api-docs` backed by
+`/openapi.json`. Both are utoipa-generated from the source — use them as the
+canonical API surface for your installed version, since field names and
+optional fields may evolve faster than this page.
+</Callout>

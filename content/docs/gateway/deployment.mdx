@@ -1,0 +1,576 @@
+---
+title: Deployment
+description: Production runbook for the SEAL Gateway — container image, Docker Compose, Kubernetes, systemd, storage choice, networking, upgrades, and backups.
+---
+
+# Deployment
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This page is the operational runbook for running the SEAL Gateway in
+production. It assumes you have already worked through the
+[Quickstart](/docs/gateway/quickstart) and understand the
+[concepts](/docs/gateway/concepts). Pick a topology, wire up storage, expose
+the right ports, and you are done.
+
+The gateway is a single Rust binary that ships as a Linux/amd64 container
+image. It speaks HTTP on port `8089` and gRPC on port `50055`, runs `sqlx`
+migrations against its database on startup, and exits cleanly on `SIGTERM`.
+
+---
+
+## Distribution
+
+| Surface | Location |
+|---|---|
+| Container image (latest) | `ghcr.io/100monkeys-ai/aegis-seal-gateway:latest` |
+| Container image (semver) | `ghcr.io/100monkeys-ai/aegis-seal-gateway:<version>` |
+| Container image (commit pin) | `ghcr.io/100monkeys-ai/aegis-seal-gateway:sha-<short>` |
+| Source | `github.com/100monkeys-ai/aegis-seal-gateway` |
+
+The published image is **linux/amd64 only** at the time of writing. The
+GitHub Actions release workflow installs the `x86_64-unknown-linux-gnu` Rust
+toolchain and pushes a single-platform manifest. If you need `arm64`, build
+the image yourself from source or open a tracking issue — multi-arch is not
+yet wired into the publish pipeline.
+
+`:latest` is rebuilt on every push to `main`. Pin to a semver tag
+(`:1.4.0`) or a commit-sha tag (`:sha-a1b2c3d`) for production. Watching
+`:latest` is reasonable in development and irresponsible in production.
+
+The image bundles `podman` and `fuse-overlayfs` so the gateway can run
+ephemeral CLI tools out of the box without mounting a host container socket.
+See [Container CLI prerequisite](#container-cli-prerequisite) below.
+
+---
+
+## Resource Recommendations
+
+The gateway is mostly idle when no agents are calling it. Workflow execution
+adds memory pressure proportional to upstream response sizes (the JSONPath
+explorer slices server-side, but the full response is buffered in memory
+first). CLI invocation adds memory and disk pressure for the duration of the
+container.
+
+| Profile | RAM | CPU | Disk |
+|---|---|---|---|
+| Idle / dev | 256 MB | 0.25 vCPU | 200 MB image + 50 MB SQLite |
+| Light prod (≤ 50 calls/min) | 512 MB | 0.5 vCPU | 1 GB ephemeral + DB |
+| Heavy prod (workflows + CLI) | 1–2 GB | 1–2 vCPU | 5 GB ephemeral + DB |
+| Heavy multi-tenant SaaS | 2–4 GB per replica | 2–4 vCPU per replica | External Postgres |
+
+CLI tooling pulls and runs OCI images at request time. Size your ephemeral
+disk for the largest tool image you plan to register, plus a working set of
+two or three concurrent invocations.
+
+---
+
+## Topology 1 — Docker Compose
+
+Suitable for a single-node deployment with Postgres for `UserBound`
+credentials. OpenBao is included as an optional sidecar for dynamic
+credential resolution; comment it out if you do not need it.
+
+```yaml
+# docker-compose.yml
+version: "3.9"
+
+services:
+  seal-gateway:
+    image: ghcr.io/100monkeys-ai/aegis-seal-gateway:1.4.0
+    container_name: seal-gateway
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8089:8089"   # HTTP control + invocation
+      - "50055:50055" # gRPC services
+    environment:
+      SEAL_GATEWAY_CONFIG_PATH: /etc/aegis/seal-gateway-config.yaml
+      SEAL_GATEWAY_DB: "postgres://gateway:${POSTGRES_PASSWORD}@postgres:5432/gateway"
+      SEAL_GATEWAY_OPENBAO_ADDR: "http://openbao:8200"
+      SEAL_GATEWAY_OPENBAO_TOKEN: "${OPENBAO_TOKEN}"
+      RUST_LOG: "info,aegis_seal_gateway=info"
+    volumes:
+      - ./seal-gateway-config.yaml:/etc/aegis/seal-gateway-config.yaml:ro
+      - gateway-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8089/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16
+    container_name: seal-gateway-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gateway
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d gateway"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Optional: OpenBao for dynamic / KV-backed credential resolution.
+  openbao:
+    image: openbao/openbao:latest
+    container_name: seal-gateway-openbao
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_TOKEN}
+      BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    ports:
+      - "8200:8200"
+
+volumes:
+  gateway-data:
+  postgres-data:
+```
+
+Bring it up:
+
+```bash
+export POSTGRES_PASSWORD=$(openssl rand -hex 16)
+export OPENBAO_TOKEN=$(openssl rand -hex 16)
+docker compose up -d
+docker compose logs -f seal-gateway
+```
+
+The gateway runs migrations against the empty Postgres database on first
+start. Subsequent restarts are idempotent.
+
+<Callout type="warn">
+The OpenBao service shown above runs in dev mode with an in-memory backend
+and an unsealed root token. For production, run a real OpenBao cluster with
+auto-unseal, persistent storage, and token-based or AppRole authentication.
+</Callout>
+
+---
+
+## Topology 2 — Kubernetes
+
+There is no published Helm chart yet. The manifest below is the canonical
+reference deployment — copy it, parameterize it for your environment, and
+wrap it in your own chart or Kustomize overlay.
+
+```yaml
+# 00-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seal-gateway
+---
+# 10-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seal-gateway-config
+  namespace: seal-gateway
+data:
+  seal-gateway-config.yaml: |
+    apiVersion: seal.100monkeys.ai/v1
+    kind: SealGatewayConfig
+    metadata:
+      name: aegis-seal-gateway
+      version: "1.0.0"
+    spec:
+      network:
+        bind_addr: "0.0.0.0:8089"
+        grpc_bind_addr: "0.0.0.0:50055"
+      database:
+        url: "postgres://gateway:REPLACED_BY_ENV@postgres.seal-gateway:5432/gateway"
+      auth:
+        disabled: false
+        operator_jwks_uri: "https://keycloak.example.com/realms/aegis/protocol/openid-connect/certs"
+        jwks_cache_ttl_secs: 300
+        operator_jwt_issuer: "https://keycloak.example.com/realms/aegis"
+        operator_jwt_audience: "aegis-seal-gateway"
+        seal_jwt_public_key_pem: ""
+        seal_jwt_issuer: "aegis-orchestrator"
+        seal_jwt_audience: "aegis-agents"
+      credentials:
+        openbao_addr: "http://openbao.openbao:8200"
+        openbao_kv_mount: "secret"
+      cli:
+        nfs_server_host: "127.0.0.1"
+        nfs_port: 2049
+        nfs_mount_port: 20048
+      ui:
+        enabled: true
+---
+# 20-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: seal-gateway-secrets
+  namespace: seal-gateway
+type: Opaque
+stringData:
+  SEAL_GATEWAY_DB: "postgres://gateway:CHANGEME@postgres.seal-gateway:5432/gateway"
+  SEAL_GATEWAY_OPENBAO_TOKEN: "CHANGEME"
+  SEAL_GATEWAY_SEAL_JWT_PUBLIC_KEY_PEM: |
+    -----BEGIN PUBLIC KEY-----
+    MCowBQYDK2VwAyEA...REPLACE...
+    -----END PUBLIC KEY-----
+---
+# 30-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seal-gateway
+  namespace: seal-gateway
+  labels:
+    app.kubernetes.io/name: seal-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: seal-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: seal-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: gateway
+          image: ghcr.io/100monkeys-ai/aegis-seal-gateway:1.4.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8089
+            - name: grpc
+              containerPort: 50055
+          env:
+            - name: SEAL_GATEWAY_CONFIG_PATH
+              value: /etc/aegis/seal-gateway-config.yaml
+            - name: RUST_LOG
+              value: "info,aegis_seal_gateway=info"
+          envFrom:
+            - secretRef:
+                name: seal-gateway-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /etc/aegis
+              readOnly: true
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: seal-gateway-config
+---
+# 40-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: seal-gateway
+  namespace: seal-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: seal-gateway
+  ports:
+    - name: http
+      port: 8089
+      targetPort: http
+    - name: grpc
+      port: 50055
+      targetPort: grpc
+```
+
+Apply with `kubectl apply -f .`. The Deployment will roll out two replicas
+behind a ClusterIP Service. Front it with your existing Ingress / Gateway
+API resource for TLS termination.
+
+<Callout type="info">
+Multi-replica deployments require Postgres. SQLite mode does not coordinate
+writes across replicas — running two SQLite-backed gateways behind a load
+balancer will produce divergent state and audit gaps.
+</Callout>
+
+---
+
+## Topology 3 — Systemd
+
+For binary deployments built from source (`cargo install --path .` or a
+release tarball you produce yourself), a systemd unit is the lowest-friction
+production setup.
+
+Place the binary at `/usr/local/bin/aegis-seal-gateway`, create a service
+user, and drop the unit at `/etc/systemd/system/aegis-seal-gateway.service`:
+
+```ini
+[Unit]
+Description=AEGIS SEAL Gateway
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aegis
+Group=aegis
+EnvironmentFile=/etc/aegis/seal-gateway.env
+ExecStart=/usr/local/bin/aegis-seal-gateway
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/aegis
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Companion env file at `/etc/aegis/seal-gateway.env`:
+
+```bash
+SEAL_GATEWAY_CONFIG_PATH=/etc/aegis/seal-gateway-config.yaml
+SEAL_GATEWAY_DB=postgres://gateway:CHANGEME@127.0.0.1:5432/gateway
+SEAL_GATEWAY_OPENBAO_ADDR=http://127.0.0.1:8200
+SEAL_GATEWAY_OPENBAO_TOKEN=CHANGEME
+RUST_LOG=info,aegis_seal_gateway=info
+```
+
+Enable and start:
+
+```bash
+sudo useradd --system --home /var/lib/aegis --shell /usr/sbin/nologin aegis
+sudo mkdir -p /var/lib/aegis && sudo chown aegis:aegis /var/lib/aegis
+sudo systemctl daemon-reload
+sudo systemctl enable --now aegis-seal-gateway
+sudo journalctl -u aegis-seal-gateway -f
+```
+
+For systemd hosts, `podman` must be installed and accessible to the `aegis`
+user if you intend to register CLI tools.
+
+---
+
+## Storage Choice
+
+The gateway speaks two database dialects and picks one based on the
+`database.url` scheme.
+
+| Dimension | SQLite | Postgres |
+|---|---|---|
+| Connection | `sqlite://gateway.db` | `postgres://...` or `postgresql://...` |
+| Single-node | Yes | Yes |
+| Multi-replica | No (file-locked) | Yes |
+| `UserBound` credentials | No | Yes |
+| Audit-write throughput | ~1k events/sec | Limited by Postgres tuning |
+| Backups | File copy | `pg_dump` |
+| Operational overhead | Zero | Standard Postgres ops |
+| Best for | Dev, single-team, air-gapped | SaaS, multi-tenant, multi-replica |
+
+The gateway detects the dialect at startup. Switching dialects requires a
+fresh database — there is no built-in migration tool for SQLite-to-Postgres.
+
+---
+
+## Database Migrations
+
+Migrations are managed by `sqlx::migrate!` and run automatically when the
+gateway starts. The embedded migrations are:
+
+| File | Purpose |
+|---|---|
+| `0001_initial_schema.sql` | Creates `api_specs`, `workflows`, `cli_tools`, `seal_sessions`, `security_contexts`, `seen_jtis`, `gateway_events`. |
+| `0002_tenant_id_columns.sql` | Adds `tenant_id` columns and indexes to all tenant-scoped tables. NULL means system-global; non-NULL means tenant-owned. |
+| `0003_seen_jtis_expires_at_index.sql` | Adds an index on `seen_jtis.expires_at` so the periodic JTI cleanup job (every 30 seconds) is cheap. |
+
+Inspect the applied migrations with `sqlx migrate info` (against the same
+database URL) or query the `_sqlx_migrations` table directly. Migrations are
+forward-only — there are no down migrations. **Back up the database before
+upgrading.**
+
+---
+
+## Networking
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `8089` | HTTP/1.1 + HTTP/2 | Operator API (`/v1/specs`, `/v1/workflows`, …), invocation API (`/v1/invoke`, `/v1/seal/invoke`), web UI, Swagger UI, `/health`, OpenAPI JSON. |
+| `50055` | HTTP/2 (gRPC) | `ToolWorkflowService` and `GatewayInvocationService`. |
+
+Both ports default to binding on `0.0.0.0`. Override with
+`SEAL_GATEWAY_BIND` and `SEAL_GATEWAY_GRPC_BIND`.
+
+### Reverse proxy
+
+Terminate TLS upstream — the gateway does not load certificates itself.
+Two non-obvious requirements when fronting it:
+
+- **Forward the `Authorization` header verbatim.** Bearer tokens for the
+  operator API and SEAL envelopes for invocation both ride this header.
+  Stripping or rewriting it breaks both surfaces.
+- **Use HTTP/2 for the gRPC port.** The gRPC services require an end-to-end
+  HTTP/2 path. nginx requires `grpc_pass`; Envoy and Traefik handle this
+  automatically when you declare the upstream as gRPC.
+
+Example nginx fragment for the HTTP port:
+
+```nginx
+location / {
+    proxy_pass http://seal-gateway:8089;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Authorization $http_authorization;
+    proxy_read_timeout 300s;
+}
+```
+
+---
+
+## Container CLI Prerequisite
+
+The ephemeral CLI engine shells out to a container CLI to launch each tool
+invocation in an isolated container. The gateway resolves which CLI to use
+at startup in this order:
+
+1. The `cli.container_cli` field in the config file, if set.
+2. `podman` on `$PATH`.
+3. `docker` on `$PATH`.
+
+Rootless `podman` is preferred. The published gateway image already bundles
+`podman` and `fuse-overlayfs`, so the in-container default works without any
+host mounts.
+
+If you intentionally want the gateway to drive the host's Docker daemon,
+mount the socket:
+
+```yaml
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+<Callout type="warn">
+Mounting the host Docker socket gives the gateway container root-equivalent
+control over the host. Do this only on isolated nodes you fully trust, and
+prefer the bundled rootless `podman` path for anything else.
+</Callout>
+
+---
+
+## NFS / FSAL Mounts
+
+CLI tools that need shared persistent storage (rather than the per-call
+ephemeral container filesystem) can mount an NFS share exposed by the AEGIS
+storage gateway. Three config fields control the client side:
+
+```yaml
+spec:
+  cli:
+    nfs_server_host: "storage.internal"  # NFS server hostname or IP
+    nfs_port: 2049                       # NFS data port
+    nfs_mount_port: 20048                # Mountd port
+```
+
+If you are not using NFS-backed CLI tools, leave these at their defaults
+(`127.0.0.1` / `2049` / `20048`) — they are only consulted when a registered
+CLI tool declares an NFS mount.
+
+---
+
+## Upgrade Procedure
+
+1. **Read the release notes** for any breaking config or schema changes.
+2. **Back up the database** (see [Backup & Restore](#backup--restore)).
+3. **Pull the new image / install the new binary.**
+4. **Restart the service.** Migrations run on boot. The gateway exits non-zero
+   if any migration fails; the previous version remains the only working
+   image until you roll back.
+5. **Tail logs** for `aegis-seal-gateway listening on …` and the gRPC bind
+   line. Confirm `/health` responds `200`.
+
+### Rollback
+
+Migrations are forward-only. Rollback means:
+
+1. Stop the new version.
+2. Restore the database backup taken before the upgrade.
+3. Start the previous version.
+
+If you do not have a backup, you cannot roll back cleanly. Take the backup.
+
+---
+
+## Backup & Restore
+
+### SQLite
+
+The simplest correct procedure is the online `.backup` API, which works
+while the gateway is running:
+
+```bash
+sqlite3 /data/gateway.db ".backup /backups/gateway-$(date +%F).db"
+```
+
+The cold-copy variant (stop the gateway, `cp gateway.db /backups/`, start it
+again) is also acceptable for low-availability deployments.
+
+### Postgres
+
+Standard tooling:
+
+```bash
+# Backup
+pg_dump --format=custom --no-owner --no-privileges \
+  --dbname="postgres://gateway:PASS@host:5432/gateway" \
+  --file=gateway-$(date +%F).dump
+
+# Restore (against an empty database)
+pg_restore --no-owner --no-privileges \
+  --dbname="postgres://gateway:PASS@host:5432/gateway" \
+  gateway-2026-04-27.dump
+```
+
+**Always include `gateway_events` in the backup** — the audit table is the
+authoritative record of what the gateway has done. Some teams archive
+`gateway_events` to cold storage on a schedule and truncate the active table
+to keep query latency flat. If you do this, ensure the archive is itself
+backed up.
+
+---
+
+## Next Steps
+
+- **Lock down the config**: [Configuration](/docs/gateway/configuration) —
+  every field, every env var, every precedence rule.
+- **Wire up logging and audit pipelines**:
+  [Observability](/docs/gateway/observability).
+- **When something goes wrong**:
+  [Troubleshooting](/docs/gateway/troubleshooting).

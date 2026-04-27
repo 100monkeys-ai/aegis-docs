@@ -1,0 +1,270 @@
+---
+title: Authoring Workflows
+description: Chain operations from a registered API spec into a single named tool — Handlebars body templates, JSONPath extractors, error policies, and a worked Terraform Cloud example.
+---
+
+# Authoring Workflows
+
+A **tool workflow** turns a sequence of HTTP calls into a single named tool that an agent can invoke. The gateway holds the OpenAPI spec, the credentials, and the orchestration logic; the agent supplies inputs and receives a single result.
+
+A workflow is an ordered list of steps. Each step calls one operation from a registered API spec, optionally extracts values from the response, and feeds those values to subsequent steps via Handlebars templates.
+
+<Callout type="info">
+  Workflows are stateless: every invocation starts with a fresh state map. Persistent state belongs in the upstream API itself, not in the workflow.
+</Callout>
+
+---
+
+## Anatomy of a workflow
+
+The `POST /v1/workflows` request body has this shape:
+
+| Field | Type | Required | Purpose |
+|---|---|---|---|
+| `name` | string | yes | Unique name across all workflows visible to the tenant. Agents call workflows by name. |
+| `description` | string | yes | Human-readable summary; surfaced in the unified `GET /v1/tools` listing. |
+| `input_schema` | JSON Schema | yes | Must be a JSON Schema with `"type": "object"`. Describes the inputs an agent must supply. |
+| `api_spec_id` | string (UUID) | yes | The registered API spec the steps draw operations from. All steps share this spec. |
+| `steps` | array | yes | Ordered list of steps; at least one. |
+
+Each step:
+
+| Field | Type | Required | Purpose |
+|---|---|---|---|
+| `name` | string | yes | Unique within the workflow. Used as the prefix for extracted values in subsequent templates. |
+| `operation_id` | string | yes | Must match an `operationId` in the referenced API spec. Validated at registration time. |
+| `body_template` | string | yes | A Handlebars template that **must render valid JSON**. Sent as the request body for every method (including `GET` — see [the limitation note](#current-step-limitations) below). |
+| `extractors` | object | no | Map of `<variable_name>` → JSONPath expression. Each entry pulls a value out of the step's response and stores it in workflow state. |
+| `on_error` | object | yes | Error policy: `AbortWorkflow`, `Continue`, or `RetryN(n)`. |
+
+There is no `query_template`, no `header_template`, and no per-step credential override. The credential resolution path comes from the API spec; query parameters and headers are not currently templated.
+
+### Current step limitations
+
+The implementation has a few honest gaps that workflow authors should know up front:
+
+- **Path parameters are not interpolated.** The gateway concatenates `base_url` + the operation's `path` literally. If the OpenAPI path is `/runs/{run_id}`, the gateway hits `/runs/{run_id}` verbatim. Use operations whose paths are static, or model the dynamic parts in the body where the upstream API supports it.
+- **Query strings are not templated.** Parameters declared in `query` on the OpenAPI operation are not threaded through from `input` or step state.
+- **Headers are not templated** beyond the credential headers the gateway injects on every request.
+- **`body_template` is sent on every request method**, including `GET`. The template is required and must always render valid JSON. For methods where the body is unused, render `"{}"` and rely on the upstream API to ignore it.
+
+These are real constraints of the current engine, not policy. Pick API operations whose path and query surface match what you can actually parameterize today.
+
+---
+
+## The Handlebars context
+
+The gateway uses [`handlebars`](https://crates.io/crates/handlebars) with the **default helper set only** — no custom helpers are registered. That means the helpers available in templates are exactly:
+
+| Helper | Form |
+|---|---|
+| Conditional | `{{#if value}} … {{else}} … {{/if}}` |
+| Negated conditional | `{{#unless value}} … {{/unless}}` |
+| Iteration | `{{#each array}} … {{/each}}` |
+| Scoping | `{{#with object}} … {{/with}}` |
+| Lookup | `{{lookup map "key"}}` |
+
+The render context exposes two top-level keys:
+
+| Path | Contents |
+|---|---|
+| `{{input.<field>}}` | Any field from the agent-supplied `input` JSON, validated against `input_schema`. |
+| `{{state.<step_name>.<extracted_var>}}` | Values emitted by `extractors` from prior steps. |
+
+For convenience the input is also exposed at the top of the state map under the key `input`, so `{{input.foo}}` and `{{state.input.foo}}` resolve to the same value.
+
+If a step extractor names a value `run_id` and the step is named `create_run`, then later steps reference it as `{{state.create_run.run_id}}`.
+
+<Callout type="warn">
+  The rendered template must parse as JSON. If your input contains characters that need JSON escaping (quotes, backslashes, newlines), wrap the substitution in JSON.stringify on the client before sending the input — the engine does not auto-escape.
+</Callout>
+
+---
+
+## JSONPath extractors
+
+Extractors run after each step and pull values out of the response body. The gateway uses the [`jsonpath_lib`](https://crates.io/crates/jsonpath_lib) implementation.
+
+| Expression | Meaning |
+|---|---|
+| `$.id` | Top-level `id` field. |
+| `$.data.id` | Nested field. |
+| `$.items[0].name` | First element of `items`, then its `name`. |
+| `$.items[*].id` | Every `id` under `items` (returns the first match — see note below). |
+| `$..email` | Recursive descent — every `email` anywhere in the response. |
+| `$.data[?(@.status=='ready')].id` | Filter expression — first `id` whose `status` is `ready`. |
+
+When an extractor produces multiple matches, **only the first match is stored in state**. The engine takes the first element of the result list and writes it under `<step_name>.<key>`. If you need the full list, model your workflow to extract a single nested array (e.g. `$.items`) and let the agent destructure on the receiving end.
+
+### Example
+
+```json
+"extractors": {
+  "run_id": "$.data.id",
+  "plan_id": "$.data.relationships.plan.data.id"
+}
+```
+
+After this step (named `create_run`), the workflow state holds `create_run.run_id` and `create_run.plan_id`, available in subsequent templates as `{{state.create_run.run_id}}`.
+
+---
+
+## Error policies
+
+`on_error` is required on every step. The supported variants come from the engine:
+
+| Policy | Behavior |
+|---|---|
+| `AbortWorkflow` | The workflow stops. The gateway emits a `WorkflowInvocationFailed` event recording the failed step and the upstream error reason. |
+| `Continue` | The error is logged but the workflow proceeds to the next step. The failed step contributes no extractor values to state. |
+| `RetryN(n)` | The step is retried up to `n` additional times against the same URL with the same body. If every retry fails the workflow aborts and emits `WorkflowInvocationFailed`. There is no backoff between retries. |
+
+Choose `AbortWorkflow` when the next step depends on this step's extractors. Choose `Continue` for best-effort enrichment steps. Choose `RetryN` for idempotent calls against flaky upstreams.
+
+```json
+{ "on_error": "AbortWorkflow" }
+{ "on_error": "Continue" }
+{ "on_error": { "RetryN": 3 } }
+```
+
+---
+
+## A worked example: Terraform Cloud plan
+
+The following workflow drives a Terraform Cloud run end-to-end: create the run, fetch its current state, then pull the plan output. It assumes the API spec from the [Petstore + Terraform Cloud examples](/docs/gateway/registering-api-specs#example-register-an-internal-terraform-cloud-spec) is already registered with the ID captured in `$TFC_SPEC_ID`.
+
+```bash
+curl -X POST https://gateway.example.com/v1/workflows \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"terraform_plan_and_fetch\",
+    \"description\": \"Create a Terraform Cloud run, wait for the plan, return its JSON output\",
+    \"api_spec_id\": \"$TFC_SPEC_ID\",
+    \"input_schema\": {
+      \"type\": \"object\",
+      \"required\": [\"workspace_id\"],
+      \"properties\": {
+        \"workspace_id\": { \"type\": \"string\" },
+        \"message\": { \"type\": \"string\" }
+      }
+    },
+    \"steps\": [
+      {
+        \"name\": \"create_run\",
+        \"operation_id\": \"create_run\",
+        \"body_template\": \"{\\\"data\\\":{\\\"attributes\\\":{\\\"message\\\":\\\"{{input.message}}\\\"},\\\"relationships\\\":{\\\"workspace\\\":{\\\"data\\\":{\\\"id\\\":\\\"{{input.workspace_id}}\\\",\\\"type\\\":\\\"workspaces\\\"}}}}}\",
+        \"extractors\": {
+          \"run_id\": \"$.data.id\",
+          \"plan_id\": \"$.data.relationships.plan.data.id\"
+        },
+        \"on_error\": \"AbortWorkflow\"
+      },
+      {
+        \"name\": \"get_run\",
+        \"operation_id\": \"get_run\",
+        \"body_template\": \"{}\",
+        \"extractors\": {
+          \"plan_status\": \"$.data.attributes.status\"
+        },
+        \"on_error\": { \"RetryN\": 2 }
+      },
+      {
+        \"name\": \"get_plan_output\",
+        \"operation_id\": \"get_plan_output\",
+        \"body_template\": \"{}\",
+        \"extractors\": {},
+        \"on_error\": \"AbortWorkflow\"
+      }
+    ]
+  }"
+```
+
+A successful response returns the workflow ID:
+
+```json
+{ "id": "1f7e3b2c-5d4a-4f6c-9b1a-3e8f2c4d5b67" }
+```
+
+### What this example does — and does not — do
+
+The workflow demonstrates extractors and Handlebars input substitution into a request body. It does **not** model the part of Terraform Cloud's API that requires waiting for the plan to leave `pending` state.
+
+The gateway has **no built-in poll loop** at the workflow level. There is no `wait_until` step, no `poll` policy, no per-step delay. The supported error policies (`AbortWorkflow`, `Continue`, `RetryN`) all retry against the same URL immediately with no backoff — they exist to handle transient upstream failures, not to model long-running asynchronous APIs.
+
+The honest pattern for asynchronous upstreams: the agent invokes the workflow once, inspects the returned `plan_status`, and re-invokes the workflow (or just the relevant operation via the [API Explorer](/docs/gateway/api-explorer)) until the status is what it wants. The polling logic lives in the agent loop, not in the workflow.
+
+---
+
+## Invoking a workflow
+
+Workflows are invoked over the SEAL invoke endpoint by name. The agent supplies an `input` object that conforms to `input_schema`; the gateway validates the schema, runs the steps, and returns:
+
+```json
+{
+  "workflow_id": "1f7e3b2c-5d4a-4f6c-9b1a-3e8f2c4d5b67",
+  "execution_id": "exec-abc123",
+  "result": { "...": "the response body of the final step" },
+  "state": { "create_run.run_id": "run-x9", "create_run.plan_id": "plan-7", "...": "..." }
+}
+```
+
+The `result` field is the parsed JSON body of the **last successfully executed step**. The `state` map is the full extractor state, useful for debugging.
+
+---
+
+## Lifecycle
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/workflows` | `POST` | Register a new workflow. |
+| `/v1/workflows` | `GET` | List workflows visible to the caller's tenant. |
+| `/v1/workflows/{id}` | `GET` | Return the full workflow record. |
+| `/v1/workflows/{id}` | `DELETE` | Remove the workflow. |
+
+There is **no `PUT /v1/workflows/{id}`** in the current implementation. To change a workflow you must delete and re-register it. Workflow IDs are not stable across edits.
+
+In-flight invocations against a deleted workflow are unaffected — the gateway loaded the workflow record into the engine before starting the steps. New invocations against a deleted workflow return `404 NotFound`.
+
+---
+
+## Tenant scope
+
+Like API specs, every workflow is registered against the caller's tenant. Tenant-scoped workflows are visible only to that tenant; system-global workflows (registered with no tenant claim) are visible to all. The list endpoint already filters appropriately.
+
+A workflow registered under tenant `A` cannot reference an API spec registered under tenant `B` — registration validates that every step's `operation_id` exists in the referenced spec, and the spec lookup is itself tenant-scoped.
+
+---
+
+## Audit events
+
+Workflow lifecycle and execution emit a stream of events into the gateway's event store:
+
+| Event | When |
+|---|---|
+| `WorkflowRegistered` | After a successful `POST /v1/workflows`. Records workflow ID, name, and step count. |
+| `WorkflowInvocationStarted` | At the top of every invocation. |
+| `WorkflowStepExecuted` | After every step that produces an HTTP response (success or non-success). Includes step name, HTTP status code, and duration. |
+| `WorkflowInvocationCompleted` | When the final step returns. Includes total step count and total duration. |
+| `WorkflowInvocationFailed` | When an `AbortWorkflow` step or an exhausted `RetryN` aborts the run. Records the failed step and the upstream reason. |
+| `CredentialExchangeCompleted` / `CredentialExchangeFailed` | Once per invocation, recording the resolved credential strategy and target service. |
+
+Workflow deletion is not currently audited as a domain event.
+
+---
+
+## Common errors at registration
+
+| Status | Cause |
+|---|---|
+| `400 Validation` | `name` empty; `steps` empty; `input_schema` is not an object schema; `api_spec_id` does not match a registered spec; a step's `operation_id` is not present in the referenced spec. |
+| `400 Validation` (at invoke time) | A step's `body_template` did not render valid JSON. The error names the offending step. |
+| `404 NotFound` (at invoke time) | The referenced API spec was deleted after workflow registration. |
+
+---
+
+## Next steps
+
+- [API Explorer](/docs/gateway/api-explorer) — for ad-hoc one-shot calls that don't justify a workflow.
+- [Ephemeral CLI Tools](/docs/gateway/ephemeral-cli-tools) — for tool surfaces that don't fit the HTTP-call shape.
+- [Credential Resolution](/docs/gateway/credential-resolution) — every workflow inherits its API spec's credential path; understand which strategy matches your upstream.

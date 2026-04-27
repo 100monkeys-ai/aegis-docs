@@ -4,7 +4,6 @@
         "overview",
         "execution-engine",
         "workflow-engine",
-        "seal",
         "tool-routing",
         "tooling-gateway",
         "storage-gateway",

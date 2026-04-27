@@ -1,0 +1,403 @@
+---
+title: Concepts
+description: The eleven concepts the rest of the SEAL Gateway documentation assumes — envelopes, tokens, contexts, credential paths, and the lifecycle of a tool call.
+---
+
+# Concepts
+
+The gateway is small, but it has a precise vocabulary. This page defines the
+eleven concepts the rest of the documentation assumes. Read it once and the
+operational pages stop being acronym soup.
+
+---
+
+## 1. SEAL Envelope
+
+The **SEAL envelope** is the wire format every invocation arrives in. It pairs
+a payload with the cryptographic material needed to prove the caller is
+allowed to make the call.
+
+```json
+{
+  "protocol": "seal/v1",
+  "payload": {
+    "tool": "fetch_first_available_pet",
+    "arguments": { "limit": 10 }
+  },
+  "security_token": "<JWT, three dot-separated base64 segments>",
+  "signature": "<base64 Ed25519 signature over the canonical payload>",
+  "timestamp": "2026-04-27T15:42:11Z",
+  "jti": "01HK6X9V8N4Q2YSAMPLEULID"
+}
+```
+
+The gateway verifies, in order: protocol version, signature against the
+configured Ed25519 public key, JWT claims, freshness of `timestamp` (within
+30 seconds of server clock), and uniqueness of `jti` against the replay cache.
+If any check fails the request is rejected before any policy evaluation,
+credential resolution, or upstream traffic.
+
+**Related:** [SEAL Protocol](/docs/gateway/seal-protocol),
+[Authentication](/docs/gateway/authentication).
+
+---
+
+## 2. Security Token (JWT)
+
+The `security_token` field of the envelope is a standard JWT. The gateway
+treats these claims as load-bearing:
+
+| Claim | Purpose |
+|---|---|
+| `iss` | Issuer — must equal `seal_jwt_issuer` from config |
+| `aud` | Audience — must equal `seal_jwt_audience` from config |
+| `jti` | JWT ID — mandatory; used for replay protection |
+| `scp` | Scopes — list of permitted tool names or patterns |
+| `tenant_id` | Tenant slug; scopes credential resolution and security context lookup |
+| `sub` | Subject — the user or service identity making the call |
+| `exp` | Expiry — standard JWT expiry |
+| `iat` | Issued-at — used together with envelope `timestamp` for freshness |
+
+`jti` is **required**. A token without `jti` is rejected. The same `jti` may
+not be used twice — see concept 9.
+
+**Related:** [Authentication](/docs/gateway/authentication).
+
+---
+
+## 3. API Spec
+
+An **API Spec** is an OpenAPI 3.0 document registered with the gateway and
+attached to a credential resolution path. Once registered the gateway can:
+
+- Resolve operations by `operationId`
+- Validate path, query, and body parameters against the schema
+- Compose operations into workflows
+- Power the JSONPath Explorer
+
+A minimal registration:
+
+```json
+POST /v1/specs
+{
+  "name": "stripe",
+  "source_url": "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
+  "base_url": "https://api.stripe.com",
+  "credential_resolution_path": {
+    "type": "static_ref",
+    "key": "stripe/api-key"
+  }
+}
+```
+
+A spec is the unit of "I want to talk to this upstream service." All workflows
+and Explorer calls reference a spec by id. Specs are tenant-scoped when a
+tenant slug is supplied at registration time.
+
+**Related:** [Registering API Specs](/docs/gateway/registering-api-specs).
+
+---
+
+## 4. Tool Workflow
+
+A **Tool Workflow** is a named, ordered sequence of HTTP calls against
+registered API specs, presented to the agent as a single tool. Each step:
+
+- Names an operation (`operation_id`) on a registered spec
+- May template its body with [Handlebars](https://handlebarsjs.com/) using
+  earlier step outputs
+- May extract values from its response via JSONPath into named variables
+- Has an `on_error` policy: `fail` aborts the workflow; `continue` keeps going
+  and surfaces the error to the next step
+
+```json
+{
+  "name": "create_invoice_for_customer_email",
+  "steps": [
+    {
+      "name": "find_customer",
+      "operation_id": "ListCustomers",
+      "query_params": { "email": "{{email}}" },
+      "extractors": { "customer_id": "$.data[0].id" },
+      "on_error": "fail"
+    },
+    {
+      "name": "create_invoice",
+      "operation_id": "CreateInvoice",
+      "body": { "customer": "{{customer_id}}", "amount": "{{amount}}" },
+      "on_error": "fail"
+    }
+  ]
+}
+```
+
+To the agent, this is one tool — `create_invoice_for_customer_email` — with
+two arguments, `email` and `amount`. To the gateway, it is two upstream calls,
+one credential resolution, one audit trail.
+
+**Related:** [Authoring Workflows](/docs/gateway/authoring-workflows).
+
+---
+
+## 5. Ephemeral CLI Tool
+
+An **Ephemeral CLI Tool** is a Docker (or Podman) image plus an allowlist,
+registered as a tool. When invoked the gateway:
+
+1. Pulls the image (using registry credentials resolved from the configured
+   credential path, if any)
+2. Validates the requested subcommand against `allowed_subcommands`
+3. Optionally calls a **semantic judge** (an LLM endpoint) to vet the call's
+   intent
+4. Spins up a fresh container with the requested arguments
+5. Captures stdout, stderr, and exit code
+6. Destroys the container after the configured timeout (default per-tool)
+
+```json
+POST /v1/cli-tools
+{
+  "name": "kubectl-readonly",
+  "docker_image": "bitnami/kubectl:1.29",
+  "allowed_subcommands": ["get", "describe", "logs", "top"],
+  "require_semantic_judge": true,
+  "default_timeout_secs": 60
+}
+```
+
+Each call is self-contained. There is no persistent shell, no shared
+filesystem between calls, and no chance for one invocation to influence the
+next.
+
+**Related:** [Ephemeral CLI Tools](/docs/gateway/ephemeral-cli-tools).
+
+---
+
+## 6. Security Context
+
+A **SecurityContext** is a named permission boundary. It pairs a list of
+**capabilities** (positive grants with constraints) with a **deny list**
+(absolute prohibitions). Every tool call is evaluated against the context
+attached to the calling identity.
+
+The evaluation algorithm has three steps and is **default-deny**:
+
+1. **Deny-list check** — if any deny-list pattern matches the tool name,
+   reject with `ToolDenied`. Deny wins over any capability.
+2. **Capability scan** — walk capabilities in order. The first capability
+   whose `tool_pattern` matches the tool name decides the call. If its
+   constraints (path allowlist, command allowlist, subcommand allowlist,
+   domain allowlist, max response size) are satisfied, the call is allowed.
+   Otherwise the call is rejected with the matching `PolicyViolation`.
+3. **Default deny** — if no capability matches, reject with `ToolNotAllowed`.
+
+The eight `PolicyViolation` variants:
+
+| Variant | Trigger |
+|---|---|
+| `ToolNotAllowed` | No capability matched the tool name |
+| `ToolDenied` | A deny-list pattern matched |
+| `PathOutsideBoundary` | `fs.*` / `filesystem.*` call's `path` arg fell outside the capability's `path_allowlist` |
+| `DomainNotAllowed` | `web.*` / `web-search.*` call's URL domain not in `domain_allowlist` |
+| `CommandNotAllowed` | `cmd.run` base command not in `command_allowlist` (or not a key in `subcommand_allowlist`) |
+| `SubcommandNotAllowed` | `cmd.run` subcommand not in the allowed list for its base command |
+| `ConcurrentExecLimitExceeded` | The capability's per-call concurrency limit was already hit |
+| `OutputSizeLimitExceeded` | The response body exceeded `max_response_size` |
+
+Tool patterns support exact match (`fs.read`), prefix wildcard (`fs.*`), and
+catch-all (`*`).
+
+**Related:** [Security Contexts](/docs/gateway/security-contexts).
+
+---
+
+## 7. Credential Resolution Path
+
+A **Credential Resolution Path** describes how the gateway gets the secret it
+needs to call an upstream API or pull a container image. Every API spec and
+every CLI tool with a private registry has one. There are five strategies:
+
+| Path | What it does | When to use |
+|---|---|---|
+| `SystemJit` | Calls OpenBao's dynamic secrets engine for a short-lived token | Cloud APIs with first-class OpenBao integration (AWS STS, GCP, database creds) |
+| `HumanDelegated` | Token-exchanges the caller's Zaru/Keycloak JWT for an audience-scoped access token | The user holds the credential; gateway acts on their behalf |
+| `Auto` | Picks `HumanDelegated` if a user token is present, otherwise `SystemJit` | Mixed traffic — agents and humans hitting the same workflow |
+| `StaticRef` | Reads a static secret from OpenBao's KV mount | API keys, webhook secrets, machine-account tokens |
+| `UserBound` | Reads from the orchestrator's `credential_bindings` + `credential_grants` tables (Postgres only), falls back to `HumanDelegated` | Per-user "Bring Your Own Key" — each user attaches their own provider credential |
+
+Resolution is **per-call** and tenant-scoped: when a tenant slug is present,
+OpenBao engine paths are prefixed with `tenant-{slug}/` so two tenants asking
+for "the AWS dynamic creds" get different credentials from different OpenBao
+roles.
+
+**Related:** [Credential Resolution](/docs/gateway/credential-resolution).
+
+---
+
+## 8. Tenant
+
+A **Tenant** is the isolation boundary for everything the gateway owns. The
+tenant slug appears in:
+
+- The JWT claim `tenant_id`
+- The OpenBao engine path prefix (`tenant-{slug}/`)
+- The `tenant_id` column on registered specs, workflows, and security
+  contexts (when set)
+- The `WHERE` clause on `credential_bindings` queries
+
+The rules:
+
+- **Consumer identities cannot delegate.** A token with a consumer identity
+  kind cannot mint a sub-token with a different `tenant_id`.
+- **Service accounts may delegate** when the `delegated_tenant` JWT claim is
+  populated and matches a tenant the service account is authorized for.
+- **Fail-closed.** If the gateway cannot definitively determine the calling
+  tenant, the request is rejected.
+
+Tenancy is not a feature you opt into; every read and every credential
+resolution is tenant-aware by default.
+
+---
+
+## 9. JTI and the Replay Window
+
+Every envelope carries a `jti` (JWT ID). The gateway:
+
+- **Rejects envelopes with no `jti`.**
+- **Rejects envelopes whose `timestamp` is more than 30 seconds off** from
+  the server's monotonic clock (in either direction). This is the **freshness
+  window**.
+- **Records the `jti` of every accepted envelope** in a dedup table.
+- **Rejects any subsequent envelope reusing a recorded `jti`** with a replay
+  error, regardless of whether the signature is still valid.
+- **Cleans expired entries from the dedup table** every 30 seconds via a
+  background task. Entries past the freshness window are safe to forget — a
+  replayed envelope from outside the window will fail the freshness check
+  before the dedup check is even consulted.
+
+This means:
+
+- Replays are blocked even if the attacker captures the entire envelope
+  bytes-for-bytes
+- The dedup table never grows without bound
+- Clients **must** generate a fresh `jti` per call (a ULID or UUIDv7 is
+  appropriate)
+
+**Related:** [SEAL Protocol](/docs/gateway/seal-protocol).
+
+---
+
+## 10. Audit Event
+
+Every action the gateway takes emits a structured **GatewayEvent** to the
+`gateway_events` table. The variants:
+
+| Variant | Emitted when |
+|---|---|
+| `ApiSpecRegistered` | A new OpenAPI spec is registered |
+| `WorkflowRegistered` | A new tool workflow is registered |
+| `CliToolRegistered` | A new ephemeral CLI tool is registered |
+| `WorkflowInvocationStarted` | A workflow invocation begins |
+| `WorkflowStepExecuted` | An individual workflow step completes (success or failure) |
+| `WorkflowInvocationCompleted` | A workflow invocation finishes successfully |
+| `WorkflowInvocationFailed` | A workflow invocation aborts |
+| `ExplorerRequestExecuted` | An Explorer call completes, with pre/post-slice byte counts |
+| `CliToolInvocationStarted` | An ephemeral CLI invocation begins |
+| `CliToolInvocationCompleted` | An ephemeral CLI invocation finishes |
+| `CliToolSemanticRejected` | A CLI invocation was vetoed by the semantic judge |
+| `CredentialExchangeCompleted` | A credential resolution succeeded |
+| `CredentialExchangeFailed` | A credential resolution failed |
+| `ToolCallAuthorized` | A SEAL-verified call passed the policy gate |
+
+Every event carries timestamps, identifiers, and the minimum fields needed to
+reconstruct what happened — but never raw secrets, request bodies, or full
+response bodies. The audit feed is the same data the built-in UI displays and
+that production deployments forward to OpenTelemetry, Loki, or a SIEM.
+
+**Related:** [Observability](/docs/gateway/observability).
+
+---
+
+## 11. Capability (within a SecurityContext)
+
+A **Capability** is a single positive grant inside a SecurityContext.
+Capabilities have one required field — `tool_pattern` — and several optional
+constraints that only apply when the matching tool is invoked:
+
+| Field | Applies to | Effect |
+|---|---|---|
+| `tool_pattern` | All tools | Exact match, prefix wildcard (`fs.*`), or catch-all (`*`) |
+| `path_allowlist` | `fs.*` and `filesystem.*` | The `path` argument must be under one of these prefixes |
+| `command_allowlist` | `cmd.run` | The base executable name must be in this list |
+| `subcommand_allowlist` | `cmd.run` | Map of `base_command -> [allowed subcommands]`. If empty, any subcommand is allowed for that base. |
+| `domain_allowlist` | `web.*` and `web-search.*` | The URL host must end with one of these suffixes |
+| `max_response_size` | All tools | Reject responses larger than this many bytes |
+| `rate_limit` | All tools | Reserved for future enforcement |
+
+Capabilities are evaluated **in order**; the first whose `tool_pattern`
+matches decides the call. That means more-specific patterns should be listed
+first when you want them to win.
+
+---
+
+## Lifecycle of a Single Tool Call
+
+The pieces above all come together on every invocation. Here is what happens
+between `POST /v1/invoke` and the response:
+
+```text
+Client                              Gateway
+  |                                   |
+  |---- POST /v1/invoke (envelope) -->|
+  |                                   |
+  |                          [1] Parse envelope
+  |                          [2] Verify JWT (iss/aud/exp/iat)
+  |                          [3] Verify Ed25519 signature
+  |                          [4] Check timestamp freshness (<= 30s)
+  |                          [5] Check JTI not in replay cache
+  |                          [6] Insert JTI into replay cache
+  |                          [7] Resolve tenant from JWT claim
+  |                          [8] Load named SecurityContext
+  |                          [9] SecurityContext.evaluate(tool, args)
+  |                                  - deny-list check
+  |                                  - capability scan
+  |                                  - default deny
+  |                          [10] Resolve credential per resolution path
+  |                                   (SystemJit / HumanDelegated /
+  |                                    Auto / StaticRef / UserBound)
+  |                          [11] Dispatch to engine:
+  |                                   - Workflow Engine (HTTP chain)
+  |                                   - CLI Engine (container)
+  |                                   - Explorer (one HTTP + JSONPath)
+  |                          [12] Capture result, durations, byte counts
+  |                          [13] Emit GatewayEvent(s):
+  |                                   ToolCallAuthorized
+  |                                   CredentialExchangeCompleted/Failed
+  |                                   WorkflowStepExecuted (per step)
+  |                                   WorkflowInvocationCompleted/Failed
+  |                                   CliToolInvocationStarted/Completed
+  |                                   ExplorerRequestExecuted
+  |                          [14] Persist events to gateway_events
+  |                                   |
+  |<------------- response -----------|
+  |                                   |
+```
+
+If any step from [1] through [9] fails, none of the later steps run — and a
+single rejection event is emitted instead. That is the property the gateway
+exists to give you: nothing reaches an upstream service that has not been
+authenticated, authorized, credential-resolved, and audited first.
+
+---
+
+## Where to Next
+
+- **Operate it**: [Deployment](/docs/gateway/deployment),
+  [Configuration](/docs/gateway/configuration),
+  [Observability](/docs/gateway/observability).
+- **Lock it down**: [Authentication](/docs/gateway/authentication),
+  [Security Contexts](/docs/gateway/security-contexts),
+  [Credential Resolution](/docs/gateway/credential-resolution).
+- **Build tools**: [Registering API Specs](/docs/gateway/registering-api-specs),
+  [Authoring Workflows](/docs/gateway/authoring-workflows),
+  [Ephemeral CLI Tools](/docs/gateway/ephemeral-cli-tools),
+  [API Explorer](/docs/gateway/api-explorer).

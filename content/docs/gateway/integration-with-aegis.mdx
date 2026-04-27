@@ -1,0 +1,240 @@
+---
+title: Integration with AEGIS
+description: How the SEAL Gateway is wired into the AEGIS Orchestrator, including session provisioning, security context coordination, the empty native tool catalog, and co-deployment topology.
+---
+
+# Integration with AEGIS
+
+The SEAL Gateway is a standalone-first product: the same `aegis-seal-gateway`
+binary documented throughout this section is what AEGIS Orchestrator deploys
+alongside itself. If you are coming from the AEGIS docs and wondering "how does
+the gateway plug in?" — almost everything in the rest of this section applies
+unchanged. This page covers only the integration-specific bits: how the
+orchestrator provisions SEAL sessions for executions, how security contexts
+are chosen per agent, the current state of the native tool catalog, and how
+the two services are co-deployed.
+
+<Callout type="info">
+  Read the rest of the gateway documentation first. This page assumes you
+  already understand envelopes, sessions, security contexts, and the
+  management API. It only describes the orchestrator's role as a SEAL client.
+</Callout>
+
+---
+
+## How AEGIS Orchestrator Provisions SEAL Sessions
+
+When an `Execution` aggregate transitions into the `Running` state, the
+orchestrator does not hand the agent container a long-lived shared secret.
+Instead, it provisions a fresh, single-execution SEAL session and embeds the
+private signing key into the runtime environment.
+
+The flow:
+
+1. **Keypair generation.** The orchestrator generates a fresh Ed25519 keypair
+   per execution. The keypair never leaves the orchestrator process until
+   step 3.
+2. **Session registration.** The orchestrator authenticates to the gateway
+   using its operator JWT and calls `POST /v1/seal/sessions`, supplying:
+   - `session_id` — the orchestrator's `ExecutionId` (so audit trails line up)
+   - `public_key` — the public half of the freshly generated keypair
+   - `security_context` — the resolved `scp` for this execution (see below)
+   - `expires_at` — bounded to the execution's wall-clock budget
+3. **Key injection.** The private key is written to the agent container's
+   ephemeral runtime config (a tmpfs mount, never persisted), alongside the
+   gateway endpoint URL and the assigned `session_id`. The agent's SEAL
+   client library reads these on startup and uses them to sign every
+   envelope.
+4. **Session teardown.** When the execution terminates — successfully, on
+   error, on timeout, or on operator cancellation — the orchestrator calls
+   `DELETE /v1/seal/sessions/{session_id}`. The gateway purges the public
+   key and any in-flight nonce state. Replay of captured envelopes after
+   teardown is rejected with `session_not_found`.
+
+This means every execution has its own distinct session and signing key.
+There is no shared "agent identity" across executions, and a leaked private
+key is bounded to a single execution's lifetime.
+
+For the underlying envelope format and verification rules, see
+[Authentication](/docs/gateway/authentication).
+
+<Callout type="warn">
+  The orchestrator's operator JWT is the only credential capable of creating
+  sessions on the gateway. Treat it as a tier-0 secret. The gateway's
+  management API enforces that only callers with `seal.session.create` scope
+  can provision new sessions — agents themselves cannot self-register.
+</Callout>
+
+---
+
+## Security Context Coordination
+
+Every SEAL envelope is evaluated against a named **security context** (the
+`scp` field). The orchestrator chooses this value per execution based on the
+agent's declared capabilities and the requesting user's tier.
+
+The orchestrator and gateway agree on context names by convention. The
+orchestrator knows two surfaces:
+
+- **Chat / MCP surface** — the user's tier context (`zaru-free`,
+  `zaru-pro`, `zaru-business`, `zaru-enterprise`). Applied when an MCP
+  client is calling tools directly on the user's behalf.
+- **Execution surface** — the platform-provided `aegis-system-agent-runtime`
+  context, applied to spawned agent containers. Agents do not inherit the
+  caller's tier context; they run under a context that grants only what
+  the orchestrator needs them to do.
+
+The full model is documented in
+[Configuring Security Contexts](/docs/deployment/configuring-security-contexts).
+The gateway-side view of how a `scp` value resolves into capability rules is
+in [Security Contexts](/docs/gateway/security-contexts).
+
+The integration contract is simple: **the orchestrator stamps `scp` into the
+session at provisioning time, and the gateway evaluates every envelope on
+that session against that context**. The agent cannot escalate by claiming
+a different `scp` in its envelope — the gateway uses the session's bound
+context, not anything the envelope payload claims.
+
+---
+
+## The Native Tool Catalog Is Empty
+
+This is worth stating plainly because it is a common source of confusion for
+operators upgrading from older versions of the platform.
+
+**The gateway no longer ships any native tools.** The catalog of built-in
+`aegis.*` tools that previously lived inside the gateway has been migrated
+into the orchestrator itself, where it belongs — workflow control,
+agent introspection, and task dispatch are first-class orchestrator
+concerns, not gateway concerns.
+
+In the current architecture:
+
+- The gateway's native catalog is intentionally empty.
+- All tools are operator-registered through the management API: REST
+  macro-tools via API specs, multi-step flows via workflows, and CLI
+  binaries via ephemeral container tools.
+- Orchestrator-internal capabilities (`aegis.task.execute`,
+  `aegis.workflow.run`, `aegis.agent.list`, etc.) are served directly by
+  the orchestrator's gRPC API. They never traverse the gateway.
+
+If you are looking for the list of `aegis.*` tools, it lives in the
+orchestrator, not here. See [MCP Tools](/docs/zaru/mcp-tools) for the
+chat-surface view, and the orchestrator's gRPC reference for the wire-level
+API.
+
+<Callout type="info">
+  Practically, this means a fresh gateway deployment exposes zero tools
+  until you register some. That is the correct steady state — the gateway
+  is a policy-enforcement layer, not a tool library.
+</Callout>
+
+---
+
+## When to Use the Gateway vs Orchestrator Built-Ins
+
+For users running both the orchestrator and the gateway, the question of
+"which one does this belong in?" comes up regularly. The decision is almost
+always determined by what the tool *is*, not by preference.
+
+| Need | Goes In | Why |
+|------|---------|-----|
+| Calling an external REST API (Stripe, GitHub, internal services) | **Gateway** (API spec or workflow) | Needs credential resolution, policy enforcement, audit. |
+| Wrapping a CLI binary (`terraform`, `kubectl`, `ffmpeg`) | **Gateway** (ephemeral CLI tool) | Needs sandboxed container execution and argument allowlisting. |
+| Multi-step API choreography with response threading | **Gateway** (workflow) | Deterministic state-machine execution, not LLM reasoning. |
+| Spawning a child agent execution | **Orchestrator** (`aegis.task.execute`) | The execution lifecycle is the orchestrator's domain. |
+| Signaling or querying a workflow FSM | **Orchestrator** (`aegis.workflow.signal`) | Temporal-backed state lives in the orchestrator. |
+| Reading from / writing to an agent volume | **Orchestrator** (storage gateway) | Filesystem authorization is enforced by the storage gateway, not the tooling gateway. |
+| Resolving secrets from OpenBao for a tool call | **Gateway** | Credential resolution happens at envelope-evaluation time. |
+| Iterative LLM execution loop (generate → validate → retry) | **Orchestrator** | This is the 100monkeys loop; the gateway has no role in it. |
+
+The shorthand: **if it talks to something outside the AEGIS pod, it goes
+through the gateway. If it talks to AEGIS itself, it goes through the
+orchestrator.**
+
+---
+
+## Co-Deployment Topology
+
+In a standard AEGIS + Gateway deployment, the two services run as siblings —
+either as separate pods on the same node, or as separate containers in the
+same Podman pod. The orchestrator acts as the operator-JWT issuer for the
+gateway's control plane, and as the SEAL session owner for every execution.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│                          Node / Host                             │
+│                                                                  │
+│  ┌────────────────────────────┐  ┌────────────────────────────┐  │
+│  │   AEGIS Orchestrator       │  │   SEAL Gateway             │  │
+│  │   (aegis-orchestrator)     │  │   (aegis-seal-gateway)     │  │
+│  │                            │  │                            │  │
+│  │  ┌──────────────────────┐  │  │  ┌──────────────────────┐  │  │
+│  │  │ Execution Supervisor │  │  │  │ Envelope Verifier    │  │  │
+│  │  │  - generates Ed25519 │──┼──┼─▶│  - checks signature  │  │  │
+│  │  │    keypair / exec    │  │  │  │  - checks nonce      │  │  │
+│  │  │  - POST /sessions    │  │  │  │  - resolves scp      │  │  │
+│  │  └──────────────────────┘  │  │  └──────────────────────┘  │  │
+│  │                            │  │                            │  │
+│  │  ┌──────────────────────┐  │  │  ┌──────────────────────┐  │  │
+│  │  │ Operator JWT Issuer  │──┼──┼─▶│ Management API Auth  │  │  │
+│  │  │  (signs control      │  │  │  │  (validates JWTs     │  │  │
+│  │  │   plane JWTs)        │  │  │  │   for session +      │  │  │
+│  │  └──────────────────────┘  │  │  │   tool registration) │  │  │
+│  │                            │  │  └──────────────────────┘  │  │
+│  │  ┌──────────────────────┐  │  │                            │  │
+│  │  │ Tool Dispatch        │  │  │  ┌──────────────────────┐  │  │
+│  │  │  - aegis.* internal  │  │  │  │ Tool Executors       │  │  │
+│  │  │  - SEAL gateway for  │  │  │  │  - HTTP / API specs  │  │  │
+│  │  │    everything else   │  │  │  │  - Workflows         │  │  │
+│  │  └──────────────────────┘  │  │  │  - Ephemeral CLI     │  │  │
+│  └────────────┬───────────────┘  │  └──────────────────────┘  │  │
+│               │                  └────────────┬───────────────┘  │
+│               │                               │                  │
+│               ▼                               ▼                  │
+│  ┌────────────────────────┐    ┌────────────────────────────┐    │
+│  │  Agent Container       │    │  External Tools / APIs     │    │
+│  │  (Podman, ephemeral)   │    │  (GitHub, Stripe, k8s API, │    │
+│  │   - holds SEAL priv key│    │   internal services, CLIs) │    │
+│  │   - signs envelopes ───┼───▶│                            │    │
+│  │   - calls gateway       │    │                            │    │
+│  └────────────────────────┘    └────────────────────────────┘    │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Key properties of this topology:
+
+- **The agent talks to the gateway, not the orchestrator,** for every tool
+  call that resolves to a registered gateway tool. The orchestrator is not
+  in the hot path.
+- **The orchestrator talks to the gateway** only for control-plane
+  operations: session lifecycle and (occasionally) tool registration on
+  behalf of an operator.
+- **The gateway never talks back to the orchestrator** for authorization
+  decisions. Every decision the gateway makes is local, based on its own
+  config, its own session table, and its own policy engine.
+- **Both services share the same OpenBao instance** for credential
+  resolution, but they hold independent OpenBao tokens with disjoint
+  policies. The orchestrator cannot read tool credentials; the gateway
+  cannot read agent-runtime secrets.
+
+For the deployment-mechanics view (Podman pod definitions, env vars,
+networking), see [Deployment](/docs/gateway/deployment).
+
+---
+
+## Summary
+
+If you are running AEGIS Orchestrator, the gateway is already part of your
+stack — the orchestrator provisions per-execution SEAL sessions, stamps the
+correct security context, injects signing keys into agent containers, and
+tears sessions down on completion. You do not need to do anything extra to
+get this behavior; it is the default.
+
+What you *do* need to do is register the tools your agents will use. The
+gateway ships empty. Use the management API and the authoring guides
+([API Specs](/docs/gateway/registering-api-specs),
+[Workflows](/docs/gateway/authoring-workflows),
+[Ephemeral CLI Tools](/docs/gateway/ephemeral-cli-tools)) to build the
+catalog your agents need.

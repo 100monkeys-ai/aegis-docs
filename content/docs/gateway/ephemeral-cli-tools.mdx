@@ -1,0 +1,258 @@
+---
+title: Ephemeral CLI Tools
+description: Register Docker images the gateway runs once per invocation — subcommand allowlists, the optional semantic judge, and worked examples for terraform, kubectl, gh, and aws.
+---
+
+# Ephemeral CLI Tools
+
+An **ephemeral CLI tool** is a Docker image the gateway runs once per agent invocation, captures `stdout`/`stderr`/`exit_code` from, and then destroys. There is no long-running container, no warm pool, and no shared state between invocations.
+
+This shape exists for tool surfaces that don't fit cleanly behind an HTTP API: `terraform`, `kubectl`, `gh`, `aws`, `psql`, and similar command-line tools that already package the right network/auth code in their official images.
+
+<Callout type="info">
+  Ephemeral means ephemeral. Every invocation gets a fresh container with `--rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges`. State you want to keep must live on a mounted volume or be returned through the captured stdout.
+</Callout>
+
+---
+
+## Why ephemeral?
+
+| Property | Consequence |
+|---|---|
+| **Stateless** | No filesystem mutation survives the container. Every run is reproducible from inputs. |
+| **Reproducible** | The image tag is the contract. A workflow run a month from now uses the same code as the run today (subject to image-pull policy). |
+| **Sandboxed** | Default flags drop all capabilities, disable the network, and mount the rootfs read-only. The only writable surfaces are explicitly mounted volumes. |
+| **No host contamination** | Failed runs cannot leave config files, credential caches, or background processes on the host. The container is removed regardless of exit code. |
+
+---
+
+## The shape of a CLI tool
+
+The `POST /v1/cli-tools` request body has these fields:
+
+| Field | Type | Required | Purpose |
+|---|---|---|---|
+| `name` | string | yes | Tool name as the agent sees it (e.g. `terraform`, `kubectl`). Must be unique per tenant. |
+| `description` | string | yes | Surfaced in the unified `GET /v1/tools` listing. |
+| `docker_image` | string | yes | A fully qualified image reference, including tag (e.g. `hashicorp/terraform:1.9`). Latest tags are accepted but not recommended. |
+| `allowed_subcommands` | string[] | yes | Allowlist of permitted first-positional arguments. The list cannot be empty. |
+| `require_semantic_judge` | bool | yes | When `true`, every invocation is forwarded to the configured semantic judge LLM for an allow/deny decision before the container starts. |
+| `default_timeout_seconds` | u32 | yes | Per-invocation wall-clock cap. **Must be ≤ 300** (the engine rejects anything larger as a validation error). |
+| `registry_credential_path` | object \| null | no | A [credential resolution path](/docs/gateway/credential-resolution) used to pull the image from a private registry. Omit for public images. |
+
+There are deliberate omissions from the registration shape:
+
+- **No `allowed_envs` field.** The gateway does not pass environment variables from agent inputs into the container. If the upstream CLI needs configuration, surface it through subcommand arguments or pre-baked image config.
+- **No `mounts` field on the registration.** Filesystem mounts are decided per invocation, not per tool. The agent's invoke request supplies a list of FSAL mounts (NFS-backed volumes) which the gateway materializes as Docker volumes inside the container. Every CLI invocation requires at least one FSAL mount — the gateway rejects invocations with zero mounts as a validation error.
+- **No separate API credential path.** A CLI tool exposes only `registry_credential_path`, used for `docker login` to pull the image. Credentials the CLI itself needs (a kubeconfig, an AWS profile, a Terraform Cloud token) must come from the mounted volume — typically a tenant-managed `secrets` volume — or from a pre-configured image.
+
+---
+
+## Subcommand allowlist semantics
+
+`allowed_subcommands` is an exact-match allowlist on the **first positional argument** the agent passes. It is the cheap, deterministic gate that runs before any LLM judge.
+
+- The agent supplies `subcommand` and `args` in the invoke request.
+- The gateway invokes the container as `<image> <subcommand> <args...>`.
+- If `subcommand` is not in `allowed_subcommands`, the gateway rejects the invocation as `Forbidden` and emits a `CliToolSemanticRejected` event with reason `"subcommand 'X' is not in allowed_subcommands"`. **No container is started.**
+- The contents of `args` are **not** matched against any allowlist. Once `subcommand` is permitted, every argument that follows is passed through to the upstream CLI verbatim.
+
+That last point is important: an attacker who controls `args` can in principle do anything the upstream CLI permits under the chosen subcommand. The semantic judge is the second-stage defense for this — see below.
+
+```text
+agent: { "subcommand": "plan", "args": ["-out=plan.out", "-var=region=us-east-1"] }
+gateway runs: hashicorp/terraform:1.9 plan -out=plan.out -var=region=us-east-1
+```
+
+If the tool's `allowed_subcommands` is `["plan", "apply", "output"]`, this invocation passes the allowlist. The judge decides whether the full command, including args, is acceptable.
+
+---
+
+## The semantic judge
+
+When `require_semantic_judge` is `true`, every invocation that passes the allowlist is forwarded to the gateway's configured semantic judge LLM. The judge sees:
+
+- the tool name
+- the chosen subcommand
+- the full args list
+- the agent's current security context name
+
+It returns `{ "allowed": bool, "reason": string }`. If the verdict is `false`, the gateway rejects the invocation as `Forbidden`, emits `CliToolSemanticRejected` with the judge's reason, and never starts the container.
+
+The judge endpoint is configured by the operator at deploy time as `SEAL_GATEWAY_SEMANTIC_JUDGE_URL`. The gateway is **fail-closed**: if the URL is unset and a tool requires a judge, every invocation of that tool returns an internal error (`"semantic judge is required for this tool but SEAL_GATEWAY_SEMANTIC_JUDGE_URL is not configured"`). If the URL is set but the endpoint is unreachable or returns a non-2xx status, the invocation is rejected. The gateway will not silently fall through to "allow" when the judge is unavailable.
+
+| Tool risk profile | Recommended `require_semantic_judge` |
+|---|---|
+| Read-only and idempotent (`kubectl get`, `aws s3 ls`) | `false` — allowlist alone is sufficient |
+| State-changing or destructive (`terraform apply`, `kubectl delete`) | `true` — every command is judged |
+| Mixed surface where some args mean "destructive" (`gh pr`) | `true` — the judge is the only place that can read intent from args |
+
+---
+
+## Container runtime selection
+
+The gateway invokes containers through whatever binary is configured as `cli.container_cli`. The default is `docker`; the platform deployment uses `podman` for rootless isolation. The configured binary must be reachable from the gateway process and must implement the `run`, `login`, and `logout` subcommands.
+
+The runtime gets these flags on every invocation:
+
+```text
+run --rm --network none --read-only --security-opt no-new-privileges --cap-drop ALL
+    --mount type=volume,src=...,dst=...,volume-driver=local,volume-opt=type=nfs,...
+    -w /workspace
+    <docker_image> <subcommand> <args...>
+```
+
+Network is **disabled** by default. A CLI tool that needs to talk to an external API — `kubectl` to a control plane, `aws` to an AWS endpoint — currently cannot, with this set of flags. This is a real constraint of the current implementation: the engine hard-codes `--network none` rather than exposing it as per-tool config. If your tool needs network access, the gateway is not yet the right surface for it.
+
+---
+
+## Volume mounts
+
+Mounts are supplied per invocation by the agent, not per tool by the operator. Each `CliFsalMount` specifies:
+
+- a `volume_id` — a stable identifier for the underlying tenant volume
+- a `mount_path` — where the volume appears inside the container
+- a `read_only` flag
+- a `remote_path` — the path inside the volume that should be mounted
+
+The gateway materializes each mount as a Docker NFS-backed volume pointing at the platform's FSAL NFS server. The volume is named `aegis-cli-<execution_id>-<volume_id>`, with non-alphanumeric characters sanitized to dashes.
+
+The container is launched with `-w /workspace`, so a CLI that runs in the working directory will land inside whatever volume is mounted at `/workspace`. By convention, the tenant's primary working volume is mounted there; supporting volumes (for example a read-only `secrets` volume) are mounted at other paths.
+
+<Callout type="warn">
+  **Mount path security.** `read_only` is honored as the `,ro` suffix on the bind. Mount paths inside the container are exactly what the agent supplies — there is no validation that the path is outside `/etc`, `/proc`, etc. Operators should rely on the rootless container runtime and the SEAL session's allowed-tools patterns to bound which agents can request which mounts, not on path validation in the CLI engine.
+</Callout>
+
+---
+
+## Worked examples
+
+### Terraform
+
+```bash
+curl -X POST https://gateway.example.com/v1/cli-tools \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "terraform",
+    "description": "Run terraform plan/apply/output against a tenant working volume",
+    "docker_image": "hashicorp/terraform:1.9",
+    "allowed_subcommands": ["plan", "apply", "output"],
+    "require_semantic_judge": true,
+    "default_timeout_seconds": 300
+  }'
+```
+
+Every invocation goes through the judge because `apply` is destructive and even `plan` may shell out to providers that hit live infrastructure. The 300-second cap is the engine maximum.
+
+### kubectl (read-only)
+
+```bash
+curl -X POST https://gateway.example.com/v1/cli-tools \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "kubectl",
+    "description": "Read-only Kubernetes diagnostics",
+    "docker_image": "bitnami/kubectl:latest",
+    "allowed_subcommands": ["get", "describe", "logs"],
+    "require_semantic_judge": false,
+    "default_timeout_seconds": 60
+  }'
+```
+
+The allowlist is the only gate here — none of the permitted subcommands mutate cluster state, so the judge round-trip is unnecessary. A kubeconfig would have to be supplied through a mounted volume.
+
+### gh (GitHub CLI)
+
+```bash
+curl -X POST https://gateway.example.com/v1/cli-tools \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "gh",
+    "description": "GitHub PR and issue automation",
+    "docker_image": "cli/cli:latest",
+    "allowed_subcommands": ["pr", "issue"],
+    "require_semantic_judge": true,
+    "default_timeout_seconds": 60
+  }'
+```
+
+The judge is required because `gh pr create` is creative, `gh pr close` is destructive, and the difference is in the args. The allowlist only permits the top-level `pr` and `issue` subcommands; the judge reads intent from what comes next.
+
+### aws
+
+```bash
+curl -X POST https://gateway.example.com/v1/cli-tools \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "awscli",
+    "description": "AWS CLI for S3 and EC2 inspection",
+    "docker_image": "amazon/aws-cli:latest",
+    "allowed_subcommands": ["s3", "ec2"],
+    "require_semantic_judge": true,
+    "default_timeout_seconds": 120,
+    "registry_credential_path": {
+      "SystemJit": {
+        "openbao_engine_path": "ecr",
+        "role": "image-puller"
+      }
+    }
+  }'
+```
+
+This example demonstrates `registry_credential_path`. The image lives in a private ECR registry; the gateway exchanges short-lived registry credentials from OpenBao at invocation time, runs `<container_cli> login` against them, pulls the image, then logs out after the run. The credentials never persist on disk past the invocation.
+
+---
+
+## Lifecycle
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/cli-tools` | `POST` | Register a new tool. |
+| `/v1/cli-tools` | `GET` | List tools visible to the caller's tenant. |
+| `/v1/cli-tools/{name}` | `DELETE` | Remove a tool. |
+
+There is no `GET /v1/cli-tools/{name}` and no `PUT` endpoint. To change a tool definition, delete and re-register. Tool names are unique per tenant, so the second registration with the same name overwrites the first only if the previous record has been deleted; otherwise the database constraint rejects the duplicate.
+
+---
+
+## Tenant scope
+
+Like API specs and workflows, every CLI tool is registered against the caller's tenant. Tools with `tenant_id = null` are system-global and visible to all tenants; populated `tenant_id` scopes the tool to that tenant only.
+
+---
+
+## Audit events
+
+| Event | When |
+|---|---|
+| `CliToolRegistered` | After a successful `POST /v1/cli-tools`. Records the tool name and image. |
+| `CliToolInvocationStarted` | When the container is about to be launched, after the allowlist and judge have passed. |
+| `CliToolInvocationCompleted` | When the container exits (success or failure). Records the exit code, captured `stdout`/`stderr` byte lengths, and total duration. |
+| `CliToolSemanticRejected` | When either the allowlist or the semantic judge rejects an invocation. The container is **never started** for a rejected event. |
+| `CredentialExchangeCompleted` / `CredentialExchangeFailed` | Once per invocation that requires a registry credential exchange. |
+
+Stdout and stderr are captured up to 1 MiB each; anything beyond that is truncated. The captured bodies are returned in the invocation response but are **not** persisted in the audit event itself — the event records only the byte length, not the content.
+
+---
+
+## Common errors
+
+| Status | Cause |
+|---|---|
+| `400 Validation` | `name` empty; `allowed_subcommands` empty; `default_timeout_seconds` greater than 300; `docker_image` empty. |
+| `403 Forbidden` | Subcommand not in allowlist; semantic judge returned `allowed: false`; tenant mismatch on the invocation request. |
+| `500 Internal` (at invoke time) | Semantic judge required but `SEAL_GATEWAY_SEMANTIC_JUDGE_URL` is not configured; container runtime failed to spawn; container login or logout against a private registry failed; invocation exceeded `default_timeout_seconds`. |
+
+A timeout returns `Internal("cli invocation timeout")` rather than a dedicated error variant — that is a current implementation detail, not policy.
+
+---
+
+## Next steps
+
+- [Authoring Workflows](/docs/gateway/authoring-workflows) — for HTTP-shaped upstreams that don't justify a Docker image per call.
+- [Credential Resolution](/docs/gateway/credential-resolution) — for picking the right `registry_credential_path` strategy.
+- [Security Contexts](/docs/gateway/security-contexts) — security contexts gate which agents can invoke which tools, independently of allowlists and the judge.

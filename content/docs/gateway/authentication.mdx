@@ -1,0 +1,277 @@
+---
+title: Authentication
+description: How operators and agents authenticate to the SEAL Gateway — operator JWTs for the control plane and SEAL envelopes for tool invocation.
+---
+
+# Authentication
+
+The SEAL Gateway has two completely separate authentication surfaces. Confusing them is the most common source of `401` and `403` responses, so understand the split before you touch a config file.
+
+```text
+                              SEAL Gateway
+                              ┌──────────────────────────────────┐
+  Lane 1: control plane       │                                  │
+  ─────────────────────       │  /v1/specs                       │
+                              │  /v1/workflows                   │
+  human / operator / CI       │  /v1/cli-tools                   │
+  ──────────────────────────► │  /v1/security-contexts           │
+  Authorization: Bearer <JWT> │  /v1/seal/sessions               │
+  (Keycloak / any OIDC IdP)   │  ──────────────────────────────  │
+                              │  Validates JWT against JWKS,     │
+                              │  checks issuer + audience,       │
+                              │  enforces operator role claim.   │
+                              │                                  │
+  Lane 2: invocation          │                                  │
+  ───────────────────────     │  /v1/invoke                      │
+                              │  /v1/seal/invoke                 │
+  agent / automation          │  ──────────────────────────────  │
+  ──────────────────────────► │  Validates SEAL envelope:        │
+  POST SealEnvelope JSON      │   1. JWT security_token claims   │
+                              │   2. Ed25519 signature against   │
+                              │      session public key          │
+                              │   3. JTI freshness window        │
+                              │   4. Allowed tool pattern match  │
+                              │                                  │
+                              └──────────────────────────────────┘
+```
+
+Lane 1 lets a human (or service account) **register** the things the gateway will later police: API specs, workflows, CLI tools, security contexts, and SEAL sessions. Lane 2 lets an agent **call** those registered tools through a cryptographically authenticated, signed-payload envelope. Both lanes can be hardened, both can be disabled together for local development, and both must be configured before the gateway is exposed to anything you care about.
+
+---
+
+## Operator JWT (control plane)
+
+Every request to a `/v1/...` management endpoint that is not `/v1/invoke` or `/v1/seal/invoke` requires a Bearer JWT in the `Authorization` header. The gateway resolves the signing key over JWKS and validates the token against the configured issuer, audience, and role claim.
+
+### IdP requirements
+
+The gateway is JWKS-driven. Keycloak is the default and best-tested issuer, but **any OIDC provider that exposes a JWKS endpoint will work** — Auth0, Okta, Azure AD, Cognito, Dex, Authentik. The gateway has no Keycloak-specific dependency on this lane.
+
+### Required claims
+
+| Claim | Required value | Configured by |
+|-------|---------------|---------------|
+| `iss` | Must equal `SEAL_GATEWAY_OPERATOR_JWT_ISSUER` | IdP realm / tenant |
+| `aud` | Must equal `SEAL_GATEWAY_OPERATOR_JWT_AUDIENCE` | IdP client / API audience mapping |
+| `<role-claim>` | Must equal `aegis:operator` or `aegis:admin` | IdP role mapper |
+| `tenant_id` | Tenant slug for tenant-scoped resources | IdP user attribute / mapper |
+| `preferred_username` | Used to detect service-account identities (prefix `service-account-`) | Keycloak default; emit explicitly on other IdPs |
+
+The role claim's name defaults to `aegis_role`. Override it with `SEAL_GATEWAY_OPERATOR_ROLE_CLAIM` if your IdP cannot emit a claim by that name. The accepted values are fixed: `aegis:operator` and `aegis:admin`. Anything else returns `403`.
+
+<Callout type="info">
+The gateway also accepts an `identity_kind` claim with the literal value `service_account` (or `service-account`) to flag service-account identities on IdPs that do not follow the Keycloak `service-account-*` username convention.
+</Callout>
+
+### JWKS cache
+
+The gateway caches the JWKS document for **300 seconds by default**. Tune with:
+
+```bash
+SEAL_GATEWAY_JWKS_CACHE_TTL_SECS=300
+```
+
+If a token presents a `kid` not in the cache, the gateway force-refreshes the JWKS once before rejecting the request. Key rotations propagate within one cache window without operator action.
+
+### Calling the control plane
+
+```bash
+TOKEN="$(curl -s \
+  -d "client_id=zaru-cli" \
+  -d "client_secret=$ZARU_CLI_SECRET" \
+  -d "grant_type=client_credentials" \
+  https://keycloak.example.com/realms/aegis/protocol/openid-connect/token \
+  | jq -r '.access_token')"
+
+curl -sS https://gateway.example.com/v1/specs \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Inspecting a token
+
+When the gateway returns `401` or `403`, the first thing to do is look at the token. JWTs are not encrypted; the payload is base64url-encoded JSON.
+
+```bash
+echo "$TOKEN" \
+  | cut -d. -f2 \
+  | base64 -d 2>/dev/null \
+  | jq .
+```
+
+Confirm that `iss`, `aud`, the role claim, and `tenant_id` match what the gateway expects. Paste the token into [jwt.io](https://jwt.io) for an interactive view if you prefer a browser. **Do not paste production tokens into third-party sites.**
+
+---
+
+## SEAL envelope (invocation)
+
+`/v1/invoke` and `/v1/seal/invoke` accept a single payload type — a SEAL envelope. The envelope wraps the actual MCP-style tool call in two cryptographic layers that the gateway verifies on every request.
+
+### The two layers
+
+1. **`security_token`** — a JWT signed by the SEAL token issuer. Carries the calling identity, the security context to apply, and the tenant binding.
+2. **`signature`** — a base64-encoded **Ed25519 signature** over the canonical payload, produced by a session-specific keypair. Proves that the request was authored by the holder of the session's private key, not just by a holder of the JWT.
+
+If either layer fails, the request is rejected before any policy evaluation, credential resolution, or upstream traffic.
+
+### Required JWT claims
+
+| Claim | Meaning |
+|-------|---------|
+| `iss` | Must match `SEAL_GATEWAY_SEAL_JWT_ISSUER` |
+| `aud` | Must match `SEAL_GATEWAY_SEAL_JWT_AUDIENCE` |
+| `jti` | Unique token identifier; used for replay detection |
+| `scp` | The name of the `SecurityContext` to apply on this call |
+| `tenant_id` | Tenant the call is scoped to (see Multi-Tenancy below) |
+| `iat` | Issued-at, used together with `timestamp` for freshness |
+| `exp` | Expiry; rejected hard once past |
+
+The envelope's outer `timestamp` field must also fall within a **30-second freshness window** of the gateway's clock. The `jti` is deduplicated within that same window — replays are dropped, not just rejected.
+
+### Generating an Ed25519 keypair
+
+The session's signing keypair lives on the caller; only the public key is registered with the gateway.
+
+```bash
+# Generate a new Ed25519 private key (PEM, PKCS8).
+openssl genpkey -algorithm ed25519 -out seal-session.key
+
+# Extract the matching public key (PEM, SubjectPublicKeyInfo).
+openssl pkey -in seal-session.key -pubout -out seal-session.pub
+
+# Inspect to confirm.
+openssl pkey -in seal-session.key -text -noout
+```
+
+For `seal_jwt_public_key_pem` (used when the gateway must verify SEAL JWTs signed with an EdDSA key it owns directly), pass the contents of `seal-session.pub` verbatim — keep the `-----BEGIN PUBLIC KEY-----` / `-----END PUBLIC KEY-----` boundary intact.
+
+For session registration, the gateway expects the **base64-encoded raw 32-byte public key** in `public_key_b64`, not the PEM. Extract it from the PEM once:
+
+```bash
+openssl pkey -in seal-session.key -pubout -outform DER \
+  | tail -c 32 \
+  | base64
+```
+
+Store the private key with file permissions `0600` and never copy it off the host that signs.
+
+### SEAL session lifecycle
+
+A SEAL session binds a public key, a security context, and a list of allowed tool patterns to a specific `(execution_id, agent_id)` for a bounded lifetime. Sessions are created over the **operator** lane and consumed over the **invocation** lane.
+
+#### Create a session
+
+```bash
+curl -sS -X POST https://gateway.example.com/v1/seal/sessions \
+  -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "execution_id":   "exec-2026-04-27-abc123",
+    "agent_id":       "code-reviewer",
+    "security_context": "read-only-aws",
+    "public_key_b64": "Ml9k...",
+    "security_token": "<JWT minted for this session>",
+    "expires_at":     "2026-04-27T18:00:00Z",
+    "allowed_tool_patterns": ["aws_s3_*", "aws_ec2_describe_*"]
+  }'
+```
+
+Field semantics:
+
+- `execution_id` is the lookup key. The agent presents it (encoded in its envelope's tracking metadata) and the gateway looks up the matching session row.
+- `public_key_b64` is the raw 32-byte Ed25519 key, base64. This is what the gateway uses to verify the envelope's `signature`.
+- `allowed_tool_patterns` is a glob list. A call to a tool not matched by any pattern is rejected as out-of-session, **regardless** of what the named `security_context` would otherwise allow. Default if omitted: `["*"]`.
+- `expires_at` defaults to one hour from creation if omitted.
+
+#### List, fetch, revoke
+
+```bash
+# List active sessions in the caller's tenant.
+curl -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  https://gateway.example.com/v1/seal/sessions
+
+# Fetch one.
+curl -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  https://gateway.example.com/v1/seal/sessions/exec-2026-04-27-abc123
+
+# Revoke immediately.
+curl -X DELETE -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  https://gateway.example.com/v1/seal/sessions/exec-2026-04-27-abc123
+```
+
+Revocation is synchronous. The next envelope referencing the deleted session fails session-lookup before signature verification runs.
+
+---
+
+## Disabling auth for development
+
+For local development against an in-memory gateway, set:
+
+```bash
+SEAL_GATEWAY_AUTH_DISABLED=true
+```
+
+This bypass disables **both** authentication surfaces simultaneously. Operator endpoints accept any (or no) `Authorization` header, and invocation endpoints accept envelopes without verifying the JWT or the Ed25519 signature.
+
+<Callout type="warn">
+**Never** run a gateway with `SEAL_GATEWAY_AUTH_DISABLED=true` outside an isolated developer machine. With auth disabled, anyone who can reach the gateway's port can register security contexts, mint sessions, and invoke registered tools — including any cloud credentials those tools resolve. Treat this flag like a debug breakpoint left in production: at best embarrassing, at worst catastrophic.
+</Callout>
+
+When auth is disabled, the gateway injects a `TenantContext` with `tenant_id = None` and `identity_kind = Consumer` so downstream tenant-scoped queries still function (returning shared / un-tenanted resources). It does not synthesize a tenant slug.
+
+---
+
+## Multi-tenancy enforcement
+
+Every authenticated request carries a tenant identity. The gateway derives it differently depending on the lane and enforces it fail-closed.
+
+### Consumer identities (regular users)
+
+A consumer JWT's `tenant_id` claim **is** the calling tenant. The caller cannot override it. If a request payload attempts to set a different `tenant_id`, the gateway rejects the request — consumers are bound strictly to their authenticated tenant.
+
+### Service account identities
+
+Service-account identities **may** delegate by setting a `tenant_id` claim that differs from the account's own tenant, allowing platform automations (notably the orchestrator) to act on behalf of any tenant they manage. The gateway detects service accounts in two ways:
+
+- **Explicit:** `identity_kind` claim equals `service_account` (or `service-account`).
+- **Conventional:** `preferred_username` begins with `service-account-` (the Keycloak default for client credentials grants).
+
+Either signal flips the request to `IdentityKind::ServiceAccount`, after which the `tenant_id` claim is treated as authoritative for scoping reads, writes, credential resolution, and audit attribution.
+
+### Fail-closed posture
+
+A SEAL invocation that arrives without a parseable, non-empty `tenant_id` claim is rejected with `401` before downstream handlers run. Earlier behavior fell back to `None` and inherited shared-tenant scope; that path was a tenant-isolation leak and has been removed. There is no legitimate code path that produces an empty `TenantContext` for an authenticated call.
+
+Every mismatch produces an audit event with the JWT subject, the asserted tenant, and the expected tenant. Watch for these in Loki under `gateway_event="TenantMismatch"`.
+
+---
+
+## Common pitfalls
+
+### Clock skew
+
+If the gateway host and the SEAL signer disagree by more than 30 seconds, **every** envelope is rejected as stale or future-dated. Symptoms: `1003 timestamp outside freshness window`, even though the token "just" minted.
+
+```bash
+# Verify clock sync on the gateway host.
+timedatectl status | grep "synchronized"
+
+# On the signer side, the same.
+ntpq -p
+```
+
+Run NTP on both sides. Clock drift on a long-running signer is a predictable failure mode; the freshness window is deliberately tight to keep the replay cache small.
+
+### Public key mismatch
+
+If the `public_key_b64` registered with the session does not match the private key that produced the envelope's signature, every call fails with `1004 signature verification failed`. The most common cause is registering the **PEM** content where the gateway expects the **base64-encoded raw 32-byte key**, or vice versa. Re-extract the public key from the live private key file and re-register the session.
+
+### Wrong issuer / audience
+
+`401 invalid token` with no other detail almost always means `iss` or `aud` does not match the gateway's expectation. Double-check:
+
+- The JWT's `iss` matches `SEAL_GATEWAY_OPERATOR_JWT_ISSUER` (or `SEAL_GATEWAY_SEAL_JWT_ISSUER`) **character-for-character**, including the trailing slash. `https://kc.example.com/realms/aegis` and `https://kc.example.com/realms/aegis/` are different issuers.
+- The JWT's `aud` is a string equal to `SEAL_GATEWAY_OPERATOR_JWT_AUDIENCE`, or an array containing it. Some IdPs default to setting `aud` to the client ID, which often is not what you want — add an audience mapper.
+
+### Missing or wrong role
+
+`403 forbidden` after the token clearly validates: the token is fine, but the role claim is missing or holds something other than `aegis:operator` / `aegis:admin`. Check the role mapper on the IdP client and confirm `SEAL_GATEWAY_OPERATOR_ROLE_CLAIM` matches the claim name your IdP actually emits.

@@ -1,0 +1,213 @@
+---
+title: Observability
+description: Structured logs, audit events, and the telemetry surfaces the SEAL Gateway exposes today — plus the gaps you need to know about.
+---
+
+# Observability
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The gateway gives you two observability surfaces: **structured logs**
+emitted by `tracing` and **audit events** persisted to the
+`gateway_events` table. Between them you can answer most "what happened
+when, and why" questions without instrumenting anything else.
+
+What you do not get — yet — is a Prometheus scrape endpoint or an OTLP
+trace exporter. Both are on the roadmap; today the gateway is observable
+through logs and the audit table only. Plan accordingly.
+
+---
+
+## Structured Logging
+
+Logging is provided by [`tracing`](https://docs.rs/tracing) plus
+`tracing-subscriber::EnvFilter`. The filter directive comes from the
+`RUST_LOG` environment variable.
+
+The gateway initializes the subscriber once at startup with the default
+`fmt` layer, which writes human-readable lines to stderr. Structured JSON
+output is **not** enabled in the current build — if you need machine-parsed
+logs, capture stderr through a log shipper that does the parsing (Vector,
+Fluent Bit, the OTel Collector's `filelog` receiver) until JSON output
+lands.
+
+### Filter recipes
+
+Common `RUST_LOG` values:
+
+| Goal | `RUST_LOG` |
+|---|---|
+| Quiet production | `info,h2=warn,sqlx=warn` |
+| Debug a single deployment | `info,aegis_seal_gateway=debug` |
+| Trace credential resolution | `info,aegis_seal_gateway::application::credential=trace` |
+| Trace SEAL envelope verification | `info,aegis_seal_gateway::infrastructure::auth=trace` |
+| Trace CLI tooling end-to-end | `info,aegis_seal_gateway::application::cli=trace` |
+| Trace workflow execution | `info,aegis_seal_gateway::application::workflow=trace` |
+| Errors only (high-volume prod) | `error` |
+| Maximum noise (debugging only) | `trace` |
+
+Restart the process to apply a new filter — there is no live-reload
+endpoint. See [Configuration](/docs/gateway/configuration#logging-configuration)
+for the precedence rules.
+
+### Notable log lines
+
+The gateway emits a handful of high-signal lines every operator should
+recognize on sight.
+
+| Line (substring) | Meaning |
+|---|---|
+| `aegis-seal-gateway listening on 0.0.0.0:8089` | HTTP server bound. |
+| `aegis-seal-gateway gRPC listening on 0.0.0.0:50055` | gRPC server bound. |
+| `Container CLI resolved binary=podman version=…` | Ephemeral CLI engine is wired up. |
+| `JTI cleanup failed: …` | The 30-second JTI sweep hit an error. Check DB connectivity. |
+| `database pool acquire timed out` | DB connection starvation. See below. |
+
+### Pool-timeout signal
+
+When the database pool is exhausted, the gateway logs a line like:
+
+```text
+ERROR sqlx::pool: database pool acquire timed out — request path starved
+```
+
+This means a request held a connection longer than the pool deadline (or
+there are simply not enough connections for the offered load). Two ways to
+react:
+
+1. **Raise pool capacity.** The pool size is configured by `sqlx`'s
+   defaults; for sustained high load, scale the database tier (more
+   replicas, larger instance, more connection headroom).
+2. **Scale the gateway horizontally.** If you are already on Postgres,
+   adding gateway replicas spreads the connection demand. SQLite cannot
+   benefit from this — switch to Postgres before adding replicas.
+
+If you see this line in steady state, do not paper over it with a longer
+timeout. It signals that the database is the bottleneck.
+
+---
+
+## Audit Events
+
+Every state-changing or invocation-shaped action persists a row to
+`gateway_events` with a typed payload. This is the authoritative log of what
+the gateway has done. The payload column is JSON; the `event_type` column
+is the variant tag below.
+
+| Event | When emitted | Key fields |
+|---|---|---|
+| `ApiSpecRegistered` | After `POST /v1/specs` succeeds. | `spec_id`, `name`, `registered_by`, `registered_at` |
+| `WorkflowRegistered` | After `POST /v1/workflows` succeeds. | `workflow_id`, `name`, `step_count`, `registered_by`, `registered_at` |
+| `CliToolRegistered` | After `POST /v1/cli-tools` succeeds. | `name`, `docker_image`, `registered_at` |
+| `WorkflowInvocationStarted` | The workflow engine accepts an invocation. | `workflow_id`, `execution_id`, `name`, `started_at` |
+| `WorkflowStepExecuted` | After each individual step's HTTP call resolves. | `workflow_id`, `execution_id`, `step_name`, `http_status`, `duration_ms`, `executed_at` |
+| `WorkflowInvocationCompleted` | All steps succeeded. | `workflow_id`, `execution_id`, `total_steps`, `duration_ms`, `completed_at` |
+| `WorkflowInvocationFailed` | A step failed and `on_error: fail` aborted the workflow. | `workflow_id`, `execution_id`, `failed_step`, `reason`, `failed_at` |
+| `ExplorerRequestExecuted` | After a `POST /v1/explorer` call resolves. | `execution_id`, `api_spec_id`, `operation_id`, `fields_requested`, `response_bytes_before_slice`, `response_bytes_after_slice`, `executed_at` |
+| `CliToolInvocationStarted` | Container is about to be launched. | `execution_id`, `tool_name`, `docker_image`, `command`, `args`, `tenant_id`, `started_at` |
+| `CliToolInvocationCompleted` | Container exited (success or failure). | `execution_id`, `tool_name`, `exit_code`, `stdout_bytes`, `stderr_bytes`, `duration_ms`, `completed_at` |
+| `CliToolSemanticRejected` | Semantic judge vetoed a CLI invocation before launch. | `execution_id`, `tool_name`, `requested_subcommand`, `rejection_reason`, `security_context`, `rejected_at` |
+| `CredentialExchangeCompleted` | Credential resolver returned a usable secret. | `execution_id`, `resolution_path`, `target_service`, `completed_at` |
+| `CredentialExchangeFailed` | Credential resolver could not produce a secret. | `execution_id`, `resolution_path`, `reason`, `failed_at` |
+| `ToolCallAuthorized` | SEAL envelope verified, security context evaluated, call cleared for dispatch. | `execution_id`, `agent_id`, `tool_name`, `security_context`, `tenant_id`, `authorized_at` |
+
+### Querying the audit table
+
+There is no REST endpoint for audit history yet — read directly from the
+database. The most useful starting query:
+
+```sql
+SELECT id, event_type, created_at, payload
+  FROM gateway_events
+  WHERE event_type = 'WorkflowInvocationFailed'
+  ORDER BY created_at DESC
+  LIMIT 50;
+```
+
+Other recipes:
+
+```sql
+-- All events for a single execution, in order
+SELECT event_type, created_at, payload
+  FROM gateway_events
+  WHERE payload->>'execution_id' = 'exec-1234'   -- Postgres JSONB syntax
+  ORDER BY created_at;
+```
+
+```sql
+-- CLI rejections, last 24 hours
+SELECT created_at, payload->>'tool_name' AS tool, payload->>'rejection_reason' AS reason
+  FROM gateway_events
+  WHERE event_type = 'CliToolSemanticRejected'
+    AND created_at > NOW() - INTERVAL '1 day'
+  ORDER BY created_at DESC;
+```
+
+```sql
+-- Credential exchange failure rate, last hour
+SELECT
+    COUNT(*) FILTER (WHERE event_type = 'CredentialExchangeFailed')   AS failed,
+    COUNT(*) FILTER (WHERE event_type = 'CredentialExchangeCompleted') AS ok
+  FROM gateway_events
+  WHERE created_at > NOW() - INTERVAL '1 hour';
+```
+
+For SQLite, replace `payload->>'…'` with `json_extract(payload, '$.…')` and
+the `INTERVAL` math with `datetime('now', '-1 hour')`.
+
+### Wiring the audit feed to a SIEM
+
+The simplest pipeline:
+
+```text
+gateway_events  --(periodic SELECT … WHERE id > $cursor)-->  Vector / Logstash
+                                                               |
+                                                               v
+                                                       Elasticsearch / Splunk
+```
+
+Track the largest `id` you have shipped, poll on a 10–30 second cadence,
+and forward new rows. The table is append-only; there are no in-place
+updates to reconcile.
+
+For higher fidelity, run a logical replication slot (Postgres) or
+periodically `.dump` the audit table (SQLite) into your archive bucket. The
+goal is the same either way: get the audit trail off the gateway's primary
+database before it grows large enough to slow operator queries.
+
+---
+
+## Honest Gaps
+
+<Callout type="warn">
+The gateway does not yet expose a Prometheus <code>/metrics</code>
+endpoint. There is no built-in way to scrape request counts, latency
+histograms, or pool stats. If you need numeric SLO tracking today, derive
+it from logs (count log lines matching specific patterns) or from the
+audit table (aggregate over <code>gateway_events</code>). A native metrics
+endpoint is on the roadmap.
+</Callout>
+
+<Callout type="warn">
+The gateway does not yet emit OpenTelemetry traces. There is no OTLP
+exporter configured; <code>tracing</code> spans stay local to the process.
+Distributed tracing (correlating an invocation across the gateway and the
+upstream tool server) requires you to propagate trace headers manually
+through the workflow's HTTP calls until OTLP export ships.
+</Callout>
+
+<Callout type="warn">
+There is no REST endpoint for querying audit events. The web UI's Audit
+tab reads directly from the database; external consumers must do the same.
+A read API for <code>gateway_events</code> is on the roadmap.
+</Callout>
+
+---
+
+## Next Steps
+
+- **Lock down log routing**:
+  [Configuration](/docs/gateway/configuration#logging-configuration) — the
+  precedence rules for `RUST_LOG`.
+- **Diagnose specific failure modes**:
+  [Troubleshooting](/docs/gateway/troubleshooting).

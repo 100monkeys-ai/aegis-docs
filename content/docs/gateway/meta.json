@@ -1,0 +1,23 @@
+{
+  "title": "SEAL Gateway",
+  "pages": [
+    "overview",
+    "quickstart",
+    "concepts",
+    "deployment",
+    "configuration",
+    "authentication",
+    "security-contexts",
+    "credential-resolution",
+    "registering-api-specs",
+    "authoring-workflows",
+    "ephemeral-cli-tools",
+    "api-explorer",
+    "seal-protocol",
+    "management-api",
+    "grpc-api",
+    "observability",
+    "troubleshooting",
+    "integration-with-aegis"
+  ]
+}

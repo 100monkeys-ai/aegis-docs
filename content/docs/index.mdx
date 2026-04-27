@@ -20,6 +20,7 @@ Agents are defined as declarative YAML manifests, executed inside isolated conta
 | **Workflow FSMs** | Compose multiple agents into durable finite state machines backed by Temporal.io. States can be agent executions, system commands, or human approval gates. |
 | **Multi-agent swarms** | A parent agent can spawn child executions, pass messages between agents, and coordinate on shared resources using TTL-backed locks. |
 | **SEAL tool routing** | All MCP tool calls are proxied through the orchestrator with Ed25519-signed envelopes. Agents never hold credentials — the orchestrator resolves secrets and enforces Cedar-based policy rules per call. |
+| **SEAL Tooling Gateway** | Standalone, cryptographically attested tool orchestration with policy-enforced execution. See [SEAL Gateway](/docs/gateway/overview). |
 | **Storage volumes** | Agents mount ephemeral or persistent volumes over a user-space NFSv3 server. The orchestrator intercepts every POSIX operation for authorization, path validation, and audit logging. |
 | **BYOLLM** | Agent manifests reference model aliases. Node config maps aliases to providers (OpenAI, Anthropic, Ollama). Swap models without redeploying agents. |
 | **gRPC + HTTP APIs** | Full `aegis.runtime.v1` gRPC service with bidirectional streaming for execution events. HTTP endpoints for agent bootstrap communication. |
@@ -41,7 +42,7 @@ Agents are defined as declarative YAML manifests, executed inside isolated conta
 
 **I want to understand security and tool access**
 → [Security Model](/docs/concepts/security-model) — the two-layer security model.
-→ [SEAL: Signed Envelope Attestation Layer](/docs/architecture/seal) — attestation flow, signed envelopes, policy enforcement.
+→ [SEAL: Signed Envelope Attestation Layer](/docs/gateway/seal-protocol) — attestation flow, signed envelopes, policy enforcement.
 
 **I'm deploying AEGIS to production**
 → [Infrastructure Overview](/docs/deployment/infrastructure) — dependencies, topology, hardware requirements.

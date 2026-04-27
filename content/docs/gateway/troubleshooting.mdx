@@ -1,0 +1,461 @@
+---
+title: Troubleshooting
+description: SEAL Gateway runbook — symptom-driven diagnosis and remediation for the failure modes operators actually hit in production.
+---
+
+# Troubleshooting
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+This page is a runbook. Each section is keyed to a symptom an operator will
+actually see — a log line, an HTTP status, a UI error — and walks through
+the likely causes, the diagnostic commands that prove which cause it is,
+and the fix.
+
+When a section says "read the audit event," it means querying
+`gateway_events` directly. There is no REST endpoint for that today; see
+[Observability](/docs/gateway/observability#querying-the-audit-table) for
+the SQL recipes.
+
+---
+
+## Signature Verification Failed
+
+**Symptom.** Invocation requests to `/v1/invoke` or `/v1/seal/invoke`
+return `401 Unauthorized` with a body mentioning signature verification.
+Logs include lines like:
+
+```text
+WARN signature verification failed: invalid signature for payload
+```
+
+**Likely causes.**
+
+- The configured `seal_jwt_public_key_pem` does not match the issuer's
+  private key.
+- The payload was modified between signing and submission (proxy rewrites
+  bodies, JSON keys reordered after canonicalization, character encoding
+  drift).
+- Clock skew large enough to fail the freshness window before the signature
+  is checked.
+- The wrong canonicalization algorithm on the client side.
+
+**Diagnose.**
+
+```bash
+# Confirm the gateway is loaded with the public key you expect
+curl -s http://localhost:8089/health   # gateway up
+
+# Print the public key derivable from the signer's private key,
+# from the signer's host:
+openssl pkey -in /path/to/signer-private.pem -pubout
+
+# Compare byte-for-byte with the gateway's seal_jwt_public_key_pem
+# (PEM, including BEGIN/END lines).
+```
+
+**Fix.**
+
+- If the public keys differ, redeploy the gateway with the correct PEM in
+  `SEAL_GATEWAY_SEAL_JWT_PUBLIC_KEY_PEM` or
+  `spec.auth.seal_jwt_public_key_pem`.
+- If they match, capture the raw bytes the client signed and the raw bytes
+  the gateway received and diff them. Body mutation by a reverse proxy is
+  the most common culprit — disable response/request rewriting on the
+  proxy.
+- If clock skew is suspect, sync NTP on both the signer and gateway hosts.
+
+---
+
+## JTI Replay Rejected
+
+**Symptom.** A request fails with `409 Conflict` or `401 Unauthorized` and
+a message like `replay detected: jti already seen`.
+
+**Likely causes.**
+
+- A client retried a request without generating a fresh `jti`.
+- The same envelope was sent through two paths and one of them lost the
+  race (load balancer fan-out, dual proxies).
+- A client library has a bug that reuses the `jti` field across calls.
+
+**Diagnose.**
+
+```sql
+-- Is the jti currently in the replay window?
+SELECT jti, expires_at FROM seen_jtis WHERE jti = '<the jti>';
+```
+
+**Fix.** Ensure the client generates a fresh UUIDv4 (or any
+collision-resistant token id) for every envelope, including retries. The
+`jti` is single-use within the freshness window — a retry is conceptually a
+new call and must carry a new id.
+
+The replay window is 30 seconds. The background sweep purges expired
+entries every 30 seconds. If your client retries within that window with
+the same id, the request is correctly rejected.
+
+---
+
+## Tenant Boundary Violation
+
+**Symptom.** A request fails with `403 Forbidden` and a body mentioning
+tenant mismatch or unauthorized tenant.
+
+**Likely causes.**
+
+- The SEAL token's `tenant_id` claim does not match the tenant of the
+  resource being accessed (e.g. invoking a workflow registered to tenant A
+  with a token issued for tenant B).
+- A consumer (end-user) token attempted to delegate. Only service-account
+  tokens may delegate to a different tenant.
+- The resource is system-global (`tenant_id` NULL) and the caller is
+  trying to mutate it without operator scope.
+
+**Diagnose.**
+
+```sql
+-- Inspect the resource's tenant
+SELECT id, name, tenant_id FROM workflows WHERE name = '<workflow name>';
+
+-- Decode the SEAL token's tenant claim (the bearer JWT inside the envelope)
+echo '<security_token>' | cut -d. -f2 | base64 -d | jq .tenant_id
+```
+
+**Fix.** Issue the envelope from the correct tenant. If a service account
+needs to operate across tenants, give it the appropriate delegation grant
+in the issuer (Keycloak); the gateway will then accept its tenant claim.
+End-user tokens cannot bypass this.
+
+---
+
+## Container CLI Not Found
+
+**Symptom.** Startup logs show `failed to resolve container CLI: no podman
+or docker on PATH`, or a CLI tool invocation fails with
+`container CLI execution failed`.
+
+**Likely causes.**
+
+- The gateway is running as a user that has no container runtime on `$PATH`.
+- The gateway image is being run with the host Docker socket mounted but
+  the user inside the container does not have access to it.
+- A custom `cli.container_cli` path in config points at a binary that is
+  not present in the image.
+
+**Diagnose.** From inside the gateway container:
+
+```bash
+podman --version
+docker --version
+which podman docker
+ls -l /var/run/docker.sock 2>/dev/null
+```
+
+The published gateway image bundles `podman` and `fuse-overlayfs`, so
+`podman --version` should always succeed.
+
+**Fix.**
+
+- For the published image, no action should be needed; if `podman`
+  resolution is failing, you have a corrupted image — repull.
+- For binary deployments, install `podman` (or `docker`) on the host and
+  ensure the service user can execute it.
+- If you are intentionally driving the host Docker daemon, mount
+  `/var/run/docker.sock` into the gateway container and ensure the
+  container user is in the `docker` group on the host.
+
+---
+
+## OpenBao Credential Resolution Failed
+
+**Symptom.** A `CredentialExchangeFailed` event lands in the audit table.
+Workflows that depend on the credential return `502 Bad Gateway` to the
+caller.
+
+**Likely causes.**
+
+- `SEAL_GATEWAY_OPENBAO_TOKEN` is invalid or expired.
+- `openbao_addr` is unreachable from the gateway pod (network policy,
+  service name typo).
+- The KV mount (`openbao_kv_mount`, default `secret`) does not contain the
+  path the credential resolver is asking for.
+- For dynamic credentials (`SystemJit` path), the OpenBao role does not
+  exist or the token does not have the policy that allows reading it.
+
+**Diagnose.**
+
+```sql
+SELECT created_at, payload->>'resolution_path' AS path, payload->>'reason' AS reason
+  FROM gateway_events
+  WHERE event_type = 'CredentialExchangeFailed'
+  ORDER BY created_at DESC
+  LIMIT 20;
+```
+
+```bash
+# From inside the gateway container
+curl -s -H "X-Vault-Token: $SEAL_GATEWAY_OPENBAO_TOKEN" \
+  "$SEAL_GATEWAY_OPENBAO_ADDR/v1/sys/health" | jq
+
+# Read the secret the resolver is asking for
+curl -s -H "X-Vault-Token: $SEAL_GATEWAY_OPENBAO_TOKEN" \
+  "$SEAL_GATEWAY_OPENBAO_ADDR/v1/secret/data/<path>" | jq
+```
+
+**Fix.** Whichever sub-cause the diagnostics point at — rotate the token,
+fix the network path, create the missing secret, attach the missing
+policy. The `reason` field on the audit event is the precise OpenBao error
+string, copy-paste from there.
+
+---
+
+## Keycloak Token Exchange Returned 401
+
+**Symptom.** A `HumanDelegated` credential exchange fails. Logs include
+`token exchange returned 401` from the Keycloak endpoint.
+
+**Likely causes.**
+
+- The Keycloak client used for exchange (`keycloak_client_id`) is not
+  permitted to perform token exchange. The
+  `urn:ietf:params:oauth:grant-type:token-exchange` grant must be enabled
+  on the client.
+- The client secret (`keycloak_client_secret`) is wrong or rotated.
+- The audience requested in the exchange does not match an audience the
+  client is allowed to mint tokens for.
+- The subject token (the user's session token) is expired by the time the
+  exchange attempt happens.
+
+**Diagnose.** Reproduce the call directly against Keycloak:
+
+```bash
+curl -s -X POST "$SEAL_GATEWAY_KEYCLOAK_TOKEN_EXCHANGE_URL" \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+  -d "client_id=$SEAL_GATEWAY_KEYCLOAK_CLIENT_ID" \
+  -d "client_secret=$SEAL_GATEWAY_KEYCLOAK_CLIENT_SECRET" \
+  -d "subject_token=<user access token>" \
+  -d "audience=<target audience>" | jq
+```
+
+The response body identifies which grant or audience is misconfigured.
+
+**Fix.** In the Keycloak admin UI, on the gateway's exchange client:
+
+- Enable `Token Exchange` under **Capability config**.
+- Under **Client scopes** / **Authorization**, allow the target audience.
+- Rotate and refresh the client secret if it does not match.
+
+---
+
+## Workflow Step Failed at Step N
+
+**Symptom.** Caller sees `502` or `500` on `/v1/invoke`. Audit table shows
+a `WorkflowInvocationFailed` event with `failed_step` set.
+
+**Likely causes.**
+
+- A Handlebars template referenced a variable that no earlier step
+  extracted.
+- A JSONPath extractor returned no match (the upstream response shape
+  changed).
+- The upstream HTTP call returned a non-2xx that the step's `on_error: fail`
+  policy escalated.
+- Network failure to the upstream API.
+
+**Diagnose.** Read the failure event for the failing execution:
+
+```sql
+SELECT payload
+  FROM gateway_events
+  WHERE event_type = 'WorkflowInvocationFailed'
+    AND payload->>'execution_id' = '<exec id>'
+  ORDER BY created_at DESC LIMIT 1;
+```
+
+The `reason` field carries the exact error — template render failure,
+extractor miss, upstream HTTP status, transport error. Cross-reference
+with the corresponding `WorkflowStepExecuted` events for the same
+`execution_id` to see where the data flow broke.
+
+**Fix.**
+
+- Template error: correct the variable name in the workflow's step body
+  template.
+- Extractor miss: update the JSONPath to match the new response shape, or
+  add a default with `on_error: continue` if the field is genuinely
+  optional.
+- Upstream failure: investigate the upstream service. The step's recorded
+  `http_status` tells you whether it is a 4xx (your request) or 5xx (their
+  service).
+
+---
+
+## Pool Timed Out
+
+**Symptom.** Logs include lines like:
+
+```text
+ERROR sqlx::pool: database pool acquire timed out — request path starved
+```
+
+Requests start returning `503 Service Unavailable` or `500 Internal Server
+Error` under load.
+
+**Likely causes.**
+
+- The database connection pool is too small for the offered load.
+- A long-running query is holding a connection.
+- The database itself is the bottleneck (CPU, I/O, or its own connection
+  limit).
+
+**Diagnose.**
+
+```sql
+-- Postgres: who is connected and what are they doing?
+SELECT pid, usename, state, query_start, query
+  FROM pg_stat_activity
+  WHERE datname = 'gateway'
+  ORDER BY query_start;
+```
+
+```bash
+# Watch gateway logs for sustained pool-timeout messages versus a one-off
+journalctl -u aegis-seal-gateway -f | grep -i 'pool acquire'
+```
+
+**Fix.**
+
+- Scale the database tier (CPU, RAM, connection limit).
+- Add gateway replicas to spread the connection demand (Postgres only —
+  SQLite cannot scale this way).
+- If a specific query is the offender (large `gateway_events` scan, for
+  instance), archive the audit table to keep its working set small.
+
+Do not increase the per-connection acquire timeout to mask the symptom —
+the timeout is short by design so starvation surfaces fast.
+
+---
+
+## Operator JWT 401
+
+**Symptom.** Calls to operator endpoints (`/v1/specs`, `/v1/workflows`,
+`/v1/cli-tools`, `/v1/security-contexts`) return `401 Unauthorized` even
+with a token that worked yesterday.
+
+**Likely causes.**
+
+- The configured `operator_jwt_issuer` or `operator_jwt_audience` does not
+  match the token's claims.
+- The JWKS document at `operator_jwks_uri` is stale and missing a new
+  signing key the IdP rotated to.
+- The token's `aegis_role` claim (or whichever claim
+  `operator_role_claim` names) does not contain `operator` or
+  `platform-admin`.
+
+**Diagnose.**
+
+```bash
+# Decode the token (header + payload only — do not paste this anywhere)
+echo '<token>' | cut -d. -f2 | base64 -d | jq
+
+# Verify expected issuer / audience / role claim against the gateway config
+```
+
+```bash
+# Force a JWKS refresh by restarting the gateway. The default cache TTL
+# is 300s — a hot rotation may be failing because of a stale cache.
+systemctl restart aegis-seal-gateway   # or kubectl rollout restart …
+```
+
+**Fix.**
+
+- Realign the gateway's `operator_jwt_issuer` and `operator_jwt_audience`
+  with what your IdP actually mints.
+- Lower `jwks_cache_ttl_secs` if your IdP rotates aggressively.
+- Add the operator role to the token's role claim in the IdP.
+
+---
+
+## Semantic Judge Unreachable
+
+**Symptom.** CLI tools registered with `require_semantic_judge: true`
+fail. The audit table contains `CliToolSemanticRejected` events with
+`rejection_reason` mentioning network or timeout errors against the judge
+endpoint.
+
+<Callout type="warn">
+The semantic judge fails closed. If <code>SEAL_GATEWAY_SEMANTIC_JUDGE_URL</code>
+is unset, or the configured endpoint is unreachable, every CLI invocation
+that requires the judge is rejected. There is no fallback to "permit on
+unreachable" — that would defeat the policy.
+</Callout>
+
+**Likely causes.**
+
+- `cli.semantic_judge_url` is unset but a registered tool requires it.
+- The judge service is down or behind a network partition.
+- The judge endpoint is returning non-2xx (auth misconfiguration on the
+  judge side, model overloaded).
+
+**Diagnose.**
+
+```bash
+curl -s "$SEAL_GATEWAY_SEMANTIC_JUDGE_URL" -o /dev/null -w "%{http_code}\n"
+```
+
+```sql
+SELECT created_at, payload->>'tool_name' AS tool, payload->>'rejection_reason' AS reason
+  FROM gateway_events
+  WHERE event_type = 'CliToolSemanticRejected'
+  ORDER BY created_at DESC LIMIT 20;
+```
+
+**Fix.** Restore the judge service. If you are intentionally running
+without one, re-register the affected tools with `require_semantic_judge:
+false` — but understand that this removes intent-level policy enforcement
+and falls back to the per-tool subcommand allowlist alone.
+
+---
+
+## Log Filter Recipes
+
+A working set of `RUST_LOG` strings for common debugging sessions. Pick
+one, restart the gateway, reproduce the failure, then revert.
+
+| Goal | `RUST_LOG` |
+|---|---|
+| Trace SEAL envelope verification | `info,aegis_seal_gateway::infrastructure::auth=trace` |
+| Trace workflow engine end-to-end | `info,aegis_seal_gateway::application::workflow=trace` |
+| Trace CLI invocation pipeline | `info,aegis_seal_gateway::application::cli=trace` |
+| Trace credential resolver | `info,aegis_seal_gateway::application::credential=trace` |
+| Trace JTI replay sweep | `info,aegis_seal_gateway::infrastructure::persistence=debug` |
+| Trace HTTP client to upstream APIs | `info,aegis_seal_gateway::infrastructure::http_client=trace,reqwest=debug` |
+| Quiet noisy infrastructure crates | `info,sqlx=warn,h2=warn,hyper=warn,tonic=warn` |
+| Errors only | `error` |
+| Maximum noise (last resort) | `trace` |
+| Selective per-module trace | `info,aegis_seal_gateway::application::workflow::engine=trace` |
+| Database-only debugging | `warn,aegis_seal_gateway::infrastructure::persistence=debug,sqlx=info` |
+
+---
+
+## When to File an Issue
+
+If the diagnostics above do not lead to a fix, open an issue at
+`github.com/100monkeys-ai/aegis-seal-gateway/issues` with:
+
+- **Gateway version.** From the image tag or `aegis-seal-gateway --version`.
+- **Storage backend.** SQLite vs Postgres, including Postgres major version.
+- **Container CLI.** Output of `podman --version` (or `docker --version`)
+  from inside the gateway container.
+- **Reproduction.** The exact `curl` (with secrets redacted) that fails,
+  plus the exact response.
+- **Logs.** A copy with `RUST_LOG=info,aegis_seal_gateway=debug` covering
+  the failed request from receipt to error response.
+- **Audit events.** The `gateway_events` rows for the failing
+  `execution_id`, JSON-formatted.
+- **Configuration.** The effective config (file plus env), with secrets
+  redacted.
+
+Attaching all of that turns most reports into a same-day fix. Attaching
+only "it does not work" does not.

@@ -288,7 +288,7 @@ message StoreCortexPatternResponse {
 
 ## `AttestAgent`
 
-Issue an SEAL SecurityToken to an agent container after verifying its identity. This is the first call an agent makes before any tool invocations are possible. See the [SEAL reference](/docs/architecture/seal) for the full attestation flow.
+Issue an SEAL SecurityToken to an agent container after verifying its identity. This is the first call an agent makes before any tool invocations are possible. See the [SEAL reference](/docs/gateway/seal-protocol) for the full attestation flow.
 
 ```protobuf
 rpc AttestAgent(AttestAgentRequest) returns (AttestAgentResponse);

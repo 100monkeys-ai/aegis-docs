@@ -1,0 +1,302 @@
+---
+title: Security Contexts
+description: Define named, server-side capability policies that gate every SEAL tool call by tool name, path, command, subcommand, domain, and output size.
+---
+
+# Security Contexts
+
+A **SecurityContext** is a named, server-side policy. It declares which tools may be invoked, with which arguments, and under what numeric limits. Every SEAL invocation references a context by name through the `scp` claim on its security token. The gateway evaluates the call against the named context before any credential resolution or upstream traffic.
+
+Security contexts live entirely on the gateway — callers cannot inline a policy. This is deliberate: an operator authors and registers the context, and the agent only references it. Compromising an agent's signing key cannot widen its policy.
+
+---
+
+## Anatomy
+
+A `SecurityContext` is a flat object made up of capabilities, an explicit deny list, and a description.
+
+```json
+{
+  "name": "read-only-aws",
+  "description": "GET-only AWS describe/list operations. Denies IAM and KMS entirely.",
+  "deny_list": [
+    "aws_iam_*",
+    "aws_kms_*"
+  ],
+  "capabilities": [
+    {
+      "tool_pattern": "aws_*",
+      "domain_allowlist": null,
+      "path_allowlist": null,
+      "command_allowlist": null,
+      "subcommand_allowlist": null,
+      "max_response_size": 10485760,
+      "rate_limit": null
+    }
+  ]
+}
+```
+
+### Top-level fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `name` | string | Stable identifier referenced from the SEAL token's `scp` claim. Must be non-empty. |
+| `description` | string | Human-readable purpose. Surfaced in audit logs and the management API. |
+| `deny_list` | string[] | Tool name patterns explicitly denied. Evaluated **before** capabilities. |
+| `capabilities` | Capability[] | Ordered list of permissive rules. First match wins. |
+| `tenant_id` | string \| null | Tenant slug derived from the operator JWT at registration. Not user-settable on the request. |
+
+### Capability fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `tool_pattern` | string | `"*"`, prefix glob (`"fs.*"`), or exact tool name. |
+| `path_allowlist` | string[] \| null | Required prefixes for the `path` argument when the tool is in the `fs.*` / `filesystem.*` namespace. |
+| `command_allowlist` | string[] \| null | Allowed base commands for `cmd.run` (e.g. `["git", "gh"]`). |
+| `subcommand_allowlist` | object \| null | Per-base-command map of allowed subcommands (e.g. `{"gh": ["pr", "issue"]}`). |
+| `domain_allowlist` | string[] \| null | Required domain suffixes for `web.*` / `web-search.*` tools. |
+| `max_response_size` | integer \| null | Maximum response body size in bytes. `null` means unlimited. |
+| `rate_limit` | `{calls, per_seconds}` \| null | Per-capability rate limit reserved for a future enforcement phase. |
+
+Setting any constraint field to `null` disables that constraint for the capability — it is permissive by default within the matched tool pattern.
+
+---
+
+## Policy evaluation
+
+Evaluation runs three steps in order on every SEAL call:
+
+1. **Deny list** — if any `deny_list` pattern matches the tool name, the call is rejected as `ToolDenied`. Deny patterns always win over capabilities.
+2. **Capability scan** — capabilities are walked in declaration order. The **first** capability whose `tool_pattern` matches the tool name owns the decision, even if a later capability would have allowed it. Re-order capabilities deliberately.
+3. **Default deny** — if no capability matches, the call is rejected as `ToolNotAllowed`. There is no implicit allow.
+
+On rejection the gateway returns one of the variants below, recorded verbatim in the audit log so you can search for them.
+
+### `PolicyViolation` variants
+
+| Variant | When emitted |
+|---------|--------------|
+| `ToolNotAllowed` | The tool name didn't match any capability, or matched a capability whose `tool_pattern` does not actually accept it. |
+| `ToolDenied` | A `deny_list` pattern matched. Wins over capabilities. |
+| `PathOutsideBoundary` | An `fs.*` / `filesystem.*` call's `path` argument did not start with any prefix in `path_allowlist`. |
+| `DomainNotAllowed` | A `web.*` / `web-search.*` call's `url` host did not end with any suffix in `domain_allowlist`. |
+| `CommandNotAllowed` | A `cmd.run` call's base command was not in `command_allowlist`, or the base command was not a key in `subcommand_allowlist`. |
+| `SubcommandNotAllowed` | The base command had a non-empty subcommand allowlist and the call's subcommand was missing or not in that list. |
+| `ConcurrentExecLimitExceeded` | Too many concurrent invocations of this context. (Limit field defined; enforcement applies at the call-tracking layer.) |
+| `OutputSizeLimitExceeded` | A CLI / workflow response exceeded `max_response_size` for the matched capability. |
+
+<Callout type="note">
+The current build exposes the per-capability `max_response_size` for output-size enforcement; concurrent-execution limits are enforced as part of the same per-capability call accounting. Both surface as `PolicyViolation` variants in the audit stream when they fire.
+</Callout>
+
+---
+
+## Authoring contexts
+
+Operators register and update contexts through the control plane. Both create and update use the same idempotent `POST` endpoint — re-posting a context with the same `name` overwrites the prior definition.
+
+```bash
+curl -sS -X POST https://gateway.example.com/v1/security-contexts \
+  -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @- <<'JSON'
+{
+  "name": "read-only-aws",
+  "description": "GET-only AWS describe/list operations.",
+  "deny_list": ["aws_iam_*", "aws_kms_*"],
+  "capabilities": [
+    {
+      "tool_pattern": "aws_*",
+      "path_allowlist": null,
+      "command_allowlist": null,
+      "subcommand_allowlist": null,
+      "domain_allowlist": null,
+      "max_response_size": 10485760,
+      "rate_limit": null
+    }
+  ]
+}
+JSON
+```
+
+The request body schema in full, with every field commented:
+
+```jsonc
+{
+  // Stable identifier. Referenced from the SEAL token's `scp` claim. Non-empty.
+  "name": "string",
+
+  // Human-readable purpose. Surfaced in audit logs.
+  "description": "string",
+
+  // Tool name patterns explicitly denied. Evaluated first; deny wins.
+  // Patterns: "*", "prefix.*", or exact tool name.
+  "deny_list": ["string"],
+
+  // Ordered capability list. First match decides.
+  "capabilities": [
+    {
+      // "*" | "prefix.*" | "exact.tool.name"
+      "tool_pattern": "string",
+
+      // For fs.* / filesystem.* tools — required prefixes for `path` arg.
+      // null = unconstrained path.
+      "path_allowlist": ["string"] /* | null */,
+
+      // For cmd.run — allowed base commands. null = unconstrained.
+      "command_allowlist": ["string"] /* | null */,
+
+      // For cmd.run — per-base-command map of allowed subcommands.
+      // {"gh": ["pr", "issue"]}. Empty list for a key = base command allowed
+      // with any subcommand. null = unconstrained.
+      "subcommand_allowlist": { "string": ["string"] } /* | null */,
+
+      // For web.* / web-search.* — required domain suffixes.
+      // null = unconstrained.
+      "domain_allowlist": ["string"] /* | null */,
+
+      // Max response body size in bytes. null = unlimited.
+      "max_response_size": 10485760 /* | null */,
+
+      // Per-capability rate limit; reserved for future enforcement.
+      "rate_limit": { "calls": 100, "per_seconds": 60 } /* | null */
+    }
+  ]
+}
+```
+
+---
+
+## Worked examples
+
+### Example 1: Read-only AWS
+
+A context that allows GET-style AWS API operations and explicitly denies anything in the IAM or KMS namespaces. Useful for an inventory-scanning agent.
+
+```json
+{
+  "name": "aws-read-only",
+  "description": "AWS describe/list/get operations only. IAM and KMS denied.",
+  "deny_list": [
+    "aws_iam_*",
+    "aws_kms_*"
+  ],
+  "capabilities": [
+    {
+      "tool_pattern": "aws_describe_*",
+      "max_response_size": 5242880
+    },
+    {
+      "tool_pattern": "aws_list_*",
+      "max_response_size": 5242880
+    },
+    {
+      "tool_pattern": "aws_get_*",
+      "max_response_size": 5242880
+    }
+  ]
+}
+```
+
+The deny list is redundant given that the allowed patterns are `aws_describe_*` / `aws_list_*` / `aws_get_*` — but it is **not** wasted. If an operator later adds an `aws_*` capability (intentionally or by mistake), the deny list still keeps IAM and KMS off limits.
+
+### Example 2: Terraform-only workflow
+
+A context whose only allowed tool is a single registered workflow. Everything else — every native tool, every other workflow, every CLI tool — is denied by the implicit default.
+
+```json
+{
+  "name": "terraform-plan-only",
+  "description": "Run only the terraform-plan workflow. Reject everything else.",
+  "deny_list": [],
+  "capabilities": [
+    {
+      "tool_pattern": "terraform-plan",
+      "max_response_size": 10485760
+    }
+  ]
+}
+```
+
+There is no need to deny anything explicitly: the default-deny rule on capability miss does the work. This is the right shape when the policy is "exactly these named tools and nothing else."
+
+### Example 3: GitHub CLI restricted
+
+A context that exposes the `gh` CLI but only for safe read operations and issue creation. Destructive subcommands and authentication mutation are denied at the deny-list layer so they cannot be re-enabled by adding a more permissive capability.
+
+```json
+{
+  "name": "gh-read-and-file",
+  "description": "gh CLI: read PRs/issues and file new issues. No auth, no repo mutation.",
+  "deny_list": [
+    "gh.auth.*",
+    "gh.repo.delete"
+  ],
+  "capabilities": [
+    {
+      "tool_pattern": "cmd.run",
+      "command_allowlist": ["gh"],
+      "subcommand_allowlist": {
+        "gh": ["pr", "issue"]
+      },
+      "max_response_size": 1048576
+    }
+  ]
+}
+```
+
+Two notes on this shape:
+
+- The `cmd.run` policy uses base/subcommand splitting. The first whitespace-separated token is the base command (`gh`), the second is the subcommand (`pr`, `issue`, etc.). `gh pr list` and `gh pr view` both pass; `gh repo delete` fails the subcommand allowlist; `gh auth login` fails the deny list before subcommand evaluation runs.
+- `subcommand_allowlist` for `gh` lists only top-level subcommands. Restricting to specific second-level subcommands (e.g. only `gh pr list` but not `gh pr merge`) is not modeled at the capability layer — encode that policy by wrapping the allowed actions as named CLI tools instead.
+
+---
+
+## Binding to a SEAL session
+
+Every SEAL token carries an `scp` claim naming the context to apply. Without that claim, or with a name that does not exist in the gateway's store, the request is rejected.
+
+```text
+SEAL JWT claims
+  ┌──────────────────────────┐
+  │ iss     = seal-issuer    │
+  │ aud     = seal-gateway   │
+  │ sub     = agent-id       │
+  │ scp     = aws-read-only  │  ◄── names the SecurityContext
+  │ tenant_id = acme         │
+  │ jti     = 01HK6X...      │
+  │ iat / exp / ...          │
+  └──────────────────────────┘
+```
+
+When you mint the token, set `scp` to the exact `name` of a registered context. Re-mint a new token to change the policy in flight; you cannot mutate `scp` on an existing token. Operators rotate policy by issuing a new context (or updating an existing one in place) and re-issuing tokens with the new `scp`.
+
+The `allowed_tool_patterns` list on the SEAL session is a separate, narrower gate that runs *before* the `SecurityContext` evaluation. A tool that the named context would otherwise allow is still rejected if the session's pattern list excludes it. Use session patterns for short-lived per-execution narrowing, and `SecurityContext` for the durable, named policy.
+
+---
+
+## Concurrent execution and output size limits
+
+Both numeric limits live on the capability and trip the same `PolicyViolation` audit-event path as pattern violations. Sizing is a tradeoff between agent autonomy and blast radius.
+
+- `max_response_size` (bytes). Size response bodies for the largest *legitimate* payload your tool returns. Tooling that returns multi-megabyte JSON (CloudWatch log dumps, large HTTP responses, big workflow outputs) needs deliberate headroom; `null` keeps it unlimited but makes the gateway a memory amplifier — only use `null` for tools you fully control. A response that breaches the limit is truncated and the call is rejected with `OutputSizeLimitExceeded`.
+- Concurrent execution limits run as part of the per-capability call counter. Set them when you have a tool that an agent could fan out aggressively (any "search the universe" pattern) — once the active call count for a capability exceeds the limit, additional calls fail with `ConcurrentExecLimitExceeded` until in-flight calls finish. This is a rejection, not a queue.
+
+---
+
+## Listing and getting
+
+Read access to the registered contexts uses the same operator JWT. Listings are tenant-scoped — each operator sees only their tenant's contexts plus any shared/un-tenanted contexts.
+
+```bash
+# All contexts visible to the calling tenant.
+curl -sS -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  https://gateway.example.com/v1/security-contexts
+
+# A single context by name.
+curl -sS -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  https://gateway.example.com/v1/security-contexts/aws-read-only
+```
+
+Both endpoints return the full JSON object, capabilities and deny list inclusive — there is no separate "summary" view. Diff a fetched context against your source-of-truth definition before re-registering to catch drift introduced by ad-hoc edits.

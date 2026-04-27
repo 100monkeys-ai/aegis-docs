@@ -1,0 +1,372 @@
+---
+title: gRPC API
+description: gRPC complement to the REST control plane — ToolWorkflowService, GatewayInvocationService, client generation in Go, Python, and TypeScript.
+---
+
+# gRPC API
+
+The SEAL Gateway exposes a gRPC surface alongside its REST control plane. gRPC is a lower-latency, schema-typed alternative for compiled-language clients and for the orchestrator's hot paths (workflow invocation, CLI execution).
+
+The gRPC service definitions live in [`aegis-proto/proto/seal_gateway.proto`](https://github.com/100monkeys-ai/aegis-proto/blob/main/proto/seal_gateway.proto).
+
+---
+
+## When to Use gRPC vs REST
+
+| | REST | gRPC |
+|---|---|---|
+| Curl-debuggable | yes | no |
+| Powers the Web UI | yes | no |
+| Schema-typed clients in compiled languages | through OpenAPI codegen | natively |
+| Streaming | no | available (no streaming RPCs are defined today, but the transport supports it) |
+| Workflow updates | not available — REST is delete + re-register | `UpdateWorkflow` RPC available |
+| Authentication | `Authorization: Bearer <jwt>` header | `authorization: Bearer <jwt>` metadata, or SEAL envelope fields for invocation |
+| Default bind | `0.0.0.0:8089` | `0.0.0.0:50055` |
+
+Use REST for human-driven authoring, debugging, and operator workflows. Use gRPC for orchestrator-to-gateway control loops and any latency-sensitive call path.
+
+---
+
+## Bind Address
+
+The gRPC server binds to `0.0.0.0:50055` by default. Override with the `grpc_bind_addr` config key.
+
+---
+
+## Authentication
+
+gRPC reuses the same authentication mechanisms as REST, transported via gRPC metadata:
+
+- **Operator endpoints** (`ToolWorkflowService` and `GatewayInvocationService.ExploreApi`) require an operator JWT in the `authorization` metadata key:
+
+  ```text
+  authorization: Bearer <operator-jwt>
+  ```
+
+  The token is validated against the same JWKS + issuer + audience + role-claim configuration used by REST. If `auth_disabled` is set, the check is bypassed (development only).
+
+- **Invocation endpoints** (`GatewayInvocationService.InvokeWorkflow`, `InvokeCli`, `ListTools`) are intended for trusted internal callers (the orchestrator). They do **not** require operator auth on the gRPC surface — the orchestrator is the auth boundary. If you expose this gRPC port externally, gate it at the network or service-mesh layer.
+
+This is an asymmetry vs REST: there is no SEAL-envelope variant of `Invoke*` over gRPC. gRPC invocation is a trusted-orchestrator API; SEAL signed envelopes are the REST authentication mechanism for untrusted callers.
+
+---
+
+## Service Definitions
+
+### `ToolWorkflowService`
+
+CRUD for tool workflows.
+
+```proto
+service ToolWorkflowService {
+  rpc CreateWorkflow(CreateWorkflowRequest) returns (CreateWorkflowResponse);
+  rpc GetWorkflow(GetWorkflowRequest) returns (GetWorkflowResponse);
+  rpc ListWorkflows(ListWorkflowsRequest) returns (ListWorkflowsResponse);
+  rpc UpdateWorkflow(UpdateWorkflowRequest) returns (UpdateWorkflowResponse);
+  rpc DeleteWorkflow(DeleteWorkflowRequest) returns (DeleteWorkflowResponse);
+}
+```
+
+Message shapes:
+
+```proto
+message Workflow {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string api_spec_id = 4;
+  string input_schema_json = 5;   // JSON Schema, serialized as a string
+  repeated WorkflowStep steps = 6;
+}
+
+message WorkflowStep {
+  string name = 1;
+  string operation_id = 2;
+  string body_template = 3;
+  map<string, string> extractors = 4;
+  string on_error = 5;             // "AbortWorkflow" | "Continue" | "RetryN(<n>)"
+}
+
+message WorkflowSummary {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+```
+
+> **Asymmetry: `UpdateWorkflow` exists in gRPC but not REST.**
+>
+> The REST control plane treats workflows as immutable — to change one, delete
+> and re-register. The gRPC surface allows in-place updates because it is
+> intended for trusted internal callers (the orchestrator) where audit of the
+> change is handled at the calling layer. If you build operator tooling on
+> gRPC, treat update as a privileged operation and emit your own audit event.
+
+### `GatewayInvocationService`
+
+Server-side invocation endpoints.
+
+```proto
+service GatewayInvocationService {
+  rpc InvokeWorkflow(InvokeWorkflowRequest) returns (InvokeWorkflowResponse);
+  rpc InvokeCli(InvokeCliRequest) returns (InvokeCliResponse);
+  rpc ExploreApi(ExploreApiRequest) returns (ExploreApiResponse);
+  rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+}
+```
+
+Message shapes:
+
+```proto
+message InvokeWorkflowRequest {
+  string execution_id = 1;
+  string workflow_name = 2;
+  string input_json = 3;            // JSON-encoded input matching the workflow's input_schema
+  string zaru_user_token = 4;       // Optional end-user token for tenant-scoped credential resolution
+  string tenant_id = 5;
+}
+
+message InvokeWorkflowResponse {
+  string result_json = 1;
+}
+
+message FsalMount {
+  string volume_id = 1;
+  string mount_path = 2;
+  bool read_only = 3;
+  string remote_path = 4;
+}
+
+message InvokeCliRequest {
+  string execution_id = 1;
+  string tool_name = 2;
+  string subcommand = 3;
+  repeated string args = 4;
+  repeated FsalMount fsal_mounts = 5;
+  string tenant_id = 6;
+}
+
+message InvokeCliResponse {
+  int32 exit_code = 1;
+  string stdout = 2;
+  string stderr = 3;
+}
+
+message ToolSummary {
+  string name = 1;
+  string description = 2;
+  string kind = 3;                  // "workflow" | "cli" | "native"
+  string input_schema_json = 4;     // Full JSON Schema for the tool's input
+  repeated string tags = 5;
+  string category = 6;
+}
+```
+
+`InvokeWorkflow` and `InvokeCli` execute the named tool with the same engine the SEAL invocation path uses; the difference is that the caller is implicitly trusted (the orchestrator), so there is no envelope verification. The result is returned as a JSON string in `result_json` for workflows, or split into `exit_code` / `stdout` / `stderr` for CLI tools.
+
+`ExploreApi` is the gRPC equivalent of `POST /v1/explorer` — it requires operator auth and returns sliced upstream API responses.
+
+`ListTools` mirrors `GET /v1/tools` over gRPC. It does not require operator auth on the gRPC surface (it is callable by the orchestrator without metadata).
+
+---
+
+## Client Generation
+
+### Go
+
+```bash
+# Install codegen plugins (one-time).
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Generate from the proto file.
+protoc \
+  --go_out=./gen --go_opt=paths=source_relative \
+  --go-grpc_out=./gen --go-grpc_opt=paths=source_relative \
+  -I path/to/aegis-proto/proto \
+  path/to/aegis-proto/proto/seal_gateway.proto
+```
+
+Calling `ListWorkflows`:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/metadata"
+
+    sgw "your-module/gen"
+)
+
+func main() {
+    conn, err := grpc.NewClient(
+        "gateway-host:50055",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
+    if err != nil {
+        log.Fatalf("dial: %v", err)
+    }
+    defer conn.Close()
+
+    client := sgw.NewToolWorkflowServiceClient(conn)
+
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+operatorJWT)
+
+    resp, err := client.ListWorkflows(ctx, &sgw.ListWorkflowsRequest{})
+    if err != nil {
+        log.Fatalf("ListWorkflows: %v", err)
+    }
+    for _, w := range resp.Workflows {
+        fmt.Printf("- %s (%s): %s\n", w.Name, w.Id, w.Description)
+    }
+}
+```
+
+Use TLS credentials in production — `insecure.NewCredentials()` is appropriate only for local development.
+
+### Python
+
+```bash
+# Install codegen tooling.
+pip install grpcio grpcio-tools
+
+# Generate Python stubs.
+python -m grpc_tools.protoc \
+  -I path/to/aegis-proto/proto \
+  --python_out=./gen \
+  --grpc_python_out=./gen \
+  path/to/aegis-proto/proto/seal_gateway.proto
+```
+
+Calling `InvokeWorkflow`:
+
+```python
+import json
+import grpc
+
+from gen import seal_gateway_pb2 as sgw
+from gen import seal_gateway_pb2_grpc as sgw_grpc
+
+OPERATOR_JWT = "eyJ..."
+
+channel = grpc.insecure_channel("gateway-host:50055")
+client  = sgw_grpc.GatewayInvocationServiceStub(channel)
+
+# The orchestrator-trusted invocation path: no operator auth needed for
+# InvokeWorkflow over gRPC. (Add metadata if you front the gRPC port with
+# a service mesh that asserts identity.)
+request = sgw.InvokeWorkflowRequest(
+    execution_id  = "exec-8a9f7b3c",
+    workflow_name = "create-github-issue",
+    input_json    = json.dumps({
+        "owner": "100monkeys-ai",
+        "repo":  "aegis",
+        "title": "Tracked from gRPC client",
+        "body":  "Body content here.",
+    }),
+    tenant_id     = "tenant-acme",
+)
+
+response = client.InvokeWorkflow(request)
+print(json.loads(response.result_json))
+```
+
+For operator-only RPCs (e.g., `ListWorkflows`):
+
+```python
+metadata = (("authorization", f"Bearer {OPERATOR_JWT}"),)
+stub = sgw_grpc.ToolWorkflowServiceStub(channel)
+resp = stub.ListWorkflows(sgw.ListWorkflowsRequest(), metadata=metadata)
+for w in resp.workflows:
+    print(w.id, w.name, w.description)
+```
+
+### TypeScript
+
+Using `@grpc/grpc-js` with `@bufbuild/protobuf` and `@bufbuild/protoc-gen-es`:
+
+```bash
+npm install --save @grpc/grpc-js @bufbuild/protobuf
+npm install --save-dev @bufbuild/protoc-gen-es
+
+npx buf generate path/to/aegis-proto/proto/seal_gateway.proto \
+  --template buf.gen.yaml
+```
+
+`buf.gen.yaml`:
+
+```yaml
+version: v1
+plugins:
+  - plugin: es
+    out: gen
+    opt: target=ts
+```
+
+Calling `ListTools`:
+
+```typescript
+import * as grpc from "@grpc/grpc-js";
+import {
+  GatewayInvocationServiceClient,
+  ListToolsRequest,
+} from "./gen/seal_gateway_pb";
+
+const client = new GatewayInvocationServiceClient(
+  "gateway-host:50055",
+  grpc.credentials.createInsecure(),
+);
+
+const req = new ListToolsRequest();
+
+client.listTools(req, (err, resp) => {
+  if (err) throw err;
+  for (const t of resp.getToolsList()) {
+    console.log(t.getName(), t.getKind(), t.getDescription());
+  }
+});
+```
+
+For operator-authenticated RPCs, attach metadata:
+
+```typescript
+const md = new grpc.Metadata();
+md.add("authorization", `Bearer ${operatorJWT}`);
+client.listWorkflows(new ListWorkflowsRequest(), md, (err, resp) => { /* ... */ });
+```
+
+---
+
+## Observability
+
+gRPC requests emit the same `GatewayEvent` audit events as REST — `WorkflowRegistered`, `CliToolRegistered`, `ToolCallAuthorized`, `PolicyViolationBlocked`, and so on. The handler dimension (`grpc` vs `rest`) is captured on every event so dashboards can split by surface.
+
+Pool starvation, validation failures, and internal errors are logged with `handler = "grpc"` for correlation against REST traffic.
+
+---
+
+## Limitations
+
+- **No SEAL envelope variant on gRPC.** SEAL signed envelopes are a REST-only authentication mechanism. The gRPC `Invoke*` calls assume a trusted orchestrator caller and skip envelope verification. To accept arbitrary callers over gRPC, front the port with mTLS and a service mesh that authenticates peers.
+- **No streaming RPCs today.** All RPCs are unary. Long-running workflows return a single response when complete.
+- **Web UI is REST-only.** The gateway's bundled Web UI talks exclusively to REST. There is no gRPC-Web bridge in the default deployment.
+- **API spec management is REST-only.** There is no gRPC service for `ApiSpec`, `SealSession`, `SecurityContext`, or `EphemeralCliTool` CRUD. Use the REST control plane for those.
+- **No `GET` for individual CLI tools** is exposed in either surface; list and filter client-side, or use the unified tool catalog (REST `GET /v1/tools`, gRPC `ListTools`).
+
+---
+
+## Further Reading
+
+- [Management API](/docs/gateway/management-api) — full REST surface, including the resources gRPC does not cover.
+- [SEAL Protocol](/docs/gateway/seal-protocol) — envelope construction for the REST invocation path.
+- [Authentication](/docs/gateway/authentication) — how operator JWTs and SEAL envelopes coexist on the same gateway.

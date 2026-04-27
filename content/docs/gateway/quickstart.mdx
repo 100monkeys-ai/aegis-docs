@@ -1,0 +1,312 @@
+---
+title: Quickstart
+description: From zero to a SEAL-signed tool call in ten minutes — standalone, no AEGIS Orchestrator required.
+---
+
+# Quickstart
+
+This walkthrough takes you from nothing to a working SEAL Gateway answering a
+signed tool call. Everything runs locally, in one container, against the public
+Swagger Petstore API. No orchestrator, no Keycloak, no OpenBao.
+
+By the end you will have:
+
+- A running gateway on `localhost:8089` with the built-in web UI
+- An Ed25519 signing keypair
+- A registered OpenAPI spec (Petstore)
+- A two-step tool workflow that lists pets and fetches one by id
+- A successful invocation visible in the audit log
+
+Estimated time: 10 minutes.
+
+---
+
+## Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Docker or Podman | The gateway image runs on either |
+| ~512 MB free RAM | The gateway is lightweight |
+| `openssl` 3.0+ or `ssh-keygen` | For generating the Ed25519 keypair |
+| `curl` | For talking to the control and invocation APIs |
+| `jq` (optional) | Nicer output formatting |
+
+You do **not** need Keycloak, OpenBao, Postgres, or any AEGIS component for
+this quickstart.
+
+---
+
+## Step 1 — Generate an Ed25519 keypair
+
+The gateway verifies invocation envelopes against a single Ed25519 public key.
+You hold the private key; the gateway holds the public key.
+
+```bash
+mkdir -p ~/seal-gateway-quickstart && cd ~/seal-gateway-quickstart
+
+# Private key — keep this secret
+openssl genpkey -algorithm ed25519 -out seal-private.pem
+
+# Public key — paste this into the gateway config
+openssl pkey -in seal-private.pem -pubout -out seal-public.pem
+
+cat seal-public.pem
+```
+
+You should see something like:
+
+```text
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA...base64...
+-----END PUBLIC KEY-----
+```
+
+Keep the terminal open — you will paste this into the config in the next step.
+
+<Callout type="warn">
+The private key is the only thing standing between an attacker and arbitrary
+tool calls under your gateway's identity. In a real deployment, store it in
+OpenBao, AWS KMS, or another HSM-backed secret store. Never commit it to git.
+</Callout>
+
+---
+
+## Step 2 — Write a minimal config
+
+Create `seal-gateway-config.yaml` next to the keys. Every field is documented
+inline:
+
+```yaml
+apiVersion: seal.100monkeys.ai/v1
+kind: SealGatewayConfig
+metadata:
+  name: quickstart-gateway
+  version: "1.0.0"
+
+spec:
+  network:
+    # HTTP control + invocation API
+    bind_addr: "0.0.0.0:8089"
+    # gRPC services (ToolWorkflowService, GatewayInvocationService)
+    grpc_bind_addr: "0.0.0.0:50055"
+
+  database:
+    # SQLite is fine for development. The container will create the file
+    # on first start. For production switch to a postgres:// DSN.
+    url: "sqlite:///data/gateway.db"
+
+  auth:
+    # DEVELOPMENT ONLY. With auth disabled the gateway accepts any envelope
+    # without signature or JWT verification. See the warning below.
+    disabled: true
+    operator_jwks_uri: ""
+    jwks_cache_ttl_secs: 300
+    operator_jwt_issuer: "quickstart"
+    operator_jwt_audience: "seal-gateway"
+    # Paste the contents of seal-public.pem here, including the BEGIN/END lines.
+    seal_jwt_public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEA...REPLACE_WITH_YOURS...
+      -----END PUBLIC KEY-----
+    seal_jwt_issuer: "quickstart-issuer"
+    seal_jwt_audience: "quickstart-agents"
+
+  credentials:
+    # No OpenBao or Keycloak in this quickstart — leave everything null.
+    openbao_addr: null
+    openbao_token: null
+    openbao_kv_mount: "secret"
+    keycloak_token_exchange_url: null
+    keycloak_client_id: null
+    keycloak_client_secret: null
+
+  cli:
+    # No semantic judge wired up; CLI tools that require it will be rejected.
+    semantic_judge_url: null
+    nfs_server_host: "127.0.0.1"
+    nfs_port: 2049
+    nfs_mount_port: 20048
+
+  ui:
+    # Built-in web UI at http://localhost:8089/
+    enabled: true
+```
+
+<Callout type="warn">
+`auth.disabled: true` is a development convenience that skips signature, JWT,
+and JTI verification entirely. Never ship a configuration with this flag set.
+The [Authentication](/docs/gateway/authentication) page covers a real
+configuration with JWKS-validated operator tokens and SEAL-signed envelopes.
+</Callout>
+
+---
+
+## Step 3 — Run the container
+
+```bash
+docker run --rm -d \
+  --name seal-gateway \
+  -p 8089:8089 \
+  -p 50055:50055 \
+  -v "$PWD/seal-gateway-config.yaml:/etc/aegis/seal-gateway-config.yaml:ro" \
+  -v "seal-gateway-data:/data" \
+  -e SEAL_GATEWAY_CONFIG_PATH=/etc/aegis/seal-gateway-config.yaml \
+  ghcr.io/100monkeys-ai/aegis-seal-gateway:latest
+
+docker logs -f seal-gateway
+```
+
+You should see startup logs ending with the HTTP and gRPC binds. `Ctrl+C` to
+detach from the logs — the container keeps running.
+
+Podman users: substitute `podman` for `docker`. The image is OCI-standard.
+
+---
+
+## Step 4 — Confirm the gateway is healthy
+
+```bash
+curl -s http://localhost:8089/ -o /dev/null -w "%{http_code}\n"
+```
+
+A `200` response means the web UI is up. Open `http://localhost:8089/` in a
+browser to see the inspection console. Tabs for **Specs**, **Workflows**, **CLI
+Tools**, **Security Contexts**, and **Audit** are all empty — that is expected.
+
+---
+
+## Step 5 — Register an OpenAPI spec
+
+Use the public Swagger Petstore. The gateway pulls the spec, parses the
+operations, and indexes them by `operationId`.
+
+```bash
+curl -s -X POST http://localhost:8089/v1/specs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "petstore",
+    "description": "Public Petstore API for the SEAL Gateway quickstart",
+    "source_url": "https://petstore3.swagger.io/api/v3/openapi.json",
+    "base_url": "https://petstore3.swagger.io/api/v3",
+    "credential_resolution_path": null
+  }' | jq
+```
+
+The response includes the assigned `id`. Note it down. Refresh the **Specs**
+tab in the UI — `petstore` should now be listed with its operation count.
+
+`credential_resolution_path: null` means the gateway makes upstream calls
+unauthenticated. For a real API you would attach a `SystemJit`, `StaticRef`,
+or `HumanDelegated` resolution path here. See
+[Credential Resolution](/docs/gateway/credential-resolution).
+
+---
+
+## Step 6 — Author a two-step workflow
+
+This workflow first lists available pets, then fetches the first one by id.
+The first step's response feeds into the second step's path parameter via a
+JSONPath extractor and a Handlebars template.
+
+```bash
+curl -s -X POST http://localhost:8089/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "fetch_first_available_pet",
+    "description": "List pets by status=available and fetch the first by id",
+    "api_spec_id": "<paste the spec id from step 5>",
+    "steps": [
+      {
+        "name": "list_available",
+        "operation_id": "findPetsByStatus",
+        "query_params": {
+          "status": "available"
+        },
+        "extractors": {
+          "first_pet_id": "$[0].id"
+        },
+        "on_error": "fail"
+      },
+      {
+        "name": "fetch_pet",
+        "operation_id": "getPetById",
+        "path_params": {
+          "petId": "{{first_pet_id}}"
+        },
+        "on_error": "fail"
+      }
+    ]
+  }' | jq
+```
+
+The response includes the new workflow id and the parsed step graph.
+
+---
+
+## Step 7 — Invoke the workflow with a SEAL envelope
+
+With `auth.disabled: true`, signatures are not verified — but you should still
+send a well-formed envelope so the request shape matches what production looks
+like.
+
+```bash
+curl -s -X POST http://localhost:8089/v1/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "envelope": {
+      "protocol": "seal/v1",
+      "payload": {
+        "tool": "fetch_first_available_pet",
+        "arguments": {}
+      },
+      "security_token": "header.payload.signature",
+      "signature": "stub-signature-base64",
+      "timestamp": "2026-04-27T00:00:00Z",
+      "jti": "quickstart-call-0001"
+    }
+  }' | jq
+```
+
+You should get back a JSON document containing the response from the second
+step — a single pet with `id`, `name`, `status`, and a few related fields.
+
+If you re-send the same `jti` in real (auth-enabled) mode, the gateway will
+reject the second call with a replay error. Try it after working through
+[Authentication](/docs/gateway/authentication).
+
+---
+
+## Step 8 — Inspect the audit trail
+
+Open `http://localhost:8089/` and click the **Audit** tab. You should see, in
+order:
+
+- `ApiSpecRegistered` for `petstore`
+- `WorkflowRegistered` for `fetch_first_available_pet`
+- `WorkflowInvocationStarted`
+- Two `WorkflowStepExecuted` events with their HTTP statuses and durations
+- `WorkflowInvocationCompleted` with the total step count and elapsed ms
+
+Every action the gateway takes lands here. The audit feed is the same one
+production deployments wire to OpenTelemetry collectors and SIEM pipelines —
+see [Observability](/docs/gateway/observability).
+
+---
+
+## Next Steps
+
+- **Turn on real authentication**:
+  [Authentication](/docs/gateway/authentication) — JWKS, SEAL signing keys,
+  JTI dedup, freshness window.
+- **Run it in production**: [Deployment](/docs/gateway/deployment) — Postgres,
+  TLS, container orchestration, key management.
+- **Carve up policy**:
+  [Security Contexts](/docs/gateway/security-contexts) — capabilities,
+  deny-lists, tenant scoping, and the eight `PolicyViolation` modes.
+
+To stop the gateway:
+
+```bash
+docker stop seal-gateway
+docker volume rm seal-gateway-data   # only if you want to wipe state
+```
