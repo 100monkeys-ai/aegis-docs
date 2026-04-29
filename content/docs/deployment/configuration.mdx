@@ -1128,15 +1128,15 @@ cluster:
       custom_labels: { region: home }
 ```
 
-| Key                                          | Type               | Default                        | Description                                                                    |
-| -------------------------------------------- | ------------------ | ------------------------------ | ------------------------------------------------------------------------------ |
-| `cluster.edge.tenant_id`                     | string             | —                              | Immutable post-enrollment. Mirrors the `tid` claim on the `NodeSecurityToken`. |
-| `cluster.edge.enrollment_token_path`         | path               | `~/.aegis/edge/enrollment.jwt` | One-time enrollment token; consumed atomically.                                |
-| `cluster.edge.node_security_token_path`      | path               | `~/.aegis/edge/node.token`     | Persistent `NodeSecurityToken`.                                                |
-| `cluster.edge.stream_reconnect_backoff_secs` | array<int>         | `[1, 2, 5, 15, 60]`            | Exponential backoff schedule on stream loss.                                   |
-| `cluster.edge.capabilities.local_tools`      | array<string>      | host-detected                  | Which built-in tools the daemon can serve.                                     |
-| `cluster.edge.capabilities.mount_points`     | array<string>      | `["/"]`                        | Filesystem roots the daemon may operate against (subject to SecurityContext).  |
-| `cluster.edge.capabilities.custom_labels`    | map<string,string> | `{}`                           | Daemon-advertised labels — queryable in selectors.                             |
+| Key                                          | Type                 | Default                        | Description                                                                    |
+| -------------------------------------------- | -------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
+| `cluster.edge.tenant_id`                     | string               | —                              | Immutable post-enrollment. Mirrors the `tid` claim on the `NodeSecurityToken`. |
+| `cluster.edge.enrollment_token_path`         | path                 | `~/.aegis/edge/enrollment.jwt` | One-time enrollment token; consumed atomically.                                |
+| `cluster.edge.node_security_token_path`      | path                 | `~/.aegis/edge/node.token`     | Persistent `NodeSecurityToken`.                                                |
+| `cluster.edge.stream_reconnect_backoff_secs` | `array<int>`         | `[1, 2, 5, 15, 60]`            | Exponential backoff schedule on stream loss.                                   |
+| `cluster.edge.capabilities.local_tools`      | `array<string>`      | host-detected                  | Which built-in tools the daemon can serve.                                     |
+| `cluster.edge.capabilities.mount_points`     | `array<string>`      | `["/"]`                        | Filesystem roots the daemon may operate against (subject to SecurityContext).  |
+| `cluster.edge.capabilities.custom_labels`    | `map<string,string>` | `{}`                           | Daemon-advertised labels — queryable in selectors.                             |
 
 **Validator behavior:** `role: edge` rejects `cluster_grpc_port` (the daemon does not bind a server) and requires the `cluster.edge` block. `role: relay-coordinator` requires `cluster.cluster_grpc_port` and `cluster.ingress.public_endpoint`.
 

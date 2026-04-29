@@ -57,23 +57,23 @@ cluster:
 
 ### Field reference
 
-| Field                                        | Type               | Default                        | Description                                                                                        |
-| -------------------------------------------- | ------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `cluster.enabled`                            | bool               | —                              | Must be `true` for an edge daemon.                                                                 |
-| `cluster.role`                               | enum               | —                              | Must be `edge` for the daemon. The Relay uses `relay-coordinator`.                                 |
-| `cluster.controller.endpoint`                | string             | —                              | Endpoint to dial. Populated from the enrollment token's `cep` claim.                               |
-| `cluster.controller.tls.enabled`             | bool               | `true`                         | Use TLS on the connection. Should be `true` for any production deployment.                         |
-| `cluster.node_keypair_path`                  | path               | `~/.aegis/edge/node.key`       | Path to the daemon's Ed25519 private key.                                                          |
-| `cluster.heartbeat_interval_secs`            | int                | `30`                           | Heartbeat cadence.                                                                                 |
-| `cluster.edge.tenant_id`                     | string             | —                              | The tenant the daemon is bound to. Written by `aegis edge enroll`; immutable thereafter.           |
-| `cluster.edge.enrollment_token_path`         | path               | `~/.aegis/edge/enrollment.jwt` | Where the one-time enrollment token is stored before redemption.                                   |
-| `cluster.edge.node_security_token_path`      | path               | `~/.aegis/edge/node.token`     | Where the persistent `NodeSecurityToken` is stored.                                                |
-| `cluster.edge.stream_reconnect_backoff_secs` | array<int>         | `[1, 2, 5, 15, 60]`            | Exponential backoff schedule on stream loss. After the last value, retry steady at the last value. |
-| `cluster.edge.capabilities.local_tools`      | array<string>      | host-detected                  | Which built-in tools the daemon can serve.                                                         |
-| `cluster.edge.capabilities.mount_points`     | array<string>      | `["/"]`                        | Filesystem roots the daemon may operate against (subject to SecurityContext).                      |
-| `cluster.edge.capabilities.custom_labels`    | map<string,string> | `{}`                           | Daemon-advertised labels — queryable in selectors.                                                 |
-| `cluster.edge.capabilities.os`               | string             | host-detected                  | OS identifier. Auto-filled.                                                                        |
-| `cluster.edge.capabilities.arch`             | string             | host-detected                  | Architecture identifier. Auto-filled.                                                              |
+| Field                                        | Type                 | Default                        | Description                                                                                        |
+| -------------------------------------------- | -------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `cluster.enabled`                            | bool                 | —                              | Must be `true` for an edge daemon.                                                                 |
+| `cluster.role`                               | enum                 | —                              | Must be `edge` for the daemon. The Relay uses `relay-coordinator`.                                 |
+| `cluster.controller.endpoint`                | string               | —                              | Endpoint to dial. Populated from the enrollment token's `cep` claim.                               |
+| `cluster.controller.tls.enabled`             | bool                 | `true`                         | Use TLS on the connection. Should be `true` for any production deployment.                         |
+| `cluster.node_keypair_path`                  | path                 | `~/.aegis/edge/node.key`       | Path to the daemon's Ed25519 private key.                                                          |
+| `cluster.heartbeat_interval_secs`            | int                  | `30`                           | Heartbeat cadence.                                                                                 |
+| `cluster.edge.tenant_id`                     | string               | —                              | The tenant the daemon is bound to. Written by `aegis edge enroll`; immutable thereafter.           |
+| `cluster.edge.enrollment_token_path`         | path                 | `~/.aegis/edge/enrollment.jwt` | Where the one-time enrollment token is stored before redemption.                                   |
+| `cluster.edge.node_security_token_path`      | path                 | `~/.aegis/edge/node.token`     | Where the persistent `NodeSecurityToken` is stored.                                                |
+| `cluster.edge.stream_reconnect_backoff_secs` | `array<int>`         | `[1, 2, 5, 15, 60]`            | Exponential backoff schedule on stream loss. After the last value, retry steady at the last value. |
+| `cluster.edge.capabilities.local_tools`      | `array<string>`      | host-detected                  | Which built-in tools the daemon can serve.                                                         |
+| `cluster.edge.capabilities.mount_points`     | `array<string>`      | `["/"]`                        | Filesystem roots the daemon may operate against (subject to SecurityContext).                      |
+| `cluster.edge.capabilities.custom_labels`    | `map<string,string>` | `{}`                           | Daemon-advertised labels — queryable in selectors.                                                 |
+| `cluster.edge.capabilities.os`               | string               | host-detected                  | OS identifier. Auto-filled.                                                                        |
+| `cluster.edge.capabilities.arch`             | string               | host-detected                  | Architecture identifier. Auto-filled.                                                              |
 
 <Callout type="info">
   `tenant_id` is written by `aegis edge enroll` and **must not be hand-edited.**

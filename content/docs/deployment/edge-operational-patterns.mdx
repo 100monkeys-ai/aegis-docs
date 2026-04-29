@@ -128,12 +128,12 @@ For unmanaged fleets, the daemon owners run the update themselves on a cadence.
 
 ## Capacity planning
 
-| Resource               | Per-daemon           | Per-Relay (10k connected daemons)               |
-| ---------------------- | -------------------- | ----------------------------------------------- |
-| CPU                    | ≤1% of one core idle | ~2 vCPU steady, ~8 vCPU peak                    |
-| RSS                    | 30–50 MB idle        | ~4 GB                                           |
-| Network                | <1 KB/s heartbeats   | ~10 Mbps steady, peak bounded by fleet activity |
-| Persistent connections | 1 per daemon         | 10k                                             |
+| Resource               | Per-daemon            | Per-Relay (10k connected daemons)               |
+| ---------------------- | --------------------- | ----------------------------------------------- |
+| CPU                    | ≤1% of one core idle  | ~2 vCPU steady, ~8 vCPU peak                    |
+| RSS                    | 30–50 MB idle         | ~4 GB                                           |
+| Network                | &lt;1 KB/s heartbeats | ~10 Mbps steady, peak bounded by fleet activity |
+| Persistent connections | 1 per daemon          | 10k                                             |
 
 The Relay is connection-limit-bound before it is CPU-bound. The single biggest knob is `ulimit -n` (or its OS equivalent) on the Relay host — provision generously.
 

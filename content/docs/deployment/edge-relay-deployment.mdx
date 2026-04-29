@@ -127,7 +127,7 @@ The Relay terminates gRPC over h2 with TLS. Edge daemons connect to the public T
 
 Add a Caddyfile block:
 
-```caddy
+```text
 {$DOMAIN_RELAY:relay.localhost} {
     encode zstd gzip
 
