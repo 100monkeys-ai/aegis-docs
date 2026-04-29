@@ -1,0 +1,29 @@
+---
+title: Tools
+description: MCP-style capabilities that agents call to read the world and act on it.
+---
+
+# Tools
+
+A **tool** is a named capability an agent can call during an execution — a REST endpoint, a CLI command, a search, a file operation, a built-in platform function. Tools follow the MCP (Model Context Protocol) shape: each one has a name, a description, an input schema, and a result. Agents discover the tools available to them, decide when to invoke one, and receive the structured result back into their context.
+
+In AEGIS, agents never call tools directly. Every invocation is proxied by the orchestrator, which routes the call to the right backend, applies credentials, enforces policy, and records the event. This keeps the LLM's context window free of API keys and OpenAPI sprawl while preserving full auditability.
+
+---
+
+## Key ideas
+
+- **MCP-style capability** — a uniform interface for any callable: HTTP APIs, CLI tools, internal services, or macro-tools that compose multiple steps.
+- **Tool routing** — the orchestrator picks the right backend (built-in, MCP server, or SEAL Gateway) for each call.
+- **SEAL Gateway** — a dedicated tool plane for compressing complex REST and CLI integrations into named macro-tools and running them under signed-envelope security. Covered as its own concept.
+- **Discovery** — agents see only tool names and descriptions, never raw schemas, keeping prompts compact.
+- **Auditability** — every tool call emits a domain event used for observability and learning.
+
+---
+
+## Learn more
+
+- [Configuring Tools](/docs/agents/configuring-tools) — attach tools to an agent manifest
+- [Tool Routing](/docs/architecture/tool-routing) — how the orchestrator dispatches tool calls
+- [Gateway Overview](/docs/gateway/overview) — what the SEAL Gateway is and when to use it
+- [Gateway Concepts](/docs/gateway/concepts) — ApiSpecs, ToolWorkflows, and ephemeral CLI tools

@@ -1,0 +1,31 @@
+---
+title: Workflows
+description: Declarative state machines that coordinate agents, containers, and human approvals.
+---
+
+# Workflows
+
+A **workflow** is a declarative finite state machine that coordinates multiple steps — agent invocations, container runs, human approvals, parallel fan-outs, and nested subworkflows — into a single, replayable process. Where an agent does one thing well, a workflow strings many agents and systems together to deliver a higher-level outcome.
+
+Workflows are defined in YAML, stored in the workflow registry, and executed by the orchestrator. Every step reads from and writes to a shared **blackboard** — a mutable JSON context that flows through the run — and transitions are governed by explicit rules. This makes the entire process inspectable: you can see which state ran, what data it produced, and why the next transition fired.
+
+---
+
+## Key ideas
+
+- **States** — the named steps in a workflow. Each state has a kind: `Agent`, `System`, `Human`, `ParallelAgents`, `ContainerRun`, `ParallelContainerRun`, or `Subworkflow`.
+- **Blackboard** — the shared context object that carries data between states.
+- **Transitions** — conditional rules that decide which state runs next based on blackboard values.
+- **Output template** — an optional schema-validated projection of the blackboard, returned as the workflow's final output.
+- **Scope** — controls who can discover and run a workflow: `Global`, `Tenant`, or `User`.
+
+---
+
+## Learn more
+
+- [Workflows Overview](/docs/workflows/overview) — the conceptual tour
+- [Building Workflows](/docs/workflows/building-workflows) — manifest syntax and step kinds
+- [Swarms](/docs/workflows/swarms) — multi-agent parallel coordination
+- [Human Approvals](/docs/workflows/human-approvals) — pause for operator decisions
+- [CI/CD Pipelines](/docs/workflows/cicd-pipelines) — run container-based build and deploy steps
+- [Workflow Visualization](/docs/workflows/workflow-visualization) — render and debug FSM graphs

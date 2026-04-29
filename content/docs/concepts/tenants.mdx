@@ -1,0 +1,28 @@
+---
+title: Tenants
+description: The isolation boundary for users, secrets, executions, and routing in AEGIS.
+---
+
+# Tenants
+
+A **tenant** is the fundamental isolation boundary in AEGIS. Every user, secret, agent, workflow, execution, webhook route, and credential lives inside a tenant. Two tenants on the same cluster cannot see one another's data, share secrets, or accidentally pick up each other's webhooks — isolation is enforced at every layer of the platform, from the database all the way out to the storage gateway.
+
+A single AEGIS cluster can host many tenants side by side. When a person signs up for the consumer product, a tenant is provisioned automatically. Larger organizations get a tenant that maps to their workspace, with multiple human users and service accounts attached to it. Almost every API call, gRPC request, and event in the system carries a tenant identifier, and the orchestrator refuses to act on anything where that identifier is missing or mismatched.
+
+A small set of operations live above tenants — installing the cluster, registering a node, running disaster recovery — and these are reserved for cluster-level administrators. Everything else is tenant-scoped by default.
+
+---
+
+## Key ideas
+
+- **Tenant** — the isolation boundary that owns users, agents, workflows, secrets, and executions.
+- **Multi-tenant cluster** — one AEGIS deployment can serve many independent tenants concurrently.
+- **Tenant-scoped routing** — webhook source names and credentials are keyed per tenant; collisions across tenants are impossible.
+- **Cluster-level operations** — node install, upgrades, and platform-wide admin sit outside any tenant.
+
+---
+
+## Learn more
+
+- [Multi-Tenancy](/docs/deployment/multi-tenancy) — how tenant isolation is configured and enforced across the platform.
+- [IAM](/docs/deployment/iam) — how users and service accounts authenticate into a tenant.

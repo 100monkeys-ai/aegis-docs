@@ -1,0 +1,27 @@
+---
+title: Executions
+description: A single run of an agent, including its iterative refinement loop.
+---
+
+# Executions
+
+An **execution** is one run of an agent against a specific input. When you invoke an agent, the orchestrator allocates an execution ID, spins up an isolated runtime container, and drives the agent through the **100monkeys iterative loop**: `Execute → Evaluate → Refine`. The execution finishes when the agent produces output that satisfies its evaluation criteria, when the iteration budget is exhausted, or when an unrecoverable failure occurs.
+
+Each execution is the unit of observability and replay in AEGIS. Logs, tool calls, blackboard snapshots, and refinement trajectories are all anchored to an execution ID, which makes it the right handle for inspection, debugging, and learning.
+
+---
+
+## Key ideas
+
+- **Iteration** — one attempt within an execution. If an iteration fails or its output is judged inadequate, the orchestrator refines the prompt and tries again, up to a configured maximum.
+- **Iterative loop** — `Execute → Evaluate → Refine`. The agent runs, its output is checked, and the next iteration receives feedback so it can do better.
+- **Runtime container** — every execution gets its own ephemeral container with its working directory, tools, and credentials. Containers are destroyed when the execution ends.
+- **Execution hierarchy** — child executions spawned by a parent (for example via a swarm) carry a reference to the parent, enabling nested traces.
+
+---
+
+## Learn more
+
+- [Agent Execution](/docs/agents/execution) — how the iteration loop works in practice
+- [Execution Engine](/docs/architecture/execution-engine) — runtime selection and container lifecycle
+- [Dispatch Protocol](/docs/agents/dispatch-protocol) — how invocations are routed to runtimes

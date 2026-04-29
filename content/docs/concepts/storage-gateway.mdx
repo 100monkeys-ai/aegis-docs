@@ -1,0 +1,29 @@
+---
+title: Storage Gateway
+description: How agents see a normal POSIX filesystem while the orchestrator transparently enforces security and routes I/O to the right backend.
+---
+
+# Storage Gateway
+
+Inside an agent container, files just work. The agent reads, writes, lists, and seeks against ordinary paths — the same POSIX operations any program expects. There is no special SDK, no signed-URL dance, no object-store API to learn. Code that runs locally on a developer's laptop runs unchanged inside an AEGIS execution.
+
+Underneath that ordinary filesystem, the **Storage Gateway** is doing real work. Every read and write passes through a transport-agnostic security layer that validates the file handle, checks that the execution actually owns the volume it is touching, canonicalizes the path to block traversal attacks, squashes UID/GID so kernel permissions cannot leak across tenants, and emits an audit event. The transport mechanism varies by runtime — NFS for Docker, a host-side FUSE daemon for rootless Podman, virtio-fs for Firecracker microVMs — but the authorization logic is written once and reused. The agent sees one thing; the platform enforces another.
+
+---
+
+## Key ideas
+
+- **POSIX everywhere** — agents use normal file operations; no custom storage SDK in the agent runtime.
+- **Transport-agnostic FSAL** — a single security layer (the File System Abstraction Layer) backs every transport.
+- **Per-volume mounts** — each execution mounts only the volumes it owns, scoped to its lifetime.
+- **Pluggable backends** — the same agent code works against SeaweedFS, S3, or local disk without change.
+- **Full audit trail** — every file operation is recorded for forensics and Cortex learning.
+
+---
+
+## Learn more
+
+- [Storage Gateway](/docs/architecture/storage-gateway) — the security and authorization model in depth.
+- [Storage Backends](/docs/architecture/storage-backends) — the swappable backends behind the gateway.
+- [Configuring Storage](/docs/deployment/configuring-storage) — how to wire volumes and mounts in your deployment.
+- [SeaweedFS](/docs/deployment/seaweedfs) — running the default object backend.

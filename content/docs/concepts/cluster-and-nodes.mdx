@@ -1,0 +1,30 @@
+---
+title: Cluster and Nodes
+description: How an AEGIS cluster is composed of nodes with roles, and how workloads are routed between them.
+---
+
+# Cluster and Nodes
+
+An **AEGIS cluster** is one or more **nodes** that cooperate to run workloads on behalf of your tenants. The smallest viable cluster is a single hybrid node on a single machine — perfect for local development or a modest production deployment. As you scale, you add more nodes, give them roles, and let the platform route work across them.
+
+Every node has a **role** that says what it is allowed to do. A **controller** node hosts the orchestrator brain — the API surface, the workflow engine, the routing pipeline — but does not run agent containers itself. A **worker** node is a pure execution host: it runs agent runtimes, talks to the gateway, and reports capacity back upstream. A **hybrid** node does both, which is the default for single-machine clusters. Workloads are routed to nodes based on free capacity and on capabilities — for example, only nodes that have a particular runtime, GPU, or network reachability advertised will receive jobs that require them.
+
+Beyond the core cluster, **edge daemons** extend AEGIS onto user-installed machines — laptops, lab boxes, customer hardware. Edge hosts join the cluster through a relay and become first-class execution targets, scoped to their owning tenant.
+
+---
+
+## Key ideas
+
+- **Cluster** — one or more cooperating nodes that present a single AEGIS surface.
+- **Node roles** — `controller`, `worker`, or `hybrid` decide what each machine is allowed to run.
+- **Capability-aware routing** — workloads land on nodes that advertise the runtimes and resources they need.
+- **Edge daemons** — user-installed hosts that extend the cluster onto machines outside the data center.
+
+---
+
+## Learn more
+
+- [Multi-Node Deployment](/docs/deployment/multi-node) — running clusters with separate controller and worker nodes.
+- [Infrastructure](/docs/deployment/infrastructure) — cluster topology, networking, and inter-node trust.
+- [Pod Architecture](/docs/deployment/pod-architecture) — how the orchestrator pod and its sidecars are laid out.
+- [Edge Mode Overview](/docs/concepts/edge-mode-overview) — extending the cluster onto user-installed edge daemons.

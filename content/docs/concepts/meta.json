@@ -1,11 +1,23 @@
 {
   "title": "Core Concepts",
   "pages": [
-    "security-model",
+    "agents",
+    "workflows",
+    "executions",
+    "tools",
+    "swarms",
+    "tenants",
+    "secrets-and-identity",
+    "seal-gateway",
+    "storage-gateway",
     "stimulus-response",
     "cortex-integration",
+    "observability",
+    "security-model",
+    "cluster-and-nodes",
     "edge-mode-overview",
     "edge-security",
-    "fleet-operations"
+    "fleet-operations",
+    "zaru"
   ]
 }

@@ -1,0 +1,28 @@
+---
+title: Swarms
+description: How a parent agent spawns child agents to coordinate multi-agent work under a shared execution context.
+---
+
+# Swarms
+
+A **Swarm** is a small, coordinated group of agents working together on a single task. One agent — the **parent** — spawns one or more **child agents** to handle subproblems in parallel or in sequence. The whole group shares an execution context, a security ceiling, and a lifecycle: when the parent finishes or is cancelled, the children stop with it.
+
+Swarms are how AEGIS scales beyond a single agent's reasoning. Instead of one giant prompt trying to do everything, the parent decomposes the work, delegates pieces to specialized children, and integrates their results. Each child runs in its own isolated container with its own tools, but the orchestrator tracks the parent-child hierarchy so cancellation, audit, and resource limits flow correctly across the group.
+
+---
+
+## Key ideas
+
+- **Parent agent** — the root of the swarm; decides what to delegate and stitches results back together.
+- **Child agent** — a spawned agent that handles a focused subtask; inherits a security context that is a subset of the parent's.
+- **Shared execution context** — children inherit the parent's tenant, volume, and security ceiling; they cannot exceed it.
+- **Cascade cancellation** — cancelling or completing the parent automatically stops every child still running.
+- **Resource locks** — when children need exclusive access to a shared resource, they acquire a TTL-bounded lock that auto-releases.
+- **Recursion limit** — children may spawn further children, but the hierarchy is depth-bounded to keep swarms tractable.
+
+---
+
+## Learn more
+
+- [Swarms](/docs/workflows/swarms) — overview of how swarms fit into the workflow model.
+- [Building Swarms](/docs/workflows/building-swarms) — practical guide to authoring a parent-child swarm.

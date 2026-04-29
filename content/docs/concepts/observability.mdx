@@ -1,0 +1,29 @@
+---
+title: Observability
+description: Platform-wide structured logging, metrics, and tracing built on OpenTelemetry.
+---
+
+# Observability
+
+AEGIS treats observability as a first-class concern. Every service in the platform — the orchestrator, the SEAL gateway, Cortex, the temporal worker, the edge daemons — emits structured logs, metrics, and distributed traces in a single consistent shape. The shared substrate is **OpenTelemetry**: services produce OTLP signals, ship them to a collector, and from there fan them out to whatever backend you have wired up (Loki, Prometheus, Tempo, Grafana, Datadog, and so on).
+
+Because everything speaks OTLP, you do not have to instrument each component differently. A single trace can follow a request from a webhook hitting the gateway, through a workflow execution, into a tool call, and back out — across process boundaries and across nodes. Logs and metrics share the same trace IDs, so you can pivot between "what happened" and "how long did it take" without leaving the dashboard.
+
+Sensitive values — secrets, tokens, signed envelopes, credential payloads — are redacted automatically before they ever leave the service. You get the visibility without the leakage.
+
+---
+
+## Key ideas
+
+- **OpenTelemetry-native** — every service exports OTLP logs, metrics, and traces in a uniform format.
+- **Structured logging** — JSON logs with trace and span correlation, ready to query without parsing tricks.
+- **Distributed tracing** — single traces span ingestion, orchestration, tool calls, and edge dispatch.
+- **Automatic redaction** — secrets and signed envelope payloads are scrubbed before export.
+- **Backend-agnostic** — point the collector at whatever stack you already run.
+
+---
+
+## Learn more
+
+- [Observability Deployment](/docs/deployment/observability) — wiring up the collector and backends for your cluster.
+- [Gateway Observability](/docs/gateway/observability) — signals and dashboards specific to the SEAL gateway.

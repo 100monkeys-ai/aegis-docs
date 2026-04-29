@@ -1,0 +1,29 @@
+---
+title: SEAL Gateway
+description: A signed, attested boundary between agents and external APIs that compresses multi-step REST calls into single tool invocations.
+---
+
+# SEAL Gateway
+
+The **SEAL Gateway** sits between agents and the outside world. Every call an agent makes to an external API, CLI, or SaaS service goes through it. SEAL stands for **Signed Envelope Attestation Layer** — every invocation is wrapped in a signed envelope so the platform has a verifiable, auditable record of who called what tool, with what arguments, on whose behalf.
+
+The gateway does two big things. First, it acts as a security boundary: it verifies envelope signatures and identity tokens, resolves credentials just-in-time from OpenBao or via Keycloak token exchange, spawns ephemeral containers for CLI tools, and tears everything down when the call finishes. Second, it compresses ugly multi-step REST flows into clean single-shot tools. Most real-world APIs require an agent to chain three, five, or ten REST calls just to get one useful result — burning tokens, latency, and reasoning budget. SEAL lets you author a **ToolWorkflow**: a named macro-tool that wraps that whole sequence behind one invocation. The agent sees one tool with one description; the gateway runs the steps, threads state between them, and returns the final answer.
+
+---
+
+## Key ideas
+
+- **Signed Envelope Attestation Layer** — every tool call carries a signed envelope verified end-to-end.
+- **ToolWorkflows** — multi-step REST sequences exposed to agents as a single semantic tool.
+- **Ephemeral CLI tools** — command-line tools run in disposable containers spawned and destroyed per call.
+- **JIT credential resolution** — secrets are fetched only at the moment of invocation and never persisted in tool definitions.
+- **Smaller context windows** — agents see tool names and descriptions, not raw OpenAPI schemas.
+
+---
+
+## Learn more
+
+- [Gateway Overview](/docs/gateway/overview) — what the SEAL Gateway is and why it exists.
+- [Gateway Concepts](/docs/gateway/concepts) — ApiSpecs, ToolWorkflows, and the core abstractions.
+- [SEAL Protocol](/docs/gateway/seal-protocol) — the signed envelope format and verification rules.
+- [Authoring Workflows](/docs/gateway/authoring-workflows) — write your own ToolWorkflows to compress APIs.

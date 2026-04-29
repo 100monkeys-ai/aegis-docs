@@ -1,0 +1,29 @@
+---
+title: Agents
+description: Declarative units of work that run in isolated runtimes and refine their own output.
+---
+
+# Agents
+
+An **agent** is a declarative definition of a single unit of work — a prompt, a model, a set of allowed tools, and a runtime — packaged behind a stable identifier. You write an agent once as a manifest, deploy it, and then invoke it from workflows, the API, the CLI, or other agents.
+
+Agents are the smallest reusable building block in AEGIS. They sit between raw model calls and full workflows: smarter than a one-shot prompt, lighter than a multi-step orchestration. Each invocation runs inside an isolated container with its own working directory and tool surface, so agents can read and write files, call external APIs, and produce structured output without leaking state between runs.
+
+---
+
+## Key ideas
+
+- **Manifest** — the YAML or JSON declaration that defines an agent's prompt, model, tools, runtime, and input/output schemas.
+- **Runtime** — the container image and environment the agent executes in. Defaults are provided; custom runtimes are supported.
+- **Discovery** — every deployed agent is indexed for semantic search, so other agents and workflows can find it by description rather than by ID.
+- **Validation** — manifests are schema-checked at deploy time and inputs are validated at invocation time.
+
+---
+
+## Learn more
+
+- [Agents Overview](/docs/agents/overview) — the full conceptual tour
+- [Writing Agents](/docs/agents/writing-agents) — manifest reference and examples
+- [Configuring Tools](/docs/agents/configuring-tools) — attach capabilities to an agent
+- [Deploying Agents](/docs/agents/deploying-agents) — push a manifest to the orchestrator
+- [Custom Runtime Agents](/docs/agents/custom-runtime-agents) — bring your own container image
