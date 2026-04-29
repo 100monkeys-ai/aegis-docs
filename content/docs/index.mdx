@@ -107,7 +107,7 @@ AEGIS is licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html). 
 If you want MCP tool calls (from Zaru chats or system-tier security contexts) to execute on **a host you control** — your laptop, home server, work VM — install the AEGIS edge daemon and bind it to your tenant. The daemon opens an outbound gRPC stream so it works behind NAT with no inbound port forwarding, and operator-managed tags, groups, and selectors give you Ansible/Salt-style fan-out across many hosts at once.
 
 - [Edge Mode Overview](/docs/concepts/edge-mode-overview) — what it is, how it works, the two deployment topologies (self-hosted vs SaaS Relay).
-- [Edge Host Setup](/docs/guides/edge-host-setup) — install the daemon, enroll it from Zaru, confirm it's connected.
+- [Edge Host Setup](/docs/zaru/edge-host-setup) — install the daemon, enroll it from Zaru, confirm it's connected.
 - [Fleet Operations](/docs/concepts/fleet-operations) — run tools across many edge hosts with rolling deploys, failure policies, and live per-node streaming.
 
 The platform topology with edge daemons:

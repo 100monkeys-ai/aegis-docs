@@ -557,17 +557,17 @@ Optional. Controls how agent containers are launched.
 
 Optional. Configures ports and TLS.
 
-| Key                          | Type   | Default     | Description                                                                                                                                                                             |
-| ---------------------------- | ------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bind_address`               | string | `127.0.0.1` | Network interface to bind all listeners. Defaults to loopback; binding a non-loopback address requires either `tls` configured or `allow_insecure_bind: true`.                          |
-| `port`                       | u16    | `8088`      | HTTP REST API port                                                                                                                                                                      |
-| `grpc_port`                  | u16    | `50051`     | gRPC API port                                                                                                                                                                           |
-| `orchestrator_endpoint`      | string | null        | WebSocket URL for edge → orchestrator connection (edge nodes only)                                                                                                                      |
-| `heartbeat_interval_seconds` | u64    | `30`        | Health check ping interval                                                                                                                                                              |
-| `tls.cert_path`              | string | —           | TLS certificate path                                                                                                                                                                    |
-| `tls.key_path`               | string | —           | TLS private key path                                                                                                                                                                    |
-| `tls.ca_path`                | string | null        | CA certificate path (optional)                                                                                                                                                          |
-| `allow_insecure_bind`        | bool   | `false`     | Operator-acknowledged opt-out of the non-loopback-without-TLS startup gate. Set `true` ONLY when TLS is terminated upstream by a trusted-network ingress. See callout below.            |
+| Key                          | Type   | Default     | Description                                                                                                                                                                  |
+| ---------------------------- | ------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bind_address`               | string | `127.0.0.1` | Network interface to bind all listeners. Defaults to loopback; binding a non-loopback address requires either `tls` configured or `allow_insecure_bind: true`.               |
+| `port`                       | u16    | `8088`      | HTTP REST API port                                                                                                                                                           |
+| `grpc_port`                  | u16    | `50051`     | gRPC API port                                                                                                                                                                |
+| `orchestrator_endpoint`      | string | null        | WebSocket URL for edge → orchestrator connection (edge nodes only)                                                                                                           |
+| `heartbeat_interval_seconds` | u64    | `30`        | Health check ping interval                                                                                                                                                   |
+| `tls.cert_path`              | string | —           | TLS certificate path                                                                                                                                                         |
+| `tls.key_path`               | string | —           | TLS private key path                                                                                                                                                         |
+| `tls.ca_path`                | string | null        | CA certificate path (optional)                                                                                                                                               |
+| `allow_insecure_bind`        | bool   | `false`     | Operator-acknowledged opt-out of the non-loopback-without-TLS startup gate. Set `true` ONLY when TLS is terminated upstream by a trusted-network ingress. See callout below. |
 
 <Callout type="warn">
 **`allow_insecure_bind` is an opt-out, not a default.** AEGIS refuses to start when `bind_address` is a non-loopback address (e.g. `0.0.0.0`) and `tls` is not configured — every public request would otherwise transit cleartext.
@@ -579,6 +579,7 @@ Set `allow_insecure_bind: true` only when **all** of the following are true:
 - You accept the audit-trail consequence: a `WARN` entry is emitted on every boot recording that the override is engaged.
 
 Setting `allow_insecure_bind: true` on a publicly-exposed host is a serious security regression — every external request would transit cleartext.
+
 </Callout>
 
 ---
@@ -913,29 +914,31 @@ Optional. Configures this node's role in the multi-node cluster topology. If omi
 
 `spec.cluster.role` is **orthogonal** to `spec.node.type`. A node with `type: orchestrator` can have `cluster.role: worker`.
 
-| Key                         | Type     | Required | Default  | Description                                                        |
-| --------------------------- | -------- | -------- | -------- | ------------------------------------------------------------------ |
-| `enabled`                   | bool     | ❌       | `false`  | Enable cluster mode.                                               |
+| Key                         | Type     | Required | Default  | Description                                                                      |
+| --------------------------- | -------- | -------- | -------- | -------------------------------------------------------------------------------- |
+| `enabled`                   | bool     | ❌       | `false`  | Enable cluster mode.                                                             |
 | `role`                      | enum     | ✅       | `hybrid` | Node role: `controller` \| `worker` \| `hybrid` \| `edge` \| `relay-coordinator` |
-| `controller_endpoint`       | string   | ❌       | —        | gRPC endpoint of the controller node. Required for `role: worker`. |
-| `cluster_grpc_port`         | u16      | ❌       | `50056`  | Port for `NodeClusterService` gRPC (controller only).              |
-| `peers`                     | string[] | ❌       | `[]`     | Static list of peer controller addresses.                          |
-| `node_keypair_path`         | string   | ✅       | —        | Path to the persistent Ed25519 keypair file for node identity.     |
-| `heartbeat_interval_secs`   | u64      | ❌       | `30`     | Interval in seconds for worker heartbeats.                         |
-| `token_refresh_margin_secs` | u64      | ❌       | `120`    | Token re-attestation margin in seconds.                            |
-| `tls.enabled`               | bool     | ❌       | `true`   | Enable TLS for cluster communication.                              |
-| `tls.cert_path`             | string   | ❌       | —        | Path to node TLS certificate.                                      |
-| `tls.key_path`              | string   | ❌       | —        | Path to node TLS private key.                                      |
-| `tls.ca_cert`               | string   | ❌       | —        | Path to CA certificate for peer verification.                      |
+| `controller_endpoint`       | string   | ❌       | —        | gRPC endpoint of the controller node. Required for `role: worker`.               |
+| `cluster_grpc_port`         | u16      | ❌       | `50056`  | Port for `NodeClusterService` gRPC (controller only).                            |
+| `peers`                     | string[] | ❌       | `[]`     | Static list of peer controller addresses.                                        |
+| `node_keypair_path`         | string   | ✅       | —        | Path to the persistent Ed25519 keypair file for node identity.                   |
+| `heartbeat_interval_secs`   | u64      | ❌       | `30`     | Interval in seconds for worker heartbeats.                                       |
+| `token_refresh_margin_secs` | u64      | ❌       | `120`    | Token re-attestation margin in seconds.                                          |
+| `tls.enabled`               | bool     | ❌       | `true`   | Enable TLS for cluster communication.                                            |
+| `tls.cert_path`             | string   | ❌       | —        | Path to node TLS certificate.                                                    |
+| `tls.key_path`              | string   | ❌       | —        | Path to node TLS private key.                                                    |
+| `tls.ca_cert`               | string   | ❌       | —        | Path to CA certificate for peer verification.                                    |
 
 #### Cluster Roles
 
-| Role                | Exposes                                                       | Connects To                                                                                           |
-| ------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `controller`        | `NodeClusterService` on `cluster_grpc_port` (default 50056)   | Nothing (it is the authority)                                                                         |
-| `worker`            | `ForwardExecution` stream on `spec.network.grpc_port` (50051) | Controller at `controller_endpoint`                                                                   |
-| `hybrid`            | Both 50051 and 50056                                          | Itself (no external cluster required)                                                                 |
-| `edge`              | Outbound only — daemon dials its controller                   | Controller (or `relay-coordinator`) advertised in the enrollment token's `cep` claim                  |
+The five roles below are the **platform topology** primitives for self-hosted AEGIS clusters. `controller`, `worker`, and `hybrid` are the classic multi-node primitives; `edge` and `relay-coordinator` extend the model to user-host daemons and to the SaaS multi-tenant relay process. The Zaru SaaS deployment runs `relay.myzaru.com` as a `relay-coordinator` operated by 100monkeys; self-hosters can deploy their own.
+
+| Role                | Exposes                                                       | Connects To                                                                                            |
+| ------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `controller`        | `NodeClusterService` on `cluster_grpc_port` (default 50056)   | Nothing (it is the authority)                                                                          |
+| `worker`            | `ForwardExecution` stream on `spec.network.grpc_port` (50051) | Controller at `controller_endpoint`                                                                    |
+| `hybrid`            | Both 50051 and 50056                                          | Itself (no external cluster required)                                                                  |
+| `edge`              | Outbound only — daemon dials its controller                   | Controller (or `relay-coordinator`) advertised in the enrollment token's `cep` claim                   |
 | `relay-coordinator` | `NodeClusterService` on `cluster_grpc_port` (default 50056)   | Backed by Postgres / IAM / OpenBao; brokers gRPC streams from `edge` nodes for the controller's tenant |
 
 #### Node Attestation
@@ -978,12 +981,12 @@ Optional.
 
 #### `metrics`
 
-| Key                    | Type   | Default       | Description                                                                                                                                                                                                                                       |
-| ---------------------- | ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `metrics.enabled`      | bool   | `true`        | Enable Prometheus metrics                                                                                                                                                                                                                         |
-| `metrics.bind_address` | string | `127.0.0.1`   | Network interface the Prometheus exporter binds. Defaults to loopback to prevent unauthenticated network exposure of internal counters and labels. Set a non-loopback address only when the endpoint is fronted by an authenticating reverse proxy. |
-| `metrics.port`         | u16    | `9091`        | Prometheus metrics exposition port                                                                                                                                                                                                                |
-| `metrics.path`         | string | `/metrics`    | HTTP path for scraping                                                                                                                                                                                                                            |
+| Key                    | Type   | Default     | Description                                                                                                                                                                                                                                         |
+| ---------------------- | ------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metrics.enabled`      | bool   | `true`      | Enable Prometheus metrics                                                                                                                                                                                                                           |
+| `metrics.bind_address` | string | `127.0.0.1` | Network interface the Prometheus exporter binds. Defaults to loopback to prevent unauthenticated network exposure of internal counters and labels. Set a non-loopback address only when the endpoint is fronted by an authenticating reverse proxy. |
+| `metrics.port`         | u16    | `9091`      | Prometheus metrics exposition port                                                                                                                                                                                                                  |
+| `metrics.path`         | string | `/metrics`  | HTTP path for scraping                                                                                                                                                                                                                              |
 
 #### `tracing`
 
@@ -1197,7 +1200,9 @@ spec:
 
 ## Edge Mode Roles and `spec.edge`
 
-Two new values join the `cluster.role` enum:
+This section is the **platform reference** for the `edge` and `relay-coordinator` cluster roles — the values you set when self-hosting AEGIS and configuring node topology directly. If you are a Zaru SaaS user installing `aegis edge` on your laptop or server, the daemon's `cluster.role` is set automatically by `aegis edge enroll` and the SaaS Relay Coordinator at `relay.myzaru.com` is operated by 100monkeys — see [Edge Host Setup](/docs/zaru/edge-host-setup) for that flow.
+
+Two values join the `cluster.role` enum to support edge topologies:
 
 | Role                | Purpose                                                                                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |

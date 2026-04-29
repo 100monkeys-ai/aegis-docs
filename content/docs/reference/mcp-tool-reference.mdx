@@ -56,15 +56,15 @@ registered by platform operators:
 
 AEGIS tools are available across three distinct execution contexts. The tool set exposed to a caller varies by context.
 
-| Context                   | Tool groups available                                                  | Notes                                                         |
-| ------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Zaru Chat — chat mode     | `zaru.*` (init, mode, docs, memory.get, memory.set) only               | Mode switching, docs search, memory; no orchestrator tools    |
-| Zaru Chat — agentic mode  | `zaru.*` + agent/task management subset                                | See mode table below                                          |
-| Zaru Chat — execute mode  | `zaru.*` + execute pipeline tools                                      | See mode table below                                          |
-| Zaru Chat — workflow mode | `zaru.*` + workflow/agent design subset                                | See mode table below                                          |
-| Zaru Chat — operator mode | All tools                                                              | No filtering applied                                          |
-| AEGIS agent inner loop    | All 83 built-in tools                                                  | Subject to agent `spec.tools` allowlist and `SecurityContext` |
-| External SEAL caller      | All 83 built-in tools                                                  | Filtered by `SecurityContext` only; no mode concept           |
+| Context                   | Tool groups available                                    | Notes                                                         |
+| ------------------------- | -------------------------------------------------------- | ------------------------------------------------------------- |
+| Zaru Chat — chat mode     | `zaru.*` (init, mode, docs, memory.get, memory.set) only | Mode switching, docs search, memory; no orchestrator tools    |
+| Zaru Chat — agentic mode  | `zaru.*` + agent/task management subset                  | See mode table below                                          |
+| Zaru Chat — execute mode  | `zaru.*` + execute pipeline tools                        | See mode table below                                          |
+| Zaru Chat — workflow mode | `zaru.*` + workflow/agent design subset                  | See mode table below                                          |
+| Zaru Chat — operator mode | All tools                                                | No filtering applied                                          |
+| AEGIS agent inner loop    | All 83 built-in tools                                    | Subject to agent `spec.tools` allowlist and `SecurityContext` |
+| External SEAL caller      | All 83 built-in tools                                    | Filtered by `SecurityContext` only; no mode concept           |
 
 See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full routing pipeline.
 
@@ -1648,7 +1648,7 @@ Text files include their content inline in the `content` field so LLMs can consu
   "path": "chart.png",
   "content_type": "image/png",
   "is_binary": true,
-  "download_url": "https://aegis.example.com/v1/executions/e1f2a3b4-.../files/chart.png?token=...",
+  "download_url": "https://api.100monkeys.ai/v1/executions/e1f2a3b4-.../files/chart.png?token=...",
   "size_bytes": 245120
 }
 ```

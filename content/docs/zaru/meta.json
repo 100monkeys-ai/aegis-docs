@@ -1,22 +1,23 @@
 {
-    "title": "Zaru",
-    "pages": [
-        "overview",
-        "chat",
-        "context-panel",
-        "the-architect",
-        "the-colony",
-        "the-workshop",
-        "vault",
-        "memory",
-        "control-plane",
-        "pricing",
-        "api-keys",
-        "invites",
-        "mcp-client-setup",
-        "mcp-tools",
-        "execute-mode",
-        "live-mode",
-        "code-mode"
-    ]
+  "title": "Zaru",
+  "pages": [
+    "overview",
+    "chat",
+    "context-panel",
+    "the-architect",
+    "the-colony",
+    "the-workshop",
+    "vault",
+    "edge-host-setup",
+    "memory",
+    "control-plane",
+    "pricing",
+    "api-keys",
+    "invites",
+    "mcp-client-setup",
+    "mcp-tools",
+    "execute-mode",
+    "live-mode",
+    "code-mode"
+  ]
 }

@@ -19,6 +19,14 @@ Edge Mode is the operational layer that makes those interactions safe, tenant-is
 import { Callout } from "fumadocs-ui/components/callout";
 
 <Callout type="info">
+  **Zaru SaaS user looking to add your laptop or server as an edge?** This page
+  describes the underlying platform model — daemon roles, stream protocol,
+  routing, and the OSS vs. SaaS topology distinction. For the step-by-step
+  enrollment flow against `relay.myzaru.com` driven from the Zaru **Vault → Edge
+  Hosts** UI, see [Edge Host Setup](/docs/zaru/edge-host-setup).
+</Callout>
+
+<Callout type="info">
   Edge daemons are **tenant-bound at enrollment time**. A daemon enrolled into
   your personal tenant cannot be reached from any other tenant — including team
   tenants you also belong to. Cross-tenant access is rejected at the router
@@ -179,7 +187,7 @@ To avoid confusion with neighboring concepts:
 
 - [Edge Security](/docs/concepts/edge-security) — the two-envelope SEAL pattern, enrollment token lifecycle, key rotation, and local SecurityContext enforcement.
 - [Fleet Operations](/docs/concepts/fleet-operations) — dispatch modes, failure policies, and the per-node streaming result model.
-- [Edge Host Setup](/docs/guides/edge-host-setup) — install the daemon on Linux, macOS, or Windows, enroll it from Zaru, and confirm connectivity.
+- [Edge Host Setup](/docs/zaru/edge-host-setup) — Zaru SaaS enrollment flow: install the daemon on Linux, macOS, or Windows, enroll it via **Vault → Edge Hosts**, and confirm connectivity.
 - [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — service manager templates and systemd/launchd/NSSM unit details.
 - [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge` subcommand with flags, examples, and exit codes.
 

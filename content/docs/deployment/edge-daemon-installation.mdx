@@ -9,7 +9,16 @@ The AEGIS edge daemon ships as part of the standard `aegis` CLI binary. Installa
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-For the end-to-end "install + enroll + verify" flow, see [edge host setup](/docs/guides/edge-host-setup). This page is the deployment reference.
+This page is the deployment-reference view of the daemon binary and its host service-manager unit. It documents the install commands, the systemd / launchd / NSSM unit specs, and the hardening flags applied to each — independent of whether the daemon is enrolled against a self-hosted controller or against the Zaru SaaS Relay Coordinator.
+
+<Callout type="info">
+  **Looking to enroll a daemon against MyZaru SaaS?** The end-to-end Zaru SaaS
+  flow — issuing an enrollment token from the Zaru **Vault → Edge Hosts** UI,
+  redeeming it against `relay.myzaru.com`, and confirming the host appears
+  connected — is documented at [Edge Host Setup](/docs/zaru/edge-host-setup).
+  This page covers the underlying binary and service-manager wiring that flow
+  depends on.
+</Callout>
 
 ---
 
@@ -18,7 +27,7 @@ For the end-to-end "install + enroll + verify" flow, see [edge host setup](/docs
 ### Linux (x86_64, aarch64)
 
 ```bash
-curl -fsSL https://get.aegis.example/install.sh | bash
+curl -fsSL https://get.100monkeys.ai | bash
 ```
 
 The installer drops `aegis` into `/usr/local/bin` (or `~/.local/bin` if running unprivileged). Verify:
@@ -39,13 +48,13 @@ brew install aegis-cli
 Or via the install script (Homebrew not required):
 
 ```bash
-curl -fsSL https://get.aegis.example/install.sh | bash
+curl -fsSL https://get.100monkeys.ai | bash
 ```
 
 ### Windows (x86_64)
 
 ```powershell
-iwr -useb https://get.aegis.example/install.ps1 | iex
+iwr -useb https://get.100monkeys.ai | iex
 ```
 
 The installer drops `aegis.exe` into `%LOCALAPPDATA%\Programs\aegis\`, prepends it to user `PATH`, and registers the NSSM helper.
@@ -63,7 +72,7 @@ Path: `~/.config/systemd/user/aegis-edge.service`
 ```ini
 [Unit]
 Description=AEGIS Edge Daemon
-Documentation=https://docs.aegis.example/deployment/edge-daemon-installation
+Documentation=https://docs.100monkeys.ai/deployment/edge-daemon-installation
 After=network-online.target
 Wants=network-online.target
 
@@ -280,7 +289,7 @@ The remote `EdgeDaemon` row remains in the controller until an operator runs `ae
 
 ## What's next
 
-- [Edge Host Setup](/docs/guides/edge-host-setup) — end-to-end install + enroll + verify.
+- [Edge Host Setup](/docs/zaru/edge-host-setup) — end-to-end Zaru SaaS install + enroll + verify flow.
 - [Edge Relay Deployment](/docs/deployment/edge-relay-deployment) — how to deploy the Relay Coordinator in self-hosted setups.
 - [Edge Operational Patterns](/docs/deployment/edge-operational-patterns) — day-2 ops, monitoring, log collection, decommissioning.
 - [Edge Config Reference](/docs/reference/edge-config) — every field of `cluster.edge` with defaults.

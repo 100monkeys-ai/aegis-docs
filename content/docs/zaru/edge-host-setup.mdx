@@ -1,13 +1,22 @@
 ---
 title: Edge Host Setup
-description: Add an edge host via Zaru, install and enroll the AEGIS edge daemon on Linux, macOS, or Windows, and confirm connectivity.
+description: Add an edge host to your Zaru tenant via the Vault → Edge Hosts UI, install and enroll the AEGIS edge daemon on Linux, macOS, or Windows, and confirm connectivity.
 ---
 
 # Edge Host Setup
 
-This guide walks you through adding a new edge host to your tenant — from the Zaru UI side, through the host-side install and enrollment, to confirming the daemon is connected and ready to receive tool calls.
+This guide walks you through adding a new edge host to your Zaru tenant — from the Zaru UI side, through the host-side install and enrollment, to confirming the daemon is connected and ready to receive tool calls. It covers the **MyZaru SaaS** flow: Zaru issues the enrollment token, the daemon connects outbound to the multi-tenant Relay Coordinator at `relay.myzaru.com`, and the host shows up in your **Vault → Edge Hosts** list.
 
 import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="info">
+  **Self-hosting AEGIS instead?** This page documents the Zaru SaaS enrollment
+  flow against `relay.myzaru.com`. If you run your own AEGIS controller and want
+  to enroll an edge daemon directly against it, see [Edge Mode
+  Overview](/docs/concepts/edge-mode-overview) for the platform topology and
+  [Node Configuration Reference](/docs/reference/node-config) for the
+  `cluster.role: edge` field reference.
+</Callout>
 
 The flow has three phases:
 
@@ -50,7 +59,7 @@ The daemon is the same binary as the rest of the AEGIS CLI, with a service-manag
 
 ```bash
 # Download and install the AEGIS CLI for your architecture.
-curl -fsSL https://get.aegis.example/install.sh | bash
+curl -fsSL https://get.100monkeys.ai | bash
 
 # Verify.
 aegis --version
@@ -71,7 +80,7 @@ The unit lives at `~/.config/systemd/user/aegis-edge.service` with hardening fla
 ### macOS
 
 ```bash
-brew install aegis-cli   # or: curl -fsSL https://get.aegis.example/install.sh | bash
+brew install aegis-cli   # or: curl -fsSL https://get.100monkeys.ai | bash
 aegis --version
 aegis edge service install
 ```
@@ -82,7 +91,7 @@ The launchd plist lives at `~/Library/LaunchAgents/io.aegis.edge.plist`. It's lo
 
 ```powershell
 # PowerShell, as a regular user (admin needed only to register the NSSM service).
-iwr -useb https://get.aegis.example/install.ps1 | iex
+iwr -useb https://get.100monkeys.ai | iex
 aegis --version
 aegis edge service install
 ```
@@ -231,6 +240,7 @@ Either path marks the daemon `Revoked`, blacklists its `NodeSecurityToken`, and 
 - [Edge Tag and Group Management](/docs/guides/edge-tag-and-group-management) — once you have hosts, classify them.
 - [Edge Fleet Operations](/docs/guides/edge-fleet-operations) — run tools across many hosts.
 - [Edge Key Rotation](/docs/guides/edge-key-rotation) — rotate keys for hygiene or after a suspected leak.
-- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — service manager templates and platform specifics.
+- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — platform service manager templates (systemd / launchd / NSSM) and the underlying unit specs.
 - [Edge Config Reference](/docs/reference/edge-config) — every field of `cluster.edge` with defaults.
 - [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge` subcommand.
+- [Edge Mode Overview](/docs/concepts/edge-mode-overview) — the underlying platform model, including the self-hosted topology.
