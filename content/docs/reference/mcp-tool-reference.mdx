@@ -1,13 +1,13 @@
 ---
 title: MCP Tool Reference
-description: Complete input and output schemas for all 86 AEGIS MCP tools — 83 built-in orchestrator tools and the Zaru-only zaru.init, zaru.mode, and zaru.docs tools — with availability by context and Zaru conversation mode.
+description: Complete input and output schemas for all AEGIS MCP tools — built-in orchestrator tools and the Zaru-only zaru.init, zaru.mode, zaru.docs, zaru.memory.get, and zaru.memory.set tools — with availability by context and Zaru conversation mode.
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
 
-Tool count: **87** total — 84 built-in orchestrator tools + 3 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`).
+Tool count: **89** total — 84 built-in orchestrator tools + 5 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`).
 
 ---
 
@@ -33,7 +33,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.git.delete`, `aegis.git.commit`, `aegis.git.push`, `aegis.git.diff`,
 `aegis.script.save`, `aegis.script.list`, `aegis.script.get`, `aegis.script.update`,
 `aegis.script.delete`,
-`zaru.init`, `zaru.mode`, `zaru.docs`
+`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 
 <Callout type="info">
   Volume, file, git, and script tools are available to every tier — Free, Pro,
@@ -58,11 +58,11 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 
 | Context                   | Tool groups available                                                  | Notes                                                         |
 | ------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Zaru Chat — chat mode     | `zaru.init` + `zaru.mode` + `zaru.docs` only                           | Mode switching and docs search; no orchestrator tools         |
-| Zaru Chat — agentic mode  | `zaru.init` + `zaru.mode` + `zaru.docs` + agent/task management subset | See mode table below                                          |
-| Zaru Chat — execute mode  | `zaru.init` + `zaru.mode` + `zaru.docs` + execute pipeline tools       | See mode table below                                          |
-| Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + `zaru.docs` + workflow/agent design subset | See mode table below                                          |
-| Zaru Chat — operator mode | All 86 tools                                                           | No filtering applied                                          |
+| Zaru Chat — chat mode     | `zaru.*` (init, mode, docs, memory.get, memory.set) only               | Mode switching, docs search, memory; no orchestrator tools    |
+| Zaru Chat — agentic mode  | `zaru.*` + agent/task management subset                                | See mode table below                                          |
+| Zaru Chat — execute mode  | `zaru.*` + execute pipeline tools                                      | See mode table below                                          |
+| Zaru Chat — workflow mode | `zaru.*` + workflow/agent design subset                                | See mode table below                                          |
+| Zaru Chat — operator mode | All tools                                                              | No filtering applied                                          |
 | AEGIS agent inner loop    | All 83 built-in tools                                                  | Subject to agent `spec.tools` allowlist and `SecurityContext` |
 | External SEAL caller      | All 83 built-in tools                                                  | Filtered by `SecurityContext` only; no mode concept           |
 
@@ -81,13 +81,15 @@ See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full ro
 
 ### Chat Mode
 
-Only `zaru.init`, `zaru.mode`, and `zaru.docs` are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
+Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.set` are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
 
 ### Agentic Mode
 
 - `zaru.init`
 - `zaru.mode`
 - `zaru.docs`
+- `zaru.memory.get`
+- `zaru.memory.set`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
 - `aegis.agent.list`
@@ -106,6 +108,8 @@ Only `zaru.init`, `zaru.mode`, and `zaru.docs` are exposed. The model cannot inv
 - `zaru.init`
 - `zaru.mode`
 - `zaru.docs`
+- `zaru.memory.get`
+- `zaru.memory.set`
 - `aegis.execute.intent`
 - `aegis.execute.status`
 - `aegis.execute.wait`
@@ -117,6 +121,8 @@ Only `zaru.init`, `zaru.mode`, and `zaru.docs` are exposed. The model cannot inv
 - `zaru.init`
 - `zaru.mode`
 - `zaru.docs`
+- `zaru.memory.get`
+- `zaru.memory.set`
 - `aegis.workflow.generate`
 - `aegis.workflow.list`
 - `aegis.workflow.logs`
@@ -133,7 +139,7 @@ Only `zaru.init`, `zaru.mode`, and `zaru.docs` are exposed. The model cannot inv
 
 ### Operator Mode
 
-All 86 tools are available — no filtering is applied.
+All tools are available — no filtering is applied.
 
 ---
 
@@ -228,6 +234,8 @@ Operator always has full access; only additional modes are listed per tool.
 | `zaru.init`                      | zaru       | N/A          | —                                               | C, Ag, Ex, Ar, Op |
 | `zaru.mode`                      | zaru       | N/A          | `target_mode`, `reason`                         | C, Ag, Ex, Ar, Op |
 | `zaru.docs`                      | zaru       | N/A          | `query`                                         | C, Ag, Ex, Ar, Op |
+| `zaru.memory.get`                | zaru       | N/A          | —                                               | C, Ag, Ex, Ar, Op |
+| `zaru.memory.set`                | zaru       | N/A          | `content`, `version`                            | C, Ag, Ex, Ar, Op |
 
 ---
 
@@ -2389,10 +2397,11 @@ across their volumes.
 ## Zaru UI Tools
 
 <Callout type="info">
-  `zaru.init`, `zaru.mode`, and `zaru.docs` are intercepted by the
-  `zaru-mcp-server` and are never forwarded to the AEGIS orchestrator. They are
-  only available when using the StreamableHTTP transport and are injected by the
-  Zaru MCP server at the point of tool advertisement.
+  `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and
+  `zaru.memory.set` are intercepted by the `zaru-mcp-server` and are never
+  forwarded to the AEGIS orchestrator. They are only available when using the
+  StreamableHTTP transport and are injected by the Zaru MCP server at the point
+  of tool advertisement.
 </Callout>
 
 ### `zaru.init`
@@ -2485,6 +2494,57 @@ zaru.docs({ query: "how to create an agent" });
   with titles, content excerpts, and direct URLs. Results are cached per query
   for 5 minutes to reduce latency on repeated lookups.
 </Callout>
+
+### `zaru.memory.get`
+
+Read the caller's persistent memory blob. Memory is per-user, shared across all MCP clients connected as that user (Zaru Web, Claude Desktop, Windsurf, etc.), and auto-injected into the system prompt at session start. Available in every conversation mode.
+
+Use mid-conversation primarily to obtain the current `version` before issuing `zaru.memory.set`, or to re-read after a 409 conflict.
+
+**Access:** User
+
+**`skip_judge`:** N/A (never reaches the orchestrator)
+
+_No parameters — accepts an empty object `{}`._
+
+**Output:**
+
+```json
+{
+  "content": "# User memory\n\n- Prefers concise answers...",
+  "version": 7,
+  "updated_at": "2026-04-28T14:32:11Z"
+}
+```
+
+When no memory has been written yet, returns `{ "content": "", "version": 0, "updated_at": "..." }`.
+
+### `zaru.memory.set`
+
+Persist a new memory state for the caller. Pass the **full** new markdown blob — not a diff or patch — together with the `version` returned by the most recent `zaru.memory.get`. On success the server increments the version and returns the new state. Available in every conversation mode.
+
+Use to record user preferences, work-style cues, recurring projects, frustrations, or anything worth carrying into future conversations. Always `zaru.memory.get` first to obtain the current `version`. Keep memory concise and signal-rich — it is not a transcript log.
+
+**Access:** User
+
+**`skip_judge`:** N/A (never reaches the orchestrator)
+
+| Property  | Type      | Required | Default | Description                                                  |
+| --------- | --------- | -------- | ------- | ------------------------------------------------------------ |
+| `content` | `string`  | Yes      | —       | The full new memory markdown blob.                           |
+| `version` | `integer` | Yes      | —       | The version returned by the previous `zaru.memory.get` call. |
+
+**Output:**
+
+```json
+{
+  "content": "# User memory\n\n- Prefers concise answers...\n- New project: zaru-edge",
+  "version": 8,
+  "updated_at": "2026-04-28T14:35:42Z"
+}
+```
+
+**Conflict handling:** if `version` does not match the server's current version, the call returns a structured conflict error containing the server's current `{ content, version, updated_at }`. The model should merge the user's intended changes into the returned content and retry with the new `version`.
 
 ---
 

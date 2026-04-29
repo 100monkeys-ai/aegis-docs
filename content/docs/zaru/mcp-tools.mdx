@@ -17,11 +17,11 @@ Every Zaru conversation runs in one of five modes. Modes filter the tool surface
 
 | Mode          | Tools available                                   | Purpose                                          |
 | ------------- | ------------------------------------------------- | ------------------------------------------------ |
-| **chat**      | `zaru.*` only (3 tools)                           | Conversation and planning; no platform execution |
-| **agentic**   | `zaru.*` + agent/task tools (15 tools)            | Discover and run existing agents                 |
-| **execute**   | `zaru.*` + execute pipeline tools (8 tools)       | One-shot code execution from natural language    |
-| **architect** | `zaru.*` + workflow/agent design tools (16 tools) | Design and deploy agents and workflows           |
-| **operator**  | All 86 tools                                      | Full platform access, no filtering               |
+| **chat**      | `zaru.*` only (5 tools)                           | Conversation and planning; no platform execution |
+| **agentic**   | `zaru.*` + agent/task tools (17 tools)            | Discover and run existing agents                 |
+| **execute**   | `zaru.*` + execute pipeline tools (10 tools)      | One-shot code execution from natural language    |
+| **architect** | `zaru.*` + workflow/agent design tools (18 tools) | Design and deploy agents and workflows           |
+| **operator**  | All tools                                         | Full platform access, no filtering               |
 
 To initialize in a specific mode:
 
@@ -54,7 +54,7 @@ See [File Uploads in Chat](/docs/zaru/chat#file-uploads-in-chat) for the user-fa
 
 ## Zaru Client Tools — All Modes
 
-These three tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.
+These five tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.
 
 ### `zaru.init`
 
@@ -98,6 +98,49 @@ Searches AEGIS and Zaru documentation at `docs.100monkeys.ai`. Results are cache
 // zaru.docs
 { "query": "how to configure a persistent volume for execute mode" }
 ```
+
+### `zaru.memory.get`
+
+Reads the caller's persistent memory — a per-user markdown blob shared across every MCP client connected as that user (Zaru Web, Claude Desktop, Windsurf, etc.). The current memory is auto-injected into the system prompt at session start, so calling this mid-conversation is mostly used to obtain the current `version` before a `zaru.memory.set`, or to re-read after a conflict.
+
+_No parameters — accepts an empty object `{}`._
+
+```json
+// zaru.memory.get
+{}
+```
+
+```json
+// response
+{
+  "content": "# User memory\n\n- Prefers concise answers...",
+  "version": 7,
+  "updated_at": "2026-04-28T14:32:11Z"
+}
+```
+
+When no memory has been written yet, returns `{ "content": "", "version": 0, ... }`.
+
+### `zaru.memory.set`
+
+Persists a new memory state. Pass the **full** new markdown blob — not a diff or patch — together with the `version` returned by the most recent `zaru.memory.get`. The server increments the version on success.
+
+Use this to record user preferences, work-style cues, recurring projects, frustrations, or anything worth carrying into future conversations. Always call `zaru.memory.get` first to obtain the current `version`. Keep memory concise and signal-rich — it is not a transcript log.
+
+| Parameter | Required | Description                                              |
+| --------- | -------- | -------------------------------------------------------- |
+| `content` | Yes      | Full new memory markdown blob (not a diff)               |
+| `version` | Yes      | Version returned by the previous `zaru.memory.get` call  |
+
+```json
+// zaru.memory.set
+{
+  "content": "# User memory\n\n- Prefers concise answers...\n- New project: zaru-edge",
+  "version": 7
+}
+```
+
+If `version` does not match the server's current version, the call returns a structured conflict error containing the server's current `{ content, version, updated_at }`. Merge the intended changes into that content and retry with the new version.
 
 ---
 
@@ -410,7 +453,7 @@ Returns `{ "valid": true, "errors": null }` on success or `{ "valid": false, "er
 
 ## Operator Mode Tools
 
-Operator mode exposes all 86 tools with no filtering. It includes everything from the modes above plus the tool groups below.
+Operator mode exposes all tools with no filtering. It includes everything from the modes above plus the tool groups below.
 
 <Callout type="info">
   Operator mode requires authentication through the platform admin realm. System
@@ -685,6 +728,8 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `zaru.init`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.mode`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.docs`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.memory.get`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.memory.set`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `aegis.agent.generate`           |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.agent.wait`               |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.agent.list`               |     |  ✓  |     |  ✓  |  ✓  |
@@ -746,7 +791,7 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 
 ## Related
 
-- [MCP Tool Reference](/docs/reference/mcp-tool-reference) — complete input/output schemas for all 86 tools
+- [MCP Tool Reference](/docs/reference/mcp-tool-reference) — complete input/output schemas for all tools
 - [Connect Zaru to Any MCP Client](/docs/zaru/mcp-client-setup) — client connection setup
 - [Management Tools](/docs/reference/management-tools) — usage patterns for agent and workflow management from agents
 - [Management via MCP](/docs/guides/management-via-mcp) — automation patterns for agent factories and self-managing workflows
