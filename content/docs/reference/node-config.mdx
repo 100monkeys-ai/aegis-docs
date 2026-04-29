@@ -911,7 +911,7 @@ Optional. Configures this node's role in the multi-node cluster topology. If omi
 | Key                         | Type     | Required | Default  | Description                                                        |
 | --------------------------- | -------- | -------- | -------- | ------------------------------------------------------------------ |
 | `enabled`                   | bool     | ❌       | `false`  | Enable cluster mode.                                               |
-| `role`                      | enum     | ✅       | `hybrid` | Node role: `controller` \| `worker` \| `hybrid`                    |
+| `role`                      | enum     | ✅       | `hybrid` | Node role: `controller` \| `worker` \| `hybrid` \| `edge` \| `relay-coordinator` |
 | `controller_endpoint`       | string   | ❌       | —        | gRPC endpoint of the controller node. Required for `role: worker`. |
 | `cluster_grpc_port`         | u16      | ❌       | `50056`  | Port for `NodeClusterService` gRPC (controller only).              |
 | `peers`                     | string[] | ❌       | `[]`     | Static list of peer controller addresses.                          |
@@ -925,11 +925,13 @@ Optional. Configures this node's role in the multi-node cluster topology. If omi
 
 #### Cluster Roles
 
-| Role         | Exposes                                                       | Connects To                           |
-| ------------ | ------------------------------------------------------------- | ------------------------------------- |
-| `controller` | `NodeClusterService` on `cluster_grpc_port` (default 50056)   | Nothing (it is the authority)         |
-| `worker`     | `ForwardExecution` stream on `spec.network.grpc_port` (50051) | Controller at `controller_endpoint`   |
-| `hybrid`     | Both 50051 and 50056                                          | Itself (no external cluster required) |
+| Role                | Exposes                                                       | Connects To                                                                                           |
+| ------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `controller`        | `NodeClusterService` on `cluster_grpc_port` (default 50056)   | Nothing (it is the authority)                                                                         |
+| `worker`            | `ForwardExecution` stream on `spec.network.grpc_port` (50051) | Controller at `controller_endpoint`                                                                   |
+| `hybrid`            | Both 50051 and 50056                                          | Itself (no external cluster required)                                                                 |
+| `edge`              | Outbound only — daemon dials its controller                   | Controller (or `relay-coordinator`) advertised in the enrollment token's `cep` claim                  |
+| `relay-coordinator` | `NodeClusterService` on `cluster_grpc_port` (default 50056)   | Backed by Postgres / IAM / OpenBao; brokers gRPC streams from `edge` nodes for the controller's tenant |
 
 #### Node Attestation
 
