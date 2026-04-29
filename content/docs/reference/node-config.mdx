@@ -851,10 +851,10 @@ cortex:
 
 Optional. Configures Stripe billing integration. Omit this section for self-hosted deployments where billing is not required. When `stripe_secret_key` is absent, all `/v1/billing/*` endpoints return `501 Not Implemented`.
 
-| Key                            | Type   | Required | Default | Description                                                                                                         |
-| ------------------------------ | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
-| `stripe_secret_key`            | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
-| `stripe_webhook_secret`        | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
+| Key                     | Type   | Required | Default | Description                                                                                                         |
+| ----------------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `stripe_secret_key`     | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
+| `stripe_webhook_secret` | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
 
 All fields support `env:` and `secret:` credential prefixes (see [Credential Resolution](#credential-resolution)).
 
@@ -1168,3 +1168,60 @@ spec:
 - [Docker Deployment](/docs/deployment/docker) — Docker-specific deployment guide
 - [Secrets Management](/docs/deployment/secrets) — OpenBao integration guide
 - [IAM Integration](/docs/deployment/iam) — Keycloak configuration guide
+
+---
+
+## Edge Mode Roles and `spec.edge`
+
+Two new values join the `cluster.role` enum:
+
+| Role                | Purpose                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edge`              | A user-installed daemon running on a host the user controls. Tenant-bound. Connects outbound to a controller (OSS) or Relay Coordinator (SaaS). |
+| `relay-coordinator` | The SaaS multi-tenant relay process. Brokers connections from edge daemons. Re-uses the existing `NodeClusterService` code path.                |
+
+Existing roles (`controller`, `worker`, `hybrid`) accept edge enrollments alongside their existing duties when configured to do so; `relay-coordinator` is the dedicated process for SaaS.
+
+### `spec.edge` (required when `cluster.role: edge`)
+
+```yaml
+cluster:
+  enabled: true
+  role: edge
+  controller:
+    endpoint: relay.example.com:443
+    tls: { enabled: true }
+  node_keypair_path: ~/.aegis/edge/node.key
+  heartbeat_interval_secs: 30
+  edge:
+    tenant_id: u-... # written by `aegis edge enroll`, immutable
+    enrollment_token_path: ~/.aegis/edge/enrollment.jwt
+    node_security_token_path: ~/.aegis/edge/node.token
+    stream_reconnect_backoff_secs: [1, 2, 5, 15, 60]
+    capabilities:
+      local_tools: [shell, docker, kubectl]
+      mount_points: ["/", "/home/jeshua"]
+      custom_labels: { region: home }
+```
+
+### `cluster.ingress` (required when `cluster.role: relay-coordinator`)
+
+```yaml
+cluster:
+  enabled: true
+  role: relay-coordinator
+  cluster_grpc_port: 50056
+  ingress:
+    public_endpoint: relay.example.com # advertised in enrollment tokens (cep claim)
+```
+
+### Validator behavior
+
+| Condition                                                               | Behavior                                    |
+| ----------------------------------------------------------------------- | ------------------------------------------- |
+| `role: edge` and `cluster.edge` block missing                           | Reject.                                     |
+| `role: edge` and `cluster_grpc_port` set                                | Reject — the daemon does not bind a server. |
+| `role: edge` and `cluster.edge.tenant_id` missing                       | Reject — the daemon is unenrolled.          |
+| `role: relay-coordinator` and `cluster.ingress.public_endpoint` missing | Reject.                                     |
+
+For the full edge config field reference, see [edge config](/docs/reference/edge-config).

@@ -5,7 +5,7 @@ description: Observability stack (Jaeger, Prometheus, Grafana, Loki), structured
 
 # Observability
 
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from "fumadocs-ui/components/callout";
 
 AEGIS provides a comprehensive observability stack deployed as the `pod-observability` Podman pod, plus native structured logging and optional OTLP export from the orchestrator itself. This page covers both the deployed observability infrastructure and the orchestrator's telemetry output.
 
@@ -15,29 +15,29 @@ AEGIS provides a comprehensive observability stack deployed as the `pod-observab
 
 The `pod-observability` pod in [aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy) bundles five components for production monitoring:
 
-| Component | Version | Port | Purpose |
-|-----------|---------|------|---------|
-| **otelcol-contrib** | 0.99 | 4317 (OTLP gRPC), 4318 (OTLP HTTP), 13133 (health) | OTLP fan-out — logs to Loki, traces to Jaeger |
-| **Jaeger** | 1.55 | 16686 (UI) | Distributed tracing |
-| **Prometheus** | 2.51 | 9090 | Metrics collection and alerting |
-| **Grafana** | 10.4 | 3300 | Dashboards and visualization |
-| **Loki** | 3.0 | 3100 | Log aggregation |
-| **Promtail** | 3.0 | 9080 | Container log scraping |
+| Component           | Version | Port                                               | Purpose                                       |
+| ------------------- | ------- | -------------------------------------------------- | --------------------------------------------- |
+| **otelcol-contrib** | 0.99    | 4317 (OTLP gRPC), 4318 (OTLP HTTP), 13133 (health) | OTLP fan-out — logs to Loki, traces to Jaeger |
+| **Jaeger**          | 1.55    | 16686 (UI)                                         | Distributed tracing                           |
+| **Prometheus**      | 2.51    | 9090                                               | Metrics collection and alerting               |
+| **Grafana**         | 10.4    | 3300                                               | Dashboards and visualization                  |
+| **Loki**            | 3.0     | 3100                                               | Log aggregation                               |
+| **Promtail**        | 3.0     | 9080                                               | Container log scraping                        |
 
 ### Prometheus Scrape Targets
 
 Prometheus is pre-configured to scrape all AEGIS platform services:
 
-| Target | Port | Endpoint |
-|--------|------|----------|
-| aegis-runtime | 9091 | `/metrics` |
-| keycloak | 8180 | `/metrics` |
-| seaweedfs-master | 9324 | `/metrics` |
-| seaweedfs-volume | 9325 | `/metrics` |
-| seaweedfs-filer | 9326 | `/metrics` |
-| openbao | 8200 | `/v1/sys/metrics` |
-| temporal | 7233 | `/metrics` |
-| postgres-exporter | 9187 | `/metrics` |
+| Target            | Port | Endpoint          |
+| ----------------- | ---- | ----------------- |
+| aegis-runtime     | 9091 | `/metrics`        |
+| keycloak          | 8180 | `/metrics`        |
+| seaweedfs-master  | 9324 | `/metrics`        |
+| seaweedfs-volume  | 9325 | `/metrics`        |
+| seaweedfs-filer   | 9326 | `/metrics`        |
+| openbao           | 8200 | `/v1/sys/metrics` |
+| temporal          | 7233 | `/metrics`        |
+| postgres-exporter | 9187 | `/metrics`        |
 
 Global scrape interval: 15 seconds. Evaluation interval: 15 seconds. Retention: 15 days.
 
@@ -47,24 +47,24 @@ Pre-configured Prometheus alert rules shipped with `aegis-deploy`:
 
 **Critical (1–2 minute threshold):**
 
-| Alert | Condition | Severity |
-|-------|-----------|----------|
-| `AEGISRuntimeDown` | Runtime unreachable for 1 min | critical |
-| `PostgreSQLDown` | Database unreachable for 1 min | critical |
-| `TemporalDown` | Workflow engine unreachable for 2 min | critical |
-| `KeycloakDown` | IAM provider unreachable for 1 min | critical |
+| Alert              | Condition                             | Severity |
+| ------------------ | ------------------------------------- | -------- |
+| `AEGISRuntimeDown` | Runtime unreachable for 1 min         | critical |
+| `PostgreSQLDown`   | Database unreachable for 1 min        | critical |
+| `TemporalDown`     | Workflow engine unreachable for 2 min | critical |
+| `KeycloakDown`     | IAM provider unreachable for 1 min    | critical |
 
 **Warning (5 minute threshold):**
 
-| Alert | Condition | Severity |
-|-------|-----------|----------|
-| `HighExecutionFailureRate` | >25% execution failures | warning |
-| `HighHTTPErrorRate` | >5% HTTP 5xx responses | warning |
-| `HighAPILatency` | P95 latency >5 seconds | warning |
-| `EventBusLagHigh` | Lag rate >100 events/s | warning |
-| `SeaweedFSDown` | Storage unreachable for 5 min | warning |
-| `OpenBaoDown` | Secrets manager unreachable for 5 min | warning |
-| `HighPostgresConnections` | >80 active connections | warning |
+| Alert                      | Condition                             | Severity |
+| -------------------------- | ------------------------------------- | -------- |
+| `HighExecutionFailureRate` | >25% execution failures               | warning  |
+| `HighHTTPErrorRate`        | >5% HTTP 5xx responses                | warning  |
+| `HighAPILatency`           | P95 latency >5 seconds                | warning  |
+| `EventBusLagHigh`          | Lag rate >100 events/s                | warning  |
+| `SeaweedFSDown`            | Storage unreachable for 5 min         | warning  |
+| `OpenBaoDown`              | Secrets manager unreachable for 5 min | warning  |
+| `HighPostgresConnections`  | >80 active connections                | warning  |
 
 ### Grafana Dashboards
 
@@ -98,13 +98,13 @@ Promtail scrapes all Podman container logs from `/var/log/podman-containers/` an
 
 AEGIS uses Rust's `RUST_LOG` environment variable, which accepts a comma-separated list of level directives:
 
-| Level | Usage |
-|-------|-------|
-| `error` | Unrecoverable failures (operation panics, infrastructure unavailability) |
-| `warn` | Recoverable issues: missing optional config, NFS deregistration lag, LLM provider degraded |
-| `info` | Normal lifecycle events: server started, execution completed, volume cleaned up |
-| `debug` | Per-request details: tool routing decisions, SEAL validation, storage path resolution |
-| `trace` | Verbose internal state: usually too noisy for production |
+| Level   | Usage                                                                                      |
+| ------- | ------------------------------------------------------------------------------------------ |
+| `error` | Unrecoverable failures (operation panics, infrastructure unavailability)                   |
+| `warn`  | Recoverable issues: missing optional config, NFS deregistration lag, LLM provider degraded |
+| `info`  | Normal lifecycle events: server started, execution completed, volume cleaned up            |
+| `debug` | Per-request details: tool routing decisions, SEAL validation, storage path resolution      |
+| `trace` | Verbose internal state: usually too noisy for production                                   |
 
 ### Recommended Settings
 
@@ -169,13 +169,13 @@ If unset or set to any other value, the pretty format is used.
 
 Many log events include structured key-value fields alongside the message. These are available in both formats:
 
-| Field | Events | Description |
-|-------|--------|-------------|
-| `url` | Service connection events | Target URL being connected to |
-| `execution_id` | Execution lifecycle | UUID of the active execution |
-| `count` | Volume cleanup | Number of volumes deleted |
-| `err` | Error events | Error description |
-| `agent_id` | Agent lifecycle | UUID of the agent |
+| Field          | Events                    | Description                   |
+| -------------- | ------------------------- | ----------------------------- |
+| `url`          | Service connection events | Target URL being connected to |
+| `execution_id` | Execution lifecycle       | UUID of the active execution  |
+| `count`        | Volume cleanup            | Number of volumes deleted     |
+| `err`          | Error events              | Error description             |
+| `agent_id`     | Agent lifecycle           | UUID of the agent             |
 
 When using JSON format, structured fields appear as keys in the JSON object under `"fields"`.
 
@@ -187,50 +187,59 @@ AEGIS publishes structured domain events to its internal event bus. These events
 
 ### Execution Events
 
-| Log Message Pattern | Level | Meaning |
-|--------------------|-------|---------|
-| `"Starting execution"` | INFO | Execution started |
-| `"Inner loop generation failed"` | ERROR | LLM generation failed for an iteration |
-| `"Could not find execution {} for LLM event"` | WARN | Race condition during execution lookup |
+| Log Message Pattern                           | Level | Meaning                                |
+| --------------------------------------------- | ----- | -------------------------------------- |
+| `"Starting execution"`                        | INFO  | Execution started                      |
+| `"Inner loop generation failed"`              | ERROR | LLM generation failed for an iteration |
+| `"Could not find execution {} for LLM event"` | WARN  | Race condition during execution lookup |
 
 ### Volume Events
 
-| Log Message Pattern | Level | Meaning |
-|--------------------|-------|---------|
-| `"Volume cleanup: {} expired volumes deleted"` | INFO | Periodic TTL cleanup completed |
-| `"Volume cleanup failed"` | ERROR | Cleanup task failed |
-| `"NFS deregistration listener lagged"` | WARN | Event bus buffer full; some deregistrations may have been missed |
+| Log Message Pattern                            | Level | Meaning                                                          |
+| ---------------------------------------------- | ----- | ---------------------------------------------------------------- |
+| `"Volume cleanup: {} expired volumes deleted"` | INFO  | Periodic TTL cleanup completed                                   |
+| `"Volume cleanup failed"`                      | ERROR | Cleanup task failed                                              |
+| `"NFS deregistration listener lagged"`         | WARN  | Event bus buffer full; some deregistrations may have been missed |
 
 ### Service Lifecycle
 
-| Log Message Pattern | Level | Meaning |
-|--------------------|-------|---------|
-| `"Starting gRPC server on {}"` | INFO | gRPC server started |
-| `"Starting AEGIS gRPC server on {}"` | INFO | Internal gRPC server |
-| `"Connected to Cortex gRPC service"` | INFO | Cortex connection established |
-| `"Cortex gRPC URL not configured"` | INFO | Running in memoryless mode (expected when Cortex not deployed) |
-| `"Failed to connect to Temporal"` | ERROR | Temporal workflow engine unreachable |
-| `"Failed to start some MCP servers"` | ERROR | One or more MCP tool servers failed to start |
+| Log Message Pattern                  | Level | Meaning                                                        |
+| ------------------------------------ | ----- | -------------------------------------------------------------- |
+| `"Starting gRPC server on {}"`       | INFO  | gRPC server started                                            |
+| `"Starting AEGIS gRPC server on {}"` | INFO  | Internal gRPC server                                           |
+| `"Connected to Cortex gRPC service"` | INFO  | Cortex connection established                                  |
+| `"Cortex gRPC URL not configured"`   | INFO  | Running in memoryless mode (expected when Cortex not deployed) |
+| `"Failed to connect to Temporal"`    | ERROR | Temporal workflow engine unreachable                           |
+| `"Failed to start some MCP servers"` | ERROR | One or more MCP tool servers failed to start                   |
 
 ### SEAL / Security Events
 
 SEAL policy violations always produce `WARN` log entries with structured fields including `execution_id`, `tool_name`, and the violation type. These are produced by `SealAudit`:
 
 ```json
-{"level":"WARN","target":"aegis_orchestrator_core::infrastructure::seal::audit","fields":{"execution_id":"a1b2...","tool_name":"fs.delete","violation":"ToolExplicitlyDenied"},"message":"SEAL tool call blocked"}
+{
+  "level": "WARN",
+  "target": "aegis_orchestrator_core::infrastructure::seal::audit",
+  "fields": {
+    "execution_id": "a1b2...",
+    "tool_name": "fs.delete",
+    "violation": "ToolExplicitlyDenied"
+  },
+  "message": "SEAL tool call blocked"
+}
 ```
 
 ### Tool-Call Judging
 
 The runtime documentation and verified logging surface do not currently expose a dedicated judge-specific telemetry stream. Today, you can observe the following:
 
-| Signal | What it tells you |
-|---|---|
-| Execution lifecycle logs | Whether the parent execution started, refined, completed, or failed. |
-| Inner-loop generation logs | Whether the model returned a final response or hit a generation error. |
-| SEAL audit logs | Whether a tool call was blocked by policy before routing. |
-| Tool routing debug logs | Which routing path a tool took when debug logging is enabled. |
-| Child execution logs | Whether a judge execution was spawned and how it completed, if you correlate by execution ID. |
+| Signal                     | What it tells you                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| Execution lifecycle logs   | Whether the parent execution started, refined, completed, or failed.                          |
+| Inner-loop generation logs | Whether the model returned a final response or hit a generation error.                        |
+| SEAL audit logs            | Whether a tool call was blocked by policy before routing.                                     |
+| Tool routing debug logs    | Which routing path a tool took when debug logging is enabled.                                 |
+| Child execution logs       | Whether a judge execution was spawned and how it completed, if you correlate by execution ID. |
 
 Use these logs to infer tool-call judging behavior today. Do not assume a dedicated `judge_execution_id`, `score`, `confidence`, or `decision` field is emitted unless you verify it in the running build.
 
@@ -293,7 +302,7 @@ spec:
     logging:
       level: info
       format: json
-      otlp_endpoint: "http://otel-collector:4317"   # gRPC (default protocol)
+      otlp_endpoint: "http://otel-collector:4317" # gRPC (default protocol)
 ```
 
 Or via environment variable (no config change needed):
@@ -306,10 +315,10 @@ export AEGIS_OTLP_ENDPOINT=http://otel-collector:4317
 
 Two OTLP transports are supported, controlled by `otlp_protocol` (or `AEGIS_OTLP_PROTOCOL`):
 
-| Protocol | Config value | Default port | Notes |
-|----------|-------------|-------------|-------|
-| gRPC | `grpc` (default) | `4317` | Preferred for self-hosted collectors |
-| HTTP/Protobuf | `http` | `4318` | Required for some SaaS endpoints (Grafana Cloud, Datadog) |
+| Protocol      | Config value     | Default port | Notes                                                     |
+| ------------- | ---------------- | ------------ | --------------------------------------------------------- |
+| gRPC          | `grpc` (default) | `4317`       | Preferred for self-hosted collectors                      |
+| HTTP/Protobuf | `http`           | `4318`       | Required for some SaaS endpoints (Grafana Cloud, Datadog) |
 
 ```yaml
 logging:
@@ -326,7 +335,7 @@ logging:
   otlp_endpoint: "https://otlp-gateway.grafana.net/v1/logs"
   otlp_protocol: http
   otlp_headers:
-    Authorization: "env:GRAFANA_OTLP_TOKEN"   # resolved from env at startup
+    Authorization: "env:GRAFANA_OTLP_TOKEN" # resolved from env at startup
 ```
 
 When setting headers via the `AEGIS_OTLP_HEADERS` environment variable, use a comma-separated `key=value` list:
@@ -336,7 +345,10 @@ AEGIS_OTLP_HEADERS="Authorization=Bearer my-token,x-scope-orgid=12345"
 ```
 
 <Callout type="warn">
-Never commit API keys or bearer tokens directly in your node config YAML. Always use `env:VAR_NAME` or `secret:path` credential prefixes, or set headers via the environment variable. See [Credential Resolution](/docs/reference/node-config#credential-resolution).
+  Never commit API keys or bearer tokens directly in your node config YAML.
+  Always use `env:VAR_NAME` or `secret:path` credential prefixes, or set headers
+  via the environment variable. See [Credential
+  Resolution](/docs/reference/node-config#credential-resolution).
 </Callout>
 
 ### Backend Integration Examples
@@ -348,7 +360,7 @@ logging:
   otlp_endpoint: "https://otlp-gateway-prod-us-central-0.grafana.net/v1/logs"
   otlp_protocol: http
   otlp_headers:
-    Authorization: "env:GRAFANA_CLOUD_OTLP_TOKEN"   # Basic base64(instanceId:apiKey)
+    Authorization: "env:GRAFANA_CLOUD_OTLP_TOKEN" # Basic base64(instanceId:apiKey)
   otlp_service_name: "aegis-prod"
 ```
 
@@ -367,7 +379,7 @@ logging:
 
 ```yaml
 logging:
-  otlp_endpoint: "http://otel-collector:4317"   # gRPC default
+  otlp_endpoint: "http://otel-collector:4317" # gRPC default
   otlp_service_name: "aegis-orchestrator"
 ```
 
@@ -391,7 +403,7 @@ processors:
   batch:
     timeout: 1s
     send_batch_size: 1024
-  
+
   # Map OTLP attributes to Loki labels for efficient indexing
   resource:
     attributes:
@@ -423,8 +435,8 @@ Set `otlp_min_level` to filter how verbose the OTLP stream is, independently of 
 
 ```yaml
 logging:
-  level: debug          # verbose on stdout (useful during development)
-  otlp_min_level: info  # only ship info+ to the backend (default)
+  level: debug # verbose on stdout (useful during development)
+  otlp_min_level: info # only ship info+ to the backend (default)
 ```
 
 Accepted values: `error`, `warn`, `info`, `debug`, `trace`. Override with `AEGIS_OTLP_LOG_LEVEL`.
@@ -433,11 +445,11 @@ Accepted values: `error`, `warn`, `info`, `debug`, `trace`. Override with `AEGIS
 
 Every exported log record automatically includes the following OpenTelemetry resource attributes:
 
-| Attribute | Source | Example |
-|-----------|--------|--------|
-| `service.name` | `otlp_service_name` config key or `AEGIS_OTLP_SERVICE_NAME` | `aegis-orchestrator` |
-| `service.version` | Compiled binary version | `0.1.0-pre-alpha` |
-| `deployment.environment` | `metadata.labels.environment` (when set) | `production` |
+| Attribute                | Source                                                      | Example              |
+| ------------------------ | ----------------------------------------------------------- | -------------------- |
+| `service.name`           | `otlp_service_name` config key or `AEGIS_OTLP_SERVICE_NAME` | `aegis-orchestrator` |
+| `service.version`        | Compiled binary version                                     | `0.1.0-pre-alpha`    |
+| `deployment.environment` | `metadata.labels.environment` (when set)                    | `production`         |
 
 ### Batch Tuning
 
@@ -447,18 +459,18 @@ Log records are buffered and exported in batches. The defaults are suitable for 
 logging:
   otlp_endpoint: "http://otel-collector:4317"
   batch:
-    max_queue_size: 4096        # increase if logs spike during high-iteration runs
-    scheduled_delay_ms: 2000    # flush more frequently
-    max_export_batch_size: 512  # records per HTTP/gRPC call
-    export_timeout_ms: 10000    # per-call timeout
+    max_queue_size: 4096 # increase if logs spike during high-iteration runs
+    scheduled_delay_ms: 2000 # flush more frequently
+    max_export_batch_size: 512 # records per HTTP/gRPC call
+    export_timeout_ms: 10000 # per-call timeout
 ```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `max_queue_size` | `2048` | Maximum buffered records. Records are dropped if the queue is full. |
-| `scheduled_delay_ms` | `5000` | Flush interval in milliseconds. |
-| `max_export_batch_size` | `512` | Records per export RPC. |
-| `export_timeout_ms` | `10000` | Per-call timeout in milliseconds. |
+| Field                   | Default | Description                                                         |
+| ----------------------- | ------- | ------------------------------------------------------------------- |
+| `max_queue_size`        | `2048`  | Maximum buffered records. Records are dropped if the queue is full. |
+| `scheduled_delay_ms`    | `5000`  | Flush interval in milliseconds.                                     |
+| `max_export_batch_size` | `512`   | Records per export RPC.                                             |
+| `export_timeout_ms`     | `10000` | Per-call timeout in milliseconds.                                   |
 
 ### TLS Configuration
 
@@ -468,8 +480,8 @@ For self-signed certificates or private CA chains:
 logging:
   otlp_endpoint: "https://otel-collector.internal:4317"
   tls:
-    verify: true                            # keep true in production
-    ca_cert_path: /etc/aegis/internal-ca.pem  # custom CA bundle
+    verify: true # keep true in production
+    ca_cert_path: /etc/aegis/internal-ca.pem # custom CA bundle
 ```
 
 Set `verify: false` only for local development; it disables all certificate validation.
@@ -478,13 +490,13 @@ Set `verify: false` only for local development; it disables all certificate vali
 
 All OTLP settings can be supplied (or overridden) at runtime via environment variables, without modifying the node config file:
 
-| Variable | Config equivalent | Notes |
-|----------|-------------------|-------|
-| `AEGIS_OTLP_ENDPOINT` | `logging.otlp_endpoint` | Setting this variable enables OTLP export |
-| `AEGIS_OTLP_PROTOCOL` | `logging.otlp_protocol` | `grpc` or `http` |
-| `AEGIS_OTLP_HEADERS` | `logging.otlp_headers` | Comma-separated `key=value` pairs |
-| `AEGIS_OTLP_LOG_LEVEL` | `logging.otlp_min_level` | Min level exported to OTLP |
-| `AEGIS_OTLP_SERVICE_NAME` | `logging.otlp_service_name` | `service.name` resource attribute |
+| Variable                  | Config equivalent           | Notes                                     |
+| ------------------------- | --------------------------- | ----------------------------------------- |
+| `AEGIS_OTLP_ENDPOINT`     | `logging.otlp_endpoint`     | Setting this variable enables OTLP export |
+| `AEGIS_OTLP_PROTOCOL`     | `logging.otlp_protocol`     | `grpc` or `http`                          |
+| `AEGIS_OTLP_HEADERS`      | `logging.otlp_headers`      | Comma-separated `key=value` pairs         |
+| `AEGIS_OTLP_LOG_LEVEL`    | `logging.otlp_min_level`    | Min level exported to OTLP                |
+| `AEGIS_OTLP_SERVICE_NAME` | `logging.otlp_service_name` | `service.name` resource attribute         |
 
 ---
 
@@ -520,9 +532,9 @@ Add the AEGIS node to your `prometheus.yml` scrape configuration:
 
 ```yaml
 scrape_configs:
-  - job_name: 'aegis-orchestrator'
+  - job_name: "aegis-orchestrator"
     static_configs:
-      - targets: ['localhost:9091']
+      - targets: ["localhost:9091"]
 ```
 
 ### Key Observable Metrics
@@ -551,3 +563,47 @@ The metrics endpoint is **unauthenticated** by design, following standard Promet
 - [Pod Architecture](/docs/deployment/pod-architecture) — complete pod topology and health check reference
 - [Podman Deployment](/docs/deployment/podman) — platform deployment with Podman pods
 - [REST API Reference](/docs/reference/rest-api) — `/health` endpoint
+
+---
+
+## Edge Daemon Telemetry
+
+Edge daemons participate in the platform's OpenTelemetry pipeline. When the daemon's merged config includes an OTLP exporter pointing at your collector (`otel.example.com:4317` in SaaS), it ships logs and traces back over the same TLS connection budget as its gRPC stream.
+
+```yaml
+# In ~/.aegis/edge/aegis-config.yaml
+observability:
+  otlp:
+    endpoint: otel.example.com:4317
+    insecure: false
+    headers:
+      x-tenant-id: ${tenant_id}
+```
+
+If the network blocks OTLP egress, the daemon falls back to local logs:
+
+| Platform                  | Path                                                      |
+| ------------------------- | --------------------------------------------------------- |
+| Linux (systemd user unit) | `journalctl --user -u aegis-edge.service`                 |
+| macOS (launchd)           | `~/.aegis/edge/logs/aegis-edge.{out,err}.log`             |
+| Windows (NSSM)            | `%USERPROFILE%\.aegis\edge\logs\aegis-edge.{out,err}.log` |
+
+### Edge-specific metrics
+
+The controller / Relay exposes per-tenant edge metrics:
+
+| Metric                                               | Type      | Meaning                          |
+| ---------------------------------------------------- | --------- | -------------------------------- |
+| `aegis_edge_daemons_total{status,tenant}`            | Gauge     | Count of edge daemons by status. |
+| `aegis_edge_stream_seconds_total`                    | Counter   | Aggregate stream lifetime.       |
+| `aegis_edge_heartbeats_total{tenant}`                | Counter   | Heartbeats received.             |
+| `aegis_edge_commands_dispatched_total{tool,outcome}` | Counter   | Per-tool dispatch outcomes.      |
+| `aegis_edge_command_duration_seconds{tool}`          | Histogram | Per-tool dispatch latency.       |
+| `aegis_edge_fleet_runs_total{outcome}`               | Counter   | Fleet runs by outcome.           |
+| `aegis_edge_fleet_targets_skipped_total{reason}`     | Counter   | Per-skip-reason counts.          |
+
+### Trace correlation across fleet runs
+
+A fleet run starts one trace at the dispatcher; per-node `InvokeTool` calls each open a span; each daemon nests its tool-execution span under the per-node span. Searching for the `fleet_command_id` in your tracing UI surfaces the full distributed picture.
+
+For day-2 operational patterns including alerting, see [edge operational patterns](/docs/deployment/edge-operational-patterns).

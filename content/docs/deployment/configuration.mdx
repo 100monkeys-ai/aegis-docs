@@ -1030,10 +1030,10 @@ Optional. Cortex memory and learning service configuration. If omitted or `grpc_
 
 Optional. Configures Stripe billing integration. Omit this section for self-hosted deployments where billing is not required. When `stripe_secret_key` is absent, all `/v1/billing/*` endpoints return `501 Not Implemented`.
 
-| Key                            | Type   | Required | Default | Description                                                                                                         |
-| ------------------------------ | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
-| `stripe_secret_key`            | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
-| `stripe_webhook_secret`        | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
+| Key                     | Type   | Required | Default | Description                                                                                                         |
+| ----------------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `stripe_secret_key`     | string | Yes      | —       | Stripe API secret key (server-side only). Supports `env:` and `secret:` prefixes.                                   |
+| `stripe_webhook_secret` | string | No       | —       | Webhook signing secret for verifying Stripe event signatures (HMAC-SHA256). Supports `env:` and `secret:` prefixes. |
 
 All fields support `env:` and `secret:` credential prefixes (see [Credential Resolution](#credential-resolution)).
 
@@ -1101,3 +1101,43 @@ Optional.
 | Key               | Type | Default | Description                                  |
 | ----------------- | ---- | ------- | -------------------------------------------- |
 | `tracing.enabled` | bool | `false` | Enable distributed tracing via OpenTelemetry |
+
+---
+
+## `cluster.edge` — edge daemon configuration
+
+When `cluster.role: edge`, the daemon requires a `cluster.edge` block. The block is populated automatically by `aegis edge enroll`; `tenant_id` is written at enrollment and is **immutable** thereafter.
+
+```yaml
+cluster:
+  enabled: true
+  role: edge
+  controller:
+    endpoint: relay.example.com:443 # SaaS default; OSS overrides to local controller
+    tls: { enabled: true }
+  node_keypair_path: ~/.aegis/edge/node.key
+  heartbeat_interval_secs: 30
+  edge:
+    tenant_id: u-... # written by `aegis edge enroll`, immutable
+    enrollment_token_path: ~/.aegis/edge/enrollment.jwt
+    node_security_token_path: ~/.aegis/edge/node.token
+    stream_reconnect_backoff_secs: [1, 2, 5, 15, 60]
+    capabilities:
+      local_tools: [shell, docker, kubectl]
+      mount_points: ["/", "/home/jeshua"]
+      custom_labels: { region: home }
+```
+
+| Key                                          | Type               | Default                        | Description                                                                    |
+| -------------------------------------------- | ------------------ | ------------------------------ | ------------------------------------------------------------------------------ |
+| `cluster.edge.tenant_id`                     | string             | —                              | Immutable post-enrollment. Mirrors the `tid` claim on the `NodeSecurityToken`. |
+| `cluster.edge.enrollment_token_path`         | path               | `~/.aegis/edge/enrollment.jwt` | One-time enrollment token; consumed atomically.                                |
+| `cluster.edge.node_security_token_path`      | path               | `~/.aegis/edge/node.token`     | Persistent `NodeSecurityToken`.                                                |
+| `cluster.edge.stream_reconnect_backoff_secs` | array<int>         | `[1, 2, 5, 15, 60]`            | Exponential backoff schedule on stream loss.                                   |
+| `cluster.edge.capabilities.local_tools`      | array<string>      | host-detected                  | Which built-in tools the daemon can serve.                                     |
+| `cluster.edge.capabilities.mount_points`     | array<string>      | `["/"]`                        | Filesystem roots the daemon may operate against (subject to SecurityContext).  |
+| `cluster.edge.capabilities.custom_labels`    | map<string,string> | `{}`                           | Daemon-advertised labels — queryable in selectors.                             |
+
+**Validator behavior:** `role: edge` rejects `cluster_grpc_port` (the daemon does not bind a server) and requires the `cluster.edge` block. `role: relay-coordinator` requires `cluster.cluster_grpc_port` and `cluster.ingress.public_endpoint`.
+
+For the full edge config reference, see [edge config](/docs/reference/edge-config).

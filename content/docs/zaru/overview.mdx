@@ -131,3 +131,17 @@ The Zaru client provides a specialized frontend experience known as the Glass La
 - **Zaru Conversation Modes**: Conversations have five user-selected modes — `ZaruConversationMode::Chat`, `ZaruConversationMode::Agentic`, `ZaruConversationMode::Architect`, `ZaruConversationMode::Execute`, and `ZaruConversationMode::Operator` — chosen at conversation creation and locked once the first message is sent. For example, `ZaruConversationMode::Architect` transitions the interface into a specialized state for interactively defining AEGIS workflow manifests. `ZaruConversationMode::Execute` provides a single-shot code execution path: describe a computation, optionally supply typed inputs, and Zaru runs the generated code in a sandboxed container and returns the result directly in chat (see [Running Code with Execute Mode](/docs/zaru/execute-mode)).
 - **Context Panel**: A collapsible right sidebar available in most conversation modes. Expand it using the panel icon in the top-right corner of the chat interface to browse resources relevant to the active mode — agents, workflows, and tools. The panel is hidden in pure Chat mode, where no platform resources are in scope. In all other modes, each listed resource offers two actions: **Execute** opens an inline parameter form and runs the resource directly, showing the result inside the panel; **Send to Chat** injects a structured prompt into the chat input so Zaru can assist with configuration or explain the resource before running it.
 - **Documentation Search**: Zaru can search its own documentation via `zaru.docs` in any conversation mode. Ask Zaru about AEGIS concepts, API usage, manifest formats, or any topic covered at `docs.100monkeys.ai` and it will return relevant documentation sections inline.
+
+---
+
+## Edge Hosts and Fleet Operations
+
+Zaru is the operator surface for **edge daemons** — AEGIS daemons users install on their own hosts (laptops, home servers, work VMs) and bind to their tenant. Edge management lives under **Vault → Edge Hosts** with three sub-routes:
+
+- **Hosts** — list of enrolled daemons with status, OS/arch, labels, operator-managed tags, and recent command history. Add a host opens a dialog that issues an enrollment token (with a copyable `aegis edge enroll <token>` command, QR code, and expiry countdown).
+- **Groups** — saved selectors with live preview ("matches 7 of your 12 connected edges") and pinned-member overrides.
+- **Fleet Runs** — history of fleet operations (paginated by `fleet_command_id`); each run has a live view showing per-node streaming output, status pills, exit codes, and a Cancel button.
+
+The **Fleet Launcher** modal — accessible from the Hosts view, the Groups view, or any tool descriptor with `fleet_capable: true` — guides operators through tool picker → arg form → target picker → policy form (mode, failure policy, max concurrency, min-targets gate, deadline) → confirm. Destructive policies (e.g. `failure_policy: ContinueOnError` against `All`) require an extra typed-confirmation step.
+
+For the underlying model, see [edge mode overview](/docs/concepts/edge-mode-overview); for fleet operations, see [fleet operations](/docs/concepts/fleet-operations).

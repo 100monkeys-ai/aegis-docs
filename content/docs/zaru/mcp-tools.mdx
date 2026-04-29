@@ -3,7 +3,7 @@ title: MCP Tools
 description: The tools Zaru exposes to MCP clients, organized by conversation mode — what each tool does, when it is available, and how to call it.
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from "fumadocs-ui/components/callout";
 
 Zaru exposes the AEGIS platform to MCP clients through a set of tools organized by conversation mode. The mode you select at the start of a conversation determines which tools are active. This page covers each mode's tool set with purpose, key parameters, and example calls.
 
@@ -15,13 +15,13 @@ For complete input/output schemas, see the [MCP Tool Reference](/docs/reference/
 
 Every Zaru conversation runs in one of five modes. Modes filter the tool surface exposed to the AI assistant — the underlying platform tools do not change, but the assistant can only call what the mode makes available.
 
-| Mode | Tools available | Purpose |
-|---|---|---|
-| **chat** | `zaru.*` only (3 tools) | Conversation and planning; no platform execution |
-| **agentic** | `zaru.*` + agent/task tools (15 tools) | Discover and run existing agents |
-| **execute** | `zaru.*` + execute pipeline tools (8 tools) | One-shot code execution from natural language |
-| **architect** | `zaru.*` + workflow/agent design tools (16 tools) | Design and deploy agents and workflows |
-| **operator** | All 86 tools | Full platform access, no filtering |
+| Mode          | Tools available                                   | Purpose                                          |
+| ------------- | ------------------------------------------------- | ------------------------------------------------ |
+| **chat**      | `zaru.*` only (3 tools)                           | Conversation and planning; no platform execution |
+| **agentic**   | `zaru.*` + agent/task tools (15 tools)            | Discover and run existing agents                 |
+| **execute**   | `zaru.*` + execute pipeline tools (8 tools)       | One-shot code execution from natural language    |
+| **architect** | `zaru.*` + workflow/agent design tools (16 tools) | Design and deploy agents and workflows           |
+| **operator**  | All 86 tools                                      | Full platform access, no filtering               |
 
 To initialize in a specific mode:
 
@@ -32,9 +32,10 @@ zaru init agentic
 To switch modes mid-session, tell the assistant to switch — it calls `zaru.mode` and the tool set updates immediately.
 
 <Callout type="info">
-  Outside of Zaru — in agent inner loops and via direct API calls — tools are not mode-filtered.
-  Mode filtering is a Zaru-client concern. Inside a running agent container, all 83 built-in tools
-  are available subject to the agent's security context and `spec.tools` allowlist.
+  Outside of Zaru — in agent inner loops and via direct API calls — tools are
+  not mode-filtered. Mode filtering is a Zaru-client concern. Inside a running
+  agent container, all 83 built-in tools are available subject to the agent's
+  security context and `spec.tools` allowlist.
 </Callout>
 
 ---
@@ -59,9 +60,9 @@ These three tools are available in every mode, including chat. They are handled 
 
 Bootstraps the session. Returns the current mode, system prompt, available tools, and server version. Call this at the start of any MCP session.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `mode` | No | `chat` | Mode to activate: `chat`, `agentic`, `execute`, `architect`, `operator` |
+| Parameter | Required | Default | Description                                                             |
+| --------- | -------- | ------- | ----------------------------------------------------------------------- |
+| `mode`    | No       | `chat`  | Mode to activate: `chat`, `agentic`, `execute`, `architect`, `operator` |
 
 ```json
 // zaru.init
@@ -72,10 +73,10 @@ Bootstraps the session. Returns the current mode, system prompt, available tools
 
 Switches the active conversation mode. In the Zaru web client, this renders an inline confirmation card — the user accepts or declines. In headless MCP clients the switch applies immediately.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `target_mode` | Yes | — | Mode to switch to |
-| `reason` | Yes | — | One sentence explaining why the switch is needed |
+| Parameter     | Required | Default | Description                                      |
+| ------------- | -------- | ------- | ------------------------------------------------ |
+| `target_mode` | Yes      | —       | Mode to switch to                                |
+| `reason`      | Yes      | —       | One sentence explaining why the switch is needed |
 
 ```json
 // zaru.mode
@@ -89,9 +90,9 @@ Switches the active conversation mode. In the Zaru web client, this renders an i
 
 Searches AEGIS and Zaru documentation at `docs.100monkeys.ai`. Results are cached for 5 minutes per query.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `query` | Yes | — | What you want to look up |
+| Parameter | Required | Default | Description              |
+| --------- | -------- | ------- | ------------------------ |
+| `query`   | Yes      | —       | What you want to look up |
 
 ```json
 // zaru.docs
@@ -115,13 +116,15 @@ Agentic mode gives the assistant access to agent discovery, generation, task exe
 
 **`aegis.agent.generate`** — Starts an async authoring loop that generates a complete agent manifest from a plain-English description and deploys it. Returns an `execution_id` immediately.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `input` | Yes | Natural-language description of what the agent should do |
+| Parameter | Required | Description                                              |
+| --------- | -------- | -------------------------------------------------------- |
+| `input`   | Yes      | Natural-language description of what the agent should do |
 
 ```json
 // aegis.agent.generate
-{ "input": "An agent that reads a CSV file from /workspace, computes summary statistics for each numeric column, and writes a markdown report to /workspace/report.md" }
+{
+  "input": "An agent that reads a CSV file from /workspace, computes summary statistics for each numeric column, and writes a markdown report to /workspace/report.md"
+}
 ```
 
 ```json
@@ -133,11 +136,11 @@ Follow with `aegis.agent.wait` to block until generation completes.
 
 **`aegis.agent.wait`** — Blocks until an agent generation (or any agent execution) reaches a terminal state.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `execution_id` | Yes | — | ID returned by `aegis.agent.generate` or `aegis.task.execute` |
-| `poll_interval_seconds` | No | 10 | Seconds between internal polls |
-| `timeout_seconds` | No | 300 | Maximum wait time |
+| Parameter               | Required | Default | Description                                                   |
+| ----------------------- | -------- | ------- | ------------------------------------------------------------- |
+| `execution_id`          | Yes      | —       | ID returned by `aegis.agent.generate` or `aegis.task.execute` |
+| `poll_interval_seconds` | No       | 10      | Seconds between internal polls                                |
+| `timeout_seconds`       | No       | 300     | Maximum wait time                                             |
 
 ```json
 // aegis.agent.wait
@@ -146,11 +149,11 @@ Follow with `aegis.agent.wait` to block until generation completes.
 
 **`aegis.agent.logs`** — Retrieves deployment events and execution summaries for a specific agent by UUID.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `agent_id` | Yes | — | UUID of the agent |
-| `limit` | No | 50 | Maximum events to return |
-| `offset` | No | 0 | Pagination offset |
+| Parameter  | Required | Default | Description              |
+| ---------- | -------- | ------- | ------------------------ |
+| `agent_id` | Yes      | —       | UUID of the agent        |
+| `limit`    | No       | 50      | Maximum events to return |
+| `offset`   | No       | 0       | Pagination offset        |
 
 ```json
 // aegis.agent.logs
@@ -161,49 +164,55 @@ Follow with `aegis.agent.wait` to block until generation completes.
 
 **`aegis.task.execute`** — Starts a new execution of a deployed agent by UUID or name. Returns an `execution_id`.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `agent_id` | Yes | — | UUID or name of the agent |
-| `intent` | No | — | Natural-language goal; steers the LLM prompt |
-| `input` | No | — | Structured data; `input.prompt` holds full task instructions |
-| `version` | No | latest | Semantic version to execute |
+| Parameter  | Required | Default | Description                                                  |
+| ---------- | -------- | ------- | ------------------------------------------------------------ |
+| `agent_id` | Yes      | —       | UUID or name of the agent                                    |
+| `intent`   | No       | —       | Natural-language goal; steers the LLM prompt                 |
+| `input`    | No       | —       | Structured data; `input.prompt` holds full task instructions |
+| `version`  | No       | latest  | Semantic version to execute                                  |
 
 ```json
 // aegis.task.execute
 {
   "agent_id": "csv-summary-agent",
   "intent": "Summarize the sales data uploaded this morning",
-  "input": { "prompt": "The file is at /workspace/sales-2026-04.csv. Focus on Q1 vs Q2 variance." }
+  "input": {
+    "prompt": "The file is at /workspace/sales-2026-04.csv. Focus on Q1 vs Q2 variance."
+  }
 }
 ```
 
 **`aegis.task.wait`** — Blocks until an execution reaches a terminal state. Returns the final status, output, and error.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `execution_id` | Yes | — | ID from `aegis.task.execute` |
-| `poll_interval_seconds` | No | 10 | Seconds between polls |
-| `timeout_seconds` | No | 300 | Maximum wait time |
+| Parameter               | Required | Default | Description                  |
+| ----------------------- | -------- | ------- | ---------------------------- |
+| `execution_id`          | Yes      | —       | ID from `aegis.task.execute` |
+| `poll_interval_seconds` | No       | 10      | Seconds between polls        |
+| `timeout_seconds`       | No       | 300     | Maximum wait time            |
 
 ```json
 // aegis.task.wait
-{ "execution_id": "e1f2a3b4-...", "poll_interval_seconds": 5, "timeout_seconds": 180 }
+{
+  "execution_id": "e1f2a3b4-...",
+  "poll_interval_seconds": 5,
+  "timeout_seconds": 180
+}
 ```
 
 **`aegis.task.list`** — Lists recent executions, optionally filtered by agent.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `agent_id` | No | — | Filter to a specific agent UUID |
-| `limit` | No | 20 | Maximum results |
+| Parameter  | Required | Default | Description                     |
+| ---------- | -------- | ------- | ------------------------------- |
+| `agent_id` | No       | —       | Filter to a specific agent UUID |
+| `limit`    | No       | 20      | Maximum results                 |
 
 **`aegis.task.logs`** — Returns paginated execution events for a specific task.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `execution_id` | Yes | — | UUID of the task execution |
-| `limit` | No | 50 | Maximum events (cap: 200) |
-| `offset` | No | 0 | Pagination offset |
+| Parameter      | Required | Default | Description                |
+| -------------- | -------- | ------- | -------------------------- |
+| `execution_id` | Yes      | —       | UUID of the task execution |
+| `limit`        | No       | 50      | Maximum events (cap: 200)  |
+| `offset`       | No       | 0       | Pagination offset          |
 
 **`aegis.task.cancel`** — Cancels an active execution.
 
@@ -216,10 +225,10 @@ Follow with `aegis.agent.wait` to block until generation completes.
 
 **`aegis.execution.file`** — Reads a file from a completed execution's workspace. Available in agentic, execute, and architect modes.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `execution_id` | Yes | UUID of the completed execution |
-| `path` | Yes | File path relative to `/workspace` (e.g. `report.md` or `/workspace/report.md`) |
+| Parameter      | Required | Description                                                                     |
+| -------------- | -------- | ------------------------------------------------------------------------------- |
+| `execution_id` | Yes      | UUID of the completed execution                                                 |
+| `path`         | Yes      | File path relative to `/workspace` (e.g. `report.md` or `/workspace/report.md`) |
 
 ```json
 // aegis.execution.file
@@ -229,8 +238,9 @@ Follow with `aegis.agent.wait` to block until generation completes.
 Text files return their content inline. Binary files (images, PDFs, archives) return a `download_url` instead of inline content.
 
 <Callout type="info">
-  The workspace is available after execution completes and is cleaned up according to the volume's
-  TTL. Retrieve output files before the volume expires.
+  The workspace is available after execution completes and is cleaned up
+  according to the volume's TTL. Retrieve output files before the volume
+  expires.
 </Callout>
 
 ### Tool Discovery
@@ -239,9 +249,9 @@ Text files return their content inline. Binary files (images, PDFs, archives) re
 
 **`aegis.tools.search`** — Searches tools by name and description.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `query` | No | Search term (omitting it behaves like `aegis.tools.list`) |
+| Parameter | Required | Description                                               |
+| --------- | -------- | --------------------------------------------------------- |
+| `query`   | No       | Search term (omitting it behaves like `aegis.tools.list`) |
 
 ```json
 // aegis.tools.search
@@ -260,13 +270,13 @@ For the full user guide including tier limits, supported languages, and workspac
 
 Starts the intent-to-execution pipeline. Discovers or generates a code-writing agent, produces the code, runs it in an isolated container, and returns the result.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `intent` | Yes | — | Natural-language description of what to compute |
-| `inputs` | No | — | Typed scalar or structured inputs embedded in the generated code |
-| `language` | No | `python` | `python`, `javascript`, or `bash` |
-| `volume_id` | No | ephemeral | Persistent volume ID for result storage (Pro and higher) |
-| `timeout_seconds` | No | — | Execution timeout override |
+| Parameter         | Required | Default   | Description                                                      |
+| ----------------- | -------- | --------- | ---------------------------------------------------------------- |
+| `intent`          | Yes      | —         | Natural-language description of what to compute                  |
+| `inputs`          | No       | —         | Typed scalar or structured inputs embedded in the generated code |
+| `language`        | No       | `python`  | `python`, `javascript`, or `bash`                                |
+| `volume_id`       | No       | ephemeral | Persistent volume ID for result storage (Pro and higher)         |
+| `timeout_seconds` | No       | —         | Execution timeout override                                       |
 
 ```json
 // aegis.execute.intent
@@ -283,9 +293,9 @@ Returns a `pipeline_execution_id`. Use `aegis.execute.wait` to block until the p
 
 Returns the current status of a pipeline run.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `pipeline_execution_id` | Yes | ID returned by `aegis.execute.intent` |
+| Parameter               | Required | Description                           |
+| ----------------------- | -------- | ------------------------------------- |
+| `pipeline_execution_id` | Yes      | ID returned by `aegis.execute.intent` |
 
 ```json
 // aegis.execute.status
@@ -298,11 +308,11 @@ Returns `{ "status": "running" }` while in progress, or a completed result with 
 
 Blocks until the pipeline execution completes. Pass the `pipeline_execution_id` as `execution_id`.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `execution_id` | Yes | — | The `pipeline_execution_id` from `aegis.execute.intent` |
-| `poll_interval_seconds` | No | 5 | Seconds between polls |
-| `timeout_seconds` | No | 300 | Maximum wait time |
+| Parameter               | Required | Default | Description                                             |
+| ----------------------- | -------- | ------- | ------------------------------------------------------- |
+| `execution_id`          | Yes      | —       | The `pipeline_execution_id` from `aegis.execute.intent` |
+| `poll_interval_seconds` | No       | 5       | Seconds between polls                                   |
+| `timeout_seconds`       | No       | 300     | Maximum wait time                                       |
 
 ```json
 // aegis.execute.wait
@@ -325,24 +335,26 @@ All agentic mode tools (`aegis.agent.*`, `aegis.task.*`, `aegis.execution.file`)
 
 **`aegis.workflow.generate`** — Starts an async authoring loop that generates a complete workflow manifest from a natural-language objective and registers it.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `input` | Yes | Natural-language workflow objective |
+| Parameter | Required | Description                         |
+| --------- | -------- | ----------------------------------- |
+| `input`   | Yes      | Natural-language workflow objective |
 
 ```json
 // aegis.workflow.generate
-{ "input": "A three-stage pipeline: extract keywords from a document, look each keyword up in a knowledge base, then produce a structured summary with citations" }
+{
+  "input": "A three-stage pipeline: extract keywords from a document, look each keyword up in a knowledge base, then produce a structured summary with citations"
+}
 ```
 
 Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.workflow.wait`.
 
 **`aegis.workflow.wait`** — Blocks until a workflow execution or generation completes.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `execution_id` | Yes | — | Workflow execution UUID |
-| `poll_interval_seconds` | No | 5 | Seconds between polls |
-| `timeout_seconds` | No | 300 | Maximum wait time |
+| Parameter               | Required | Default | Description             |
+| ----------------------- | -------- | ------- | ----------------------- |
+| `execution_id`          | Yes      | —       | Workflow execution UUID |
+| `poll_interval_seconds` | No       | 5       | Seconds between polls   |
+| `timeout_seconds`       | No       | 300     | Maximum wait time       |
 
 ```json
 // aegis.workflow.wait
@@ -353,11 +365,11 @@ Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.wor
 
 **`aegis.workflow.logs`** — Returns paginated state-transition and lifecycle events for a workflow execution.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `execution_id` | Yes | — | UUID of the workflow execution |
-| `limit` | No | 50 | Maximum events (cap: 200) |
-| `offset` | No | 0 | Pagination offset |
+| Parameter      | Required | Default | Description                    |
+| -------------- | -------- | ------- | ------------------------------ |
+| `execution_id` | Yes      | —       | UUID of the workflow execution |
+| `limit`        | No       | 50      | Maximum events (cap: 200)      |
+| `offset`       | No       | 0       | Pagination offset              |
 
 ```json
 // aegis.workflow.logs
@@ -368,9 +380,9 @@ Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.wor
 
 **`aegis.schema.get`** — Retrieves the canonical JSON Schema for a manifest kind. Use before writing a manifest to understand required and optional fields.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `key` | Yes | `"agent/manifest/v1"` or `"workflow/manifest/v1"` |
+| Parameter | Required | Description                                       |
+| --------- | -------- | ------------------------------------------------- |
+| `key`     | Yes      | `"agent/manifest/v1"` or `"workflow/manifest/v1"` |
 
 ```json
 // aegis.schema.get
@@ -379,10 +391,10 @@ Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.wor
 
 **`aegis.schema.validate`** — Validates a manifest YAML against its canonical schema without deploying it.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `kind` | Yes | `"agent"` or `"workflow"` |
-| `manifest_yaml` | Yes | The full manifest YAML text |
+| Parameter       | Required | Description                 |
+| --------------- | -------- | --------------------------- |
+| `kind`          | Yes      | `"agent"` or `"workflow"`   |
+| `manifest_yaml` | Yes      | The full manifest YAML text |
 
 ```json
 // aegis.schema.validate
@@ -401,10 +413,11 @@ Returns `{ "valid": true, "errors": null }` on success or `{ "valid": false, "er
 Operator mode exposes all 86 tools with no filtering. It includes everything from the modes above plus the tool groups below.
 
 <Callout type="info">
-  Operator mode requires authentication through the platform admin realm. System tools
-  (`aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.create`, `aegis.workflow.update`,
-  `aegis.workflow.promote`, `aegis.workflow.demote`) require operator credentials. Destructive tools
-  (`aegis.agent.delete`, `aegis.workflow.delete`, `aegis.task.remove`, `aegis.workflow.remove`,
+  Operator mode requires authentication through the platform admin realm. System
+  tools (`aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.create`,
+  `aegis.workflow.update`, `aegis.workflow.promote`, `aegis.workflow.demote`)
+  require operator credentials. Destructive tools (`aegis.agent.delete`,
+  `aegis.workflow.delete`, `aegis.task.remove`, `aegis.workflow.remove`,
   `aegis.system.*`) are similarly restricted to operator sessions.
 </Callout>
 
@@ -429,8 +442,8 @@ These tools manage the registry directly. They take a manifest YAML and register
 **`aegis.agent.delete`** — Permanently removes an agent from the registry by UUID.
 
 <Callout type="warn">
-  `aegis.agent.delete` is irreversible. In-progress executions continue to completion but new tasks
-  cannot be dispatched against the deleted agent.
+  `aegis.agent.delete` is irreversible. In-progress executions continue to
+  completion but new tasks cannot be dispatched against the deleted agent.
 </Callout>
 
 ```json
@@ -442,7 +455,11 @@ These tools manage the registry directly. They take a manifest YAML and register
 
 ```json
 // aegis.agent.search
-{ "query": "summarize CSV files and produce markdown reports", "limit": 5, "min_score": 0.7 }
+{
+  "query": "summarize CSV files and produce markdown reports",
+  "limit": 5,
+  "min_score": 0.7
+}
 ```
 
 **`aegis.workflow.create`** / **`aegis.workflow.update`** — Register or update a workflow manifest.
@@ -467,18 +484,18 @@ These tools manage the registry directly. They take a manifest YAML and register
 **`aegis.workflow.delete`** — Permanently removes a workflow from the registry.
 
 <Callout type="warn">
-  `aegis.workflow.delete` removes the definition. In-progress executions are not terminated, but
-  new executions of this workflow will no longer be possible.
+  `aegis.workflow.delete` removes the definition. In-progress executions are not
+  terminated, but new executions of this workflow will no longer be possible.
 </Callout>
 
 **`aegis.workflow.run`** — Executes a registered workflow by name.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `name` | Yes | — | Workflow name |
-| `intent` | No | — | Natural-language goal for this run |
-| `input` | No | — | Structured input parameters |
-| `version` | No | latest | Specific version to execute |
+| Parameter | Required | Default | Description                        |
+| --------- | -------- | ------- | ---------------------------------- |
+| `name`    | Yes      | —       | Workflow name                      |
+| `intent`  | No       | —       | Natural-language goal for this run |
+| `input`   | No       | —       | Structured input parameters        |
+| `version` | No       | latest  | Specific version to execute        |
 
 ```json
 // aegis.workflow.run
@@ -521,8 +538,9 @@ These tools manage the registry directly. They take a manifest YAML and register
 **`aegis.workflow.remove`** — Removes a terminal execution record from the registry.
 
 <Callout type="info">
-  `aegis.workflow.remove` requires the execution to be in a terminal state (`completed`, `failed`,
-  or `cancelled`). Cancel a running execution first if needed.
+  `aegis.workflow.remove` requires the execution to be in a terminal state
+  (`completed`, `failed`, or `cancelled`). Cancel a running execution first if
+  needed.
 </Callout>
 
 **`aegis.workflow.promote`** / **`aegis.workflow.demote`** — Change a workflow's visibility scope (`user` → `tenant` → `global` and back).
@@ -559,7 +577,8 @@ These tools manage the registry directly. They take a manifest YAML and register
 **`aegis.volume.delete`** — Delete a volume and all its contents.
 
 <Callout type="warn">
-  `aegis.volume.delete` is irreversible. All files stored in the volume are permanently removed.
+  `aegis.volume.delete` is irreversible. All files stored in the volume are
+  permanently removed.
 </Callout>
 
 **`aegis.file.list`** / **`aegis.file.read`** / **`aegis.file.write`** / **`aegis.file.delete`** / **`aegis.file.mkdir`** — Operate on files within a specific volume. All require `volume_id` and `path`.
@@ -573,12 +592,12 @@ These tools manage the registry directly. They take a manifest YAML and register
 
 **`aegis.git.clone`** — Create a git repo binding and trigger an async clone into a workspace volume.
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `repo_url` | Yes | — | Repository URL (`https://...` or `git@...`) |
-| `label` | Yes | — | Binding name; clone is mounted at `/workspace/{label}` |
-| `git_ref` | No | `{ kind: "branch", value: "main" }` | Branch, tag, or commit to check out |
-| `shallow` | No | `true` | Shallow clone |
+| Parameter  | Required | Default                             | Description                                            |
+| ---------- | -------- | ----------------------------------- | ------------------------------------------------------ |
+| `repo_url` | Yes      | —                                   | Repository URL (`https://...` or `git@...`)            |
+| `label`    | Yes      | —                                   | Binding name; clone is mounted at `/workspace/{label}` |
+| `git_ref`  | No       | `{ kind: "branch", value: "main" }` | Branch, tag, or commit to check out                    |
+| `shallow`  | No       | `true`                              | Shallow clone                                          |
 
 ```json
 // aegis.git.clone
@@ -604,8 +623,8 @@ These tools manage the registry directly. They take a manifest YAML and register
 **`aegis.git.delete`** — Delete a binding and cascade-delete the associated volume.
 
 <Callout type="warn">
-  `aegis.git.delete` deletes the binding and all associated volume contents. Any uncommitted or
-  unpushed work is lost.
+  `aegis.git.delete` deletes the binding and all associated volume contents. Any
+  uncommitted or unpushed work is lost.
 </Callout>
 
 ### Script Library Tools
@@ -614,12 +633,12 @@ Scripts are TypeScript programs stored in the caller's script library. Names mus
 
 **`aegis.script.save`** — Persist a new TypeScript script.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `name` | Yes | Unique script name |
-| `code` | Yes | TypeScript source |
-| `description` | No | Free-form description |
-| `tags` | No | Array of lowercase tags |
+| Parameter     | Required | Description             |
+| ------------- | -------- | ----------------------- |
+| `name`        | Yes      | Unique script name      |
+| `code`        | Yes      | TypeScript source       |
+| `description` | No       | Free-form description   |
+| `tags`        | No       | Array of lowercase tags |
 
 **`aegis.script.list`** — List saved scripts, optionally filtered by `tag` or name substring.
 
@@ -661,67 +680,67 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 
 **Abbreviations:** C = chat, Ag = agentic, Ex = execute, Ar = architect, Op = operator.
 
-| Tool | C | Ag | Ex | Ar | Op |
-|---|:---:|:---:|:---:|:---:|:---:|
-| `zaru.init` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `zaru.mode` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `zaru.docs` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `aegis.agent.generate` | | ✓ | | ✓ | ✓ |
-| `aegis.agent.wait` | | ✓ | | ✓ | ✓ |
-| `aegis.agent.list` | | ✓ | | ✓ | ✓ |
-| `aegis.agent.logs` | | ✓ | | ✓ | ✓ |
-| `aegis.task.execute` | | ✓ | | ✓ | ✓ |
-| `aegis.task.wait` | | ✓ | | ✓ | ✓ |
-| `aegis.task.list` | | ✓ | | | ✓ |
-| `aegis.task.logs` | | ✓ | | | ✓ |
-| `aegis.task.cancel` | | ✓ | | | ✓ |
-| `aegis.execution.file` | | ✓ | ✓ | ✓ | ✓ |
-| `aegis.tools.list` | | ✓ | | | ✓ |
-| `aegis.tools.search` | | ✓ | | | ✓ |
-| `aegis.execute.intent` | | | ✓ | | ✓ |
-| `aegis.execute.status` | | | ✓ | | ✓ |
-| `aegis.execute.wait` | | | ✓ | | ✓ |
-| `aegis.workflow.wait` | | | ✓ | ✓ | ✓ |
-| `aegis.workflow.generate` | | | | ✓ | ✓ |
-| `aegis.workflow.list` | | | | ✓ | ✓ |
-| `aegis.workflow.logs` | | | | ✓ | ✓ |
-| `aegis.schema.get` | | | | ✓ | ✓ |
-| `aegis.schema.validate` | | | | ✓ | ✓ |
-| `aegis.agent.create` | | | | | ✓ |
-| `aegis.agent.update` | | | | | ✓ |
-| `aegis.agent.export` | | | | | ✓ |
-| `aegis.agent.delete` | | | | | ✓ |
-| `aegis.agent.search` | | | | | ✓ |
-| `aegis.workflow.create` | | | | | ✓ |
-| `aegis.workflow.update` | | | | | ✓ |
-| `aegis.workflow.validate` | | | | | ✓ |
-| `aegis.workflow.export` | | | | | ✓ |
-| `aegis.workflow.delete` | | | | | ✓ |
-| `aegis.workflow.run` | | | | | ✓ |
-| `aegis.workflow.cancel` | | | | | ✓ |
-| `aegis.workflow.signal` | | | | | ✓ |
-| `aegis.workflow.status` | | | | | ✓ |
-| `aegis.workflow.executions.list` | | | | | ✓ |
-| `aegis.workflow.executions.get` | | | | | ✓ |
-| `aegis.workflow.remove` | | | | | ✓ |
-| `aegis.workflow.promote` | | | | | ✓ |
-| `aegis.workflow.demote` | | | | | ✓ |
-| `aegis.workflow.search` | | | | | ✓ |
-| `aegis.task.status` | | | | | ✓ |
-| `aegis.task.remove` | | | | | ✓ |
-| `aegis.runtime.list` | | | | | ✓ |
-| `aegis.volume.create` | | | | | ✓ |
-| `aegis.volume.list` | | | | | ✓ |
-| `aegis.volume.delete` | | | | | ✓ |
-| `aegis.volume.quota` | | | | | ✓ |
-| `aegis.file.*` (5 tools) | | | | | ✓ |
-| `aegis.git.*` (8 tools) | | | | | ✓ |
-| `aegis.script.*` (5 tools) | | | | | ✓ |
-| `aegis.system.info` | | | | | ✓ |
-| `aegis.system.config` | | | | | ✓ |
-| `cmd.run` | | | | | ✓ |
-| `fs.*` (10 tools) | | | | | ✓ |
-| `web.*` (2 tools) | | | | | ✓ |
+| Tool                             |  C  | Ag  | Ex  | Ar  | Op  |
+| -------------------------------- | :-: | :-: | :-: | :-: | :-: |
+| `zaru.init`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.mode`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.docs`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `aegis.agent.generate`           |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.agent.wait`               |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.agent.list`               |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.agent.logs`               |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.task.execute`             |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.task.wait`                |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.task.list`                |     |  ✓  |     |     |  ✓  |
+| `aegis.task.logs`                |     |  ✓  |     |     |  ✓  |
+| `aegis.task.cancel`              |     |  ✓  |     |     |  ✓  |
+| `aegis.execution.file`           |     |  ✓  |  ✓  |  ✓  |  ✓  |
+| `aegis.tools.list`               |     |  ✓  |     |     |  ✓  |
+| `aegis.tools.search`             |     |  ✓  |     |     |  ✓  |
+| `aegis.execute.intent`           |     |     |  ✓  |     |  ✓  |
+| `aegis.execute.status`           |     |     |  ✓  |     |  ✓  |
+| `aegis.execute.wait`             |     |     |  ✓  |     |  ✓  |
+| `aegis.workflow.wait`            |     |     |  ✓  |  ✓  |  ✓  |
+| `aegis.workflow.generate`        |     |     |     |  ✓  |  ✓  |
+| `aegis.workflow.list`            |     |     |     |  ✓  |  ✓  |
+| `aegis.workflow.logs`            |     |     |     |  ✓  |  ✓  |
+| `aegis.schema.get`               |     |     |     |  ✓  |  ✓  |
+| `aegis.schema.validate`          |     |     |     |  ✓  |  ✓  |
+| `aegis.agent.create`             |     |     |     |     |  ✓  |
+| `aegis.agent.update`             |     |     |     |     |  ✓  |
+| `aegis.agent.export`             |     |     |     |     |  ✓  |
+| `aegis.agent.delete`             |     |     |     |     |  ✓  |
+| `aegis.agent.search`             |     |     |     |     |  ✓  |
+| `aegis.workflow.create`          |     |     |     |     |  ✓  |
+| `aegis.workflow.update`          |     |     |     |     |  ✓  |
+| `aegis.workflow.validate`        |     |     |     |     |  ✓  |
+| `aegis.workflow.export`          |     |     |     |     |  ✓  |
+| `aegis.workflow.delete`          |     |     |     |     |  ✓  |
+| `aegis.workflow.run`             |     |     |     |     |  ✓  |
+| `aegis.workflow.cancel`          |     |     |     |     |  ✓  |
+| `aegis.workflow.signal`          |     |     |     |     |  ✓  |
+| `aegis.workflow.status`          |     |     |     |     |  ✓  |
+| `aegis.workflow.executions.list` |     |     |     |     |  ✓  |
+| `aegis.workflow.executions.get`  |     |     |     |     |  ✓  |
+| `aegis.workflow.remove`          |     |     |     |     |  ✓  |
+| `aegis.workflow.promote`         |     |     |     |     |  ✓  |
+| `aegis.workflow.demote`          |     |     |     |     |  ✓  |
+| `aegis.workflow.search`          |     |     |     |     |  ✓  |
+| `aegis.task.status`              |     |     |     |     |  ✓  |
+| `aegis.task.remove`              |     |     |     |     |  ✓  |
+| `aegis.runtime.list`             |     |     |     |     |  ✓  |
+| `aegis.volume.create`            |     |     |     |     |  ✓  |
+| `aegis.volume.list`              |     |     |     |     |  ✓  |
+| `aegis.volume.delete`            |     |     |     |     |  ✓  |
+| `aegis.volume.quota`             |     |     |     |     |  ✓  |
+| `aegis.file.*` (5 tools)         |     |     |     |     |  ✓  |
+| `aegis.git.*` (8 tools)          |     |     |     |     |  ✓  |
+| `aegis.script.*` (5 tools)       |     |     |     |     |  ✓  |
+| `aegis.system.info`              |     |     |     |     |  ✓  |
+| `aegis.system.config`            |     |     |     |     |  ✓  |
+| `cmd.run`                        |     |     |     |     |  ✓  |
+| `fs.*` (10 tools)                |     |     |     |     |  ✓  |
+| `web.*` (2 tools)                |     |     |     |     |  ✓  |
 
 ---
 
@@ -732,3 +751,40 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 - [Management Tools](/docs/reference/management-tools) — usage patterns for agent and workflow management from agents
 - [Management via MCP](/docs/guides/management-via-mcp) — automation patterns for agent factories and self-managing workflows
 - [Running Code with Execute Mode](/docs/zaru/execute-mode) — full guide to the execute pipeline
+
+---
+
+## Edge Fleet Tools (System Tier)
+
+Three system-tier MCP tools cover edge fleet operations. They are gated by an operator/tenant-admin SecurityContext and surfaced to operator-mode conversations and the Fleet Launcher UI.
+
+### `aegis.edge.fleet.invoke`
+
+Invoke any registered tool against an `EdgeTarget` with a `FleetDispatchPolicy`. Per-node `CommandProgress` chunks stream back tagged with `node_id`; the terminal payload is `FleetExecutionResult { fleet_command_id, targets_resolved, targets_skipped, per_node, summary }`.
+
+**Inputs (selected fields):**
+
+| Field                             | Description                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `target`                          | Tagged-union over `Node`, `Group`, `Selector`, `All`.                                             |
+| `tool`                            | Tool name to invoke per node. Must declare `fleet_capable: true` to accept multi-target dispatch. |
+| `args`                            | Tool-specific argument map.                                                                       |
+| `policy.mode`                     | `Sequential` / `Parallel` / `Rolling { batch }`.                                                  |
+| `policy.failure_policy`           | `FailFast` / `ContinueOnError` / `StopAfter(N)`.                                                  |
+| `policy.max_concurrency`          | Optional cap.                                                                                     |
+| `policy.require_min_targets`      | Refuse upfront if fewer matches resolve.                                                          |
+| `policy.per_target_deadline_secs` | Per-call deadline propagated as `EdgeCommand.deadline`.                                           |
+
+### `aegis.edge.fleet.list`
+
+Resolve an `EdgeTarget` to a node list **without dispatching**. The operationally critical answer to "show me which hosts this selector hits before I run anything." Zaru's selector preview panel is built on this tool.
+
+### `aegis.edge.fleet.cancel`
+
+Broadcast `Cancel` to every in-flight per-node command in a fleet operation, addressed by `fleet_command_id`. Already-completed nodes are unaffected.
+
+### `fleet_capable` flag
+
+Tool descriptors carry a `fleet_capable: bool` flag. Tools that are inherently single-target (interactive shells, file uploads where the target host matters semantically) declare `fleet_capable: false` and refuse multi-target dispatch even when the caller tries to fan them out.
+
+For the underlying model, see [fleet operations](/docs/concepts/fleet-operations); for the REST shape, see [edge REST API](/docs/reference/edge-rest-api).

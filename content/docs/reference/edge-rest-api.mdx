@@ -1,0 +1,444 @@
+---
+title: Edge REST API
+description: HTTP reference for the /api/edge/* surface — enrollment tokens, hosts, tags, groups, fleet preview, fleet invoke, fleet cancel, and run history.
+---
+
+# Edge REST API
+
+The `/api/edge/*` namespace is the HTTP surface for managing edge daemons, tags, groups, and fleet operations. Every operation here is mirrored by an `aegis edge` CLI command and, where appropriate, by a system-tier MCP tool.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+This page assumes:
+
+- You have a user JWT (issued by Keycloak via Zaru) in the `Authorization: Bearer <token>` header.
+- Your tenant is resolved via the standard mechanism (`X-Tenant-Id` header for service accounts, JWT claims for users).
+- All responses are JSON unless noted.
+
+For broader API context, see [REST API reference](/docs/reference/rest-api).
+
+---
+
+## Enrollment tokens
+
+### `POST /api/edge/enrollment-tokens`
+
+Issue a new enrollment token bound to the caller's `effective_tenant`.
+
+**Request body:**
+
+```json
+{
+  "name": "workstation-east",
+  "ttl_seconds": 900,
+  "team_tenant_id": "t-..."
+}
+```
+
+| Field            | Type   | Required | Default | Description                                                                                                                    |
+| ---------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `name`           | string | no       | —       | Friendly display name to associate with the resulting daemon.                                                                  |
+| `ttl_seconds`    | int    | no       | `900`   | Token lifetime in seconds. Must be ≤ `900` (15 minutes).                                                                       |
+| `team_tenant_id` | string | no       | —       | Team tenant id to issue the token under. Caller must have admin rights on that team. Defaults to the caller's personal tenant. |
+
+**Response:**
+
+```json
+{
+  "token": "eyJhbGc...3Q",
+  "expires_at": "2026-04-28T14:47:11Z",
+  "controller_endpoint": "relay.example.com:443",
+  "qr_payload": "aegis-edge-enroll://eyJhbGc...3Q"
+}
+```
+
+**Errors:**
+
+| Code | Meaning                                                             |
+| ---- | ------------------------------------------------------------------- |
+| 400  | Invalid `ttl_seconds` (>900) or unknown `team_tenant_id`.           |
+| 401  | Missing or invalid auth.                                            |
+| 403  | Caller lacks `aegis.edge.enroll` scope or admin rights on the team. |
+
+---
+
+## Hosts
+
+### `GET /api/edge/hosts`
+
+List edge hosts in the caller's tenant.
+
+**Query parameters:**
+
+| Parameter   | Type                      | Description                           |
+| ----------- | ------------------------- | ------------------------------------- |
+| `tag`       | string (repeatable)       | Filter to hosts with all listed tags. |
+| `label`     | string `K=V` (repeatable) | Filter to hosts with the given label. |
+| `connected` | bool                      | Only Connected hosts.                 |
+| `cursor`    | string                    | Pagination cursor.                    |
+| `limit`     | int                       | Page size; default 50, max 200.       |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "node_id": "n-7a3b2f...",
+      "name": "workstation-east",
+      "tenant_id": "u-8d1c...",
+      "status": "Connected",
+      "since": "2026-04-28T14:32:11Z",
+      "last_heartbeat_at": "2026-04-28T14:51:43Z",
+      "tags": ["prod", "team-platform"],
+      "capabilities": {
+        "os": "linux",
+        "arch": "x86_64",
+        "local_tools": ["shell", "docker", "kubectl"],
+        "labels": { "region": "us-east-1" }
+      }
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### `GET /api/edge/hosts/:id`
+
+Get a single host's full record, including recent command history.
+
+**Response:**
+
+```json
+{
+  "node_id": "n-7a3b2f...",
+  "name": "workstation-east",
+  "tenant_id": "u-8d1c...",
+  "status": "Connected",
+  "enrolled_at": "2026-03-15T10:12:08Z",
+  "since": "2026-04-28T14:32:11Z",
+  "last_heartbeat_at": "2026-04-28T14:51:43Z",
+  "tags": ["prod", "team-platform"],
+  "capabilities": { "...": "..." },
+  "recent_commands": [
+    {
+      "command_id": "c-...",
+      "tool": "cmd.run",
+      "dispatched_at": "2026-04-28T14:50:11Z",
+      "outcome": "ok",
+      "duration_ms": 1234
+    }
+  ]
+}
+```
+
+### `PATCH /api/edge/hosts/:id`
+
+Update a host's display name and/or tags.
+
+**Request body:**
+
+```json
+{
+  "name": "workstation-east-renamed",
+  "tags": ["prod", "team-platform", "db-host"]
+}
+```
+
+The `tags` array is a **complete replacement** — to add or remove individual tags atomically, use the `tags` add/remove subresource:
+
+```http
+POST /api/edge/hosts/:id/tags
+{ "add": ["db-host"], "remove": ["staging"] }
+```
+
+### `DELETE /api/edge/hosts/:id`
+
+Revoke an edge host. Marks the daemon `Revoked`, blacklists its `NodeSecurityToken`, drops the active gRPC stream.
+
+**Response:** `204 No Content`.
+
+---
+
+## Groups
+
+### `GET /api/edge/groups`
+
+List groups in the tenant.
+
+```json
+{
+  "items": [
+    {
+      "id": "g-a3f4...",
+      "name": "production-db-hosts",
+      "selector": {
+        "tags": [{ "AllOf": ["prod", "db"] }],
+        "tools": ["docker"]
+      },
+      "pinned_members": ["n-7a3b2f..."],
+      "resolved_member_count": 4,
+      "created_at": "2026-04-01T09:00:00Z"
+    }
+  ]
+}
+```
+
+### `POST /api/edge/groups`
+
+Create a group.
+
+**Request body:**
+
+```json
+{
+  "name": "production-db-hosts",
+  "selector": {
+    "os": "linux",
+    "tools": ["docker"],
+    "tags": [{ "AllOf": ["prod", "db"] }],
+    "labels": [{ "Equals": { "region": "us-east-1" } }]
+  },
+  "pinned_members": []
+}
+```
+
+### `GET /api/edge/groups/:id`
+
+Fetch a single group, with the resolved member list at request time.
+
+```json
+{
+  "id": "g-a3f4...",
+  "name": "production-db-hosts",
+  "selector": { "...": "..." },
+  "pinned_members": [],
+  "resolved_members": [
+    {
+      "node_id": "n-7a3b2f...",
+      "name": "workstation-east",
+      "status": "Connected"
+    }
+  ]
+}
+```
+
+### `PATCH /api/edge/groups/:id`
+
+Update a group's name, selector, or pinned members.
+
+```json
+{
+  "name": "production-db-hosts-renamed",
+  "selector": { "tags": [{ "AllOf": ["prod", "db", "team-platform"] }] }
+}
+```
+
+### `DELETE /api/edge/groups/:id`
+
+Delete a group.
+
+---
+
+## Fleet operations
+
+### `POST /api/edge/fleet/preview`
+
+Resolve a target to a node list **without dispatching**.
+
+**Request body:**
+
+```json
+{
+  "target": {
+    "Selector": {
+      "tags": [{ "Has": "prod" }]
+    }
+  }
+}
+```
+
+The `target` field is a tagged-union over `Node`, `Group`, `Selector`, `All`:
+
+```json
+{ "Node": "n-7a3b2f..." }
+{ "Group": "g-a3f4..." }
+{ "Selector": { "...": "..." } }
+{ "All": null }
+```
+
+**Response:**
+
+```json
+{
+  "resolved": [
+    {
+      "node_id": "n-7a3b2f...",
+      "name": "workstation-east",
+      "status": "Connected"
+    },
+    {
+      "node_id": "n-1c8d4e...",
+      "name": "workstation-west",
+      "status": "Connected"
+    }
+  ],
+  "skipped": [{ "node_id": "n-9f2a31...", "reason": "Disconnected" }]
+}
+```
+
+### `POST /api/edge/fleet/invoke`
+
+Dispatch a tool against a target with a fleet dispatch policy. **Server-streamed** — the response is `text/event-stream` with one event per `CommandProgress` chunk and a terminal `FleetExecutionResult`.
+
+**Request body:**
+
+```json
+{
+  "target": { "Group": "g-a3f4..." },
+  "tool": "service.restart",
+  "args": { "name": "nginx" },
+  "policy": {
+    "mode": { "Rolling": { "batch": 5 } },
+    "max_concurrency": 5,
+    "failure_policy": { "StopAfter": 1 },
+    "require_min_targets": null,
+    "per_target_deadline_secs": 30
+  }
+}
+```
+
+**Response (server-streamed events):**
+
+```text
+event: command_progress
+data: {"node_id":"n-7a3b2f...","command_id":"c-...","chunk":{"stdout":"Reloading systemd..."}}
+
+event: command_progress
+data: {"node_id":"n-7a3b2f...","command_id":"c-...","chunk":{"stdout":"nginx.service restarted"}}
+
+event: command_result
+data: {"node_id":"n-7a3b2f...","command_id":"c-...","result":{"ok":{"exit_code":0,"duration_ms":1234}}}
+
+...
+
+event: fleet_result
+data: {
+  "fleet_command_id": "f-a3f4...",
+  "targets_resolved": ["n-7a3b2f...","n-1c8d4e..."],
+  "targets_skipped": [],
+  "summary": {"ok": 6, "err": 1, "timed_out": 0, "cancelled": 2, "not_started": 3}
+}
+```
+
+**Errors (returned as `event: error`):**
+
+| Reason                   | Meaning                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| `RequireMinNotSatisfied` | Resolved target count below `require_min_targets`; no per-node calls dispatched.      |
+| `EdgeUnavailable`        | A `Node` target is offline or not found.                                              |
+| `Halted`                 | `failure_policy` triggered a halt. The terminal `fleet_result` carries the breakdown. |
+
+### `POST /api/edge/fleet/:fleet_command_id/cancel`
+
+Broadcast `Cancel` to every in-flight per-node command in a fleet operation.
+
+**Response:**
+
+```json
+{
+  "fleet_command_id": "f-a3f4...",
+  "cancelled": 12,
+  "already_terminal": 5
+}
+```
+
+### `GET /api/edge/fleet/runs`
+
+List historical fleet runs in the tenant.
+
+**Query parameters:**
+
+| Parameter | Description                                            |
+| --------- | ------------------------------------------------------ |
+| `cursor`  | Pagination cursor.                                     |
+| `limit`   | Page size; default 50, max 200.                        |
+| `tool`    | Filter by tool name.                                   |
+| `outcome` | Filter by outcome (`complete`, `halted`, `cancelled`). |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "fleet_command_id": "f-a3f4...",
+      "tool": "service.restart",
+      "target": { "Group": "g-..." },
+      "policy": { "...": "..." },
+      "started_at": "2026-04-28T14:32:11Z",
+      "ended_at": "2026-04-28T14:34:07Z",
+      "outcome": "halted",
+      "summary": { "ok": 6, "err": 1, "cancelled": 2, "not_started": 3 }
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### `GET /api/edge/fleet/runs/:fleet_command_id`
+
+Fetch a single run with per-node detail.
+
+```json
+{
+  "fleet_command_id": "f-a3f4...",
+  "tool": "service.restart",
+  "target": { "...": "..." },
+  "policy": { "...": "..." },
+  "started_at": "2026-04-28T14:32:11Z",
+  "ended_at": "2026-04-28T14:34:07Z",
+  "outcome": "halted",
+  "per_node": [
+    {
+      "node_id": "n-7a3b2f...",
+      "command_id": "c-...",
+      "outcome": "ok",
+      "exit_code": 0,
+      "duration_ms": 1234,
+      "stdout_tail": "...",
+      "stderr_tail": ""
+    }
+  ]
+}
+```
+
+---
+
+## Authentication and authorization
+
+| Operation               | Required scope            |
+| ----------------------- | ------------------------- |
+| Issue enrollment tokens | `aegis.edge.enroll`       |
+| List/get hosts          | `aegis.edge.hosts.read`   |
+| Update/revoke hosts     | `aegis.edge.hosts.write`  |
+| Manage groups           | `aegis.edge.groups.write` |
+| Fleet preview           | `aegis.edge.fleet.read`   |
+| Fleet invoke / cancel   | `aegis.edge.fleet.manage` |
+| Fleet run history       | `aegis.edge.fleet.read`   |
+
+These scopes are mapped from Keycloak roles by the API gateway and enforced at the handler boundary. A user with insufficient scope receives `403 Forbidden`.
+
+### Tenant resolution
+
+Every endpoint is filtered through `effective_tenant`. Service accounts using `X-Tenant-Id` resolve to the delegated tenant; users resolve via JWT claims; team-tenant access is granted by the team-membership claim. Cross-tenant access is impossible at the router boundary.
+
+---
+
+## What's next
+
+- [Edge CLI Reference](/docs/reference/edge-cli) — the CLI surface that mirrors these endpoints.
+- [Relay gRPC API](/docs/reference/relay-grpc-api) — the daemon-facing gRPC surface.
+- [Edge Operational Patterns](/docs/deployment/edge-operational-patterns) — operating against this API in practice.
+- [REST API](/docs/reference/rest-api) — broader REST surface.
+- [IAM](/docs/deployment/iam) — Keycloak roles and clients required for these endpoints.

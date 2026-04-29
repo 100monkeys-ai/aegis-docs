@@ -16,11 +16,11 @@ These two settings are independent and can be mixed freely. A node can be `spec.
 
 ## Node Types (`spec.node.type`)
 
-| Type | Role |
-|------|------|
+| Type           | Role                                                                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `orchestrator` | Hosts the management plane: API server, workflow engine, Temporal client, Cortex connection, secrets manager. Does **not** run agent containers locally. |
-| `edge` | Executes agent containers (Docker runtime). Does not expose the public API. Connects to a controller node for task assignment. |
-| `hybrid` | Combines both roles on a single machine. The default for development and small deployments. |
+| `edge`         | Executes agent containers (Docker runtime). Does not expose the public API. Connects to a controller node for task assignment.                           |
+| `hybrid`       | Combines both roles on a single machine. The default for development and small deployments.                                                              |
 
 ---
 
@@ -30,11 +30,11 @@ AEGIS uses a dedicated **NodeClusterService** gRPC protocol on **port 50056** fo
 
 ### Cluster Roles
 
-| Role | Description |
-|------|-------------|
+| Role         | Description                                                                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `controller` | Manages the `NodeCluster` aggregate. Routes executions to workers. Issues `NodeSecurityToken`s to attested workers. Exposes `NodeClusterService` on port 50056. |
-| `worker` | Attests to a controller on startup. Advertises `NodeCapabilityAdvertisement`. Accepts forwarded executions via the `ForwardExecution` RPC. |
-| `hybrid` | Controller and worker in one process. Used for standalone single-node and development deployments. No separate controller endpoint needed. |
+| `worker`     | Attests to a controller on startup. Advertises `NodeCapabilityAdvertisement`. Accepts forwarded executions via the `ForwardExecution` RPC.                      |
+| `hybrid`     | Controller and worker in one process. Used for standalone single-node and development deployments. No separate controller endpoint needed.                      |
 
 ### The Two-Tier Model
 
@@ -200,12 +200,12 @@ spec:
 
 Declare available hardware so the scheduler can make placement decisions:
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field       | Type    | Description                             |
+| ----------- | ------- | --------------------------------------- |
 | `cpu_cores` | integer | CPU cores available to agent containers |
 | `memory_gb` | integer | RAM in GB available to agent containers |
-| `disk_gb` | integer | Disk space in GB |
-| `gpu` | boolean | Whether a GPU is available |
+| `disk_gb`   | integer | Disk space in GB                        |
+| `gpu`       | boolean | Whether a GPU is available              |
 
 #### `spec.node.tags`
 
@@ -215,7 +215,7 @@ Tags are used for execution target matching. An agent manifest can specify `spec
 # In agent manifest
 spec:
   execution:
-    target_tags: ["gpu"]    # Only schedule on nodes tagged "gpu"
+    target_tags: ["gpu"] # Only schedule on nodes tagged "gpu"
 ```
 
 ---
@@ -238,7 +238,7 @@ spec:
     grpc_port: 50051
   cluster:
     role: controller
-    node_id: "ctrl-001"           # must match spec.node.id
+    node_id: "ctrl-001" # must match spec.node.id
     keypair_path: /etc/aegis/node-keypair.pem
     cluster_grpc_port: 50056
 ```
@@ -260,7 +260,7 @@ spec:
       gpu: true
   cluster:
     role: worker
-    node_id: "worker-gpu-001"     # must match spec.node.id
+    node_id: "worker-gpu-001" # must match spec.node.id
     controller_endpoint: "https://ctrl-001.internal:50056"
     keypair_path: /etc/aegis/node-keypair.pem
     heartbeat_interval_seconds: 30
@@ -276,7 +276,7 @@ spec:
     id: "dev-local"
     type: hybrid
   cluster:
-    role: hybrid   # controller + worker in one process
+    role: hybrid # controller + worker in one process
     node_id: "dev-local"
     keypair_path: /etc/aegis/node-keypair.pem
 ```
@@ -340,15 +340,15 @@ The `NodeSecurityToken` is automatically refreshed before its 1-hour expiry via 
 
 The `NodeClusterService` exposes 10 RPCs on port 50056. All RPCs except `AttestNode` and `ChallengeNode` require a valid `NodeSecurityToken` in the `authorization` metadata key and an `SealNodeEnvelope` wrapping the payload. `AttestNode` is unauthenticated (it is the first call a new worker makes).
 
-| RPC | Direction | Description |
-|-----|-----------|-------------|
-| `AttestNode` | Worker → Controller | Initiate node attestation; send public key |
-| `ChallengeNode` | Bidirectional | Controller issues challenge; worker returns Ed25519 signature |
-| `RegisterNode` | Worker → Controller | Register with `NodeCapabilityAdvertisement` after attestation |
-| `Heartbeat` | Worker → Controller | Periodic status update (default 30s); response may carry `NodeCommand`s |
-| `DeregisterNode` | Worker → Controller | Graceful deregistration before shutdown |
-| `RouteExecution` | Controller-internal | Returns `ExecutionRoute { target_node_id, worker_grpc_address }` |
-| `ForwardExecution` | Controller → Worker (server-streaming) | Execute an agent on this worker; streams `ExecutionEvent`s back |
+| RPC                | Direction                              | Description                                                             |
+| ------------------ | -------------------------------------- | ----------------------------------------------------------------------- |
+| `AttestNode`       | Worker → Controller                    | Initiate node attestation; send public key                              |
+| `ChallengeNode`    | Bidirectional                          | Controller issues challenge; worker returns Ed25519 signature           |
+| `RegisterNode`     | Worker → Controller                    | Register with `NodeCapabilityAdvertisement` after attestation           |
+| `Heartbeat`        | Worker → Controller                    | Periodic status update (default 30s); response may carry `NodeCommand`s |
+| `DeregisterNode`   | Worker → Controller                    | Graceful deregistration before shutdown                                 |
+| `RouteExecution`   | Controller-internal                    | Returns `ExecutionRoute { target_node_id, worker_grpc_address }`        |
+| `ForwardExecution` | Controller → Worker (server-streaming) | Execute an agent on this worker; streams `ExecutionEvent`s back         |
 
 **Execution forwarding end-to-end flow:**
 
@@ -381,16 +381,16 @@ The registration sequence after successful attestation:
 
 ## Networking Requirements
 
-| Connection | Protocol | Port | Direction |
-|-----------|----------|------|-----------|
-| Client → Controller | HTTP REST | 8088 | Inbound to controller |
-| Client → Controller | gRPC (agent API) | 50051 | Inbound to controller |
-| Worker → Controller | gRPC (NodeClusterService) | 50056 | Outbound from worker |
-| Controller → Worker | gRPC (ForwardExecution) | 50051 | Outbound from controller |
-| Orchestrator → Temporal | 7233 | Outbound | Workflow engine |
-| Orchestrator → SeaweedFS | 8888 | Outbound | Storage filer |
-| Edge → SeaweedFS | 8888 | Outbound | Volume data access |
-| Edge agent containers → Edge daemon | 2049 (NFS) | Internal | Volume mounts via NFS Gateway |
+| Connection                          | Protocol                  | Port     | Direction                     |
+| ----------------------------------- | ------------------------- | -------- | ----------------------------- |
+| Client → Controller                 | HTTP REST                 | 8088     | Inbound to controller         |
+| Client → Controller                 | gRPC (agent API)          | 50051    | Inbound to controller         |
+| Worker → Controller                 | gRPC (NodeClusterService) | 50056    | Outbound from worker          |
+| Controller → Worker                 | gRPC (ForwardExecution)   | 50051    | Outbound from controller      |
+| Orchestrator → Temporal             | 7233                      | Outbound | Workflow engine               |
+| Orchestrator → SeaweedFS            | 8888                      | Outbound | Storage filer                 |
+| Edge → SeaweedFS                    | 8888                      | Outbound | Volume data access            |
+| Edge agent containers → Edge daemon | 2049 (NFS)                | Internal | Volume mounts via NFS Gateway |
 
 Firewall rules must allow:
 
@@ -484,12 +484,12 @@ cp new-node.key /etc/aegis/certs/node.key
 
 If a worker fails to join the cluster, check the controller logs for the following common errors:
 
-| Error | Root Cause | Resolution |
-|-------|------------|------------|
-| `TokenExpired` | **Clock Skew**: The worker's system clock is significantly ahead of the controller's. | Synchronize clocks on all nodes using NTP (e.g., `chronyd`). |
-| `NonceReplay` | **Replay Attack / Rapid Restart**: The worker sent an attestation request with a nonce that was already used in the last 5 minutes. | Wait 5 minutes before restarting the worker, or ensure the worker generates a fresh UUID for the `nonce` field on every attempt. |
-| `InvalidSignature` | **Keypair Mismatch**: The worker's Ed25519 signature does not match its registered public key. | Verify that `spec.cluster.keypair_path` points to the same persistent key that was used during the initial `RegisterNode` call. |
-| `UntrustedCA` | **mTLS Failure**: The certificate presented by the node is not signed by the CA in `spec.cluster.tls.ca_cert`. | Verify that all nodes share the same platform CA bundle. |
+| Error              | Root Cause                                                                                                                          | Resolution                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `TokenExpired`     | **Clock Skew**: The worker's system clock is significantly ahead of the controller's.                                               | Synchronize clocks on all nodes using NTP (e.g., `chronyd`).                                                                     |
+| `NonceReplay`      | **Replay Attack / Rapid Restart**: The worker sent an attestation request with a nonce that was already used in the last 5 minutes. | Wait 5 minutes before restarting the worker, or ensure the worker generates a fresh UUID for the `nonce` field on every attempt. |
+| `InvalidSignature` | **Keypair Mismatch**: The worker's Ed25519 signature does not match its registered public key.                                      | Verify that `spec.cluster.keypair_path` points to the same persistent key that was used during the initial `RegisterNode` call.  |
+| `UntrustedCA`      | **mTLS Failure**: The certificate presented by the node is not signed by the CA in `spec.cluster.tls.ca_cert`.                      | Verify that all nodes share the same platform CA bundle.                                                                         |
 
 ### Diagnostic Commands
 
@@ -509,11 +509,11 @@ aegis status --cluster
 
 Each AEGIS daemon exposes HTTP health endpoints on the configured REST port (default `8080`). These endpoints are useful for load balancer health checks, Kubernetes probes, and manual diagnostics.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health/live` | GET | Liveness probe. Returns `200 OK` if the process is running. Does not check downstream dependencies. |
-| `/health/ready` | GET | Readiness probe. Returns `200 OK` only when all critical subsystems (database, Temporal, event bus) are initialised. Returns `503 Service Unavailable` during startup or if a dependency becomes unreachable. |
-| `/health` | GET | Composite health check. Returns `200 OK` with a JSON body containing `uptime_seconds` and subsystem status. Used by the `aegis status` CLI command and the daemon client library. |
+| Endpoint        | Method | Description                                                                                                                                                                                                   |
+| --------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/health/live`  | GET    | Liveness probe. Returns `200 OK` if the process is running. Does not check downstream dependencies.                                                                                                           |
+| `/health/ready` | GET    | Readiness probe. Returns `200 OK` only when all critical subsystems (database, Temporal, event bus) are initialised. Returns `503 Service Unavailable` during startup or if a dependency becomes unreachable. |
+| `/health`       | GET    | Composite health check. Returns `200 OK` with a JSON body containing `uptime_seconds` and subsystem status. Used by the `aegis status` CLI command and the daemon client library.                             |
 
 In a clustered deployment, the controller node's **HealthSweeper** background task also monitors worker health by evaluating heartbeat freshness. If a worker misses 3 consecutive heartbeat intervals, the HealthSweeper marks its `NodePeer` status as `Unhealthy` and emits a `ClusterEvent::NodeUnhealthy` event.
 
@@ -558,12 +558,12 @@ The `StorageRouter` detects the `/aegis/seal/` prefix and dispatches to `SealSto
 
 AEGIS supports hierarchical configuration layering with the following precedence (lowest to highest):
 
-| Scope | Description | Example |
-|-------|-------------|---------|
-| **Global** | Cluster-wide defaults applied to all nodes | Default LLM provider settings |
-| **Tenant** | Per-tenant overrides (keyed by `TenantSlug`) | Tenant-specific rate limits |
-| **Node** | Per-node overrides (keyed by `NodeId`) | Node-specific runtime settings |
-| **Local** | On-disk `aegis-config.yaml` loaded at startup | Hardware-specific configuration |
+| Scope      | Description                                   | Example                         |
+| ---------- | --------------------------------------------- | ------------------------------- |
+| **Global** | Cluster-wide defaults applied to all nodes    | Default LLM provider settings   |
+| **Tenant** | Per-tenant overrides (keyed by `TenantSlug`)  | Tenant-specific rate limits     |
+| **Node**   | Per-node overrides (keyed by `NodeId`)        | Node-specific runtime settings  |
+| **Local**  | On-disk `aegis-config.yaml` loaded at startup | Hardware-specific configuration |
 
 When the controller pushes a configuration update via the `PushConfig` heartbeat command, the worker merges the layers in precedence order. Each layer is stored as a `ConfigSnapshot` value object containing the scope, a JSON payload, and a version hash. The merged result is a `MergedConfig` that the worker applies atomically.
 
@@ -609,8 +609,8 @@ spec:
     controller:
       endpoint: "http://controller.internal:50056"
     node_keypair_path: /etc/aegis/node-keypair.pem
-    heartbeat_interval_secs: 30       # How often to send heartbeats
-    token_refresh_margin_secs: 120    # Re-attest this many seconds before token expiry
+    heartbeat_interval_secs: 30 # How often to send heartbeats
+    token_refresh_margin_secs: 120 # Re-attest this many seconds before token expiry
 ```
 
 ---
@@ -654,3 +654,27 @@ The FUSE daemon does not participate in cluster coordination -- it is purely a l
 - [Docker Deployment](/docs/deployment/docker)
 - [SeaweedFS Deployment](/docs/deployment/seaweedfs)
 - [Temporal Deployment](/docs/deployment/temporal)
+
+---
+
+## Edge Node Distinction
+
+Edge daemons are a **separate role** from Controller / Worker / Hybrid and are **not** orchestrator peers. Specifically:
+
+- They are not selected by `NodeCluster::healthy_workers()`.
+- They do not receive `ForwardExecution` calls.
+- They do not participate in cross-worker storage or volume coordination.
+- Their tenant binding is **immutable** post-enrollment, unlike workers which are tenant-agnostic.
+
+What they _do_ is accept MCP tool calls dispatched specifically to them via the `EdgeRouter`, executing those calls locally on the user's host. They open a long-lived bidirectional gRPC stream **outbound** to either the cluster controller (in OSS deployments) or the **Relay Coordinator** at `relay.example.com:443` (in SaaS deployments).
+
+| Aspect                       | Worker                                                | Edge daemon                                                 |
+| ---------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
+| Binding model                | Tenant-agnostic; cluster member                       | Tenant-bound; one daemon per tenant                         |
+| Connection direction         | Worker dials controller `:50056`                      | Edge dials controller `:50056` (OSS) or `:443` (SaaS Relay) |
+| Receives `ForwardExecution`? | Yes                                                   | No                                                          |
+| Receives `InvokeTool`?       | No (workers serve via the orchestrator's tool router) | Yes (via `EdgeRouter`, with two-envelope SEAL)              |
+| Inbound port                 | `50057` (FUSE) optionally                             | None                                                        |
+| Membership pool              | `healthy_workers()`                                   | `edges_for_tenant(tenant_id)`                               |
+
+For the cluster-extension role used in SaaS, see [edge relay deployment](/docs/deployment/edge-relay-deployment); for the daemon side, see [edge daemon installation](/docs/deployment/edge-daemon-installation).

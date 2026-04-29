@@ -1,8 +1,12 @@
 {
-    "title": "Guides",
-    "pages": [
-        "authentication",
-        "management-via-mcp",
-        "troubleshooting"
-    ]
+  "title": "Guides",
+  "pages": [
+    "authentication",
+    "management-via-mcp",
+    "troubleshooting",
+    "edge-host-setup",
+    "edge-tag-and-group-management",
+    "edge-fleet-operations",
+    "edge-key-rotation"
+  ]
 }

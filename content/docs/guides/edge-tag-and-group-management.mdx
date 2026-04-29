@@ -1,0 +1,249 @@
+---
+title: Edge Tag and Group Management
+description: How to assign tags to edge hosts, build reusable groups with saved selectors, and preview which hosts a target hits before you fan out.
+---
+
+# Edge Tag and Group Management
+
+Once you have more than two or three edge hosts enrolled, addressing them one at a time stops scaling. **Tags** and **groups** are how you build the operator vocabulary that turns a flat list of hosts into a navigable fleet.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+This guide covers:
+
+1. Assigning tags via Zaru and the CLI.
+2. Tag conventions that work.
+3. Building groups with saved selectors.
+4. Pinned members.
+5. Previewing selectors before fan-out.
+
+---
+
+## Tags 101
+
+Tags are flat strings managed **server-side**. The daemon does not need to know about them, does not advertise them, and cannot change them. Tags are how you, the operator, classify hosts in your tenant.
+
+| Property     | Value                                          |
+| ------------ | ---------------------------------------------- |
+| Shape        | `Vec<String>` (flat list)                      |
+| Set by       | Operator (Zaru UI, REST, or CLI)               |
+| Mutable from | Server (no daemon touch needed)                |
+| Example      | `prod`, `db-host`, `team-platform`, `gpu-node` |
+
+Tags differ from labels. Labels are key/value attributes the _daemon_ advertises about itself (`os=linux`, `region=home`, `gpu=rtx-4090`). Tags are operator-controlled classifiers. Both are queryable in selectors — see [fleet operations](/docs/concepts/fleet-operations) for the full distinction.
+
+### Add tags from Zaru
+
+1. Open **Vault → Edge Hosts**.
+2. Click the host you want to tag.
+3. In the **Tags** section of the host detail, click **Edit**.
+4. Add or remove tags and save.
+
+Changes take effect immediately — the next selector evaluation against this host will reflect the new tags.
+
+### Add tags from the CLI
+
+```bash
+aegis edge tag add <node-id> prod db-host
+aegis edge tag rm  <node-id> staging
+```
+
+`aegis edge tag` mutates only the operator-managed tag list; it does not touch the daemon-advertised labels.
+
+### Listing tags
+
+```bash
+aegis edge ls --tag prod
+aegis edge ls --tag prod --tag db-host       # AND across multiple --tag
+aegis edge ls --connected                    # only Connected hosts
+```
+
+The `aegis edge ls` command returns the same view Zaru shows in **Edge Hosts**, scoped to your tenant.
+
+---
+
+## Tag conventions that work
+
+Tags are free-form strings, but a small amount of discipline makes them dramatically more useful.
+
+### Use lowercase, kebab-case
+
+`production`, `db-host`, `gpu-node` — not `Production`, `db_host`, `GpuNode`. Selectors are case-sensitive; sticking to one convention prevents `production` and `Production` from drifting into separate worlds.
+
+### Pick a small set of axes
+
+A tag axis is a category of meaning — `environment`, `role`, `team`, `location`. For each axis, every host should carry exactly one tag from that axis:
+
+| Axis          | Possible tags                                    |
+| ------------- | ------------------------------------------------ |
+| `environment` | `prod`, `staging`, `dev`                         |
+| `role`        | `web`, `db`, `cache`, `worker`, `bastion`        |
+| `team`        | `team-platform`, `team-payments`, `team-search`  |
+| `location`    | `home`, `office`, `datacenter-a`, `datacenter-b` |
+
+Then a selector like `tags=prod,db AND tags=team-platform` cleanly addresses "the production database hosts owned by the platform team."
+
+### Avoid encoding facts the daemon already advertises
+
+`os=linux` is a label (the daemon knows it). `prod` is a tag (the operator decides it). If you tag hosts with their OS, you've created a parallel source of truth that will drift.
+
+### Avoid lifecycle tags as classifiers
+
+`scheduled-for-decommission` is an OK tag if it gates targeting (e.g. exclude from fleet operations). It's a bad tag if you treat it as a state machine — that belongs in metadata or a runbook, not the selector model.
+
+---
+
+## Groups: saved selectors
+
+A group is a named, reusable selector. Membership is **dynamic** — re-evaluated at every dispatch, so new hosts that match the selector automatically join the group.
+
+```text
+EdgeGroup {
+    id:               EdgeGroupId
+    tenant_id:        TenantId
+    name:             String           # unique per tenant
+    selector:         EdgeSelector     # evaluated at dispatch time
+    pinned_members:   Vec<NodeId>      # always-include overrides
+    created_by:       UserId
+    created_at:       DateTime<Utc>
+}
+```
+
+### Create a group from Zaru
+
+1. Open **Vault → Edge Hosts → Groups**.
+2. Click **New Group**.
+3. Pick a name (must be unique within your tenant).
+4. Build the selector:
+   - **OS** — optional dropdown.
+   - **Arch** — optional dropdown.
+   - **Tools** — multi-select; the host must have _all_ selected tools.
+   - **Labels** — key/value matchers (`Equals`, `Exists`, `In`).
+   - **Tags** — `Has`, `AnyOf`, `AllOf`, `NoneOf`.
+5. The **Selector Preview Panel** shows live which hosts currently match. Watch the count — "matches 7 of your 12 connected edges" is the sanity check before saving.
+6. Save.
+
+### Create a group from the CLI
+
+```bash
+aegis edge group create production-db --selector "tags=prod,db tools=docker"
+aegis edge group create gpu-fleet     --selector "labels=gpu=rtx-4090"
+aegis edge group create everything-but-staging --selector "tags=NoneOf(staging)"
+```
+
+The selector grammar is the same shorthand used in `--target`:
+
+| Fragment                      | Meaning                                    |
+| ----------------------------- | ------------------------------------------ |
+| `os=linux`                    | Match `os` field.                          |
+| `arch=x86_64`                 | Match `arch` field.                        |
+| `tools=docker,kubectl`        | All listed tools must be present.          |
+| `labels=region=us`            | Label `region` equals `us`.                |
+| `labels=Exists(gpu)`          | Label `gpu` is set.                        |
+| `labels=In(env,prod,staging)` | Label `env` is one of `prod` or `staging`. |
+| `tags=prod`                   | Has tag `prod`.                            |
+| `tags=AnyOf(prod,staging)`    | Has at least one of `prod` or `staging`.   |
+| `tags=AllOf(prod,db)`         | Has both `prod` and `db`.                  |
+| `tags=NoneOf(decommission)`   | Has none of the listed tags.               |
+
+### List, edit, and remove groups
+
+```bash
+aegis edge group ls
+aegis edge group set-pinned production-db --add n-7a3b2f --rm n-1c8d4e
+aegis edge group rm production-db
+```
+
+The Zaru UI exposes the same operations.
+
+---
+
+## Pinned members
+
+Pinned members are an escape hatch — a list of node ids that are _always_ included in the group regardless of whether the selector matches them.
+
+Use sparingly. Pinned membership is a workaround for "the selector almost gets it right but I need to force-include this one host." If you find yourself pinning more than a couple of nodes, that's a signal the selector is wrong and you should fix it.
+
+```bash
+aegis edge group set-pinned production-db --add n-7a3b2f
+```
+
+To exclude a host that the selector currently matches, **add a negative tag** rather than pinning the absence:
+
+```bash
+aegis edge tag add n-7a3b2f decommission
+# Update the group selector to: tags=AllOf(prod,db) AND tags=NoneOf(decommission)
+```
+
+---
+
+## Preview before fan-out
+
+The single most important habit before any destructive fleet operation: **preview the target**.
+
+```bash
+aegis edge fleet preview --target group:production-db
+```
+
+```text
+Resolved 4 nodes (skipped: 0)
+  ✓ n-7a3b2f  workstation-east   linux/x86_64    Connected   tags=[prod,db,team-platform]
+  ✓ n-1c8d4e  workstation-west   linux/x86_64    Connected   tags=[prod,db,team-platform]
+  ✓ n-9f2a31  db-mirror-1        linux/x86_64    Connected   tags=[prod,db,team-platform]
+  ✓ n-4e7c80  db-mirror-2        linux/x86_64    Connected   tags=[prod,db,team-platform]
+```
+
+The same preview is available as the system-tier MCP tool `aegis.edge.fleet.list` and is shown live in Zaru's selector editor. Any time you're about to run a state-mutating operation against more than one host, preview first.
+
+<Callout type="warn">
+  For destructive `target=All` operations, Zaru requires an explicit
+  typed-confirmation step ("type the resolved node count to proceed"). The CLI
+  does not — it's your responsibility to preview when running outside the UI.
+</Callout>
+
+---
+
+## Patterns
+
+### "Apply only to hosts in the platform team's prod database fleet"
+
+```text
+selector: tags=AllOf(prod,db,team-platform)
+```
+
+### "Apply to all hosts except those marked for decommission"
+
+```text
+selector: tags=NoneOf(decommission)
+```
+
+### "Apply to GPU hosts running Linux"
+
+```text
+selector: os=linux labels=Exists(gpu)
+```
+
+### "Apply to hosts that have docker installed"
+
+```text
+selector: tools=docker
+```
+
+### "Apply to a fixed set, with a few extras"
+
+```text
+group:   db-fleet
+pinned:  n-7a3b2f, n-1c8d4e
+selector: tags=db
+```
+
+The pinned hosts join even if they don't carry the `db` tag.
+
+---
+
+## What's next
+
+- [Edge Fleet Operations](/docs/guides/edge-fleet-operations) — once you have groups, run tools against them.
+- [Fleet Operations Concept](/docs/concepts/fleet-operations) — the full targeting, dispatch, and failure model.
+- [Edge CLI Reference](/docs/reference/edge-cli) — every flag of `aegis edge tag`, `aegis edge group`, `aegis edge ls`.
+- [Edge REST API](/docs/reference/edge-rest-api) — `/api/edge/hosts`, `/api/edge/groups`, `/api/edge/fleet/preview` endpoints.

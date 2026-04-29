@@ -1,0 +1,236 @@
+---
+title: Edge Host Setup
+description: Add an edge host via Zaru, install and enroll the AEGIS edge daemon on Linux, macOS, or Windows, and confirm connectivity.
+---
+
+# Edge Host Setup
+
+This guide walks you through adding a new edge host to your tenant — from the Zaru UI side, through the host-side install and enrollment, to confirming the daemon is connected and ready to receive tool calls.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The flow has three phases:
+
+1. **Issue an enrollment token** in Zaru.
+2. **Install the daemon** on the host (per-OS).
+3. **Run `aegis edge enroll <token>`** on the host to bind it to your tenant.
+
+By the end, the daemon will be visible as **Connected** in Zaru's edge host list.
+
+---
+
+## Phase 1 — Issue an enrollment token
+
+1. Sign in to Zaru.
+2. Navigate to **Vault → Edge Hosts**.
+3. Click **Add Edge Host**.
+4. Pick the tenant the daemon should be bound to. The picker shows your personal tenant plus any team tenants you have admin rights over.
+5. (Optional) Give the host a friendly name. You can edit this later — it's just a display label.
+6. Click **Issue Token**.
+
+Zaru shows a copyable command of the form:
+
+```bash
+aegis edge enroll <long-jwt-token>
+```
+
+It also displays a **QR code** for mobile-to-laptop transfer and a countdown timer (default 15 minutes). The token is one-time-use; if you lose it before redeeming, just issue another.
+
+<Callout type="warn">
+Treat the token like a short-lived password — anyone who runs `aegis edge enroll <token>` against the right endpoint within the validity window gets a daemon bound to *your* tenant. Don't paste it into shared chat.
+</Callout>
+
+---
+
+## Phase 2 — Install the daemon
+
+The daemon is the same binary as the rest of the AEGIS CLI, with a service-manager unit so it runs in the background.
+
+### Linux
+
+```bash
+# Download and install the AEGIS CLI for your architecture.
+curl -fsSL https://get.aegis.example/install.sh | bash
+
+# Verify.
+aegis --version
+
+# Pre-stage the systemd user unit. (`aegis edge enroll` will install it
+# automatically if you skip this step.)
+aegis edge service install
+```
+
+Linger must be enabled for the service to keep running after you log out:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+The unit lives at `~/.config/systemd/user/aegis-edge.service` with hardening flags (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome=true`, `ReadWritePaths=~/.aegis/edge`). See [edge daemon installation](/docs/deployment/edge-daemon-installation) for the full unit spec.
+
+### macOS
+
+```bash
+brew install aegis-cli   # or: curl -fsSL https://get.aegis.example/install.sh | bash
+aegis --version
+aegis edge service install
+```
+
+The launchd plist lives at `~/Library/LaunchAgents/io.aegis.edge.plist`. It's loaded with `RunAtLoad=true` and `KeepAlive=true` so the daemon restarts on crash and across reboots.
+
+### Windows
+
+```powershell
+# PowerShell, as a regular user (admin needed only to register the NSSM service).
+iwr -useb https://get.aegis.example/install.ps1 | iex
+aegis --version
+aegis edge service install
+```
+
+The NSSM service is registered as `aegis-edge` and configured to start automatically.
+
+---
+
+## Phase 3 — Enroll
+
+Run the command Zaru gave you:
+
+```bash
+aegis edge enroll <token>
+```
+
+The CLI runs a **bootstrap plan** before contacting the server — it inspects your host, decides what files it would create, and either prompts you per artifact or proceeds non-interactively if you passed the right flags.
+
+### The bootstrap prompt matrix
+
+| Artifact                           | Path                                                                                                                | If missing                                                                                                                | If present                                                                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config dir                         | `~/.aegis/edge/`                                                                                                    | Create (mode `0700`)                                                                                                      | Verify perms; chmod if too permissive                                                                                                                                                                 |
+| `aegis-config.yaml`                | `~/.aegis/edge/aegis-config.yaml`                                                                                   | Generate from a host-aware template (detect OS/arch, suggest `local_tools` from `which`, sensible default `mount_points`) | Prompt: **Use existing / Overwrite / Merge / Abort**                                                                                                                                                  |
+| Ed25519 keypair                    | `~/.aegis/edge/node.key` (+ `.pub`)                                                                                 | Generate via OS CSPRNG, persist `0600`                                                                                    | Prompt: **Reuse existing / Generate new / Abort**. "Generate new" is destructive — the existing daemon (if enrolled elsewhere) will be locked out at next attest; printed warning makes that explicit |
+| Enrollment token                   | `~/.aegis/edge/enrollment.jwt`                                                                                      | N/A (passed on CLI)                                                                                                       | Prompt before clobbering a different token; existing token consumed and atomically deleted on success regardless                                                                                      |
+| `node.token` (`NodeSecurityToken`) | `~/.aegis/edge/node.token`                                                                                          | Written after successful `ChallengeNode`                                                                                  | Prompt: **Reuse / Replace / Abort**. Reuse only valid if the existing token's `node_id` matches the new keypair's; otherwise force Replace                                                            |
+| systemd user unit                  | `~/.config/systemd/user/aegis-edge.service` (Linux) / launchd plist (macOS) / NSSM (Windows)                        | Install + enable lingering                                                                                                | Skip if present; offer `aegis edge service reinstall` separately                                                                                                                                      |
+| Local secrets store                | `~/.aegis/edge/secrets/` (file-backed by default; OpenBao-backed if `secrets.backend` already set in merged config) | Create with `0700`; seed an empty KV store                                                                                | Verify perms                                                                                                                                                                                          |
+
+### Non-interactive flags
+
+For automation (CI, config management, headless installs):
+
+| Flag                | Behavior                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--non-interactive` | Fail rather than prompt.                                                                                    |
+| `--force`           | Assume **Overwrite** for every conflict.                                                                    |
+| `--keep-existing`   | Assume **Reuse** for every conflict. Fails if a Reuse decision would be unsafe (e.g. mismatched `node_id`). |
+| `--dry-run`         | Print the bootstrap plan without writing or contacting the server.                                          |
+| `--output json`     | Structured plan output — useful for the Zaru "this command will create N files" preview.                    |
+
+### What the CLI does on the wire
+
+1. Decodes the JWT (without verifying — the server will verify) and extracts the `cep` claim. That's the controller endpoint, baked into the token, so the CLI works against SaaS or self-hosted with no environment variables.
+2. Generates the Ed25519 keypair if one doesn't exist.
+3. Calls `AttestNode { role: EDGE, public_key, … }` against the endpoint. Anonymous, rate-limited 5/min.
+4. Calls `ChallengeNode` with the enrollment token attached as `bootstrap_proof`.
+5. The server validates the JWT, atomically redeems the `jti`, persists the `EdgeDaemon` row binding `node_id` ↔ `tenant_id`, and returns a `NodeSecurityToken`.
+6. The CLI writes `node.token`, finalizes the local config, starts the service, and opens the `ConnectEdge` stream.
+
+Successful output looks like:
+
+```text
+✔ Bootstrap plan complete
+  ├ Created  ~/.aegis/edge/
+  ├ Wrote    ~/.aegis/edge/aegis-config.yaml
+  ├ Wrote    ~/.aegis/edge/node.key (0600)
+  ├ Wrote    ~/.aegis/edge/node.key.pub
+  ├ Wrote    ~/.aegis/edge/node.token
+  ├ Wrote    ~/.config/systemd/user/aegis-edge.service
+  └ Started  aegis-edge.service
+✔ Attested as node <node-id>
+✔ Bound to tenant <tenant-name>
+✔ Stream connected to relay.myzaru.com:443
+```
+
+---
+
+## Confirm connectivity
+
+### From the host
+
+```bash
+aegis edge status
+```
+
+```text
+node_id:        n-7a3b2f...
+tenant:         u-8d1c... (personal)
+status:         Connected
+since:          2026-04-28T14:32:11Z
+endpoint:       relay.myzaru.com:443
+heartbeat_age:  4s
+capabilities:
+  os:           linux
+  arch:         x86_64
+  local_tools:  [shell, docker, kubectl]
+  labels:       { region: home, host: workstation }
+```
+
+### From Zaru
+
+Open **Vault → Edge Hosts**. Within one heartbeat interval (default 30s) the new host appears in the list with a green **Connected** badge. Click into it to see capabilities, labels, tags (none yet), and command history.
+
+---
+
+## What if it doesn't connect?
+
+Walk these in order:
+
+1. **`aegis edge status` says `Disconnected`.** Check the daemon logs:
+
+   ```bash
+   journalctl --user -u aegis-edge.service -n 200 --no-pager     # Linux
+   log show --predicate 'process == "aegis-edge"' --last 10m     # macOS
+   Get-EventLog -LogName Application -Source aegis-edge -Newest 50  # Windows
+   ```
+
+2. **Outbound network blocked.** The daemon needs to reach `relay.myzaru.com:443` (SaaS) or your controller endpoint (OSS). A corporate firewall or split-DNS rule is the most common culprit. Test with `curl -v https://relay.myzaru.com/`.
+3. **Token expired.** Tokens default to 15 minutes. Issue a fresh one in Zaru.
+4. **Token already redeemed.** One-time use. Issue a fresh one.
+5. **Clock skew.** JWT validation has a small leeway (a few minutes). If your host clock is wildly off, validation fails. Fix with `chronyd` / `timesyncd` / Windows Time service.
+6. **Mismatched `node_id`.** If you previously enrolled and partially cleaned up, you may have a `node.key` that doesn't match the `node.token`. Delete `~/.aegis/edge/node.key*` and `~/.aegis/edge/node.token` and re-run `aegis edge enroll <fresh-token>`.
+
+---
+
+## Multiple hosts
+
+Repeat phases 1–3 on each host. Each daemon gets a unique `node_id`; all of them are bound to the same tenant. From Zaru you can:
+
+- Tag them: `prod`, `home-server`, `db-host`, etc. — see [tag and group management](/docs/guides/edge-tag-and-group-management).
+- Group them: build saved selectors that auto-include new matching hosts.
+- Run fleet operations: see [fleet operations](/docs/guides/edge-fleet-operations).
+
+---
+
+## Decommissioning a host
+
+When you no longer want a host bound:
+
+```bash
+# On the host: delete local state and disable the service.
+aegis edge logout
+
+# Or, from any operator-side workstation, revoke the binding centrally:
+aegis edge keys revoke-remote <node-id>
+```
+
+Either path marks the daemon `Revoked`, blacklists its `NodeSecurityToken`, and drops the stream. The host can be re-enrolled later under a fresh enrollment token if you wish.
+
+---
+
+## What's next
+
+- [Edge Tag and Group Management](/docs/guides/edge-tag-and-group-management) — once you have hosts, classify them.
+- [Edge Fleet Operations](/docs/guides/edge-fleet-operations) — run tools across many hosts.
+- [Edge Key Rotation](/docs/guides/edge-key-rotation) — rotate keys for hygiene or after a suspected leak.
+- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — service manager templates and platform specifics.
+- [Edge Config Reference](/docs/reference/edge-config) — every field of `cluster.edge` with defaults.
+- [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge` subcommand.

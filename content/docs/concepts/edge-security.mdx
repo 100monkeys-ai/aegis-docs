@@ -1,0 +1,237 @@
+---
+title: Edge Security
+description: The two-envelope SEAL pattern, enrollment token lifecycle, local SecurityContext enforcement, key rotation, and tenant-isolation guarantees for AEGIS edge daemons.
+---
+
+# Edge Security
+
+Edge daemons run on hosts AEGIS does not own — laptops behind home routers, work VMs, hobby servers — yet they accept and execute tool invocations on behalf of users in your platform. Edge security is built so that _no part_ of that trust chain depends on host-level isolation. Every command is cryptographically authenticated end-to-end, every tenant boundary is enforced at the router rather than at the daemon, and every identity transition (enrollment, key rotation, revocation) is atomic.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+This page walks through the security model layer by layer:
+
+1. The two-envelope SEAL pattern.
+2. The enrollment token lifecycle.
+3. Local SecurityContext enforcement on the daemon.
+4. Key and token rotation.
+5. Revocation and tenant cleanup.
+
+---
+
+## The two-envelope SEAL pattern
+
+Every command flowing from the controller (or Relay Coordinator) to an edge daemon is wrapped in **two SEAL envelopes**, each proving a different property:
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│ Outer: SealNodeEnvelope                                  │
+│   ├─ proves: "this node is the daemon registered as N"   │
+│   ├─ signed by: daemon's Ed25519 node key                │
+│   └─ payload:                                            │
+│      ┌────────────────────────────────────────────────┐  │
+│      │ Inner: SealEnvelope                            │  │
+│      │   ├─ proves: "this user authorized this call"  │  │
+│      │   ├─ signed by: user's session signing key     │  │
+│      │   └─ payload:                                  │  │
+│      │      - user_security_token                     │  │
+│      │      - tenant_id                               │  │
+│      │      - security_context_name                   │  │
+│      │      - tool_name + args                        │  │
+│      └────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Why two envelopes?
+
+The outer envelope answers a node-level question: _is this stream actually being maintained by the daemon I think it is?_ The inner envelope answers a user-level question: _did the human (or service account) on the other end actually request this?_ These questions have different signers and different lifetimes, so collapsing them into one envelope would either over-trust the daemon or over-trust the user session.
+
+The pattern is identical to what already flows from the orchestrator to the SEAL Tooling Gateway today — it carries cleanly over to the edge stream because the daemon plays the same role as the gateway: a downstream executor that must verify the caller's identity locally before doing anything irreversible.
+
+### Verification on the daemon
+
+When a `InvokeTool` command arrives, the daemon performs every check the orchestrator would have performed at the gateway boundary:
+
+1. **Outer envelope** verifies the controller's signature against the daemon's pinned controller key (set at enrollment).
+2. **Inner envelope** verifies the user signing key, the JWT signature on `user_security_token`, and the freshness of the `iat`/`exp` claims.
+3. The daemon resolves `security_context_name` against `spec.security_contexts` from its **local merged config**, applying the same hierarchical configuration semantics it would apply on the controller.
+4. The resolved policy gates the call to local built-in dispatchers (`cmd.run`, `fs.*`) and any local MCP servers.
+5. If the resolved context requires it, the **Semantic Judge** is invoked locally to pre-validate the call.
+
+If any step fails, the daemon returns a structured error and refuses to execute. The dispatcher counts that as a per-node failure for fleet failure-policy accounting.
+
+<Callout type="warn">
+  SecurityContext verification is **not** delegated to the controller. Each
+  daemon enforces it locally. This means the daemon must hold a current copy of
+  the security context spec — pushed via `PushConfig` whenever it changes — and
+  a misconfigured daemon will refuse calls that the controller would have
+  allowed. The fail-closed posture is intentional.
+</Callout>
+
+---
+
+## Enrollment token lifecycle
+
+An enrollment token is the single artifact that takes a host from "no AEGIS trust" to "fully bound edge daemon." It is short-lived, one-time-use, and atomic to redeem.
+
+### Issuance
+
+A user (or team admin) clicks **Add Edge Host** in Zaru. Zaru calls `POST /api/edge/enrollment-tokens`. The `IssueEnrollmentToken` application service mints a JWT with these claims:
+
+| Claim         | Meaning                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tid`         | The tenant binding the daemon will inherit. Resolves the user's `effective_tenant`, including any team tenant they have admin rights over. |
+| `sub`         | The issuing user.                                                                                                                          |
+| `jti`         | One-time-use nonce. Atomically redeemed via `INSERT … ON CONFLICT` on the `enrollment_tokens` table.                                       |
+| `cep`         | The controller endpoint the daemon should connect to (`relay.myzaru.com:443` in SaaS, the local controller endpoint in self-hosted).       |
+| `aud`         | Always `edge-enrollment` — used to reject tokens at the wrong endpoint.                                                                    |
+| `iss`         | Distinguishes SaaS-issued from self-hosted-issued tokens.                                                                                  |
+| `nbf` / `exp` | Not-before and expiry. Default token lifetime is 15 minutes.                                                                               |
+
+The signing key is the same OpenBao Transit key that signs `NodeSecurityToken`, so verification reuses existing trust roots.
+
+### Redemption
+
+The user runs:
+
+```bash
+aegis edge enroll <token>
+```
+
+The CLI:
+
+1. Decodes the JWT (without verifying — the server will verify) and extracts `cep`.
+2. Bootstraps local state at `~/.aegis/edge/` (see [the bootstrap matrix](/docs/reference/edge-config#bootstrap-prompt-matrix)).
+3. Generates an Ed25519 keypair if none exists.
+4. Calls `AttestNode { role: EDGE, public_key, … }` against the endpoint from the token. This call is anonymous and rate-limited (5 per minute) — same posture as worker attestation.
+5. Calls `ChallengeNode` with the `enrollment_token` attached as the `bootstrap_proof` field.
+
+The server validates the token (signature, audience, expiry, not-before, tenant id, issuer), atomically redeems the `jti`, persists the `EdgeDaemon` row binding `node_id` ↔ `tenant_id`, and issues a `NodeSecurityToken` whose claims now include the `tid` field. The daemon writes the new token to `~/.aegis/edge/node.token` and opens the `ConnectEdge` stream.
+
+### One-time-use guarantee
+
+The `jti` redemption is enforced by an `INSERT … ON CONFLICT DO NOTHING` against the `enrollment_tokens` table. A token can only be redeemed once; replays are rejected at the database boundary. If the redemption succeeds but the subsequent `ChallengeNode` step fails (network blip, expired token, etc.), the user must request a fresh token — there is no retry path that would leak a second binding.
+
+### Expiry
+
+Tokens default to 15 minutes. If you copy the `aegis edge enroll <token>` command and don't run it before the timer expires, the redemption fails cleanly with `EnrollmentTokenExpired`. Issue a fresh one from Zaru.
+
+---
+
+## Local SecurityContext enforcement
+
+The daemon executes tool calls locally — built-in dispatchers like `cmd.run` and `fs.*`, plus any MCP servers configured in its merged config. Every call passes through the **same** SecurityContext machinery the orchestrator runs:
+
+- `mcp_servers`, `builtin_dispatchers`, and `security_contexts` in the merged config are the authority.
+- The `security_context_name` in the inner envelope picks one of those contexts.
+- The resolved context's allowed-tools, network policy, filesystem policy, resource limits, and Semantic Judge requirements all apply.
+
+The hierarchical configuration story is unchanged on the edge: defaults flow from the daemon's bundled config, then `~/.aegis/config.yaml`, then `~/.aegis/edge/aegis-config.yaml`, then any `PushConfig` delta from the controller. The merged result is what the daemon evaluates.
+
+<Callout type="info">
+A consequence of local enforcement is that **changes to security contexts must propagate to the daemon before they take effect for new calls.** When you edit a context in the controller, push the updated config (`aegis cluster push-config <node-id>` or via the Zaru UI) before issuing new fleet runs that depend on the new context.
+</Callout>
+
+---
+
+## Key rotation
+
+Identity hygiene is first-class. There are three rotation operations, all driven from the CLI, all atomic with rollback on failure.
+
+### `aegis edge keys rotate`
+
+Generates a new Ed25519 keypair on the daemon, re-attests with the existing `NodeSecurityToken` (proving authority via the old key) plus a signature from the new key (proving possession of the new key), and receives a fresh `NodeSecurityToken` bound to the new key.
+
+```bash
+aegis edge keys rotate [--keep-old <duration>] [--force]
+```
+
+- `--keep-old` (default `24h`) — retains the old key file under `~/.aegis/edge/archive/<rfc3339>.key` for the configured duration before deletion.
+- `--force` — skip the "are you sure?" prompt.
+
+The atomic swap happens server-side in a single PostgreSQL transaction:
+
+1. `edge_daemons.public_key` is updated.
+2. The old `NodeSecurityToken` is added to the token blacklist.
+3. A new `NodeSecurityToken` bound to the new key is issued.
+
+The active gRPC stream is **not** dropped — the server records both pubkeys for the brief overlap window so the daemon can transparently switch to the new token on its next envelope, mid-stream.
+
+### Why dual-signature?
+
+Requiring both the old key (proof of authority) and the new key (proof of possession) defends against two distinct attack classes:
+
+| Attack                                                          | Defended by                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Attacker steals the old key and rotates to a key only they hold | Old-key signature alone is insufficient — the server validates the new-key signature also exists |
+| Attacker injects a key without holding the old one              | The server validates the old-key signature also exists                                           |
+
+A single-signature rotation would defeat one of those two checks. The cost of dual-signature is negligible — a few hundred extra bytes on the wire and one additional Ed25519 verify on the server.
+
+### `aegis edge token refresh`
+
+Force-refreshes the `NodeSecurityToken` before `token_refresh_margin_secs` naturally triggers a refresh. Useful after server-side scope or role changes that need to take effect immediately.
+
+```bash
+aegis edge token refresh
+```
+
+### `aegis edge keys revoke-remote <node-id>`
+
+The operator-side revocation. The server marks `EdgeDaemon.status = Revoked`, blacklists the active `NodeSecurityToken`, and drops the gRPC stream. Equivalent to clicking **Revoke** in Zaru's edge host detail view.
+
+```bash
+aegis edge keys revoke-remote <node-id>
+```
+
+### Fleet-wide rotation
+
+If you suspect a key has been leaked across multiple hosts, run:
+
+```bash
+aegis edge fleet keys rotate --target tags=prod
+```
+
+Same fleet semantics as any other operation — sequential and rolling are recommended; parallel is allowed if you accept the (brief) elevated load on the controller. Each host's rotation is atomic; partial failures are reported per-node.
+
+See [edge key rotation](/docs/guides/edge-key-rotation) for the full operational guide.
+
+---
+
+## Revocation
+
+Three things happen when a daemon is revoked:
+
+1. `EdgeDaemon.status` is set to `Revoked`.
+2. The active `NodeSecurityToken` is added to the blacklist.
+3. The active gRPC stream is closed.
+
+The daemon, on its next reconnect attempt, will fail attestation (its key is no longer trusted) and will not be able to bind to the same tenant without a fresh enrollment token. The local key file remains on the host until the operator removes it manually with `aegis edge logout` or by deleting `~/.aegis/edge/`.
+
+### Tenant deletion cascade
+
+When a tenant is deleted, every edge daemon bound to that tenant is automatically revoked — rows are marked, tokens are blacklisted, streams are dropped. There is no orphaned-daemon state; the cascade is part of the tenant-deletion transaction.
+
+---
+
+## What this gives you
+
+| Property                     | Mechanism                                                                   |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| **Cross-tenant isolation**   | `tid` claim on `NodeSecurityToken`, enforced at the router boundary         |
+| **Replay protection**        | One-time-use enrollment tokens; per-call `command_id` UUIDs                 |
+| **NAT traversal**            | Pull-based bidirectional gRPC stream; no inbound port required              |
+| **Compromised-key recovery** | Atomic dual-signature rotation; fleet-wide rotation for blast-radius events |
+| **Local policy enforcement** | Same SecurityContext spec evaluated on the daemon as on the controller      |
+| **Fail-closed posture**      | Verification failures refuse the call rather than degrading to permit       |
+| **Atomic enrollment**        | `INSERT … ON CONFLICT` redemption; no replay paths leak a second binding    |
+
+---
+
+## What's next
+
+- [Edge Mode Overview](/docs/concepts/edge-mode-overview) — start here if you haven't already.
+- [Fleet Operations](/docs/concepts/fleet-operations) — multi-target dispatch, failure policies, streaming results.
+- [Edge Key Rotation](/docs/guides/edge-key-rotation) — the operational guide for routine and incident-driven rotation.
+- [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge keys`, `token`, and `logout` flag.
+- [Security Model](/docs/concepts/security-model) — the broader two-layer AEGIS security model, of which edge security is an extension.

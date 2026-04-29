@@ -13,17 +13,17 @@ Agents are defined as declarative YAML manifests, executed inside isolated conta
 
 ## Core Capabilities
 
-| Capability | Description |
-|---|---|
-| **Declarative agent manifests** | Define agents as Kubernetes-style YAML with `apiVersion`, `kind`, `metadata`, and `spec`. Deploy, update, pause, and delete agents via CLI or gRPC API. |
-| **100monkeys iterative execution** | Agents run in a supervised loop: generate output → validate → inject feedback → retry. Up to 10 iterations per execution. Validation is gradient-scored (0.0–1.0), not binary pass/fail. |
-| **Workflow FSMs** | Compose multiple agents into durable finite state machines backed by Temporal.io. States can be agent executions, system commands, or human approval gates. |
-| **Multi-agent swarms** | A parent agent can spawn child executions, pass messages between agents, and coordinate on shared resources using TTL-backed locks. |
-| **SEAL tool routing** | All MCP tool calls are proxied through the orchestrator with Ed25519-signed envelopes. Agents never hold credentials — the orchestrator resolves secrets and enforces Cedar-based policy rules per call. |
-| **SEAL Tooling Gateway** | Standalone, cryptographically attested tool orchestration with policy-enforced execution. See [SEAL Gateway](/docs/gateway/overview). |
-| **Storage volumes** | Agents mount ephemeral or persistent volumes over a user-space NFSv3 server. The orchestrator intercepts every POSIX operation for authorization, path validation, and audit logging. |
-| **BYOLLM** | Agent manifests reference model aliases. Node config maps aliases to providers (OpenAI, Anthropic, Ollama). Swap models without redeploying agents. |
-| **gRPC + HTTP APIs** | Full `aegis.runtime.v1` gRPC service with bidirectional streaming for execution events. HTTP endpoints for agent bootstrap communication. |
+| Capability                         | Description                                                                                                                                                                                              |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Declarative agent manifests**    | Define agents as Kubernetes-style YAML with `apiVersion`, `kind`, `metadata`, and `spec`. Deploy, update, pause, and delete agents via CLI or gRPC API.                                                  |
+| **100monkeys iterative execution** | Agents run in a supervised loop: generate output → validate → inject feedback → retry. Up to 10 iterations per execution. Validation is gradient-scored (0.0–1.0), not binary pass/fail.                 |
+| **Workflow FSMs**                  | Compose multiple agents into durable finite state machines backed by Temporal.io. States can be agent executions, system commands, or human approval gates.                                              |
+| **Multi-agent swarms**             | A parent agent can spawn child executions, pass messages between agents, and coordinate on shared resources using TTL-backed locks.                                                                      |
+| **SEAL tool routing**              | All MCP tool calls are proxied through the orchestrator with Ed25519-signed envelopes. Agents never hold credentials — the orchestrator resolves secrets and enforces Cedar-based policy rules per call. |
+| **SEAL Tooling Gateway**           | Standalone, cryptographically attested tool orchestration with policy-enforced execution. See [SEAL Gateway](/docs/gateway/overview).                                                                    |
+| **Storage volumes**                | Agents mount ephemeral or persistent volumes over a user-space NFSv3 server. The orchestrator intercepts every POSIX operation for authorization, path validation, and audit logging.                    |
+| **BYOLLM**                         | Agent manifests reference model aliases. Node config maps aliases to providers (OpenAI, Anthropic, Ollama). Swap models without redeploying agents.                                                      |
+| **gRPC + HTTP APIs**               | Full `aegis.runtime.v1` gRPC service with bidirectional streaming for execution events. HTTP endpoints for agent bootstrap communication.                                                                |
 
 ---
 
@@ -99,3 +99,29 @@ Agents are defined as declarative YAML manifests, executed inside isolated conta
 ## Licensing
 
 AEGIS is licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html). The AGPL-3.0 copyleft requirement applies to modified versions, including those run as network services. See `LICENSE` in the repository for the full text.
+
+---
+
+## Edge Mode — scaling agents to your own hosts
+
+If you want MCP tool calls (from Zaru chats or system-tier security contexts) to execute on **a host you control** — your laptop, home server, work VM — install the AEGIS edge daemon and bind it to your tenant. The daemon opens an outbound gRPC stream so it works behind NAT with no inbound port forwarding, and operator-managed tags, groups, and selectors give you Ansible/Salt-style fan-out across many hosts at once.
+
+- [Edge Mode Overview](/docs/concepts/edge-mode-overview) — what it is, how it works, the two deployment topologies (self-hosted vs SaaS Relay).
+- [Edge Host Setup](/docs/guides/edge-host-setup) — install the daemon, enroll it from Zaru, confirm it's connected.
+- [Fleet Operations](/docs/concepts/fleet-operations) — run tools across many edge hosts with rolling deploys, failure policies, and live per-node streaming.
+
+The platform topology with edge daemons:
+
+```text
+┌──────────────────────┐                ┌────────────────────────┐
+│  Zaru chat / API     │ ─────────────▶ │  AEGIS Controller      │
+│  user / SA caller    │                │  or Relay Coordinator  │
+└──────────────────────┘                └───────────┬────────────┘
+                                                    │ gRPC bidi stream
+                                                    │ (outbound from daemon)
+                                                    ▼
+                                        ┌────────────────────────┐
+                                        │  aegis-edge daemon     │
+                                        │  on user-owned host    │
+                                        └────────────────────────┘
+```

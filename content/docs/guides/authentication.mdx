@@ -22,10 +22,10 @@ aegis auth login --env dev.100monkeys.ai
 
 The CLI derives service endpoints from the hostname you provide:
 
-| Service | Derived URL |
-|---------|-------------|
-| Auth (Keycloak) | `https://auth.dev.100monkeys.ai` |
-| Orchestrator API | `https://api.dev.100monkeys.ai` |
+| Service          | Derived URL                      |
+| ---------------- | -------------------------------- |
+| Auth (Keycloak)  | `https://auth.dev.100monkeys.ai` |
+| Orchestrator API | `https://api.dev.100monkeys.ai`  |
 
 The login flow prints a one-time code and a URL. Open the URL in your browser, enter the code, and complete authentication. The CLI polls until you finish.
 
@@ -129,10 +129,10 @@ Prints the current access key to stdout. Useful for passing to other tools.
 
 ## Environment Variable Reference
 
-| Variable | Description |
-|----------|-------------|
-| `AEGIS_KEY` | Bearer key used for all CLI commands. Bypasses stored profiles. |
-| `AEGIS_ENV` | Default environment hostname (e.g. `dev.100monkeys.ai`). |
+| Variable         | Description                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| `AEGIS_KEY`      | Bearer key used for all CLI commands. Bypasses stored profiles.                                  |
+| `AEGIS_ENV`      | Default environment hostname (e.g. `dev.100monkeys.ai`).                                         |
 | `AEGIS_AUTH_KEY` | Encryption key for `~/.aegis/auth.json`. Falls back to system keyring, then a machine-local key. |
 
 ---
@@ -161,12 +161,12 @@ API keys are long-lived, scope-limited credentials for automation and programmat
 4. Select an expiry (7 days, 30 days, 90 days, 1 year, or no expiry†)
 5. Choose a scope preset or select individual scopes:
 
-| Preset | Included scopes |
-|--------|----------------|
-| **Read-only** | `agent:read`, `agent:list`, `workflow:read`, `workflow:list`, `execution:read`, `execution:list`, `execution:logs`, `swarm:read`, `swarm:list`, `node:read`, `node:list` |
-| **Execution** | Read-only + `agent:execute`, `agent:logs`, `workflow:run`, `workflow:logs`, `workflow:signal`, `workflow:cancel`, `execution:stream`, `execution:cancel`, `swarm:cancel`, `approval:*` |
-| **Developer** | Execution + `agent:deploy`, `agent:generate`, `agent:delete`, `workflow:deploy`, `workflow:validate`, `workflow:generate`, `workflow:delete`, `execution:remove`, `credential:read`, `credential:list`, `credential:create`, `stimulus:ingest`, `key:*` |
-| **Full access** | All scopes (capped at your own role level) |
+| Preset          | Included scopes                                                                                                                                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Read-only**   | `agent:read`, `agent:list`, `workflow:read`, `workflow:list`, `execution:read`, `execution:list`, `execution:logs`, `swarm:read`, `swarm:list`, `node:read`, `node:list`                                                                                |
+| **Execution**   | Read-only + `agent:execute`, `agent:logs`, `workflow:run`, `workflow:logs`, `workflow:signal`, `workflow:cancel`, `execution:stream`, `execution:cancel`, `swarm:cancel`, `approval:*`                                                                  |
+| **Developer**   | Execution + `agent:deploy`, `agent:generate`, `agent:delete`, `workflow:deploy`, `workflow:validate`, `workflow:generate`, `workflow:delete`, `execution:remove`, `credential:read`, `credential:list`, `credential:create`, `stimulus:ingest`, `key:*` |
+| **Full access** | All scopes (capped at your own role level)                                                                                                                                                                                                              |
 
 After selecting a preset, you can adjust individual scopes before creating the key.
 
@@ -176,20 +176,20 @@ After selecting a preset, you can adjust individual scopes before creating the k
 
 ### Scope Reference
 
-| Resource | Actions | Notes |
-|----------|---------|-------|
-| `agent` | `deploy`, `read`, `list`, `execute`, `generate`, `logs`, `delete` | `generate` = natural language → manifest |
-| `workflow` | `deploy`, `read`, `list`, `run`, `validate`, `generate`, `logs`, `signal`, `cancel`, `delete` | `signal` = FSM event |
-| `execution` | `read`, `list`, `stream`, `logs`, `cancel`, `remove` | `stream` = SSE event feed |
-| `swarm` | `read`, `list`, `cancel` | |
-| `secret` | `read`, `write`, `list`, `delete`, `rotate` | OpenBao KV2 secrets |
-| `credential` | `read`, `list`, `create`, `delete`, `rotate`, `grant` | OAuth credential bindings |
-| `approval` | `read`, `list`, `approve`, `reject` | Human-in-the-loop queue |
-| `stimulus` | `ingest` | Webhook ingestion |
-| `node` | `read`, `list`, `register`, `deregister`, `drain`, `shutdown` | `register`+ requires `aegis:admin` |
-| `stack` | `read`, `up`, `down`, `restart`, `update`, `uninstall` | `up`+ requires `aegis:admin` |
-| `key` | `read`, `list`, `create`, `revoke` | API key self-management |
-| `tenant` | `read`, `list`, `onboard`, `provision` | `onboard`+ requires `aegis:admin` |
+| Resource     | Actions                                                                                       | Notes                                    |
+| ------------ | --------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `agent`      | `deploy`, `read`, `list`, `execute`, `generate`, `logs`, `delete`                             | `generate` = natural language → manifest |
+| `workflow`   | `deploy`, `read`, `list`, `run`, `validate`, `generate`, `logs`, `signal`, `cancel`, `delete` | `signal` = FSM event                     |
+| `execution`  | `read`, `list`, `stream`, `logs`, `cancel`, `remove`                                          | `stream` = SSE event feed                |
+| `swarm`      | `read`, `list`, `cancel`                                                                      |                                          |
+| `secret`     | `read`, `write`, `list`, `delete`, `rotate`                                                   | OpenBao KV2 secrets                      |
+| `credential` | `read`, `list`, `create`, `delete`, `rotate`, `grant`                                         | OAuth credential bindings                |
+| `approval`   | `read`, `list`, `approve`, `reject`                                                           | Human-in-the-loop queue                  |
+| `stimulus`   | `ingest`                                                                                      | Webhook ingestion                        |
+| `node`       | `read`, `list`, `register`, `deregister`, `drain`, `shutdown`                                 | `register`+ requires `aegis:admin`       |
+| `stack`      | `read`, `up`, `down`, `restart`, `update`, `uninstall`                                        | `up`+ requires `aegis:admin`             |
+| `key`        | `read`, `list`, `create`, `revoke`                                                            | API key self-management                  |
+| `tenant`     | `read`, `list`, `onboard`, `provision`                                                        | `onboard`+ requires `aegis:admin`        |
 
 A key can never be minted with scopes exceeding your own role permissions.
 
@@ -215,3 +215,42 @@ Navigate to `/settings/api-keys`, find the key, and click **Revoke**. Revoked ke
 - [Writing Agents](/docs/agents/writing-agents) — deploy your first agent
 - [CI/CD Pipelines](/docs/workflows/cicd-pipelines) — automate agent workflows
 - [CLI Reference](/docs/reference/cli) — full command documentation
+
+---
+
+## Edge Daemon Enrollment
+
+Edge daemons are authenticated by a two-step bootstrap: a short-lived **enrollment token** redeemed once during `aegis edge enroll`, followed by a persistent **`NodeSecurityToken`** that pins the daemon to its tenant for the daemon's lifetime.
+
+### Token issuance
+
+Issued via `POST /api/edge/enrollment-tokens` with the user's existing JWT in the `Authorization` header. The endpoint requires the `aegis.edge.enroll` role. The token is a short-lived JWT (default ≤15 minutes) signed by the same OpenBao Transit key that signs `NodeSecurityToken`. Its claims:
+
+| Claim         | Meaning                                                             |
+| ------------- | ------------------------------------------------------------------- |
+| `tid`         | Tenant binding the daemon will inherit.                             |
+| `sub`         | Issuing user.                                                       |
+| `jti`         | One-time-use nonce. Atomically redeemed via `INSERT … ON CONFLICT`. |
+| `cep`         | Controller endpoint the daemon should connect to.                   |
+| `aud`         | Always `edge-enrollment`.                                           |
+| `nbf` / `exp` | Not-before and expiry.                                              |
+
+### Token redemption
+
+`aegis edge enroll <token>` decodes the JWT (without verifying — the server does that), generates an Ed25519 keypair, calls `AttestNode { role: EDGE, public_key }` against the endpoint from the `cep` claim (anonymous, rate-limited 5/min), and then calls `ChallengeNode` with the enrollment token attached as `bootstrap_proof`.
+
+The server validates the JWT (signature, audience, expiry, not-before, tenant id, issuer), atomically redeems the `jti`, persists the `EdgeDaemon` row binding `node_id ↔ tenant_id`, and returns a `NodeSecurityToken` whose `tid` claim is the persistent tenant binding.
+
+### What the daemon stores
+
+After successful enrollment:
+
+| Path                         | Mode   | Purpose                                                              |
+| ---------------------------- | ------ | -------------------------------------------------------------------- |
+| `~/.aegis/edge/node.key`     | `0600` | Ed25519 private key, used to sign every outbound `SealNodeEnvelope`. |
+| `~/.aegis/edge/node.key.pub` | `0644` | Public key, registered with the server.                              |
+| `~/.aegis/edge/node.token`   | `0600` | The persistent `NodeSecurityToken` carrying the `tid` claim.         |
+
+The enrollment token is consumed atomically — replays are rejected at the database boundary. Stolen tokens fail expiry checks within 15 minutes.
+
+For the operational guide, see [edge host setup](/docs/guides/edge-host-setup); for the security model, see [edge security](/docs/concepts/edge-security).

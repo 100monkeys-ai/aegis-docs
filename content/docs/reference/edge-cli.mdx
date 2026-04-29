@@ -1,0 +1,360 @@
+---
+title: Edge CLI Reference
+description: Full reference for the aegis edge CLI family — enrollment, status, listing, tagging, groups, fleet operations, key and token management, and exit codes.
+---
+
+# Edge CLI Reference
+
+The `aegis edge` command family covers every operator and host-side action for AEGIS edge daemons. This page is the exhaustive reference.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+For step-by-step guides, see [edge host setup](/docs/guides/edge-host-setup), [edge fleet operations](/docs/guides/edge-fleet-operations), and [edge key rotation](/docs/guides/edge-key-rotation).
+
+---
+
+## Command map
+
+```text
+# Daemon-side (runs on the user's host)
+aegis edge enroll <token> [--config <path>]
+aegis edge status [--output json|yaml|table]
+aegis edge logout
+aegis edge service install|uninstall|reinstall
+
+# Operator-side (runs anywhere with a Zaru-issued user token)
+aegis edge ls [--tag T]... [--label K=V]... [--connected] [--output json|yaml|table]
+aegis edge tag add|rm <node-id> <tag>...
+
+aegis edge group ls [--output json|yaml|table]
+aegis edge group create <name> --selector <expr>
+aegis edge group set-pinned <name> [--add <id>...] [--rm <id>...]
+aegis edge group rm <name>
+
+# Fleet operations
+aegis edge fleet preview --target <expr> [--output json|yaml|table]
+aegis edge fleet run --target <expr> --tool <name> [--arg k=v]... \
+                     [--mode parallel|sequential|rolling=N]    \
+                     [--max-concurrency N] [--on-error fail-fast|continue|stop-after=N] \
+                     [--require-min N] [--deadline 60s]
+aegis edge fleet cancel <fleet-command-id>
+aegis edge fleet runs [--output json|yaml|table]
+aegis edge fleet keys rotate --target <expr> [...same flags as run]
+
+# Key & token rotation
+aegis edge keys rotate [--keep-old <duration>] [--force]
+aegis edge token refresh
+aegis edge keys revoke-remote <node-id>
+```
+
+---
+
+## Daemon-side commands
+
+### `aegis edge enroll <token>`
+
+Redeem an enrollment token, persist the node identity, install the service unit, and open the gRPC stream.
+
+```bash
+aegis edge enroll <token> [flags]
+```
+
+**Flags:**
+
+| Flag                         | Description                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--config <path>`            | Path to write the merged `aegis-config.yaml` (default `~/.aegis/edge/aegis-config.yaml`).                   |
+| `--non-interactive`          | Fail rather than prompt for any bootstrap conflict.                                                         |
+| `--force`                    | Assume **Overwrite** for every conflict.                                                                    |
+| `--keep-existing`            | Assume **Reuse** for every conflict. Fails if a Reuse decision would be unsafe (e.g. mismatched `node_id`). |
+| `--dry-run`                  | Print the bootstrap plan without writing files or contacting the server.                                    |
+| `--minimal`                  | Use the minimal config template instead of the annotated one.                                               |
+| `--output json\|yaml\|table` | Output format for the bootstrap plan. Default `table`.                                                      |
+
+**Behavior:** see the [bootstrap prompt matrix in `edge-config`](/docs/reference/edge-config#bootstrap-prompt-matrix).
+
+**Example:**
+
+```bash
+aegis edge enroll eyJhbGc...3Q --output json
+```
+
+### `aegis edge status`
+
+Show the daemon's current connection state, tenant binding, and capabilities. Reads local state and queries the server for liveness.
+
+```bash
+aegis edge status [--output json|yaml|table]
+```
+
+**Example output:**
+
+```text
+node_id:        n-7a3b2f...
+tenant:         u-8d1c... (personal)
+status:         Connected
+since:          2026-04-28T14:32:11Z
+endpoint:       relay.example.com:443
+heartbeat_age:  4s
+key_fingerprint: SHA256:Lc8j...
+token_expires:  2026-05-28T14:32:11Z
+capabilities:
+  os:           linux
+  arch:         x86_64
+  local_tools:  [shell, docker, kubectl]
+  labels:       { region: home }
+  tags:         [home-server]
+```
+
+### `aegis edge logout`
+
+Local revocation. Deletes `node.token` and `node.key`, stops the service. The remote `EdgeDaemon` row remains until an operator runs `aegis edge keys revoke-remote`.
+
+```bash
+aegis edge logout [--purge]
+```
+
+**Flags:**
+
+| Flag      | Description                            |
+| --------- | -------------------------------------- |
+| `--purge` | Also remove `~/.aegis/edge/` entirely. |
+
+### `aegis edge service`
+
+Manage the OS-level service unit. Subcommands `install`, `uninstall`, `reinstall`.
+
+```bash
+aegis edge service install        # Detect OS, write the appropriate unit, enable + start.
+aegis edge service uninstall      # Stop, disable, remove the unit.
+aegis edge service reinstall      # uninstall + install.
+```
+
+---
+
+## Operator-side commands
+
+### `aegis edge ls`
+
+List edge daemons in your tenant, filtered by selector.
+
+```bash
+aegis edge ls [flags]
+```
+
+**Flags:**
+
+| Flag                         | Description                                                      |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `--tag <T>`                  | Filter to hosts with tag `T`. May be repeated (AND across tags). |
+| `--label <K=V>`              | Filter to hosts with label `K=V`. May be repeated.               |
+| `--connected`                | Only Connected hosts.                                            |
+| `--output json\|yaml\|table` | Output format. Default `table`.                                  |
+
+### `aegis edge tag`
+
+Add or remove operator-managed tags on a host.
+
+```bash
+aegis edge tag add <node-id> <tag>...
+aegis edge tag rm  <node-id> <tag>...
+```
+
+Tags are server-side only and do not require the daemon to be online — they take effect on the next selector evaluation.
+
+### `aegis edge group`
+
+Manage saved groups (named selectors).
+
+```bash
+aegis edge group ls
+aegis edge group create <name> --selector <expr>
+aegis edge group set-pinned <name> [--add <id>...] [--rm <id>...]
+aegis edge group rm <name>
+```
+
+The `<expr>` selector grammar matches `--target` (see below).
+
+---
+
+## Fleet operations
+
+### Selector expression grammar (`<expr>`)
+
+The same expression language is used for `--target`, `aegis edge group create --selector`, and `aegis edge fleet preview --target`.
+
+| Form                          | Meaning                                   |
+| ----------------------------- | ----------------------------------------- |
+| `@<node-id>`                  | Single node by id.                        |
+| `group:<name>`                | Saved group reference.                    |
+| `all`                         | Every Connected edge of the tenant.       |
+| `os=linux`                    | Match `os` field.                         |
+| `arch=x86_64`                 | Match `arch` field.                       |
+| `tools=docker,kubectl`        | All listed tools must be present (AND).   |
+| `labels=region=us`            | Label `region` equals `us`.               |
+| `labels=Exists(gpu)`          | Label `gpu` is set (any value).           |
+| `labels=In(env,prod,staging)` | Label `env` is one of `prod` / `staging`. |
+| `tags=prod`                   | Has tag `prod`.                           |
+| `tags=AnyOf(prod,staging)`    | Has at least one of the listed tags.      |
+| `tags=AllOf(prod,db)`         | Has every listed tag.                     |
+| `tags=NoneOf(decommission)`   | Has none of the listed tags.              |
+
+Multiple fragments combine with **AND**. Whitespace separates fragments:
+
+```text
+tags=prod tags=AllOf(db,team-platform) os=linux tools=docker
+```
+
+### `aegis edge fleet preview`
+
+Resolve a target to a node list **without** dispatching.
+
+```bash
+aegis edge fleet preview --target <expr> [--output json|yaml|table]
+```
+
+### `aegis edge fleet run`
+
+Invoke a tool against a target with a fleet dispatch policy. Per-node results stream live.
+
+```bash
+aegis edge fleet run \
+  --target <expr> \
+  --tool <name> [--arg key=value]... \
+  [--mode parallel|sequential|rolling=N] \
+  [--max-concurrency N] \
+  [--on-error fail-fast|continue|stop-after=N] \
+  [--require-min N] \
+  [--deadline 60s]
+```
+
+**Flags:**
+
+| Flag                    | Default                                                                 | Description                                      |
+| ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------ |
+| `--target <expr>`       | (required)                                                              | Target expression.                               |
+| `--tool <name>`         | (required)                                                              | Registered tool name.                            |
+| `--arg <k=v>`           | —                                                                       | Tool argument; may be repeated.                  |
+| `--mode <mode>`         | `parallel`                                                              | `parallel`, `sequential`, or `rolling=N`.        |
+| `--max-concurrency <N>` | resolved target count                                                   | Cap on concurrent in-flight dispatches.          |
+| `--on-error <policy>`   | tool-default (`fail-fast` for state-mutating, `continue` for read-only) | `fail-fast`, `continue`, or `stop-after=N`.      |
+| `--require-min <N>`     | none                                                                    | Refuse dispatch if fewer than N targets resolve. |
+| `--deadline <duration>` | `60s`                                                                   | Per-target deadline (e.g. `30s`, `2m`).          |
+
+### `aegis edge fleet cancel`
+
+Cancel an in-flight fleet operation by id.
+
+```bash
+aegis edge fleet cancel <fleet-command-id>
+```
+
+The dispatcher broadcasts `Cancel` to every in-flight per-node command. Already-completed nodes are unaffected.
+
+### `aegis edge fleet runs`
+
+List fleet run history.
+
+```bash
+aegis edge fleet runs [--output json|yaml|table]
+```
+
+### `aegis edge fleet keys rotate`
+
+Fleet-wide key rotation. Same flags as `aegis edge fleet run`.
+
+```bash
+aegis edge fleet keys rotate \
+  --target tags=potentially-affected \
+  --mode rolling=5 \
+  --on-error continue
+```
+
+---
+
+## Key and token rotation
+
+### `aegis edge keys rotate`
+
+Generate a fresh Ed25519 keypair on the host, re-attest with dual-signature, atomically swap files.
+
+```bash
+aegis edge keys rotate [--keep-old <duration>] [--force]
+```
+
+**Flags:**
+
+| Flag                    | Default | Description                                                    |
+| ----------------------- | ------- | -------------------------------------------------------------- |
+| `--keep-old <duration>` | `24h`   | How long to retain the old key under `~/.aegis/edge/archive/`. |
+| `--force`               | —       | Skip the confirmation prompt.                                  |
+
+### `aegis edge token refresh`
+
+Force-refresh the `NodeSecurityToken` without rotating the key.
+
+```bash
+aegis edge token refresh
+```
+
+### `aegis edge keys revoke-remote`
+
+Operator-side revocation. Marks the daemon `Revoked`, blacklists the active `NodeSecurityToken`, drops the stream.
+
+```bash
+aegis edge keys revoke-remote <node-id>
+```
+
+---
+
+## Non-interactive contract
+
+For CI, config-management, and headless flows, `aegis edge enroll` (and any other interactive `aegis edge` command) accepts:
+
+| Flag                | Behavior                                               |
+| ------------------- | ------------------------------------------------------ |
+| `--non-interactive` | Fail rather than prompt for any conflict.              |
+| `--force`           | Assume **Overwrite** for every conflict.               |
+| `--keep-existing`   | Assume **Reuse**; fail if Reuse would be unsafe.       |
+| `--dry-run`         | Print the planned actions without executing.           |
+| `--output json`     | Structured output (where the command produces a plan). |
+
+`--non-interactive` is incompatible with prompting. If the command would prompt, it fails with exit code `4`.
+
+---
+
+## Exit codes
+
+| Code | Meaning                                                                                   |
+| ---- | ----------------------------------------------------------------------------------------- |
+| `0`  | Success.                                                                                  |
+| `1`  | Generic error (network, server, internal).                                                |
+| `2`  | Argument or flag validation error.                                                        |
+| `3`  | Authentication / authorization error (token expired, scope missing, daemon unauthorized). |
+| `4`  | Bootstrap conflict in non-interactive mode.                                               |
+| `5`  | `EdgeUnavailable` — target offline or not found.                                          |
+| `6`  | Fleet halted by `failure_policy`.                                                         |
+| `7`  | Cancelled by user (Ctrl-C, `aegis edge fleet cancel`).                                    |
+| `8`  | Deadline exceeded.                                                                        |
+| `9`  | `require-min` not satisfied.                                                              |
+
+---
+
+## Environment variables
+
+| Variable                                   | Purpose                                          |
+| ------------------------------------------ | ------------------------------------------------ |
+| `AEGIS_CONFIG`                             | Override the config file path.                   |
+| `AEGIS_OUTPUT`                             | Default `--output` for commands.                 |
+| `AEGIS_USER_TOKEN`                         | User JWT for operator-side commands.             |
+| `HTTPS_PROXY` / `https_proxy` / `NO_PROXY` | Standard proxy variables, honored by the daemon. |
+
+---
+
+## What's next
+
+- [Edge Config Reference](/docs/reference/edge-config) — every field of `cluster.edge`.
+- [Edge REST API](/docs/reference/edge-rest-api) — the HTTP surface that mirrors these CLI commands.
+- [Edge Host Setup](/docs/guides/edge-host-setup) — guided walkthrough.
+- [Edge Fleet Operations](/docs/guides/edge-fleet-operations) — recipes for common fleet shapes.
+- [CLI Reference](/docs/reference/cli) — the broader `aegis` CLI of which `aegis edge` is one branch.

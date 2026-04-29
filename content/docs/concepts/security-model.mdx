@@ -22,7 +22,7 @@ Controls which external domains the agent container is permitted to reach.
 ```yaml
 security:
   network:
-    mode: allow          # "allow" = allowlist; "deny" = blocklist
+    mode: allow # "allow" = allowlist; "deny" = blocklist
     allowlist:
       - api.github.com
       - api.openai.com
@@ -54,9 +54,9 @@ CPU and memory ceilings prevent resource exhaustion.
 ```yaml
 security:
   resources:
-    cpu: 1000              # millicores (1000 = 1 CPU core)
-    memory: "1Gi"         # human-readable memory limit
-    timeout: "300s"       # hard wall-clock timeout for the entire execution
+    cpu: 1000 # millicores (1000 = 1 CPU core)
+    memory: "1Gi" # human-readable memory limit
+    timeout: "300s" # hard wall-clock timeout for the entire execution
 ```
 
 ---
@@ -67,12 +67,12 @@ SEAL is the protocol-level security layer that governs all MCP tool calls. Every
 
 ### Key Concepts
 
-| Concept | Description |
-|---|---|
+| Concept               | Description                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`SecurityContext`** | A named set of permitted tool capabilities defined in node config (e.g., `"aegis-system-agent-runtime"`, `"research-safe"`, `"aegis-system-operator"`). |
-| **`SecurityToken`** | A short-lived JWT issued by the orchestrator at attestation time, scoping the agent to its `SecurityContext`. |
-| **`SealEnvelope`** | Every tool call is wrapped in an envelope containing the `SecurityToken`, an Ed25519 signature, and the inner MCP payload. |
-| **`PolicyEngine`** | Cedar-based rule evaluator that checks each tool call against the `SecurityContext` capabilities. |
+| **`SecurityToken`**   | A short-lived JWT issued by the orchestrator at attestation time, scoping the agent to its `SecurityContext`.                                           |
+| **`SealEnvelope`**    | Every tool call is wrapped in an envelope containing the `SecurityToken`, an Ed25519 signature, and the inner MCP payload.                              |
+| **`PolicyEngine`**    | Cedar-based rule evaluator that checks each tool call against the `SecurityContext` capabilities.                                                       |
 
 ### Attestation Flow
 
@@ -178,11 +178,11 @@ Platform operators use the `aegis-system-operator` SecurityContext, which provid
 
 Tools are classified into three categories at the SEAL gateway level:
 
-| Category | Consumer tiers | Operator |
-|----------|---------------|----------|
-| Safe commands | ✓ (all tiers) | ✓ |
-| Destructive commands | ✗ | ✓ |
-| Orchestrator commands | ✗ | ✓ |
+| Category              | Consumer tiers | Operator |
+| --------------------- | -------------- | -------- |
+| Safe commands         | ✓ (all tiers)  | ✓        |
+| Destructive commands  | ✗              | ✓        |
+| Orchestrator commands | ✗              | ✓        |
 
 Operator identity is resolved from `aegis-system` realm JWTs carrying `aegis_role` claims. See [IAM & Identity Federation](/docs/deployment/iam) for the full authentication flow.
 
@@ -190,7 +190,7 @@ Operator identity is resolved from `aegis-system` realm JWTs carrying `aegis_rol
 
 ## Chat Surface vs. Execution Surface
 
-AEGIS applies security contexts across two independent surfaces. The context in effect depends on *where* the tool call is being made, not who triggered the chain.
+AEGIS applies security contexts across two independent surfaces. The context in effect depends on _where_ the tool call is being made, not who triggered the chain.
 
 ### Chat / MCP surface
 
@@ -244,3 +244,30 @@ The security model is strengthened by the underlying container runtime. AEGIS su
 - ~125ms VM boot time; overhead is amortized over the execution duration.
 
 See [Podman Deployment](/docs/deployment/podman) and [Firecracker Runtime](/docs/deployment/firecracker) for deployment details.
+
+---
+
+## Edge Node Attestation
+
+When a user installs an AEGIS edge daemon on their own host, the daemon must prove its identity to the controller (or Relay Coordinator) before any MCP tool call can be routed to it. The mechanism is built on the same SEAL primitives as the rest of the platform but adds two new patterns: a **one-time enrollment token** and a **two-envelope SEAL pattern** for command dispatch.
+
+### One-time enrollment tokens
+
+A user (or team admin) issues an enrollment token via Zaru. The token is a short-lived JWT (≤15 minutes) signed by the same OpenBao Transit key that signs `NodeSecurityToken`. Its claims include:
+
+- `tid` — the tenant the daemon will be bound to.
+- `cep` — the controller endpoint the daemon should connect to.
+- `jti` — a one-time-use nonce, atomically redeemed via `INSERT … ON CONFLICT` against the `enrollment_tokens` table.
+
+The user runs `aegis edge enroll <token>` on the host. The CLI generates an Ed25519 keypair, attests against the endpoint from the token, and on success receives a persistent `NodeSecurityToken` whose `tid` claim pins the daemon to its tenant for life. Replays are rejected at the database boundary; expiry rejects stale copies.
+
+### Two-envelope SEAL pattern
+
+Every command flowing from the platform to an edge daemon is wrapped in two SEAL envelopes:
+
+- **Outer `SealNodeEnvelope`** — proves daemon identity at the node level. Signed by the daemon's Ed25519 node key.
+- **Inner `SealEnvelope`** — proves user identity at the user level. Carries `user_security_token`, `tenant_id`, and `security_context_name`.
+
+The daemon verifies both envelopes locally before executing. The same `security_context_name` resolved on the controller is resolved against the daemon's local merged config — Layer 1 infrastructure policy and Layer 2 SEAL discipline both apply on the edge, exactly as on the controller.
+
+For the full edge security model — including key rotation, fleet-wide rotation, and revocation — see [edge security](/docs/concepts/edge-security).

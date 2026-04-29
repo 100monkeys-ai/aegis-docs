@@ -1,0 +1,329 @@
+---
+title: Relay gRPC API
+description: gRPC reference for the daemon-facing extensions to NodeClusterService — ConnectEdge bidirectional stream, RotateEdgeKey, EdgeEvent and EdgeCommand messages.
+---
+
+# Relay gRPC API
+
+The Relay Coordinator (and the controller, in OSS deployments) exposes the daemon-facing gRPC surface as **extensions to the existing `NodeClusterService`**. There is no separate `EdgeService` — daemon attestation, registration, rotation, and command stream all flow through the same service on port `50056` (internal) or `443` (TLS-terminated, h2c reverse-proxied at the ingress in SaaS).
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+This page is the wire-format reference. For the CLI, REST, and concept surfaces, see [edge CLI](/docs/reference/edge-cli), [edge REST API](/docs/reference/edge-rest-api), and [edge mode overview](/docs/concepts/edge-mode-overview).
+
+---
+
+## Service definition
+
+```proto
+service NodeClusterService {
+  // Existing RPCs (worker membership, attestation, heartbeat) — see grpc-api reference.
+
+  // Edge-mode extensions:
+  rpc ConnectEdge(stream EdgeEvent) returns (stream EdgeCommand);
+  rpc RotateEdgeKey(RotateEdgeKeyRequest) returns (RotateEdgeKeyResponse);
+}
+```
+
+The daemon completes the existing `AttestNode` → `ChallengeNode` handshake first (with `role = NODE_ROLE_EDGE`), then opens `ConnectEdge`. The first message on the stream MUST be `EdgeEvent.Hello { envelope, capabilities, stream_id }`.
+
+---
+
+## `ConnectEdge`
+
+A bidirectional stream. The daemon sends `EdgeEvent` messages outbound; the server sends `EdgeCommand` messages inbound. Every message carries a `SealNodeEnvelope` proving daemon identity.
+
+### `EdgeEvent` (daemon → server)
+
+```proto
+message EdgeEvent {
+  oneof event {
+    Hello             hello = 1;
+    Heartbeat         heartbeat = 2;
+    CommandResult     command_result = 3;
+    CommandProgress   command_progress = 4;
+    CapabilityUpdate  capability_update = 5;
+  }
+}
+```
+
+#### `Hello`
+
+```proto
+message Hello {
+  SealNodeEnvelope envelope = 1;          // outer envelope, signed by the daemon's node key
+  EdgeCapabilities capabilities = 2;
+  string stream_id = 3;                    // UUID minted by the daemon
+}
+```
+
+The first message on the stream. Capabilities are persisted as the initial `EdgeDaemon.capabilities` snapshot.
+
+#### `Heartbeat`
+
+```proto
+message Heartbeat {
+  SealNodeEnvelope envelope = 1;
+  google.protobuf.Timestamp sent_at = 2;
+}
+```
+
+Sent every `cluster.heartbeat_interval_secs` (default 30s). Replaces the unary heartbeat for edge daemons. Failure to heartbeat within `stale_threshold_secs` (default 90s) marks the daemon `Unhealthy`.
+
+#### `CommandResult`
+
+```proto
+message CommandResult {
+  SealNodeEnvelope envelope = 1;
+  string command_id = 2;                   // matches the InvokeTool that produced it
+  EdgeResult result = 3;
+}
+
+message EdgeResult {
+  oneof outcome {
+    Ok       ok = 1;
+    Err      err = 2;
+    TimedOut timed_out = 3;
+    Cancelled cancelled = 4;
+  }
+
+  message Ok {
+    int32 exit_code = 1;
+    google.protobuf.Any payload = 2;       // tool-specific
+    google.protobuf.Duration duration = 3;
+  }
+
+  message Err {
+    string code = 1;                        // structured error code
+    string message = 2;
+    int32 exit_code = 3;
+  }
+
+  message TimedOut {
+    google.protobuf.Duration deadline = 1;
+  }
+
+  message Cancelled {
+    string reason = 1;
+  }
+}
+```
+
+Terminal per-call result. Resolves the dispatcher's `oneshot::Sender<EdgeResult>` for `command_id`.
+
+#### `CommandProgress`
+
+```proto
+message CommandProgress {
+  SealNodeEnvelope envelope = 1;
+  string command_id = 2;
+  Chunk chunk = 3;
+}
+
+message Chunk {
+  oneof kind {
+    bytes stdout = 1;
+    bytes stderr = 2;
+    StatusUpdate status = 3;
+  }
+}
+```
+
+Streaming chunks during tool execution. Tagged with `node_id` at the dispatcher boundary for fleet aggregation; rendered live in Zaru's per-node grid.
+
+#### `CapabilityUpdate`
+
+```proto
+message CapabilityUpdate {
+  SealNodeEnvelope envelope = 1;
+  EdgeCapabilities capabilities = 2;
+}
+```
+
+Hot-update of the daemon's capabilities. Persisted on the next heartbeat checkpoint. Note: server-managed `tags` are **never** overwritten by this message — they are operator-managed only.
+
+### `EdgeCommand` (server → daemon)
+
+```proto
+message EdgeCommand {
+  oneof command {
+    InvokeTool   invoke_tool = 1;
+    Cancel       cancel = 2;
+    PushConfig   push_config = 3;
+    Drain        drain = 4;
+    Shutdown     shutdown = 5;
+  }
+}
+```
+
+#### `InvokeTool`
+
+```proto
+message InvokeTool {
+  string command_id = 1;                   // UUID minted by the dispatcher
+  string security_context_name = 2;        // resolved against local merged config
+  SealEnvelope seal_envelope = 3;          // inner envelope: user_security_token, tenant_id, ...
+  string tool_name = 4;
+  google.protobuf.Struct args = 5;
+  google.protobuf.Duration deadline = 6;
+}
+```
+
+The two-envelope pattern: the carrying `EdgeCommand` is wrapped in an outer `SealNodeEnvelope` (proving server identity); `seal_envelope` is the inner envelope (proving user identity).
+
+#### `Cancel`
+
+```proto
+message Cancel {
+  string command_id = 1;                   // the in-flight command to cancel
+  string reason = 2;
+}
+```
+
+Broadcast to every in-flight per-node command on `aegis edge fleet cancel <fleet-command-id>`.
+
+#### `PushConfig`
+
+```proto
+message PushConfig {
+  bytes config_delta = 1;                  // merged-config delta (yaml or canonical-json)
+  string version = 2;
+}
+```
+
+Hierarchical config delta pushed from the controller. Applied to the daemon's merged config before evaluating the next `InvokeTool`.
+
+#### `Drain`
+
+```proto
+message Drain {}
+```
+
+Refuse new work; finish in-flight; prepare for shutdown. The daemon stops sending Hello-like state and acknowledges the drain.
+
+#### `Shutdown`
+
+```proto
+message Shutdown {
+  google.protobuf.Duration grace = 1;
+}
+```
+
+Terminate after the grace period. The daemon performs a clean shutdown: cancel in-flight calls past grace, flush logs, close the stream.
+
+---
+
+## `RotateEdgeKey`
+
+Atomic key rotation with the dual-signature requirement.
+
+```proto
+message RotateEdgeKeyRequest {
+  SealNodeEnvelope current_envelope = 1;   // signed by the OLD key (proof of authority)
+  bytes new_public_key = 2;                // raw Ed25519 pubkey
+  bytes signature_with_new_key = 3;        // signature over (node_id || new_public_key) by NEW key
+}
+
+message RotateEdgeKeyResponse {
+  string node_security_token = 1;          // newly-issued token bound to the new key
+  google.protobuf.Timestamp issued_at = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  google.protobuf.Duration overlap_window = 4;   // duration the server records both pubkeys
+}
+```
+
+### Server-side semantics
+
+- Validates the outer envelope against the **current** pubkey (proof of authority).
+- Validates `signature_with_new_key` against `new_public_key` (proof of possession).
+- In a single PostgreSQL transaction:
+  1. `UPDATE edge_daemons SET public_key = $new WHERE node_id = $node`.
+  2. `INSERT INTO token_blacklist (token_id, ...)` for the old `NodeSecurityToken`.
+  3. Issues a new `NodeSecurityToken` bound to `new_public_key`.
+- Records both pubkeys for `overlap_window` so the active gRPC stream survives the swap. The daemon transparently switches to the new token on its next envelope.
+
+### Failure modes
+
+| Error                | Reason                                                                 |
+| -------------------- | ---------------------------------------------------------------------- |
+| `InvalidArgument`    | `new_public_key` is malformed or the dual signature fails.             |
+| `Unauthenticated`    | Outer envelope signature does not validate against the current pubkey. |
+| `FailedPrecondition` | Daemon is `Revoked` or `Unhealthy`.                                    |
+| `Aborted`            | Concurrent rotation; client should retry.                              |
+
+---
+
+## `EdgeCapabilities`
+
+```proto
+message EdgeCapabilities {
+  string os = 1;
+  string arch = 2;
+  repeated string local_tools = 3;
+  repeated string mount_points = 4;
+  map<string, string> custom_labels = 5;
+  // Note: `tags` are NOT carried on this message — they are server-managed and
+  // never overwritten by the daemon. They live on the EdgeDaemon row only.
+}
+```
+
+---
+
+## Bootstrap proof on `ChallengeNode`
+
+The existing `ChallengeNodeRequest` gains an optional `bootstrap_proof` oneof for edge enrollment:
+
+```proto
+message ChallengeNodeRequest {
+  // ... existing fields ...
+
+  oneof bootstrap_proof {
+    string enrollment_token = 4;
+  }
+}
+```
+
+Set when `role = NODE_ROLE_EDGE`. The server validates the JWT (signature, audience, expiry, not-before, tenant id, issuer), redeems `jti` atomically, and binds `node_id ↔ tenant_id` in the same transaction that issues the new `NodeSecurityToken`.
+
+The `NodeSecurityToken` carries a new `tid` claim — the persistent tenant binding for the daemon's lifetime.
+
+---
+
+## Authentication and authorization
+
+| Method                                                    | Auth                                                                |
+| --------------------------------------------------------- | ------------------------------------------------------------------- |
+| `AttestNode` (with `role = EDGE`)                         | Anonymous; rate-limited 5/min by IP.                                |
+| `ChallengeNode` (with `bootstrap_proof.enrollment_token`) | The token itself proves authorization.                              |
+| `ConnectEdge`                                             | `NodeSecurityToken` Bearer + `SealNodeEnvelope` per stream message. |
+| `RotateEdgeKey`                                           | Dual-signature on the request (old key + new key).                  |
+
+Edge-mode RPCs are permitted on `NodeClusterService` instances with `role = Controller`, `Hybrid`, or `RelayCoordinator`. They are rejected on `Worker`-only nodes.
+
+---
+
+## Health checks
+
+The standard gRPC health protocol is exposed:
+
+```bash
+grpcurl -insecure relay.example.com:443 grpc.health.v1.Health/Check
+```
+
+```text
+{
+  "status": "SERVING"
+}
+```
+
+The Relay's readiness probe is wired to this endpoint in the standard pod manifest.
+
+---
+
+## What's next
+
+- [Edge REST API](/docs/reference/edge-rest-api) — the HTTP surface for operators (the daemon-facing surface is gRPC only).
+- [Edge CLI Reference](/docs/reference/edge-cli) — the user-facing surface that wraps both APIs.
+- [Edge Security](/docs/concepts/edge-security) — the two-envelope SEAL pattern, in conceptual terms.
+- [gRPC API](/docs/reference/grpc-api) — the rest of `NodeClusterService` and other gRPC services.
+- [Edge Relay Deployment](/docs/deployment/edge-relay-deployment) — deploying the service this API lives on.

@@ -11,13 +11,13 @@ The Vault is where you store credentials that your agents use at runtime. Agents
 
 ## Supported Providers and Credential Types
 
-| Provider | Credential Types | Example Value |
-|---|---|---|
-| OpenAI | Secret | `sk-...` |
-| Anthropic | Secret | `sk-ant-...` |
+| Provider        | Credential Types        | Example Value                   |
+| --------------- | ----------------------- | ------------------------------- |
+| OpenAI          | Secret                  | `sk-...`                        |
+| Anthropic       | Secret                  | `sk-ant-...`                    |
 | Google (Gemini) | Secret, Service Account | API key or service account JSON |
-| GitHub | Secret | `ghp_...` |
-| Custom | Secret, Variable | Any value |
+| GitHub          | Secret                  | `ghp_...`                       |
+| Custom          | Secret, Variable        | Any value                       |
 
 ---
 
@@ -67,3 +67,41 @@ GitHub and Google support OAuth connections, which let agents act on your behalf
 OAuth connections are managed from the **Connections** tab, not the Vault. From there, click **Connect** next to the provider and complete the authorization flow in your browser. Once connected, agents granted access to that connection can make authenticated requests on your behalf.
 
 OAuth connections automatically refresh when tokens expire. You can disconnect a connection at any time from the Connections tab.
+
+---
+
+## Edge Hosts
+
+The Vault houses your **Edge Hosts** — AEGIS daemons running on your own hardware (laptops, home servers, work VMs) bound to your tenant. The section is organized into three sub-views.
+
+### Hosts
+
+A card per enrolled daemon. Each card shows:
+
+- **Display name** (editable inline).
+- **Status** badge: Connected / Disconnected / Unhealthy / Revoked.
+- **OS / arch** (auto-detected at enrollment).
+- **Last seen** timestamp.
+- **Labels** (read-only — these are advertised by the daemon).
+- **Tags** (editable inline — operator-managed classifiers like `prod`, `db-host`).
+- **Action menu**: Rename, Edit Tags, Revoke, Inspect.
+
+The **Host Detail** view adds capabilities, advertised labels, operator tags, and a recent command history streamed from the platform's event log.
+
+#### Add Edge Host
+
+Click **Add Edge Host**. The dialog issues an enrollment token bound to your `effective_tenant`, displays a copyable `aegis edge enroll <token>` command, a QR code for mobile-to-laptop transfer, and a countdown to expiry (default 15 minutes). On enrollment the new edge appears in the list within ~1 heartbeat.
+
+For team tenants, the picker shows accessible tenants (personal + teams you're a member of). The token's `tid` is set accordingly and the resulting daemon is visible to all team members per the team-membership claim.
+
+### Groups
+
+Saved selectors with named, reusable scopes. The group editor exposes a selector form (tags, labels, tools, OS, arch) with a live **Selector Preview Panel** ("matches 7 of your 12 connected edges") and a pinned-members section for explicit overrides.
+
+Group membership is **dynamic** — re-evaluated at every dispatch. New hosts that match the selector automatically join.
+
+### Fleet Runs
+
+Paginated history of fleet operations. Each row shows the tool, target, policy summary, outcome, and a per-node breakdown. The **live run view** for an in-flight operation shows a per-node grid with streaming output and a Cancel button.
+
+For the underlying model, see [edge mode overview](/docs/concepts/edge-mode-overview); for the operations playbook, see [edge fleet operations](/docs/guides/edge-fleet-operations).

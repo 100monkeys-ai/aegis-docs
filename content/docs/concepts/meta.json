@@ -1,8 +1,11 @@
 {
-    "title": "Core Concepts",
-    "pages": [
-        "security-model",
-        "stimulus-response",
-        "cortex-integration"
-    ]
+  "title": "Core Concepts",
+  "pages": [
+    "security-model",
+    "stimulus-response",
+    "cortex-integration",
+    "edge-mode-overview",
+    "edge-security",
+    "fleet-operations"
+  ]
 }

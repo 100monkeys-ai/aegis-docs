@@ -1,20 +1,24 @@
 {
-    "title": "Reference",
-    "pages": [
-        "agent-manifest",
-        "standard-runtime-registry",
-        "workflow-manifest",
-        "node-config",
-        "cli",
-        "cli-capability-matrix",
-        "grpc-api",
-        "rest-api",
-        "metrics",
-        "builtin-tools",
-        "management-tools",
-        "mcp-tool-reference",
-        "sdk-python",
-        "sdk-typescript",
-        "template-syntax"
-    ]
+  "title": "Reference",
+  "pages": [
+    "agent-manifest",
+    "standard-runtime-registry",
+    "workflow-manifest",
+    "node-config",
+    "cli",
+    "cli-capability-matrix",
+    "grpc-api",
+    "rest-api",
+    "metrics",
+    "builtin-tools",
+    "management-tools",
+    "mcp-tool-reference",
+    "sdk-python",
+    "sdk-typescript",
+    "template-syntax",
+    "edge-cli",
+    "edge-config",
+    "edge-rest-api",
+    "relay-grpc-api"
+  ]
 }

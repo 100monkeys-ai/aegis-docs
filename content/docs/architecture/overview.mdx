@@ -11,28 +11,28 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 
 ## Technology Stack
 
-| Layer | Technology |
-|---|---|
-| Language | Rust (2021 edition) |
-| Async runtime | Tokio |
-| HTTP API | Axum |
-| gRPC API | Tonic + Prost |
-| Database | PostgreSQL via SQLx |
-| Workflow durability | Temporal |
-| Container runtime | Docker / Podman (via bollard) for agent containers — Firecracker planned for later phase |
-| Container image distribution | OCI registries (Docker Hub, GHCR, private) |
-| Storage backend | SeaweedFS |
-| Storage transport | User-space NFSv3 (`nfsserve` crate) |
-| Secrets management | OpenBao |
-| IAM / OIDC | Keycloak |
-| Agent tool protocol | MCP (Model Context Protocol) |
-| Agent security protocol | SEAL (Signed Envelope Attestation Layer) |
-| Policy engine | Cedar |
-| Platform deployment | Podman Kube YAML + Makefile ([aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy)) |
-| Reverse proxy | Caddy (automatic TLS via ACME) |
-| Log aggregation | Loki + Promtail |
-| Distributed tracing | otelcol-contrib (OTLP receiver) → Jaeger |
-| Metrics & alerting | Prometheus + Grafana |
+| Layer                        | Technology                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| Language                     | Rust (2021 edition)                                                                         |
+| Async runtime                | Tokio                                                                                       |
+| HTTP API                     | Axum                                                                                        |
+| gRPC API                     | Tonic + Prost                                                                               |
+| Database                     | PostgreSQL via SQLx                                                                         |
+| Workflow durability          | Temporal                                                                                    |
+| Container runtime            | Docker / Podman (via bollard) for agent containers — Firecracker planned for later phase    |
+| Container image distribution | OCI registries (Docker Hub, GHCR, private)                                                  |
+| Storage backend              | SeaweedFS                                                                                   |
+| Storage transport            | User-space NFSv3 (`nfsserve` crate)                                                         |
+| Secrets management           | OpenBao                                                                                     |
+| IAM / OIDC                   | Keycloak                                                                                    |
+| Agent tool protocol          | MCP (Model Context Protocol)                                                                |
+| Agent security protocol      | SEAL (Signed Envelope Attestation Layer)                                                    |
+| Policy engine                | Cedar                                                                                       |
+| Platform deployment          | Podman Kube YAML + Makefile ([aegis-deploy](https://github.com/100monkeys-ai/aegis-deploy)) |
+| Reverse proxy                | Caddy (automatic TLS via ACME)                                                              |
+| Log aggregation              | Loki + Promtail                                                                             |
+| Distributed tracing          | otelcol-contrib (OTLP receiver) → Jaeger                                                    |
+| Metrics & alerting           | Prometheus + Grafana                                                                        |
 
 ---
 
@@ -79,24 +79,24 @@ AEGIS is a self-hosted autonomous agent orchestrator built in Rust. This page pr
 
 AEGIS is divided into 16 bounded contexts. Each owns its domain model and exposes well-defined service traits:
 
-| # | Context | Language | Primary Responsibility |
-|---|---|---|---|
-| 1 | Agent Lifecycle | Rust | Manifest CRUD, agent status |
-| 2 | Execution | Rust | 100monkeys loop, container lifecycle |
-| 3 | Workflow Orchestration | Rust | FSM execution, Blackboard, Temporal |
-| 4 | Security Policy | Rust | SEAL, Cedar policy engine, attestation |
-| 5 | Cortex (Memory) | Rust + Python | Pattern storage — cloud-managed; not in OSS deployment |
-| 6 | Swarm Coordination | Rust | Multi-agent hierarchy, messaging, locks |
-| 7 | Storage Gateway | Rust | NFS server, AegisFSAL, SeaweedFS |
-| 8 | Stimulus–Response | Rust | Two-stage hybrid routing pipeline for webhook ingestion and workflow routing |
-| 9 | Zaru Client (UX) | TypeScript | Unified operator and consumer interface (merged into BC-12) |
-| 10 | Client SDK | Python, TypeScript | Programmatic access (separate repos) |
-| 11 | Secrets & Identity | Rust | OpenBao, credential resolution |
-| 12 | Zaru Consumer Product | TypeScript / Rust | Consumer surface (separate deployment) |
-| 13 | IAM & Identity Federation | Rust | Keycloak OIDC, JWT validation |
-| 14 | SEAL Tooling Gateway | Rust | Macro-tool workflows, ephemeral CLI execution, credential proxy (standalone binary) |
-| 15 | Observability & Telemetry | Rust | OTLP log export, Prometheus metrics, telemetry resource injection |
-| 16 | Infrastructure & Hosting | Rust | Multi-node cluster topology, execution routing, inter-node security |
+| #   | Context                   | Language           | Primary Responsibility                                                              |
+| --- | ------------------------- | ------------------ | ----------------------------------------------------------------------------------- |
+| 1   | Agent Lifecycle           | Rust               | Manifest CRUD, agent status                                                         |
+| 2   | Execution                 | Rust               | 100monkeys loop, container lifecycle                                                |
+| 3   | Workflow Orchestration    | Rust               | FSM execution, Blackboard, Temporal                                                 |
+| 4   | Security Policy           | Rust               | SEAL, Cedar policy engine, attestation                                              |
+| 5   | Cortex (Memory)           | Rust + Python      | Pattern storage — cloud-managed; not in OSS deployment                              |
+| 6   | Swarm Coordination        | Rust               | Multi-agent hierarchy, messaging, locks                                             |
+| 7   | Storage Gateway           | Rust               | NFS server, AegisFSAL, SeaweedFS                                                    |
+| 8   | Stimulus–Response         | Rust               | Two-stage hybrid routing pipeline for webhook ingestion and workflow routing        |
+| 9   | Zaru Client (UX)          | TypeScript         | Unified operator and consumer interface (merged into BC-12)                         |
+| 10  | Client SDK                | Python, TypeScript | Programmatic access (separate repos)                                                |
+| 11  | Secrets & Identity        | Rust               | OpenBao, credential resolution                                                      |
+| 12  | Zaru Consumer Product     | TypeScript / Rust  | Consumer surface (separate deployment)                                              |
+| 13  | IAM & Identity Federation | Rust               | Keycloak OIDC, JWT validation                                                       |
+| 14  | SEAL Tooling Gateway      | Rust               | Macro-tool workflows, ephemeral CLI execution, credential proxy (standalone binary) |
+| 15  | Observability & Telemetry | Rust               | OTLP log export, Prometheus metrics, telemetry resource injection                   |
+| 16  | Infrastructure & Hosting  | Rust               | Multi-node cluster topology, execution routing, inter-node security                 |
 
 Contexts communicate via service traits and domain events. No cross-context direct database access.
 
@@ -170,13 +170,43 @@ Each layer only depends on layers below it. The domain layer has no external dep
 
 ## Deep Dives
 
-| Topic | Page |
-|---|---|
-| Execution engine (outer loop, inner loop, Dispatch Protocol) | [Execution Engine](/docs/architecture/execution-engine) |
-| Workflow FSM and Temporal integration | [Workflow Engine](/docs/architecture/workflow-engine) |
-| SEAL security protocol | [SEAL Protocol](/docs/gateway/seal-protocol) |
-| MCP tool routing paths | [Tool Routing](/docs/architecture/tool-routing) |
-| AegisFSAL and NFS storage gateway | [Storage Gateway](/docs/architecture/storage-gateway) |
-| Event bus and domain events | [Event Bus](/docs/architecture/event-bus) |
-| SEAL Tooling Gateway — macro-tool workflows, ephemeral CLI, credential proxy | [SEAL Gateway](/docs/gateway/overview) |
+| Topic                                                                                      | Page                                                              |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Execution engine (outer loop, inner loop, Dispatch Protocol)                               | [Execution Engine](/docs/architecture/execution-engine)           |
+| Workflow FSM and Temporal integration                                                      | [Workflow Engine](/docs/architecture/workflow-engine)             |
+| SEAL security protocol                                                                     | [SEAL Protocol](/docs/gateway/seal-protocol)                      |
+| MCP tool routing paths                                                                     | [Tool Routing](/docs/architecture/tool-routing)                   |
+| AegisFSAL and NFS storage gateway                                                          | [Storage Gateway](/docs/architecture/storage-gateway)             |
+| Event bus and domain events                                                                | [Event Bus](/docs/architecture/event-bus)                         |
+| SEAL Tooling Gateway — macro-tool workflows, ephemeral CLI, credential proxy               | [SEAL Gateway](/docs/gateway/overview)                            |
 | Stimulus-Response Routing — two-stage hybrid routing pipeline for external event ingestion | [Stimulus-Response Routing](/docs/architecture/stimulus-response) |
+| Edge Mode — user-installed daemons, Relay Coordinator, fleet operations                    | [Edge Mode Overview](/docs/concepts/edge-mode-overview)           |
+
+---
+
+## Edge Daemon Layer
+
+AEGIS supports a fourth deployment topology beyond Controller / Worker / Hybrid: **Edge Daemons** running on user-owned hosts (laptops, home servers, work VMs). They are not orchestrator peers — they do not appear in `healthy_workers()` and cannot receive `ForwardExecution`. Instead they accept MCP tool calls dispatched specifically to them via the `EdgeRouter`.
+
+Topology with edges:
+
+```text
+┌────────────────────┐
+│ Zaru / API caller  │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐         ┌──────────────────────┐
+│ AEGIS Controller   │ ◀─────▶ │ Relay Coordinator    │   (SaaS only)
+│ (Hybrid in OSS)    │         │ relay.example.com    │
+└────────┬───────────┘         └──────────┬───────────┘
+         │                                 │
+         │                                 │ gRPC bidi stream
+         ▼                                 ▼  (outbound from daemon)
+┌────────────────────┐         ┌──────────────────────┐
+│ Worker pool        │         │ Edge daemons         │
+│ (forwarded exec)   │         │ (user-owned hosts)   │
+└────────────────────┘         └──────────────────────┘
+```
+
+The Relay Coordinator is the SaaS multi-tenant deployment of `NodeClusterService` exposed at `relay.myzaru.com:443`. In OSS deployments edge handling co-locates with the controller — no separate process required.

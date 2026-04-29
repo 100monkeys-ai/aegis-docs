@@ -13,10 +13,10 @@ This page defines the infrastructure components required to run AEGIS, their int
 
 AEGIS provides two distinct deployment paths depending on your use case:
 
-| Path | Use Case | IAM | Secrets | TLS |
-|------|----------|-----|---------|-----|
-| `aegis init` | Local testing & evaluation | None (unauthenticated) | In-memory | None |
-| `aegis-deploy` | Production | None (optional add-on) | OpenBao | Caddy ACME |
+| Path           | Use Case                   | IAM                    | Secrets   | TLS        |
+| -------------- | -------------------------- | ---------------------- | --------- | ---------- |
+| `aegis init`   | Local testing & evaluation | None (unauthenticated) | In-memory | None       |
+| `aegis-deploy` | Production                 | None (optional add-on) | OpenBao   | Caddy ACME |
 
 **`aegis init`** bootstraps a minimal local stack suitable for experimenting with agents and
 workflows. It does not deploy Keycloak, OpenBao, or a TLS edge proxy. It is not suitable for
@@ -30,21 +30,21 @@ secrets management and TLS termination.
 
 ## Dependency Matrix
 
-| Component | Version | Role | Required |
-|---|---|---|---|
-| Docker Engine | 24.0+ | Agent container runtime, local development | ✓ (one of Docker or Podman) |
-| Podman | 4.0+ | Agent container runtime and production platform deployment | ✓ (one of Docker or Podman) |
-| PostgreSQL | 15+ | Primary data store (agents, executions, events) | ✓ |
-| Temporal | 1.22+ | Durable workflow execution | ✓ (if using workflows) |
-| SeaweedFS | 3.60+ | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓ |
-| OpenBao | 2.0+ | Secrets management | Recommended |
-| Caddy | 2.9+ | Reverse proxy with automatic TLS | Production only |
-| otelcol-contrib | 0.99+ | OTLP fan-out (logs → Loki, traces → Jaeger) | Required |
-| Jaeger | 1.55+ | Distributed tracing | Recommended |
-| Prometheus | 2.51+ | Metrics collection and alerting | Recommended |
-| Grafana | 10.4+ | Dashboards and visualization | Recommended |
-| Loki | 3.0+ | Log aggregation | Recommended |
-| Linux kernel | 5.15+ | KVM support for Firecracker (planned later phase) | Later phase |
+| Component       | Version | Role                                                                         | Required                    |
+| --------------- | ------- | ---------------------------------------------------------------------------- | --------------------------- |
+| Docker Engine   | 24.0+   | Agent container runtime, local development                                   | ✓ (one of Docker or Podman) |
+| Podman          | 4.0+    | Agent container runtime and production platform deployment                   | ✓ (one of Docker or Podman) |
+| PostgreSQL      | 15+     | Primary data store (agents, executions, events)                              | ✓                           |
+| Temporal        | 1.22+   | Durable workflow execution                                                   | ✓ (if using workflows)      |
+| SeaweedFS       | 3.60+   | Volume storage backend — see [SeaweedFS Storage](/docs/deployment/seaweedfs) | ✓                           |
+| OpenBao         | 2.0+    | Secrets management                                                           | Recommended                 |
+| Caddy           | 2.9+    | Reverse proxy with automatic TLS                                             | Production only             |
+| otelcol-contrib | 0.99+   | OTLP fan-out (logs → Loki, traces → Jaeger)                                  | Required                    |
+| Jaeger          | 1.55+   | Distributed tracing                                                          | Recommended                 |
+| Prometheus      | 2.51+   | Metrics collection and alerting                                              | Recommended                 |
+| Grafana         | 10.4+   | Dashboards and visualization                                                 | Recommended                 |
+| Loki            | 3.0+    | Log aggregation                                                              | Recommended                 |
+| Linux kernel    | 5.15+   | KVM support for Firecracker (planned later phase)                            | Later phase                 |
 
 Minimum viable deployment requires only a container runtime (Docker or Podman), PostgreSQL, and SeaweedFS. For the full platform deployment with Podman pods, see [Deployment Profiles](/docs/deployment/profiles).
 
@@ -101,12 +101,12 @@ Agent containers run on `aegis-exec-network`, isolated from platform pods on `ae
 
 ### Development / Single-Node
 
-| Resource | Minimum | Recommended |
-|---|---|---|
-| CPU | 4 cores | 8+ cores |
-| RAM | 8 GiB | 16 GiB |
-| Disk | 40 GiB SSD | 200 GiB SSD |
-| OS | Linux, macOS (Docker Desktop or Podman Desktop) | Ubuntu 22.04 LTS |
+| Resource | Minimum                                         | Recommended      |
+| -------- | ----------------------------------------------- | ---------------- |
+| CPU      | 4 cores                                         | 8+ cores         |
+| RAM      | 8 GiB                                           | 16 GiB           |
+| Disk     | 40 GiB SSD                                      | 200 GiB SSD      |
+| OS       | Linux, macOS (Docker Desktop or Podman Desktop) | Ubuntu 22.04 LTS |
 
 Note: macOS is supported for local development only (Docker Desktop or Podman Desktop). Production deployments require Linux.
 
@@ -114,11 +114,11 @@ Note: macOS is supported for local development only (Docker Desktop or Podman De
 
 Minimum 3 nodes for high availability:
 
-| Node Type | Role | CPU | RAM | Disk |
-|---|---|---|---|---|
-| AEGIS Orchestrator | Agent execution host | 16 cores | 32 GiB | 100 GiB SSD |
-| Database | PostgreSQL + Temporal | 8 cores | 16 GiB | 500 GiB NVMe |
-| Storage | SeaweedFS master + filer | 4 cores | 8 GiB | 1+ TiB HDD or NVMe |
+| Node Type          | Role                     | CPU      | RAM    | Disk               |
+| ------------------ | ------------------------ | -------- | ------ | ------------------ |
+| AEGIS Orchestrator | Agent execution host     | 16 cores | 32 GiB | 100 GiB SSD        |
+| Database           | PostgreSQL + Temporal    | 8 cores  | 16 GiB | 500 GiB NVMe       |
+| Storage            | SeaweedFS master + filer | 4 cores  | 8 GiB  | 1+ TiB HDD or NVMe |
 
 Scale AEGIS Orchestrator nodes horizontally to increase concurrent execution capacity. PostgreSQL and SeaweedFS can be scaled independently.
 
@@ -144,14 +144,14 @@ docker compose -f ~/.aegis/docker-compose.yml logs -f
 
 ### Dev Stack Services
 
-| Service | Port | Purpose |
-|---|---|---|
-| PostgreSQL | 5432 | AEGIS database |
+| Service          | Port | Purpose                                                                      |
+| ---------------- | ---- | ---------------------------------------------------------------------------- |
+| PostgreSQL       | 5432 | AEGIS database                                                               |
 | SeaweedFS Master | 9333 | SeaweedFS coordination — see [SeaweedFS Storage](/docs/deployment/seaweedfs) |
-| SeaweedFS Filer | 8888 | SeaweedFS POSIX layer |
-| SeaweedFS Volume | 8080 | SeaweedFS data server |
-| Temporal Server | 7233 | Workflow execution |
-| Temporal Web UI | 8082 | Workflow visibility UI |
+| SeaweedFS Filer  | 8888 | SeaweedFS POSIX layer                                                        |
+| SeaweedFS Volume | 8080 | SeaweedFS data server                                                        |
+| Temporal Server  | 7233 | Workflow execution                                                           |
+| Temporal Web UI  | 8082 | Workflow visibility UI                                                       |
 
 Clone and start the AEGIS daemon against the dev stack:
 
@@ -164,35 +164,61 @@ aegis daemon start --config ./aegis-config.yaml
 
 ## Ports
 
-| Port | Protocol | Service | Pod | Exposure |
-|---|---|---|---|---|
-| 8088 | HTTP | AEGIS REST API | core | Internal / load-balanced |
-| 50051 | gRPC | AEGIS gRPC API | core | Internal / load-balanced |
-| 9091 | HTTP | Prometheus metrics | core | Internal (scrape target) |
-| 2049 | TCP | NFS Server Gateway | core | Agent container LAN only |
-| 5432 | TCP | PostgreSQL | database | Internal only |
-| 9187 | HTTP | PostgreSQL Exporter | database | Internal (scrape target) |
-| 7233 | gRPC | Temporal Server | temporal | Internal only |
-| 8082 | HTTP | Temporal UI | temporal | Internal / proxied |
-| 8200 | HTTP | OpenBao | secrets | Internal only |
-| 9333 | HTTP | SeaweedFS Master | storage | Internal only |
-| 8080 | HTTP | SeaweedFS Volume | storage | Internal only |
-| 8888 | HTTP | SeaweedFS Filer | storage | Internal only |
-| 16686 | HTTP | Jaeger UI | observability | Internal / proxied |
-| 4317 | gRPC | otelcol OTLP gRPC | observability | Internal only |
-| 9090 | HTTP | Prometheus | observability | Internal / proxied |
-| 3300 | HTTP | Grafana | observability | Internal / proxied |
-| 3100 | HTTP | Loki | observability | Internal only |
-| 8089 | HTTP | SEAL Gateway | seal-gateway | Internal / proxied |
-| 50055 | gRPC | SEAL Gateway gRPC | seal-gateway | Internal only |
-| 3000 | HTTP | Zaru Client | zaru | Internal / proxied |
-| 3001 | HTTP | Zaru MCP Server | zaru | Internal / proxied |
-| 8180 | HTTP | Keycloak IAM | iam | Internal / proxied |
-| 4318 | HTTP | otelcol OTLP HTTP | observability | Internal only |
-| 13133 | HTTP | otelcol health | observability | Internal only |
-| 50052 | gRPC | Cortex Embedding Service | cortex | Internal only |
-| 6333 | HTTP | Qdrant Vector DB | cortex | Internal only |
-| 6334 | gRPC | Qdrant gRPC | cortex | Internal only |
-| 80/443 | HTTP/TLS | Caddy Reverse Proxy | edge | Public |
+| Port   | Protocol | Service                  | Pod           | Exposure                 |
+| ------ | -------- | ------------------------ | ------------- | ------------------------ |
+| 8088   | HTTP     | AEGIS REST API           | core          | Internal / load-balanced |
+| 50051  | gRPC     | AEGIS gRPC API           | core          | Internal / load-balanced |
+| 9091   | HTTP     | Prometheus metrics       | core          | Internal (scrape target) |
+| 2049   | TCP      | NFS Server Gateway       | core          | Agent container LAN only |
+| 5432   | TCP      | PostgreSQL               | database      | Internal only            |
+| 9187   | HTTP     | PostgreSQL Exporter      | database      | Internal (scrape target) |
+| 7233   | gRPC     | Temporal Server          | temporal      | Internal only            |
+| 8082   | HTTP     | Temporal UI              | temporal      | Internal / proxied       |
+| 8200   | HTTP     | OpenBao                  | secrets       | Internal only            |
+| 9333   | HTTP     | SeaweedFS Master         | storage       | Internal only            |
+| 8080   | HTTP     | SeaweedFS Volume         | storage       | Internal only            |
+| 8888   | HTTP     | SeaweedFS Filer          | storage       | Internal only            |
+| 16686  | HTTP     | Jaeger UI                | observability | Internal / proxied       |
+| 4317   | gRPC     | otelcol OTLP gRPC        | observability | Internal only            |
+| 9090   | HTTP     | Prometheus               | observability | Internal / proxied       |
+| 3300   | HTTP     | Grafana                  | observability | Internal / proxied       |
+| 3100   | HTTP     | Loki                     | observability | Internal only            |
+| 8089   | HTTP     | SEAL Gateway             | seal-gateway  | Internal / proxied       |
+| 50055  | gRPC     | SEAL Gateway gRPC        | seal-gateway  | Internal only            |
+| 3000   | HTTP     | Zaru Client              | zaru          | Internal / proxied       |
+| 3001   | HTTP     | Zaru MCP Server          | zaru          | Internal / proxied       |
+| 8180   | HTTP     | Keycloak IAM             | iam           | Internal / proxied       |
+| 4318   | HTTP     | otelcol OTLP HTTP        | observability | Internal only            |
+| 13133  | HTTP     | otelcol health           | observability | Internal only            |
+| 50052  | gRPC     | Cortex Embedding Service | cortex        | Internal only            |
+| 6333   | HTTP     | Qdrant Vector DB         | cortex        | Internal only            |
+| 6334   | gRPC     | Qdrant gRPC              | cortex        | Internal only            |
+| 80/443 | HTTP/TLS | Caddy Reverse Proxy      | edge          | Public                   |
 
 Port 2049 (NFS) must be reachable by agent containers but should **not** be exposed to external networks. Public-facing traffic enters through Caddy on ports 80/443 only.
+
+---
+
+## Edge Daemon Layer
+
+In addition to controller and worker nodes, AEGIS supports user-installed **edge daemons** that connect outbound from a user's own host to a controller (OSS) or to the **Relay Coordinator** at `relay.example.com:443` (SaaS). Edge daemons are not orchestrator peers — they receive `InvokeTool` commands targeted specifically at them via the `EdgeRouter`.
+
+### Dependency matrix
+
+| Component                 | Required     | Notes                                                                                                    |
+| ------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| gRPC client (h2 over TLS) | yes          | Outbound to the controller endpoint baked into the enrollment token's `cep` claim.                       |
+| systemd / launchd / NSSM  | yes (one of) | The daemon runs as a user-level service.                                                                 |
+| FUSE                      | optional     | Only if local filesystem mounts are part of the daemon's tool surface.                                   |
+| OpenBao backend           | optional     | The daemon defaults to a file-backed local secrets store; OpenBao can be wired in via `secrets.backend`. |
+| Inbound listening port    | **no**       | The daemon does not bind any inbound port.                                                               |
+
+### Endpoint
+
+| Subdomain           | Purpose                                             | Notes                                                                               |
+| ------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `relay.example.com` | Multi-tenant Relay Coordinator (SaaS edge endpoint) | TLS-terminated at Caddy, h2c reverse-proxy to the Relay pod on internal port 50056. |
+
+In OSS deployments edge handling co-locates with the controller — the existing `50056` cluster gRPC port accepts edge enrollment and stream connections alongside worker membership.
+
+For the daemon-side install, see [edge daemon installation](/docs/deployment/edge-daemon-installation); for the Relay-side deployment, see [edge relay deployment](/docs/deployment/edge-relay-deployment).

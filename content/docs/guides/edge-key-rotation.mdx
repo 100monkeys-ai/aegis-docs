@@ -1,0 +1,216 @@
+---
+title: Edge Key Rotation
+description: When and how to rotate edge daemon keys, the dual-signature protocol, the overlap window, and fleet-wide rotation for blast-radius events.
+---
+
+# Edge Key Rotation
+
+Key rotation on edge daemons is **routine hygiene**, not an emergency drill — but the same machinery handles emergencies cleanly when you need it. This guide covers when to rotate, how the rotation works under the hood, what it does to the live stream, and how to fan rotation out across many hosts at once.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+---
+
+## When to rotate
+
+Three triggers, in increasing order of urgency:
+
+### Routine
+
+Your security policy may set a rotation cadence — every 90 days, every 6 months, on major staff changes. Routine rotation is per-host, scheduled by the host owner, low-stakes:
+
+```bash
+aegis edge keys rotate
+```
+
+### Server-side scope or role change
+
+If you've changed the daemon's tenant binding scope or the security context spec it should evaluate against, force a fresh `NodeSecurityToken`:
+
+```bash
+aegis edge token refresh
+```
+
+This refreshes the token without rotating the underlying key.
+
+### Suspected compromise
+
+If you suspect a key has been leaked — a host was lost, a backup leaked, a credential was committed — rotate **immediately** on every potentially-affected host. This is what fleet rotation is for:
+
+```bash
+aegis edge fleet keys rotate --target tags=AnyOf(potentially-affected,prod)
+```
+
+If the blast radius is unclear, rotate everything:
+
+```bash
+aegis edge fleet keys rotate --target all --mode rolling=10 --on-error continue
+```
+
+---
+
+## What `aegis edge keys rotate` does
+
+The CLI orchestrates a five-step atomic rotation:
+
+1. **Generate** a fresh Ed25519 keypair on the host. The new key is written to a temporary path, mode `0600`.
+2. **Sign** a `RotateEdgeKeyRequest` with **both** the old key (proof of authority) and the new key (proof of possession).
+3. **Submit** the request via the `RotateEdgeKey` RPC on `NodeClusterService`.
+4. **Server-side atomic transaction** in PostgreSQL:
+   - `edge_daemons.public_key` is updated.
+   - The old `NodeSecurityToken` is added to the token blacklist.
+   - A new `NodeSecurityToken` bound to the new key is issued.
+5. **Atomic local swap**: the new key replaces `~/.aegis/edge/node.key`; the new token replaces `~/.aegis/edge/node.token`; the old key is moved to `~/.aegis/edge/archive/<rfc3339>.key` and retained for `--keep-old` (default 24h).
+
+If any step fails, the local swap is aborted and the daemon continues using the old key. The server does not commit the rotation unless every check succeeds.
+
+### Dual-signature: why both?
+
+The `RotateEdgeKeyRequest` carries two signatures:
+
+- **Old-key signature** (in the outer `SealNodeEnvelope`) proves authority — the request comes from someone holding the currently-trusted key.
+- **New-key signature** proves possession — the entity asking for the rotation actually holds the new private key, not just an attacker-supplied pubkey.
+
+| Attack                                                             | Defended by                                                                                   |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Attacker steals the old key, rotates to a key only _they_ hold     | New-key signature requirement — the attacker can't sign with a key they don't have.           |
+| Attacker injects a pubkey without holding the matching private key | Old-key signature requirement — the attacker needs the current key to authorize the rotation. |
+
+A single-signature rotation defeats one of those checks; dual-signature defeats neither.
+
+### The overlap window
+
+The active gRPC stream is **not** dropped during rotation. The server records both pubkeys for a brief overlap window so the daemon can transparently switch to the new token mid-stream on its next envelope.
+
+In practice this means rotation is invisible to in-flight tool calls. A rotation issued in the middle of a long-running `cmd.run` will not abort it. The next `Heartbeat` after the swap carries the new envelope; the server validates it against the new pubkey; the stream continues.
+
+---
+
+## What `aegis edge token refresh` does
+
+This is the lighter operation — refresh just the `NodeSecurityToken`, keep the underlying key.
+
+```bash
+aegis edge token refresh
+```
+
+Use this after server-side scope or role changes that need to take effect immediately rather than waiting for `token_refresh_margin_secs` to naturally trigger a refresh.
+
+The daemon re-attests with its existing key and is issued a new token. The old token is blacklisted. The new token replaces `~/.aegis/edge/node.token` atomically.
+
+---
+
+## What `aegis edge keys revoke-remote` does
+
+The operator-side hammer. Mark a daemon revoked from any operator workstation, not from the host itself:
+
+```bash
+aegis edge keys revoke-remote <node-id>
+```
+
+Three things happen server-side:
+
+1. `EdgeDaemon.status = Revoked`.
+2. The active `NodeSecurityToken` is added to the blacklist.
+3. The active gRPC stream is dropped.
+
+The daemon's next reconnect attempt fails attestation (its key is no longer trusted on the server). To re-bind, the host owner must obtain a fresh enrollment token and run `aegis edge enroll` again. The local key file remains on the host until manually removed via `aegis edge logout`.
+
+<Callout type="warn">
+  `revoke-remote` is the right tool when you can't get to the host (lost laptop,
+  gone employee, compromised network). For routine decommissioning, prefer
+  `aegis edge logout` on the host so the local state is cleaned up.
+</Callout>
+
+---
+
+## Fleet-wide rotation
+
+When the blast radius spans many hosts, run rotation as a fleet operation:
+
+```bash
+aegis edge fleet keys rotate \
+  --target tags=AnyOf(potentially-affected,prod) \
+  --mode rolling=5 \
+  --on-error continue \
+  --deadline 60s
+```
+
+### Recommended modes
+
+| Mode                       | When to use                                                                                                |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Sequential`               | Tiny fleets (≤5), or when every rotation needs human attention.                                            |
+| `Rolling { batch: 5..10 }` | The default for production fleets — bounds the concurrent server load while keeping the operation flowing. |
+| `Parallel`                 | Read-only environments, or genuine emergencies where you accept the load spike.                            |
+
+### Recommended failure policy
+
+| Policy            | When to use                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `ContinueOnError` | Default — you want every host that _can_ rotate to rotate, and you'll handle the failures separately.                    |
+| `StopAfter(N)`    | If a tolerance threshold matters (e.g. "if more than 3 hosts fail to rotate, halt and investigate").                     |
+| `FailFast`        | Almost never appropriate for rotation — a single transient failure shouldn't halt rotation across the rest of the fleet. |
+
+### Reading the per-node results
+
+```text
+[wave 1] starting 5 of 47 nodes
+  [n-7a3b2f web-east-1]   ✔ rotated (old key archived; new token bound)
+  [n-1c8d4e web-east-2]   ✔ rotated
+  [n-9f2a31 db-mirror-1]  ✔ rotated
+  [n-4e7c80 db-mirror-2]  ✖ failed (old token blacklisted before swap; manual intervention required)
+  [n-3b1d9f bastion]      ✔ rotated
+[wave 2] starting 5 of 47 nodes
+  ...
+```
+
+A failed rotation on a single host **does not** strand the daemon — the local state still holds the old key, and the daemon continues using its existing token until the next refresh cycle. Investigate with `aegis edge status` on the failed host and re-run `aegis edge keys rotate` directly.
+
+---
+
+## After rotation
+
+Confirm health from Zaru's edge host list — every rotated host should still show **Connected** within a heartbeat interval. Spot-check from any one host:
+
+```bash
+aegis edge status
+```
+
+```text
+node_id:        n-7a3b2f...
+tenant:         u-8d1c... (personal)
+status:         Connected
+key_fingerprint: SHA256:Lc8j...   # new fingerprint
+token_expires:   2026-05-28T14:32:11Z
+```
+
+The archive directory holds rotated keys for the configured retention window:
+
+```bash
+ls ~/.aegis/edge/archive/
+2026-04-28T14:32:11Z.key
+```
+
+After `--keep-old` expires, the file is deleted. To purge immediately, just `rm` it.
+
+---
+
+## Anti-patterns
+
+| ❌ Don't                                         | ✅ Do                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| Skip rotation because "nothing has changed"      | Rotate on cadence — your future self thanks you.                         |
+| Reuse a key across multiple daemons              | Each daemon must hold its own keypair; reuse breaks identity.            |
+| Run fleet rotation with `FailFast`               | A single transient failure halts the rotation; not the right shape.      |
+| Manually edit `~/.aegis/edge/node.key`           | Always use `aegis edge keys rotate` so the dual-signature protocol runs. |
+| Forget to confirm Connected status post-rotation | Spot-check Zaru and at least one host before declaring success.          |
+
+---
+
+## What's next
+
+- [Edge Security](/docs/concepts/edge-security) — the full security model behind the rotation protocol.
+- [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge keys` and `aegis edge token` flag.
+- [Edge Fleet Operations](/docs/guides/edge-fleet-operations) — fleet rotation is just one shape of fleet run.
+- [Edge Operational Patterns](/docs/deployment/edge-operational-patterns) — day-2 ops including key-rotation cadence.

@@ -13,10 +13,10 @@ AEGIS uses **Keycloak** as its OIDC identity provider. Keycloak issues JWTs for 
 
 AEGIS uses multiple Keycloak realms:
 
-| Realm | Purpose | Audience |
-|---|---|---|
-| `aegis-system` | Operator and admin identities, API access | DevOps / SRE / SDK clients |
-| `tenant-{slug}` | Per-enterprise consumer tenant (optional) | Enterprise end-users |
+| Realm           | Purpose                                   | Audience                   |
+| --------------- | ----------------------------------------- | -------------------------- |
+| `aegis-system`  | Operator and admin identities, API access | DevOps / SRE / SDK clients |
+| `tenant-{slug}` | Per-enterprise consumer tenant (optional) | Enterprise end-users       |
 
 For most self-hosted deployments, only the `aegis-system` realm is required.
 
@@ -26,11 +26,11 @@ For most self-hosted deployments, only the `aegis-system` realm is required.
 
 The `aegis-system` realm issues JWTs containing an `aegis_role` claim that determines operator authorization level:
 
-| Role | Permissions |
-|---|---|
-| `aegis:admin` | Full read/write on all objects; daemon configuration; user management |
+| Role             | Permissions                                                                 |
+| ---------------- | --------------------------------------------------------------------------- |
+| `aegis:admin`    | Full read/write on all objects; daemon configuration; user management       |
 | `aegis:operator` | Deploy/manage agents and workflows; start/cancel executions; manage volumes |
-| `aegis:readonly` | Read any object; list executions; stream events; no write access |
+| `aegis:readonly` | Read any object; list executions; stream events; no write access            |
 
 Configure roles in Keycloak using the `aegis-system` realm's client roles and a protocol mapper to include them as a flat array in the JWT claim `aegis_role`.
 
@@ -164,11 +164,11 @@ aegis-system realm JWT
 
 The `aegis_role` claim determines the operator's read/write scope within that SecurityContext:
 
-| Role | Identity Kind | SecurityContext | Mutations |
-|------|--------------|-----------------|-----------|
-| `aegis:admin` | `IdentityKind::Operator` | `aegis-system-operator` | Full — all safe, destructive, and orchestrator commands |
+| Role             | Identity Kind            | SecurityContext         | Mutations                                                   |
+| ---------------- | ------------------------ | ----------------------- | ----------------------------------------------------------- |
+| `aegis:admin`    | `IdentityKind::Operator` | `aegis-system-operator` | Full — all safe, destructive, and orchestrator commands     |
 | `aegis:operator` | `IdentityKind::Operator` | `aegis-system-operator` | Limited — safe commands and restricted destructive commands |
-| `aegis:readonly` | `IdentityKind::Operator` | `aegis-system-operator` | None — read-only access, no mutations |
+| `aegis:readonly` | `IdentityKind::Operator` | `aegis-system-operator` | None — read-only access, no mutations                       |
 
 All three roles map to the same `aegis-system-operator` SecurityContext (which defines the tool capabilities ceiling). The role-based differentiation happens at the API handler level: `aegis:readonly` operators can invoke read tools (`aegis.system.info`) but not write tools (`aegis.agent.delete`, `aegis.system.config`).
 
@@ -209,3 +209,31 @@ Requests without a valid Bearer token receive `401 Unauthorized`. Requests with 
 ## OpenBao OIDC Integration
 
 OpenBao can be configured to use Keycloak as its human operator authentication backend. This allows vault administrators to log in with their Keycloak credentials rather than maintaining separate OpenBao tokens. See the [Secrets Management](/docs/deployment/secrets) page for configuration details.
+
+---
+
+## Edge Mode Identity
+
+Edge daemons and the Relay Coordinator add a small set of Keycloak entities and roles. These are seeded by the standard bootstrap scripts (`bootstrap-keycloak.sh`, `bootstrap-relay-coordinator.sh`) and surface in the standard role-based authorization flow above.
+
+### Service accounts
+
+| Client              | Purpose                                                                                                  | Realm          |
+| ------------------- | -------------------------------------------------------------------------------------------------------- | -------------- |
+| `relay-coordinator` | The Relay Coordinator service-account client; obtains tokens for edge enrollment and routing operations. | `aegis-system` |
+
+### Roles
+
+| Role                      | Granted to                                         | Required for                                                                                                     |
+| ------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `aegis.edge.enroll`       | Users / SAs that may issue enrollment tokens       | `POST /api/edge/enrollment-tokens`                                                                               |
+| `aegis.edge.heartbeat`    | Edge daemons (via their `NodeSecurityToken`)       | Heartbeat / capability-update RPCs                                                                               |
+| `aegis.edge.hosts.read`   | Operators reading host lists                       | `GET /api/edge/hosts*`                                                                                           |
+| `aegis.edge.hosts.write`  | Operators editing tags / revoking hosts            | `PATCH`/`DELETE` on `/api/edge/hosts*`                                                                           |
+| `aegis.edge.groups.write` | Operators managing groups                          | `POST`/`PATCH`/`DELETE` on `/api/edge/groups*`                                                                   |
+| `aegis.edge.fleet.read`   | Operators previewing targets / reading run history | `POST /api/edge/fleet/preview`, `GET /api/edge/fleet/runs`                                                       |
+| `aegis.edge.fleet.manage` | Operators dispatching and cancelling fleet runs    | `POST /api/edge/fleet/invoke`, `POST /api/edge/fleet/:id/cancel`, the `aegis.edge.fleet.*` system-tier MCP tools |
+
+### Tenant resolution
+
+Every endpoint and every fleet operation is filtered through `effective_tenant`. Service accounts using `X-Tenant-Id` resolve to the delegated tenant; cross-tenant access is impossible at the router boundary regardless of how the target is expressed. See [multi-tenancy](/docs/deployment/multi-tenancy) for the broader tenant isolation guarantees.

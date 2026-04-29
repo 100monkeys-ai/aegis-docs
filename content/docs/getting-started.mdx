@@ -3,12 +3,13 @@ title: Getting Started
 description: Install AEGIS, start the local stack, and run your first agent execution.
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from "fumadocs-ui/components/callout";
 
 <Callout type="warn">
-  `aegis init` is designed for local testing and evaluation only. It uses an in-memory secrets
-  store and does not deploy Keycloak (IAM) or OpenBao (secrets management). For production
-  deployments, use the [aegis-deploy repository](https://github.com/100monkeys-ai/aegis-deploy).
+  `aegis init` is designed for local testing and evaluation only. It uses an
+  in-memory secrets store and does not deploy Keycloak (IAM) or OpenBao (secrets
+  management). For production deployments, use the [aegis-deploy
+  repository](https://github.com/100monkeys-ai/aegis-deploy).
 </Callout>
 
 # Getting Started
@@ -130,3 +131,12 @@ See the [Production Deployment Guide](/docs/deployment/podman) for full details.
 - **[The Execution Loop](/docs/agents/execution)** — understand how the 100monkeys loop and inner tool interception work.
 - **[Agent Manifest Reference](/docs/reference/agent-manifest)** — every field in the manifest spec.
 - **[Deployment: Infrastructure Overview](/docs/deployment/infrastructure)** — moving to production.
+
+---
+
+## Running tools on your own hosts
+
+If you've finished the local-stack tour and want AEGIS to execute MCP tool calls on a host _you own_ — your laptop, home server, work VM — install the AEGIS edge daemon. The daemon binds to your tenant via a one-time enrollment token, then opens an outbound gRPC stream to the platform so it works behind NAT.
+
+- [Edge Mode Overview](/docs/concepts/edge-mode-overview) — start here for the conceptual model.
+- [Edge Host Setup](/docs/guides/edge-host-setup) — the step-by-step install + enroll guide.

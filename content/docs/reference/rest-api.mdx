@@ -11,12 +11,12 @@ The AEGIS Orchestrator exposes an HTTP API on port `8080` (default). All request
 
 ## Authentication
 
-| Route group | Mechanism |
-|-------------|-----------|
-| Most endpoints | Keycloak Bearer JWT: `Authorization: Bearer <token>` |
+| Route group                  | Mechanism                                                |
+| ---------------------------- | -------------------------------------------------------- |
+| Most endpoints               | Keycloak Bearer JWT: `Authorization: Bearer <token>`     |
 | `POST /v1/webhooks/{source}` | HMAC-SHA256 signature: `X-Aegis-Signature: sha256=<hex>` |
-| `POST /v1/dispatch-gateway` | Internal — no external auth (agent containers only) |
-| `GET /health` | None |
+| `POST /v1/dispatch-gateway`  | Internal — no external auth (agent containers only)      |
+| `GET /health`                | None                                                     |
 
 ### Service Account Tenant Delegation
 
@@ -34,16 +34,16 @@ Look up a deployed agent by its unique name. Returns the agent's ID and manifest
 
 **Path parameters:**
 
-| Parameter | Description |
-|-----------|-------------|
-| `name` | The unique name of the agent (e.g. `code-reviewer`) |
+| Parameter | Description                                         |
+| --------- | --------------------------------------------------- |
+| `name`    | The unique name of the agent (e.g. `code-reviewer`) |
 
 **Request headers:**
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | ✓ | Bearer JWT |
-| `X-Tenant-Id` | No | For service accounts: scope the lookup to this tenant instead of the default `aegis-system` tenant |
+| Header          | Required | Description                                                                                        |
+| --------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `Authorization` | ✓        | Bearer JWT                                                                                         |
+| `X-Tenant-Id`   | No       | For service accounts: scope the lookup to this tenant instead of the default `aegis-system` tenant |
 
 **Response `200`:**
 
@@ -57,8 +57,8 @@ Look up a deployed agent by its unique name. Returns the agent's ID and manifest
 
 **Errors:**
 
-| HTTP | Body | Cause |
-|------|------|-------|
+| HTTP  | Body                           | Cause                                                 |
+| ----- | ------------------------------ | ----------------------------------------------------- |
 | `404` | `{"error": "Agent not found"}` | No agent with that name exists in the resolved tenant |
 
 ---
@@ -69,10 +69,10 @@ List all deployed agents visible to the caller's resolved tenant context.
 
 **Request headers:**
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | ✓ | Bearer JWT |
-| `X-Tenant-Id` | No | For service accounts: scope the listing to this tenant instead of the default `aegis-system` tenant |
+| Header          | Required | Description                                                                                         |
+| --------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `Authorization` | ✓        | Bearer JWT                                                                                          |
+| `X-Tenant-Id`   | No       | For service accounts: scope the listing to this tenant instead of the default `aegis-system` tenant |
 
 **Response `200`:**
 
@@ -98,10 +98,10 @@ Start an agent execution. Returns immediately with the `execution_id`; use the S
 
 **Request headers:**
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | ✓ | Bearer JWT |
-| `X-Tenant-Id` | No | For service accounts: scope the execution to this tenant instead of the default `aegis-system` tenant |
+| Header          | Required | Description                                                                                           |
+| --------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `Authorization` | ✓        | Bearer JWT                                                                                            |
+| `X-Tenant-Id`   | No       | For service accounts: scope the execution to this tenant instead of the default `aegis-system` tenant |
 
 **Request body:**
 
@@ -112,10 +112,10 @@ Start an agent execution. Returns immediately with the `execution_id`; use the S
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `agent_id` | string (UUID) | ✓ | ID of a deployed agent |
-| `input` | string | ✓ | Task input passed to the agent |
+| Field      | Type          | Required | Description                    |
+| ---------- | ------------- | -------- | ------------------------------ |
+| `agent_id` | string (UUID) | ✓        | ID of a deployed agent         |
+| `input`    | string        | ✓        | Task input passed to the agent |
 
 **Response `200`:**
 
@@ -127,10 +127,10 @@ Start an agent execution. Returns immediately with the `execution_id`; use the S
 
 **Errors:**
 
-| HTTP | Body | Cause |
-|------|------|-------|
+| HTTP  | Body                            | Cause                          |
+| ----- | ------------------------------- | ------------------------------ |
 | `400` | `{"error": "Invalid agent ID"}` | `agent_id` is not a valid UUID |
-| `500` | `{"error": "<message>"}` | Execution failed to start |
+| `500` | `{"error": "<message>"}`        | Execution failed to start      |
 
 ---
 
@@ -157,13 +157,13 @@ data: {"execution_completed":{"execution_id":"exec-uuid","final_output":"def is_
 ```javascript
 const es = new EventSource(
   `https://your-aegis-node/v1/executions/${executionId}/stream`,
-  { headers: { Authorization: `Bearer ${token}` } }
+  { headers: { Authorization: `Bearer ${token}` } },
 );
 
 es.onmessage = (e) => {
   const event = JSON.parse(e.data);
   if (event.execution_completed) {
-    console.log('Output:', event.execution_completed.final_output);
+    console.log("Output:", event.execution_completed.final_output);
     es.close();
   }
 };
@@ -215,9 +215,9 @@ Get a specific pending approval request.
 
 **Errors:**
 
-| HTTP | Body | Cause |
-|------|------|-------|
-| `400` | `{"error": "Invalid request ID"}` | Not a valid UUID |
+| HTTP  | Body                                                  | Cause                               |
+| ----- | ----------------------------------------------------- | ----------------------------------- |
+| `400` | `{"error": "Invalid request ID"}`                     | Not a valid UUID                    |
 | `200` | `{"error": "Request not found or already completed"}` | Request expired or already resolved |
 
 ---
@@ -391,11 +391,11 @@ Ingest a stimulus from an internal service or operator. Authenticated by Keycloa
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `source` | string | ✓ | Source identifier. Use `"http_api"` or a custom source name. |
-| `content` | string | ✓ | Stimulus payload — natural language or JSON string. |
-| `idempotency_key` | string | — | Deduplication key. Scoped to `(source, key)` with 24-hour TTL. |
+| Field             | Type   | Required | Description                                                    |
+| ----------------- | ------ | -------- | -------------------------------------------------------------- |
+| `source`          | string | ✓        | Source identifier. Use `"http_api"` or a custom source name.   |
+| `content`         | string | ✓        | Stimulus payload — natural language or JSON string.            |
+| `idempotency_key` | string | —        | Deduplication key. Scoped to `(source, key)` with 24-hour TTL. |
 
 **Response `200`:**
 
@@ -408,12 +408,12 @@ Ingest a stimulus from an internal service or operator. Authenticated by Keycloa
 
 **Errors:**
 
-| HTTP | Code | Cause |
-|------|------|-------|
-| `409` | `idempotent_duplicate` | Already processed within TTL window |
+| HTTP  | Code                    | Cause                                  |
+| ----- | ----------------------- | -------------------------------------- |
+| `409` | `idempotent_duplicate`  | Already processed within TTL window    |
 | `422` | `classification_failed` | RouterAgent confidence below threshold |
-| `422` | `no_router_configured` | No direct route and no RouterAgent |
-| `500` | `workflow_error` | Workflow execution failed to start |
+| `422` | `no_router_configured`  | No direct route and no RouterAgent     |
+| `500` | `workflow_error`        | Workflow execution failed to start     |
 
 ---
 
@@ -423,10 +423,10 @@ Ingest a webhook from an external system. Authenticated by HMAC-SHA256.
 
 **Required headers:**
 
-| Header | Format | Description |
-|--------|--------|-------------|
+| Header              | Format         | Description                                                  |
+| ------------------- | -------------- | ------------------------------------------------------------ |
 | `X-Aegis-Signature` | `sha256=<hex>` | HMAC-SHA256 of the raw body using the source's shared secret |
-| `X-Idempotency-Key` | any string | Optional — enables duplicate delivery detection |
+| `X-Idempotency-Key` | any string     | Optional — enables duplicate delivery detection              |
 
 **Body:** Any content type. The raw body bytes are used for HMAC verification and forwarded as the stimulus `content`.
 
@@ -441,14 +441,14 @@ Ingest a webhook from an external system. Authenticated by HMAC-SHA256.
 
 **Errors:**
 
-| HTTP | Code | Cause |
-|------|------|-------|
-| `401` | `missing_signature` | `X-Aegis-Signature` header absent |
-| `401` | `invalid_signature` | HMAC digest mismatch |
-| `401` | `secret_not_found` | `AEGIS_WEBHOOK_SECRET_<SOURCE>` not set |
-| `400` | `malformed_signature` | Header not in `sha256=<hex>` format |
-| `409` | `idempotent_duplicate` | Same delivery already processed |
-| `422` | `classification_failed` | RouterAgent confidence below threshold |
+| HTTP  | Code                    | Cause                                   |
+| ----- | ----------------------- | --------------------------------------- |
+| `401` | `missing_signature`     | `X-Aegis-Signature` header absent       |
+| `401` | `invalid_signature`     | HMAC digest mismatch                    |
+| `401` | `secret_not_found`      | `AEGIS_WEBHOOK_SECRET_<SOURCE>` not set |
+| `400` | `malformed_signature`   | Header not in `sha256=<hex>` format     |
+| `409` | `idempotent_duplicate`  | Same delivery already processed         |
+| `422` | `classification_failed` | RouterAgent confidence below threshold  |
 
 ---
 
@@ -460,9 +460,9 @@ Workflow definition and execution management endpoints are available under `/v1/
 
 When retrieving a workflow definition, the response includes the full manifest metadata:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `metadata.output_schema` | object | JSON Schema declaring the workflow's output shape (if declared). |
+| Field                      | Type                  | Description                                                       |
+| -------------------------- | --------------------- | ----------------------------------------------------------------- |
+| `metadata.output_schema`   | object                | JSON Schema declaring the workflow's output shape (if declared).  |
 | `metadata.output_template` | `map[string, string]` | Handlebars expressions for extracting final output (if declared). |
 
 These fields appear alongside existing metadata fields (`name`, `version`, `input_schema`, etc.).
@@ -471,8 +471,8 @@ These fields appear alongside existing metadata fields (`name`, `version`, `inpu
 
 When retrieving a workflow execution (e.g. `GET /v1/workflows/executions/{id}`), the response includes:
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field          | Type   | Description                                                                                                                                                              |
+| -------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `final_output` | object | Structured output produced at workflow completion, if the workflow declares `output_template`. `null` when the workflow has no output template or has not yet completed. |
 
 The `final_output` value is the rendered and type-coerced result of evaluating the workflow's `output_template` against the final Blackboard. It is also returned as `last_output` in `aegis.workflow.wait` tool responses.
@@ -500,24 +500,32 @@ List all available pricing tiers with their Stripe price IDs.
       "included_seats": 1,
       "monthly": { "price_id": "price_xxx", "amount": 2900, "currency": "usd" },
       "annual": { "price_id": "price_yyy", "amount": 29000, "currency": "usd" },
-      "seat_monthly": { "price_id": "price_seat_m", "amount": 1500, "currency": "usd" },
-      "seat_annual": { "price_id": "price_seat_a", "amount": 15000, "currency": "usd" }
+      "seat_monthly": {
+        "price_id": "price_seat_m",
+        "amount": 1500,
+        "currency": "usd"
+      },
+      "seat_annual": {
+        "price_id": "price_seat_a",
+        "amount": 15000,
+        "currency": "usd"
+      }
     }
   ]
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `tiers[].tier` | string | Tier slug (`pro`, `business`, `enterprise`) |
-| `tiers[].product_id` | string | Stripe Product ID |
-| `tiers[].name` | string | Human-readable tier name |
-| `tiers[].description` | string | Tier description |
-| `tiers[].included_seats` | integer | Number of seats included in the base price |
-| `tiers[].monthly` | object or null | Monthly price (`price_id`, `amount` in cents, `currency`) |
-| `tiers[].annual` | object or null | Annual price |
-| `tiers[].seat_monthly` | object or null | Monthly per-seat price |
-| `tiers[].seat_annual` | object or null | Annual per-seat price |
+| Field                    | Type           | Description                                               |
+| ------------------------ | -------------- | --------------------------------------------------------- |
+| `tiers[].tier`           | string         | Tier slug (`pro`, `business`, `enterprise`)               |
+| `tiers[].product_id`     | string         | Stripe Product ID                                         |
+| `tiers[].name`           | string         | Human-readable tier name                                  |
+| `tiers[].description`    | string         | Tier description                                          |
+| `tiers[].included_seats` | integer        | Number of seats included in the base price                |
+| `tiers[].monthly`        | object or null | Monthly price (`price_id`, `amount` in cents, `currency`) |
+| `tiers[].annual`         | object or null | Annual price                                              |
+| `tiers[].seat_monthly`   | object or null | Monthly per-seat price                                    |
+| `tiers[].seat_annual`    | object or null | Annual per-seat price                                     |
 
 ---
 
@@ -535,11 +543,11 @@ Create a Stripe Checkout Session for subscribing to a plan.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `price_id` | string | Yes | Stripe Price ID from `GET /v1/billing/prices` |
-| `seat_price_id` | string | No | Stripe Price ID for per-seat billing |
-| `seats` | integer | No | Number of additional seats |
+| Field           | Type    | Required | Description                                   |
+| --------------- | ------- | -------- | --------------------------------------------- |
+| `price_id`      | string  | Yes      | Stripe Price ID from `GET /v1/billing/prices` |
+| `seat_price_id` | string  | No       | Stripe Price ID for per-seat billing          |
+| `seats`         | integer | No       | Number of additional seats                    |
 
 **Response `200`:**
 
@@ -583,13 +591,13 @@ Get the current user's subscription details.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `tier` | string | Current subscription tier (`free`, `pro`, `business`, `enterprise`) |
-| `status` | string | Stripe subscription status (`active`, `past_due`, `canceled`, `trialing`, etc.) |
-| `current_period_end` | string (ISO 8601) | End of the current billing period |
-| `cancel_at_period_end` | boolean | Whether the subscription will cancel at period end |
-| `stripe_customer_id` | string | The Stripe Customer ID associated with this user |
+| Field                  | Type              | Description                                                                     |
+| ---------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| `tier`                 | string            | Current subscription tier (`free`, `pro`, `business`, `enterprise`)             |
+| `status`               | string            | Stripe subscription status (`active`, `past_due`, `canceled`, `trialing`, etc.) |
+| `current_period_end`   | string (ISO 8601) | End of the current billing period                                               |
+| `cancel_at_period_end` | boolean           | Whether the subscription will cancel at period end                              |
+| `stripe_customer_id`   | string            | The Stripe Customer ID associated with this user                                |
 
 ---
 
@@ -614,14 +622,14 @@ List invoices for the current user.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Stripe Invoice ID |
-| `amount` | integer | Invoice amount in the smallest currency unit (e.g., cents) |
-| `currency` | string | Three-letter ISO currency code |
-| `status` | string | Invoice status (`draft`, `open`, `paid`, `void`, `uncollectible`) |
-| `created` | string (ISO 8601) | Invoice creation timestamp |
-| `pdf_url` | string | URL to download the invoice PDF |
+| Field      | Type              | Description                                                       |
+| ---------- | ----------------- | ----------------------------------------------------------------- |
+| `id`       | string            | Stripe Invoice ID                                                 |
+| `amount`   | integer           | Invoice amount in the smallest currency unit (e.g., cents)        |
+| `currency` | string            | Three-letter ISO currency code                                    |
+| `status`   | string            | Invoice status (`draft`, `open`, `paid`, `void`, `uncollectible`) |
+| `created`  | string (ISO 8601) | Invoice creation timestamp                                        |
+| `pdf_url`  | string            | URL to download the invoice PDF                                   |
 
 ---
 
@@ -645,3 +653,32 @@ Liveness probe. Returns `200 OK` when the orchestrator is running.
 - [Configuring Webhooks](/docs/deployment/configuring-webhooks) — setting up HMAC secrets and routes
 - [Human Approvals](/docs/workflows/human-approvals) — using the approval gate in workflows
 - [SEAL Protocol](/docs/gateway/seal-protocol) — signed tool invocation protocol
+
+---
+
+## Edge Mode (`/api/edge/*`)
+
+The `/api/edge/*` namespace covers enrollment, host management, groups, and fleet operations for user-installed edge daemons. Every endpoint is filtered through `effective_tenant`; cross-tenant access is impossible at the router boundary.
+
+| Method   | Path                                       | Purpose                                                                    |
+| -------- | ------------------------------------------ | -------------------------------------------------------------------------- |
+| `POST`   | `/api/edge/enrollment-tokens`              | Issue a one-time enrollment token.                                         |
+| `GET`    | `/api/edge/hosts`                          | List hosts in the tenant (filterable by tag, label, connected).            |
+| `GET`    | `/api/edge/hosts/:id`                      | Single host detail with recent command history.                            |
+| `PATCH`  | `/api/edge/hosts/:id`                      | Update display name and/or tags.                                           |
+| `POST`   | `/api/edge/hosts/:id/tags`                 | Atomic add/remove on the tags array.                                       |
+| `DELETE` | `/api/edge/hosts/:id`                      | Revoke an edge host.                                                       |
+| `GET`    | `/api/edge/groups`                         | List groups.                                                               |
+| `POST`   | `/api/edge/groups`                         | Create a group.                                                            |
+| `GET`    | `/api/edge/groups/:id`                     | Single group with resolved members.                                        |
+| `PATCH`  | `/api/edge/groups/:id`                     | Update name, selector, pinned members.                                     |
+| `DELETE` | `/api/edge/groups/:id`                     | Delete a group.                                                            |
+| `POST`   | `/api/edge/fleet/preview`                  | Resolve a target without dispatching.                                      |
+| `POST`   | `/api/edge/fleet/invoke`                   | Dispatch a tool against a target with a fleet policy. **Server-streamed.** |
+| `POST`   | `/api/edge/fleet/:fleet_command_id/cancel` | Broadcast `Cancel` to in-flight per-node commands.                         |
+| `GET`    | `/api/edge/fleet/runs`                     | Fleet run history.                                                         |
+| `GET`    | `/api/edge/fleet/runs/:id`                 | Single run with per-node detail.                                           |
+
+Required scopes (mapped from Keycloak roles): `aegis.edge.enroll`, `aegis.edge.hosts.{read,write}`, `aegis.edge.groups.write`, `aegis.edge.fleet.{read,manage}`.
+
+For the full reference, see [edge REST API](/docs/reference/edge-rest-api).

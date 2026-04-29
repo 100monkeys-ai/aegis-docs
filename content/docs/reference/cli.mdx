@@ -13,14 +13,14 @@ This page documents the command surface implemented in `aegis-orchestrator/cli/s
 
 These flags are parsed at the top level and can be combined with subcommands where relevant:
 
-| Flag | Environment Variable | Default | Description |
-|---|---|---|---|
-| `--config <path>` | `AEGIS_CONFIG_PATH` | auto-discovered | Path to the node configuration file. |
-| `--host <host>` | `AEGIS_HOST` | `127.0.0.1` | Host used for daemon HTTP API calls. |
-| `--port <port>` | `AEGIS_PORT` | `8088` | Port used for daemon HTTP API calls. |
-| `--log-level <level>` | `AEGIS_LOG_LEVEL` | `info` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`. |
-| `--output <format>` | — | `text` | Render supported command results as `text`, `table`, `json`, or `yaml`. |
-| `--daemon` | — | `false` | Run the process in daemon mode instead of executing a CLI subcommand. |
+| Flag                  | Environment Variable | Default         | Description                                                             |
+| --------------------- | -------------------- | --------------- | ----------------------------------------------------------------------- |
+| `--config <path>`     | `AEGIS_CONFIG_PATH`  | auto-discovered | Path to the node configuration file.                                    |
+| `--host <host>`       | `AEGIS_HOST`         | `127.0.0.1`     | Host used for daemon HTTP API calls.                                    |
+| `--port <port>`       | `AEGIS_PORT`         | `8088`          | Port used for daemon HTTP API calls.                                    |
+| `--log-level <level>` | `AEGIS_LOG_LEVEL`    | `info`          | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`.               |
+| `--output <format>`   | —                    | `text`          | Render supported command results as `text`, `table`, `json`, or `yaml`. |
+| `--daemon`            | —                    | `false`         | Run the process in daemon mode instead of executing a CLI subcommand.   |
 
 ## Output Formats
 
@@ -32,22 +32,22 @@ Supported structured-output commands include agent, task, workflow, node, config
 
 ## Top-Level Commands
 
-| Command | Purpose |
-|---|---|
-| `aegis daemon` | Manage the background daemon process. |
-| `aegis fuse-daemon` | Manage the host-side FUSE daemon for rootless volume mounts. |
-| `aegis task` | Execute agents and inspect execution records. |
-| `aegis node` | Perform cluster node bootstrap and peer operations. |
-| `aegis config` | Show, validate, or generate config files. |
-| `aegis agent` | Deploy, inspect, remove, log, or generate agents. |
-| `aegis workflow` | Validate, deploy, run, inspect, signal, cancel, remove, and generate workflows. |
-| `aegis update` | Pull images, restart services, run migrations, and refresh built-ins. |
-| `aegis init` | Guided first-time setup wizard. |
-| `aegis down` | Stop the local Docker Compose stack. |
-| `aegis up` | Start the local stack, running `aegis init` automatically if needed. |
-| `aegis restart` | Restart local Docker Compose services. |
-| `aegis status` | Report local stack health or cluster health. |
-| `aegis uninstall` | Tear down the local stack and remove its working directory. |
+| Command             | Purpose                                                                         |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `aegis daemon`      | Manage the background daemon process.                                           |
+| `aegis fuse-daemon` | Manage the host-side FUSE daemon for rootless volume mounts.                    |
+| `aegis task`        | Execute agents and inspect execution records.                                   |
+| `aegis node`        | Perform cluster node bootstrap and peer operations.                             |
+| `aegis config`      | Show, validate, or generate config files.                                       |
+| `aegis agent`       | Deploy, inspect, remove, log, or generate agents.                               |
+| `aegis workflow`    | Validate, deploy, run, inspect, signal, cancel, remove, and generate workflows. |
+| `aegis update`      | Pull images, restart services, run migrations, and refresh built-ins.           |
+| `aegis init`        | Guided first-time setup wizard.                                                 |
+| `aegis down`        | Stop the local Docker Compose stack.                                            |
+| `aegis up`          | Start the local stack, running `aegis init` automatically if needed.            |
+| `aegis restart`     | Restart local Docker Compose services.                                          |
+| `aegis status`      | Report local stack health or cluster health.                                    |
+| `aegis uninstall`   | Tear down the local stack and remove its working directory.                     |
 
 ---
 
@@ -63,10 +63,10 @@ Authenticate with an AEGIS environment using the browser-based Device Authorizat
 aegis auth login [OPTIONS]
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--env <hostname>` | `dev.100monkeys.ai` | Environment hostname. Auth URL is derived as `https://auth.<env>`. |
-| `--non-interactive` | — | Exit non-zero if not already authenticated (for CI/CD). |
+| Flag                | Default             | Description                                                        |
+| ------------------- | ------------------- | ------------------------------------------------------------------ |
+| `--env <hostname>`  | `dev.100monkeys.ai` | Environment hostname. Auth URL is derived as `https://auth.<env>`. |
+| `--non-interactive` | —                   | Exit non-zero if not already authenticated (for CI/CD).            |
 
 **Example:**
 
@@ -138,10 +138,10 @@ aegis daemon stop
 aegis daemon stop --force --timeout 10
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--force`, `-f` | `false` | Force termination if graceful shutdown fails. |
-| `--timeout <seconds>`, `-t` | `30` | Graceful shutdown timeout in seconds. |
+| Flag                        | Default | Description                                   |
+| --------------------------- | ------- | --------------------------------------------- |
+| `--force`, `-f`             | `false` | Force termination if graceful shutdown fails. |
+| `--timeout <seconds>`, `-t` | `30`    | Graceful shutdown timeout in seconds.         |
 
 ### `aegis daemon status`
 
@@ -186,11 +186,11 @@ aegis fuse-daemon start --mount-prefix /tmp/aegis-fuse
 aegis fuse-daemon start --listen-addr 127.0.0.1:50053
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--orchestrator-url` | `grpc://localhost:50051` | gRPC endpoint of the orchestrator to proxy FSAL operations through. |
-| `--mount-prefix` | `/tmp/aegis-fuse` | Host directory under which per-volume FUSE mountpoints are created. |
-| `--listen-addr` | `127.0.0.1:50053` | Address the FUSE daemon listens on for mount/unmount RPCs from the orchestrator. |
+| Flag                 | Default                  | Description                                                                      |
+| -------------------- | ------------------------ | -------------------------------------------------------------------------------- |
+| `--orchestrator-url` | `grpc://localhost:50051` | gRPC endpoint of the orchestrator to proxy FSAL operations through.              |
+| `--mount-prefix`     | `/tmp/aegis-fuse`        | Host directory under which per-volume FUSE mountpoints are created.              |
+| `--listen-addr`      | `127.0.0.1:50053`        | Address the FUSE daemon listens on for mount/unmount RPCs from the orchestrator. |
 
 ### `aegis fuse-daemon stop`
 
@@ -223,14 +223,14 @@ aegis init --yes
 aegis init --dir ~/.aegis --tag latest
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--yes` | `false` | Accept defaults and skip interactive prompts. |
-| `--manual` | `false` | Print prerequisite instructions instead of auto-installing them. |
-| `--dir <path>` | `~/.aegis` | Working directory for stack files. |
-| `--host <host>` | `127.0.0.1` | Host used for post-start health checks. |
-| `--port <port>` | `8088` | Port used for post-start health checks. |
-| `--tag <tag>` | binary version | Image tag for AEGIS-owned Docker images. |
+| Flag            | Default        | Description                                                      |
+| --------------- | -------------- | ---------------------------------------------------------------- |
+| `--yes`         | `false`        | Accept defaults and skip interactive prompts.                    |
+| `--manual`      | `false`        | Print prerequisite instructions instead of auto-installing them. |
+| `--dir <path>`  | `~/.aegis`     | Working directory for stack files.                               |
+| `--host <host>` | `127.0.0.1`    | Host used for post-start health checks.                          |
+| `--port <port>` | `8088`         | Port used for post-start health checks.                          |
+| `--tag <tag>`   | binary version | Image tag for AEGIS-owned Docker images.                         |
 
 ### `aegis up`
 
@@ -242,14 +242,14 @@ aegis up --profile temporal
 aegis up --tag latest
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--dir <path>` | `~/.aegis` | Stack working directory. |
-| `--host <host>` | `127.0.0.1` | Host shown after startup and used by `aegis init` fallback. |
-| `--port <port>` | `8088` | Port shown after startup and used by `aegis init` fallback. |
-| `--yes` | `false` | Non-interactive defaults if `aegis init` is triggered automatically. |
-| `--tag <tag>` | config or binary version | Image tag to refresh into the stack before startup. |
-| `--profile <name>` | all services | Start only services in the selected Compose profile when the stack already exists. |
+| Flag               | Default                  | Description                                                                        |
+| ------------------ | ------------------------ | ---------------------------------------------------------------------------------- |
+| `--dir <path>`     | `~/.aegis`               | Stack working directory.                                                           |
+| `--host <host>`    | `127.0.0.1`              | Host shown after startup and used by `aegis init` fallback.                        |
+| `--port <port>`    | `8088`                   | Port shown after startup and used by `aegis init` fallback.                        |
+| `--yes`            | `false`                  | Non-interactive defaults if `aegis init` is triggered automatically.               |
+| `--tag <tag>`      | config or binary version | Image tag to refresh into the stack before startup.                                |
+| `--profile <name>` | all services             | Start only services in the selected Compose profile when the stack already exists. |
 
 ### `aegis down`
 
@@ -261,12 +261,12 @@ aegis down --profile temporal
 aegis down --volumes --yes
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--dir <path>` | `~/.aegis` | Stack working directory. |
+| Flag               | Default      | Description                                         |
+| ------------------ | ------------ | --------------------------------------------------- |
+| `--dir <path>`     | `~/.aegis`   | Stack working directory.                            |
 | `--profile <name>` | all services | Stop only services in the selected Compose profile. |
-| `--volumes` | `false` | Remove named volumes as part of teardown. |
-| `--yes`, `-y` | `false` | Skip the destructive-action confirmation prompt. |
+| `--volumes`        | `false`      | Remove named volumes as part of teardown.           |
+| `--yes`, `-y`      | `false`      | Skip the destructive-action confirmation prompt.    |
 
 ### `aegis restart`
 
@@ -288,15 +288,15 @@ aegis update --skip-pull --skip-restart --skip-migrations
 aegis update --output json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--dir <path>` | `~/.aegis` | Stack working directory. |
-| `--skip-pull` | `false` | Skip `docker compose pull`. |
-| `--skip-restart` | `false` | Skip service restart. |
-| `--skip-migrations` | `false` | Skip database migrations. |
-| `--skip-builtins` | `false` | Skip built-in agent/workflow refresh. |
-| `--dry-run` | `false` | Preview actions without making changes. |
-| `--tag <tag>` | from config or binary version | Override the image tag used during refresh. |
+| Flag                | Default                       | Description                                 |
+| ------------------- | ----------------------------- | ------------------------------------------- |
+| `--dir <path>`      | `~/.aegis`                    | Stack working directory.                    |
+| `--skip-pull`       | `false`                       | Skip `docker compose pull`.                 |
+| `--skip-restart`    | `false`                       | Skip service restart.                       |
+| `--skip-migrations` | `false`                       | Skip database migrations.                   |
+| `--skip-builtins`   | `false`                       | Skip built-in agent/workflow refresh.       |
+| `--dry-run`         | `false`                       | Preview actions without making changes.     |
+| `--tag <tag>`       | from config or binary version | Override the image tag used during refresh. |
 
 ### `aegis status`
 
@@ -308,10 +308,10 @@ aegis status --cluster
 aegis status --output json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--dir <path>` | `~/.aegis` | Stack working directory used for local status checks. |
-| `--cluster` | `false` | Report cluster node health instead of local Compose status. |
+| Flag           | Default    | Description                                                 |
+| -------------- | ---------- | ----------------------------------------------------------- |
+| `--dir <path>` | `~/.aegis` | Stack working directory used for local status checks.       |
+| `--cluster`    | `false`    | Report cluster node health instead of local Compose status. |
 
 ### `aegis uninstall`
 
@@ -349,10 +349,10 @@ aegis agent deploy ./agent.yaml --force
 aegis agent deploy ./agent.yaml --output json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--validate-only` | `false` | Parse and validate without deploying. |
-| `--force` | `false` | Overwrite an existing agent with the same name and version. |
+| Flag              | Default | Description                                                 |
+| ----------------- | ------- | ----------------------------------------------------------- |
+| `--validate-only` | `false` | Parse and validate without deploying.                       |
+| `--force`         | `false` | Overwrite an existing agent with the same name and version. |
 
 ### `aegis agent show <AGENT_ID>`
 
@@ -381,10 +381,10 @@ aegis agent logs python-coder --errors
 aegis agent logs python-coder --verbose
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--follow`, `-f` | `false` | Tail log output. |
-| `--errors`, `-e` | `false` | Show only error entries. |
+| Flag              | Default | Description                                        |
+| ----------------- | ------- | -------------------------------------------------- |
+| `--follow`, `-f`  | `false` | Tail log output.                                   |
+| `--errors`, `-e`  | `false` | Show only error entries.                           |
 | `--verbose`, `-v` | `false` | Include verbose log output such as prompt details. |
 
 ### `aegis agent generate --input <text>`
@@ -398,10 +398,10 @@ aegis agent generate --input "Create an agent that reviews pull requests for sec
 aegis agent generate --input "Create a SQL migration reviewer agent" --follow
 ```
 
-| Flag | Default | Description |
-|---|---|---|
+| Flag                   | Default  | Description                                |
+| ---------------------- | -------- | ------------------------------------------ |
 | `--input <text>`, `-i` | required | Natural-language intent for the generator. |
-| `--follow`, `-f` | `false` | Stream generator execution logs. |
+| `--follow`, `-f`       | `false`  | Stream generator execution logs.           |
 
 ---
 
@@ -423,14 +423,14 @@ aegis task execute pdf-summarizer --attachment 1bcd...:reports/q3.pdf --attachme
 aegis task execute pdf-summarizer --attachments @refs.json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--input <value>`, `-i` | empty object | Inline JSON/YAML, `@file`, or a plain string. |
-| `--context <dict>` | none | Context override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object. |
-| `--attachments <json>` | none | File references in the canonical JSON form. Inline JSON array of `AttachmentRef` objects (`[{"volume_id":"...","path":"...","name":"...","mime_type":"...","size":N,"sha256":"..."}]`) or `@file` to read from disk. The receiving agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`. |
-| `--attachment <volume_id:path>` | none | Shorthand. Repeatable. Each occurrence names one file by `volume_id` and `path` within the volume; the CLI stat-s the file via the orchestrator's volume metadata API and constructs the corresponding `AttachmentRef` (filling in `name`, `mime_type`, `size`, and `sha256`). Mutually exclusive with `--attachments`. |
-| `--wait`, `-w` | `false` | Block until the execution completes. |
-| `--follow`, `-f` | `false` | Stream execution logs. |
+| Flag                            | Default      | Description                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input <value>`, `-i`         | empty object | Inline JSON/YAML, `@file`, or a plain string.                                                                                                                                                                                                                                                                                                   |
+| `--context <dict>`              | none         | Context override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object.                                                                                                                                                                                                                                                      |
+| `--attachments <json>`          | none         | File references in the canonical JSON form. Inline JSON array of `AttachmentRef` objects (`[{"volume_id":"...","path":"...","name":"...","mime_type":"...","size":N,"sha256":"..."}]`) or `@file` to read from disk. The receiving agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools`. |
+| `--attachment <volume_id:path>` | none         | Shorthand. Repeatable. Each occurrence names one file by `volume_id` and `path` within the volume; the CLI stat-s the file via the orchestrator's volume metadata API and constructs the corresponding `AttachmentRef` (filling in `name`, `mime_type`, `size`, and `sha256`). Mutually exclusive with `--attachments`.                         |
+| `--wait`, `-w`                  | `false`      | Block until the execution completes.                                                                                                                                                                                                                                                                                                            |
+| `--follow`, `-f`                | `false`      | Stream execution logs.                                                                                                                                                                                                                                                                                                                          |
 
 `--context` injects top-level execution variables for that run only. The value must be a JSON or YAML object. Reserved built-in execution keys are rejected by the orchestrator.
 
@@ -508,8 +508,8 @@ aegis workflow deploy ./pipeline.yaml --force
 aegis workflow deploy ./pipeline.yaml --output json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
+| Flag      | Default | Description                                                    |
+| --------- | ------- | -------------------------------------------------------------- |
 | `--force` | `false` | Overwrite an existing workflow with the same name and version. |
 
 ### `aegis workflow run <name>`
@@ -529,15 +529,15 @@ aegis workflow run review-pipeline --attachment 1bcd...:reports/q3.pdf
 aegis workflow run review-pipeline --attachments @refs.json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--input <json>`, `-i` | empty object | Workflow input as inline JSON/YAML or `@file`. Must deserialize to an object. |
-| `--param <key=value>`, `-p` | none | Individual workflow input values merged into the input object. Values are parsed as JSON when possible, otherwise treated as strings. |
-| `--blackboard <dict>` | none | Startup blackboard override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object. |
-| `--attachments <json>` | none | File references in the canonical JSON form. Inline JSON array of `AttachmentRef` objects or `@file`. Forwarded to every agent state that declares `attachments` in its `input_schema`. |
-| `--attachment <volume_id:path>` | none | Shorthand. Repeatable. Each occurrence names one file by `volume_id` and `path`; the CLI resolves it to a full `AttachmentRef` via the orchestrator's volume metadata API. Mutually exclusive with `--attachments`. |
-| `--follow`, `-f` | `false` | Stream workflow logs after the execution starts. |
-| `--wait`, `-w` | `false` | Block until the workflow execution completes. |
+| Flag                            | Default      | Description                                                                                                                                                                                                         |
+| ------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input <json>`, `-i`          | empty object | Workflow input as inline JSON/YAML or `@file`. Must deserialize to an object.                                                                                                                                       |
+| `--param <key=value>`, `-p`     | none         | Individual workflow input values merged into the input object. Values are parsed as JSON when possible, otherwise treated as strings.                                                                               |
+| `--blackboard <dict>`           | none         | Startup blackboard override dictionary as inline JSON/YAML or `@file`. Must deserialize to an object.                                                                                                               |
+| `--attachments <json>`          | none         | File references in the canonical JSON form. Inline JSON array of `AttachmentRef` objects or `@file`. Forwarded to every agent state that declares `attachments` in its `input_schema`.                              |
+| `--attachment <volume_id:path>` | none         | Shorthand. Repeatable. Each occurrence names one file by `volume_id` and `path`; the CLI resolves it to a full `AttachmentRef` via the orchestrator's volume metadata API. Mutually exclusive with `--attachments`. |
+| `--follow`, `-f`                | `false`      | Stream workflow logs after the execution starts.                                                                                                                                                                    |
+| `--wait`, `-w`                  | `false`      | Block until the workflow execution completes.                                                                                                                                                                       |
 
 `--blackboard` merges on top of `spec.context` for that execution. Reserved workflow keys, including `workflow`, are rejected. The merged Blackboard becomes the live template context inside the Temporal worker and is forwarded into downstream Agent-state execution context.
 
@@ -581,8 +581,8 @@ Sends a workflow signal to a waiting human state or other signal handler in the 
 aegis workflow signal a1b2c3d4-2222-0000-0000-000000000001 --response approved
 ```
 
-| Flag | Default | Description |
-|---|---|---|
+| Flag                | Default  | Description                                         |
+| ------------------- | -------- | --------------------------------------------------- |
 | `--response <text>` | required | Signal payload forwarded to the workflow execution. |
 
 ### `aegis workflow cancel <EXECUTION_ID>`
@@ -722,13 +722,43 @@ aegis config generate --out /etc/aegis/config.yaml
 aegis config generate --examples
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--out <path>`, `-o` | `./aegis-config.yaml` | Output path. |
-| `--examples` | `false` | Use the annotated template with example values. |
+| Flag                 | Default               | Description                                     |
+| -------------------- | --------------------- | ----------------------------------------------- |
+| `--out <path>`, `-o` | `./aegis-config.yaml` | Output path.                                    |
+| `--examples`         | `false`               | Use the annotated template with example values. |
 
 ---
 
 ## Exit Codes
 
 The CLI does not currently publish a stable command-by-command exit code contract beyond standard success/failure process behavior. For automation, prefer structured output and treat non-zero exit status as failure.
+
+The `aegis edge` family is an exception — it publishes a stable exit-code contract documented under [edge CLI reference](/docs/reference/edge-cli#exit-codes).
+
+---
+
+## Node Commands — Two Subsections
+
+The `aegis` CLI's node-related commands split into two distinct categories. Both operate on `NodeClusterService` but address different topologies.
+
+### Orchestrator Cluster (`aegis cluster`, `aegis node`)
+
+Commands for managing the **internal cluster** — controllers, workers, hybrid nodes that form the AEGIS execution plane. These are tenant-agnostic infrastructure nodes.
+
+- `aegis cluster nodes` — list cluster members.
+- `aegis cluster push-config <node-id>` — push a hierarchical config delta.
+- `aegis node attest` — re-attest a worker.
+- `aegis node forward-execution` — route an execution to a specific worker.
+
+### Edge Daemon (`aegis edge`)
+
+Commands for **user-installed daemons** running on hosts the user controls. Edge daemons are tenant-bound, dispatched-to (not orchestrator peers), and address a different operational shape.
+
+- `aegis edge enroll <token>` — daemon-side: redeem an enrollment token, persist node identity.
+- `aegis edge status` — daemon-side: show local connection state.
+- `aegis edge ls` — operator-side: list edges in your tenant.
+- `aegis edge tag` / `aegis edge group` — manage tags and groups.
+- `aegis edge fleet preview|run|cancel|runs` — fleet operations.
+- `aegis edge keys rotate|revoke-remote` / `aegis edge token refresh` — identity hygiene.
+
+For the full surface, see [edge CLI reference](/docs/reference/edge-cli).

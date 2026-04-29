@@ -13,12 +13,12 @@ AEGIS is designed as a multi-tenant platform that can serve multiple independent
 
 AEGIS enforces tenant isolation at four complementary layers. Each layer must hold independently to ensure a failure in one does not create a cross-tenant data leak.
 
-| Layer | Mechanism | Implementation |
-|-------|-----------|----------------|
-| **1. Identity** | Keycloak Realms | Each tenant has a dedicated Keycloak realm. `TenantId` is derived from the JWT issuer URL. |
-| **2. Authorization** | SEAL Contexts | `SecurityContext` names are namespaced (e.g., `tenant-acme-corp-research`). |
-| **3. Data** | PostgreSQL Scoping | All core tables (`agents`, `executions`, `workflows`) are scoped by a `tenant_id` column. |
-| **4. Secrets** | OpenBao Namespaces | Each tenant has a dedicated OpenBao namespace: `tenant-{slug}/`. |
+| Layer                | Mechanism          | Implementation                                                                             |
+| -------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| **1. Identity**      | Keycloak Realms    | Each tenant has a dedicated Keycloak realm. `TenantId` is derived from the JWT issuer URL. |
+| **2. Authorization** | SEAL Contexts      | `SecurityContext` names are namespaced (e.g., `tenant-acme-corp-research`).                |
+| **3. Data**          | PostgreSQL Scoping | All core tables (`agents`, `executions`, `workflows`) are scoped by a `tenant_id` column.  |
+| **4. Secrets**       | OpenBao Namespaces | Each tenant has a dedicated OpenBao namespace: `tenant-{slug}/`.                           |
 
 ---
 
@@ -28,11 +28,11 @@ AEGIS identifies tenants based on the **Keycloak realm slug** embedded in the JW
 
 ### Tenant Kinds
 
-| Kind | Keycloak Realm | TenantId |
-|------|----------------|----------|
+| Kind                    | Keycloak Realm  | TenantId        |
+| ----------------------- | --------------- | --------------- |
 | **Consumer (Per-User)** | `zaru-consumer` | `u-{user-uuid}` |
-| **Enterprise Tenant** | `tenant-{slug}` | `{slug}` |
-| **Platform Operator** | `aegis-system` | `aegis-system` |
+| **Enterprise Tenant**   | `tenant-{slug}` | `{slug}`        |
+| **Platform Operator**   | `aegis-system`  | `aegis-system`  |
 
 Consumer users all authenticate through the shared `zaru-consumer` Keycloak realm, but each user receives their own dedicated per-user tenant at signup. The tenant slug follows the format `u-{uuid}` (e.g., `u-a1b2c3d4-5678-...`). This provides full data isolation between consumer users — agents, workflows, executions, and secrets are scoped to the individual user's tenant rather than a shared pool. The `tenant_id` is injected into the JWT via a `tenant_id` protocol mapper on the `zaru-consumer` realm, and the orchestrator extracts it from this custom claim during identity resolution.
 
@@ -46,11 +46,11 @@ To onboard a new tenant, an operator must create a corresponding realm in Keyclo
 
 To prevent cross-tenant capability name collisions, all enterprise tenant `SecurityContext` names must follow a strict naming convention:
 
-| Tenant Type | Pattern | Example |
-|-------------|---------|---------|
-| Zaru Consumer | `zaru-{tier}` | `zaru-free`, `zaru-pro` |
-| Enterprise | `tenant-{slug}-{name}` | `tenant-acme-research` |
-| Operator | `aegis-system-{name}` | `aegis-system-admin` |
+| Tenant Type   | Pattern                | Example                 |
+| ------------- | ---------------------- | ----------------------- |
+| Zaru Consumer | `zaru-{tier}`          | `zaru-free`, `zaru-pro` |
+| Enterprise    | `tenant-{slug}-{name}` | `tenant-acme-research`  |
+| Operator      | `aegis-system-{name}`  | `aegis-system-admin`    |
 
 The `AttestationService` enforces this convention. A principal from tenant `acme` cannot request a context named `tenant-globex-research`.
 
@@ -61,7 +61,7 @@ The `AttestationService` enforces this convention. A principal from tenant `acme
 AEGIS uses a **shared schema** model where a `tenant_id` column is added to all aggregate tables.
 
 - **Isolation**: Every repository query includes a `WHERE tenant_id = $1` clause.
-- **Uniqueness**: Resources like Agent and Workflow names are unique *within* a tenant, not globally.
+- **Uniqueness**: Resources like Agent and Workflow names are unique _within_ a tenant, not globally.
 - **Performance**: Indexes are applied to `(tenant_id, id)` and `(tenant_id, status)` to ensure performant scoped lookups.
 
 ---
@@ -130,10 +130,10 @@ permissions.
 
 Every workflow has a visibility scope that controls which callers can discover and invoke it:
 
-| Scope | Visibility |
-|-------|------------|
+| Scope      | Visibility                                                                           |
+| ---------- | ------------------------------------------------------------------------------------ |
 | **Tenant** | All members of your organization (or the individual consumer user's per-user tenant) |
-| **Global** | All tenants — reserved for platform builtins |
+| **Global** | All tenants — reserved for platform builtins                                         |
 
 When running a workflow by name (e.g., via `aegis workflow run` or `aegis.workflow.run`), the system
 resolves using narrowest-first: tenant-scoped workflows first, then global builtins.
@@ -160,3 +160,23 @@ tenants:
 ```
 
 When a quota is exceeded, AEGIS returns `429 Too Many Requests` and publishes a `TenantQuotaExceeded` event to the event bus.
+
+---
+
+## Tenant isolation for edge daemons
+
+Edge daemons are **tenant-bound at enrollment time** and the binding is immutable for the daemon's lifetime. The `NodeSecurityToken` issued during enrollment carries a `tid` claim that pins the daemon to its tenant; the server cross-checks `tid` on every request, and the `EdgeRouter` filters connected edges through `effective_tenant` before any dispatch decision.
+
+The enforcement happens at the **router boundary**, not on the daemon. This means:
+
+- A delegated service account using `X-Tenant-Id` resolves to its `effective_tenant`. The router only sees the edges of tenants the SA has been delegated to. A delegated SA cannot reach edges of tenants it is not delegated to, regardless of how the target is expressed (`Node`, `Group`, `Selector`, `All`).
+- A user holding a JWT for a personal tenant sees only that tenant's edges.
+- A team-tenant edge — registered against a team rather than an individual — is reachable by any team member with the appropriate seat and role, via the team-membership claim. Non-members cannot reach it.
+
+Cross-tenant access is therefore **impossible at the router boundary**, regardless of the target form. There is no daemon-level access-control list to misconfigure; the binding is enforced server-side before a single per-node `InvokeTool` is issued.
+
+### Tenant deletion cascade
+
+When a tenant is deleted, every edge daemon bound to that tenant is automatically revoked — `EdgeDaemon.status` is set to `Revoked`, the active `NodeSecurityToken` is added to the blacklist, and the active gRPC stream is dropped. The cascade is part of the tenant-deletion transaction; no orphaned edge state remains.
+
+For the user-facing model, see [edge mode overview](/docs/concepts/edge-mode-overview).

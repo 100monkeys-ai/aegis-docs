@@ -3,7 +3,7 @@ title: MCP Tool Reference
 description: Complete input and output schemas for all 86 AEGIS MCP tools — 83 built-in orchestrator tools and the Zaru-only zaru.init, zaru.mode, and zaru.docs tools — with availability by context and Zaru conversation mode.
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from "fumadocs-ui/components/callout";
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
 
@@ -36,9 +36,9 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `zaru.init`, `zaru.mode`, `zaru.docs`
 
 <Callout type="info">
-  Volume, file, git, and script tools are available to every tier — Free, Pro, Business, and
-  Enterprise. The backend enforces per-tier storage, bandwidth, and count quotas; the
-  tool-availability gate itself is uniform across tiers.
+  Volume, file, git, and script tools are available to every tier — Free, Pro,
+  Business, and Enterprise. The backend enforces per-tier storage, bandwidth,
+  and count quotas; the tool-availability gate itself is uniform across tiers.
 </Callout>
 
 **System tools** — only available to agents with `security_context: aegis-system-agent-runtime`
@@ -56,15 +56,15 @@ registered by platform operators:
 
 AEGIS tools are available across three distinct execution contexts. The tool set exposed to a caller varies by context.
 
-| Context | Tool groups available | Notes |
-|---------|----------------------|-------|
-| Zaru Chat — chat mode | `zaru.init` + `zaru.mode` + `zaru.docs` only | Mode switching and docs search; no orchestrator tools |
-| Zaru Chat — agentic mode | `zaru.init` + `zaru.mode` + `zaru.docs` + agent/task management subset | See mode table below |
-| Zaru Chat — execute mode | `zaru.init` + `zaru.mode` + `zaru.docs` + execute pipeline tools | See mode table below |
-| Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + `zaru.docs` + workflow/agent design subset | See mode table below |
-| Zaru Chat — operator mode | All 86 tools | No filtering applied |
-| AEGIS agent inner loop | All 83 built-in tools | Subject to agent `spec.tools` allowlist and `SecurityContext` |
-| External SEAL caller | All 83 built-in tools | Filtered by `SecurityContext` only; no mode concept |
+| Context                   | Tool groups available                                                  | Notes                                                         |
+| ------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Zaru Chat — chat mode     | `zaru.init` + `zaru.mode` + `zaru.docs` only                           | Mode switching and docs search; no orchestrator tools         |
+| Zaru Chat — agentic mode  | `zaru.init` + `zaru.mode` + `zaru.docs` + agent/task management subset | See mode table below                                          |
+| Zaru Chat — execute mode  | `zaru.init` + `zaru.mode` + `zaru.docs` + execute pipeline tools       | See mode table below                                          |
+| Zaru Chat — workflow mode | `zaru.init` + `zaru.mode` + `zaru.docs` + workflow/agent design subset | See mode table below                                          |
+| Zaru Chat — operator mode | All 86 tools                                                           | No filtering applied                                          |
+| AEGIS agent inner loop    | All 83 built-in tools                                                  | Subject to agent `spec.tools` allowlist and `SecurityContext` |
+| External SEAL caller      | All 83 built-in tools                                                  | Filtered by `SecurityContext` only; no mode concept           |
 
 See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full routing pipeline.
 
@@ -73,9 +73,10 @@ See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full ro
 ## Zaru Conversation Mode Tool Sets
 
 <Callout type="info">
-  The tool sets below are enforced by the Zaru client — not the orchestrator. Outside of Zaru,
-  inside agent inner loops and via direct SEAL calls, all built-in tools are available subject to
-  `SecurityContext` and the agent's `spec.tools` allowlist.
+  The tool sets below are enforced by the Zaru client — not the orchestrator.
+  Outside of Zaru, inside agent inner loops and via direct SEAL calls, all
+  built-in tools are available subject to `SecurityContext` and the agent's
+  `spec.tools` allowlist.
 </Callout>
 
 ### Chat Mode
@@ -141,92 +142,92 @@ All 86 tools are available — no filtering is applied.
 **Zaru mode abbreviations:** C = chat, Ag = agentic, Ex = execute, Ar = architect, Op = operator.
 Operator always has full access; only additional modes are listed per tool.
 
-| Tool | Group | `skip_judge` | Required params | Zaru modes |
-|------|-------|-------------|----------------|------------|
-| `cmd.run` | dispatch | false | `command` | Op |
-| `fs.read` | fs | true | `path` | Op |
-| `fs.write` | fs | false | `path`, `content` | Op |
-| `fs.list` | fs | true | `path` | Op |
-| `fs.create_dir` | fs | false | `path` | Op |
-| `fs.delete` | fs | false | `path` | Op |
-| `fs.edit` | fs | false | `path`, `target_content`, `replacement_content` | Op |
-| `fs.multi_edit` | fs | false | `path`, `edits` | Op |
-| `fs.grep` | fs | true | `pattern`, `path` | Op |
-| `fs.glob` | fs | true | `pattern`, `path` | Op |
-| `web.search` | web | true | `query` | Op |
-| `web.fetch` | web | true | `url` | Op |
-| `aegis.schema.get` | schema | true | `key` | Ar, Op |
-| `aegis.schema.validate` | schema | true | `kind`, `manifest_yaml` | Ar, Op |
-| `aegis.agent.create` | agent | true | `manifest_yaml` | Op |
-| `aegis.agent.list` | agent | true | — | Ag, Ar, Op |
-| `aegis.agent.update` | agent | true | `manifest_yaml` | Op |
-| `aegis.agent.export` | agent | true | `name` | Op |
-| `aegis.agent.delete` | agent | true | `agent_id` | Op |
-| `aegis.agent.generate` | agent | false | `input` | Ag, Ar, Op |
-| `aegis.agent.logs` | agent | true | `agent_id` | Ag, Ar, Op |
-| `aegis.agent.search` | agent | true | `query` | Op |
-| `aegis.agent.wait` | agent | true | `execution_id` | Ag, Ar, Op |
-| `aegis.workflow.create` | workflow | true | `manifest_yaml` | Op |
-| `aegis.workflow.list` | workflow | true | — | Ar, Op |
-| `aegis.workflow.validate` | workflow | true | `manifest_yaml` | Op |
-| `aegis.workflow.update` | workflow | true | `manifest_yaml` | Op |
-| `aegis.workflow.export` | workflow | true | `name` | Op |
-| `aegis.workflow.delete` | workflow | false | `name` | Op |
-| `aegis.workflow.run` | workflow | false | `name` | Op |
-| `aegis.workflow.generate` | workflow | false | `input` | Ar, Op |
-| `aegis.workflow.logs` | workflow | true | `execution_id` | Ar, Op |
-| `aegis.workflow.wait` | workflow | true | `execution_id` | Ex, Ar, Op |
-| `aegis.workflow.cancel` | workflow | true | `execution_id` | Op |
-| `aegis.workflow.signal` | workflow | true | `execution_id`, `response` | Op |
-| `aegis.workflow.remove` | workflow | true | `execution_id` | Op |
-| `aegis.workflow.promote` | workflow | false | `name` | Op |
-| `aegis.workflow.demote` | workflow | false | `name` | Op |
-| `aegis.workflow.executions.list` | workflow | true | — | Op |
-| `aegis.workflow.executions.get` | workflow | true | `execution_id` | Op |
-| `aegis.workflow.status` | workflow | true | `execution_id` | Op |
-| `aegis.workflow.search` | workflow | true | `query` | Op |
-| `aegis.task.execute` | task | false | `agent_id` | Ag, Ar, Op |
-| `aegis.task.status` | task | true | `execution_id` | Op |
-| `aegis.task.list` | task | true | — | Ag, Op |
-| `aegis.task.cancel` | task | false | `execution_id` | Ag, Op |
-| `aegis.task.remove` | task | false | `execution_id` | Op |
-| `aegis.task.logs` | task | true | `execution_id` | Ag, Op |
-| `aegis.task.wait` | task | true | `execution_id` | Ag, Ar, Op |
-| `aegis.execution.file` | execution | true | `execution_id`, `path` | Ag, Ex, Ar, Op |
-| `aegis.attachment.read` | attachment | true | `volume_id`, `path` | System-tier only |
-| `aegis.execute.intent` | execute | false | `intent` | Ex, Op |
-| `aegis.execute.status` | execute | true | `pipeline_execution_id` | Ex, Op |
-| `aegis.execute.wait` | execute | true | `execution_id` | Ex, Op |
-| `aegis.tools.list` | tools | true | — | Ag, Op |
-| `aegis.tools.search` | tools | true | — | Ag, Op |
-| `aegis.system.info` | system | true | — | Op |
-| `aegis.system.config` | system | true | — | Op |
-| `aegis.runtime.list` | runtime | true | — | Op |
-| `aegis.file.list` | file | true | `volume_id`, `path` | Op |
-| `aegis.file.read` | file | true | `volume_id`, `path` | Op |
-| `aegis.file.write` | file | false | `volume_id`, `path`, `content` | Op |
-| `aegis.file.delete` | file | false | `volume_id`, `path` | Op |
-| `aegis.file.mkdir` | file | false | `volume_id`, `path` | Op |
-| `aegis.volume.create` | volume | false | `label`, `size_limit_bytes` | Op |
-| `aegis.volume.list` | volume | true | — | Op |
-| `aegis.volume.delete` | volume | false | `volume_id` | Op |
-| `aegis.volume.quota` | volume | true | — | Op |
-| `aegis.git.clone` | git | false | `repo_url`, `label` | Op |
-| `aegis.git.list` | git | true | — | Op |
-| `aegis.git.status` | git | true | `binding_id` | Op |
-| `aegis.git.refresh` | git | false | `binding_id` | Op |
-| `aegis.git.delete` | git | false | `binding_id` | Op |
-| `aegis.git.commit` | git | false | `binding_id`, `message` | Op |
-| `aegis.git.push` | git | false | `binding_id` | Op |
-| `aegis.git.diff` | git | true | `binding_id` | Op |
-| `aegis.script.save` | script | false | `name`, `code` | Op |
-| `aegis.script.list` | script | true | — | Op |
-| `aegis.script.get` | script | true | `id` | Op |
-| `aegis.script.update` | script | false | `id`, `name`, `code` | Op |
-| `aegis.script.delete` | script | false | `id` | Op |
-| `zaru.init` | zaru | N/A | — | C, Ag, Ex, Ar, Op |
-| `zaru.mode` | zaru | N/A | `target_mode`, `reason` | C, Ag, Ex, Ar, Op |
-| `zaru.docs` | zaru | N/A | `query` | C, Ag, Ex, Ar, Op |
+| Tool                             | Group      | `skip_judge` | Required params                                 | Zaru modes        |
+| -------------------------------- | ---------- | ------------ | ----------------------------------------------- | ----------------- |
+| `cmd.run`                        | dispatch   | false        | `command`                                       | Op                |
+| `fs.read`                        | fs         | true         | `path`                                          | Op                |
+| `fs.write`                       | fs         | false        | `path`, `content`                               | Op                |
+| `fs.list`                        | fs         | true         | `path`                                          | Op                |
+| `fs.create_dir`                  | fs         | false        | `path`                                          | Op                |
+| `fs.delete`                      | fs         | false        | `path`                                          | Op                |
+| `fs.edit`                        | fs         | false        | `path`, `target_content`, `replacement_content` | Op                |
+| `fs.multi_edit`                  | fs         | false        | `path`, `edits`                                 | Op                |
+| `fs.grep`                        | fs         | true         | `pattern`, `path`                               | Op                |
+| `fs.glob`                        | fs         | true         | `pattern`, `path`                               | Op                |
+| `web.search`                     | web        | true         | `query`                                         | Op                |
+| `web.fetch`                      | web        | true         | `url`                                           | Op                |
+| `aegis.schema.get`               | schema     | true         | `key`                                           | Ar, Op            |
+| `aegis.schema.validate`          | schema     | true         | `kind`, `manifest_yaml`                         | Ar, Op            |
+| `aegis.agent.create`             | agent      | true         | `manifest_yaml`                                 | Op                |
+| `aegis.agent.list`               | agent      | true         | —                                               | Ag, Ar, Op        |
+| `aegis.agent.update`             | agent      | true         | `manifest_yaml`                                 | Op                |
+| `aegis.agent.export`             | agent      | true         | `name`                                          | Op                |
+| `aegis.agent.delete`             | agent      | true         | `agent_id`                                      | Op                |
+| `aegis.agent.generate`           | agent      | false        | `input`                                         | Ag, Ar, Op        |
+| `aegis.agent.logs`               | agent      | true         | `agent_id`                                      | Ag, Ar, Op        |
+| `aegis.agent.search`             | agent      | true         | `query`                                         | Op                |
+| `aegis.agent.wait`               | agent      | true         | `execution_id`                                  | Ag, Ar, Op        |
+| `aegis.workflow.create`          | workflow   | true         | `manifest_yaml`                                 | Op                |
+| `aegis.workflow.list`            | workflow   | true         | —                                               | Ar, Op            |
+| `aegis.workflow.validate`        | workflow   | true         | `manifest_yaml`                                 | Op                |
+| `aegis.workflow.update`          | workflow   | true         | `manifest_yaml`                                 | Op                |
+| `aegis.workflow.export`          | workflow   | true         | `name`                                          | Op                |
+| `aegis.workflow.delete`          | workflow   | false        | `name`                                          | Op                |
+| `aegis.workflow.run`             | workflow   | false        | `name`                                          | Op                |
+| `aegis.workflow.generate`        | workflow   | false        | `input`                                         | Ar, Op            |
+| `aegis.workflow.logs`            | workflow   | true         | `execution_id`                                  | Ar, Op            |
+| `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ex, Ar, Op        |
+| `aegis.workflow.cancel`          | workflow   | true         | `execution_id`                                  | Op                |
+| `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | Op                |
+| `aegis.workflow.remove`          | workflow   | true         | `execution_id`                                  | Op                |
+| `aegis.workflow.promote`         | workflow   | false        | `name`                                          | Op                |
+| `aegis.workflow.demote`          | workflow   | false        | `name`                                          | Op                |
+| `aegis.workflow.executions.list` | workflow   | true         | —                                               | Op                |
+| `aegis.workflow.executions.get`  | workflow   | true         | `execution_id`                                  | Op                |
+| `aegis.workflow.status`          | workflow   | true         | `execution_id`                                  | Op                |
+| `aegis.workflow.search`          | workflow   | true         | `query`                                         | Op                |
+| `aegis.task.execute`             | task       | false        | `agent_id`                                      | Ag, Ar, Op        |
+| `aegis.task.status`              | task       | true         | `execution_id`                                  | Op                |
+| `aegis.task.list`                | task       | true         | —                                               | Ag, Op            |
+| `aegis.task.cancel`              | task       | false        | `execution_id`                                  | Ag, Op            |
+| `aegis.task.remove`              | task       | false        | `execution_id`                                  | Op                |
+| `aegis.task.logs`                | task       | true         | `execution_id`                                  | Ag, Op            |
+| `aegis.task.wait`                | task       | true         | `execution_id`                                  | Ag, Ar, Op        |
+| `aegis.execution.file`           | execution  | true         | `execution_id`, `path`                          | Ag, Ex, Ar, Op    |
+| `aegis.attachment.read`          | attachment | true         | `volume_id`, `path`                             | System-tier only  |
+| `aegis.execute.intent`           | execute    | false        | `intent`                                        | Ex, Op            |
+| `aegis.execute.status`           | execute    | true         | `pipeline_execution_id`                         | Ex, Op            |
+| `aegis.execute.wait`             | execute    | true         | `execution_id`                                  | Ex, Op            |
+| `aegis.tools.list`               | tools      | true         | —                                               | Ag, Op            |
+| `aegis.tools.search`             | tools      | true         | —                                               | Ag, Op            |
+| `aegis.system.info`              | system     | true         | —                                               | Op                |
+| `aegis.system.config`            | system     | true         | —                                               | Op                |
+| `aegis.runtime.list`             | runtime    | true         | —                                               | Op                |
+| `aegis.file.list`                | file       | true         | `volume_id`, `path`                             | Op                |
+| `aegis.file.read`                | file       | true         | `volume_id`, `path`                             | Op                |
+| `aegis.file.write`               | file       | false        | `volume_id`, `path`, `content`                  | Op                |
+| `aegis.file.delete`              | file       | false        | `volume_id`, `path`                             | Op                |
+| `aegis.file.mkdir`               | file       | false        | `volume_id`, `path`                             | Op                |
+| `aegis.volume.create`            | volume     | false        | `label`, `size_limit_bytes`                     | Op                |
+| `aegis.volume.list`              | volume     | true         | —                                               | Op                |
+| `aegis.volume.delete`            | volume     | false        | `volume_id`                                     | Op                |
+| `aegis.volume.quota`             | volume     | true         | —                                               | Op                |
+| `aegis.git.clone`                | git        | false        | `repo_url`, `label`                             | Op                |
+| `aegis.git.list`                 | git        | true         | —                                               | Op                |
+| `aegis.git.status`               | git        | true         | `binding_id`                                    | Op                |
+| `aegis.git.refresh`              | git        | false        | `binding_id`                                    | Op                |
+| `aegis.git.delete`               | git        | false        | `binding_id`                                    | Op                |
+| `aegis.git.commit`               | git        | false        | `binding_id`, `message`                         | Op                |
+| `aegis.git.push`                 | git        | false        | `binding_id`                                    | Op                |
+| `aegis.git.diff`                 | git        | true         | `binding_id`                                    | Op                |
+| `aegis.script.save`              | script     | false        | `name`, `code`                                  | Op                |
+| `aegis.script.list`              | script     | true         | —                                               | Op                |
+| `aegis.script.get`               | script     | true         | `id`                                            | Op                |
+| `aegis.script.update`            | script     | false        | `id`, `name`, `code`                            | Op                |
+| `aegis.script.delete`            | script     | false        | `id`                                            | Op                |
+| `zaru.init`                      | zaru       | N/A          | —                                               | C, Ag, Ex, Ar, Op |
+| `zaru.mode`                      | zaru       | N/A          | `target_mode`, `reason`                         | C, Ag, Ex, Ar, Op |
+| `zaru.docs`                      | zaru       | N/A          | `query`                                         | C, Ag, Ex, Ar, Op |
 
 ---
 
@@ -243,9 +244,9 @@ Read the contents of a file at the given POSIX path from the mounted Workspace v
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to read. |
+| Property | Type     | Required | Default | Description                                          |
+| -------- | -------- | -------- | ------- | ---------------------------------------------------- |
+| `path`   | `string` | Yes      | —       | Absolute or relative POSIX path of the file to read. |
 
 **Output:**
 
@@ -267,10 +268,10 @@ missing parent directories.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to write. |
-| `content` | `string` | Yes | — | String content to write to the file. |
+| Property  | Type     | Required | Default | Description                                           |
+| --------- | -------- | -------- | ------- | ----------------------------------------------------- |
+| `path`    | `string` | Yes      | —       | Absolute or relative POSIX path of the file to write. |
+| `content` | `string` | Yes      | —       | String content to write to the file.                  |
 
 **Output:**
 
@@ -290,9 +291,9 @@ List the contents of a directory in the Workspace volume.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the directory to list. |
+| Property | Type     | Required | Default | Description                                               |
+| -------- | -------- | -------- | ------- | --------------------------------------------------------- |
+| `path`   | `string` | Yes      | —       | Absolute or relative POSIX path of the directory to list. |
 
 **Output:**
 
@@ -317,9 +318,9 @@ Creates a new directory along with any necessary parent directories.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the directory to create. |
+| Property | Type     | Required | Default | Description                                                 |
+| -------- | -------- | -------- | ------- | ----------------------------------------------------------- |
+| `path`   | `string` | Yes      | —       | Absolute or relative POSIX path of the directory to create. |
 
 **Output:**
 
@@ -333,8 +334,9 @@ Creates a new directory along with any necessary parent directories.
 ### `fs.delete`
 
 <Callout type="warn">
-  `fs.delete` is destructive and irreversible. To delete a non-empty directory, set `recursive:
-  true`. Without it, deletion of a non-empty directory will fail with an error.
+  `fs.delete` is destructive and irreversible. To delete a non-empty directory,
+  set `recursive: true`. Without it, deletion of a non-empty directory will fail
+  with an error.
 </Callout>
 
 Deletes a file or directory.
@@ -343,10 +345,10 @@ Deletes a file or directory.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file or directory to delete. |
-| `recursive` | `boolean` | No | `false` | Set to `true` to delete a directory and all its contents. |
+| Property    | Type      | Required | Default | Description                                                         |
+| ----------- | --------- | -------- | ------- | ------------------------------------------------------------------- |
+| `path`      | `string`  | Yes      | —       | Absolute or relative POSIX path of the file or directory to delete. |
+| `recursive` | `boolean` | No       | `false` | Set to `true` to delete a directory and all its contents.           |
 
 **Output:**
 
@@ -365,15 +367,16 @@ Performs an exact string replacement in a file.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to edit. |
-| `target_content` | `string` | Yes | — | Exact string content to find and replace. Must match exactly once in the file. |
-| `replacement_content` | `string` | Yes | — | New string content to insert in place of `target_content`. |
+| Property              | Type     | Required | Default | Description                                                                    |
+| --------------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------ |
+| `path`                | `string` | Yes      | —       | Absolute or relative POSIX path of the file to edit.                           |
+| `target_content`      | `string` | Yes      | —       | Exact string content to find and replace. Must match exactly once in the file. |
+| `replacement_content` | `string` | Yes      | —       | New string content to insert in place of `target_content`.                     |
 
 <Callout type="warn">
-  `target_content` must appear exactly once in the file. If the string is not found or appears more
-  than once, the tool returns an error without modifying the file.
+  `target_content` must appear exactly once in the file. If the string is not
+  found or appears more than once, the tool returns an error without modifying
+  the file.
 </Callout>
 
 **Output:**
@@ -394,14 +397,15 @@ Performs multiple sequential string replacements in a file.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `path` | `string` | Yes | — | Absolute or relative POSIX path of the file to edit. |
-| `edits` | `array` | Yes | — | Array of edit objects applied sequentially. Each object requires `target_content` (string) and `replacement_content` (string). |
+| Property | Type     | Required | Default | Description                                                                                                                    |
+| -------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `path`   | `string` | Yes      | —       | Absolute or relative POSIX path of the file to edit.                                                                           |
+| `edits`  | `array`  | Yes      | —       | Array of edit objects applied sequentially. Each object requires `target_content` (string) and `replacement_content` (string). |
 
 <Callout type="info">
-  Edits are applied sequentially in array order. Each edit operates on the result of the previous
-  edit, so `target_content` values for later edits must account for earlier replacements.
+  Edits are applied sequentially in array order. Each edit operates on the
+  result of the previous edit, so `target_content` values for later edits must
+  account for earlier replacements.
 </Callout>
 
 **Output:**
@@ -424,10 +428,10 @@ Recursively searches for a regex pattern within files in a given directory.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `pattern` | `string` | Yes | — | Regex pattern to search for. |
-| `path` | `string` | Yes | — | Directory path to start the recursive search from. |
+| Property  | Type     | Required | Default | Description                                        |
+| --------- | -------- | -------- | ------- | -------------------------------------------------- |
+| `pattern` | `string` | Yes      | —       | Regex pattern to search for.                       |
+| `path`    | `string` | Yes      | —       | Directory path to start the recursive search from. |
 
 **Output:** Formatted string of matches, one per line in `path:line_number:content` format.
 
@@ -439,10 +443,10 @@ Recursively matches files against a glob pattern.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `pattern` | `string` | Yes | — | Glob pattern to match files (e.g. `**/*.rs`). |
-| `path` | `string` | Yes | — | Directory path to start the recursive search from. |
+| Property  | Type     | Required | Default | Description                                        |
+| --------- | -------- | -------- | ------- | -------------------------------------------------- |
+| `pattern` | `string` | Yes      | —       | Glob pattern to match files (e.g. `**/*.rs`).      |
+| `path`    | `string` | Yes      | —       | Directory path to start the recursive search from. |
 
 **Output:** Newline-separated list of matching file paths.
 
@@ -461,9 +465,9 @@ Performs an internet search query.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `query` | `string` | Yes | — | Search query. |
+| Property | Type     | Required | Default | Description   |
+| -------- | -------- | -------- | ------- | ------------- |
+| `query`  | `string` | Yes      | —       | Search query. |
 
 **Output:** Formatted list of results, each containing title, URL, and snippet text.
 
@@ -475,9 +479,9 @@ Fetches content from a URL, optionally converting HTML to Markdown.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `url` | `string` | Yes | — | URL to fetch content from. |
+| Property | Type     | Required | Default | Description                |
+| -------- | -------- | -------- | ------- | -------------------------- |
+| `url`    | `string` | Yes      | —       | URL to fetch content from. |
 
 **Output:** Response body as a string. HTML responses are converted to Markdown when the
 `to_markdown` conversion option is in effect.
@@ -512,9 +516,9 @@ Executes a shell command inside the agent's ephemeral container environment. Use
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `command` | `string` | Yes | — | Command to execute. The first token must appear in the agent's `subcommand_allowlist`. |
+| Property  | Type     | Required | Default | Description                                                                            |
+| --------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------- |
+| `command` | `string` | Yes      | —       | Command to execute. The first token must appear in the agent's `subcommand_allowlist`. |
 
 **Output:**
 
@@ -527,8 +531,9 @@ Executes a shell command inside the agent's ephemeral container environment. Use
 ```
 
 <Callout type="info">
-  A non-zero `exit_code` is returned as a successful tool response — the agent is responsible for
-  interpreting the exit code and deciding whether to retry or fail.
+  A non-zero `exit_code` is returned as a successful tool response — the agent
+  is responsible for interpreting the exit code and deciding whether to retry or
+  fail.
 </Callout>
 
 ---
@@ -547,10 +552,10 @@ Parses, validates, and deploys an Agent manifest to the registry.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `manifest_yaml` | `string` | Yes | — | Full Agent manifest YAML to parse, validate, and deploy. |
-| `force` | `boolean` | No | `false` | Overwrite an existing deployed agent with the same name/version. |
+| Property        | Type      | Required | Default | Description                                                      |
+| --------------- | --------- | -------- | ------- | ---------------------------------------------------------------- |
+| `manifest_yaml` | `string`  | Yes      | —       | Full Agent manifest YAML to parse, validate, and deploy.         |
+| `force`         | `boolean` | No       | `false` | Overwrite an existing deployed agent with the same name/version. |
 
 **Output:**
 
@@ -571,7 +576,7 @@ Lists currently deployed agents and metadata.
 
 **`skip_judge`:** `true`
 
-*No parameters — accepts an empty object `{}`.*
+_No parameters — accepts an empty object `{}`._
 
 **Output:**
 
@@ -598,10 +603,10 @@ Updates an existing Agent manifest in the registry.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `manifest_yaml` | `string` | Yes | — | Full Agent manifest YAML to update an existing agent. |
-| `force` | `boolean` | No | `false` | Overwrite an existing version if it already exists. |
+| Property        | Type      | Required | Default | Description                                           |
+| --------------- | --------- | -------- | ------- | ----------------------------------------------------- |
+| `manifest_yaml` | `string`  | Yes      | —       | Full Agent manifest YAML to update an existing agent. |
+| `force`         | `boolean` | No       | `false` | Overwrite an existing version if it already exists.   |
 
 **Output:**
 
@@ -622,9 +627,9 @@ Exports an Agent manifest by name.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Name of the agent to export. |
+| Property | Type     | Required | Default | Description                  |
+| -------- | -------- | -------- | ------- | ---------------------------- |
+| `name`   | `string` | Yes      | —       | Name of the agent to export. |
 
 **Output:**
 
@@ -640,8 +645,9 @@ Exports an Agent manifest by name.
 ### `aegis.agent.delete`
 
 <Callout type="warn">
-  Deletion is permanent and cannot be undone. Running executions are not affected, but the agent
-  definition will no longer be available for new task dispatch.
+  Deletion is permanent and cannot be undone. Running executions are not
+  affected, but the agent definition will no longer be available for new task
+  dispatch.
 </Callout>
 
 Removes a deployed agent from the registry by UUID.
@@ -650,9 +656,9 @@ Removes a deployed agent from the registry by UUID.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `agent_id` | `string` | Yes | — | UUID of the agent to remove. |
+| Property   | Type     | Required | Default | Description                  |
+| ---------- | -------- | -------- | ------- | ---------------------------- |
+| `agent_id` | `string` | Yes      | —       | UUID of the agent to remove. |
 
 **Output:**
 
@@ -671,15 +677,16 @@ Generates an Agent manifest from a natural-language intent.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `input` | `string` | Yes | — | Natural-language intent for the agent to create. |
-| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated agent should be wired to read. When present, the generation pipeline declares `attachments` in the new agent's `input_schema` and grants it `aegis.attachment.read`. |
+| Property      | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                         |
+| ------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`       | `string` | Yes      | —       | Natural-language intent for the agent to create.                                                                                                                                                                                                                                                    |
+| `attachments` | `array`  | No       | —       | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated agent should be wired to read. When present, the generation pipeline declares `attachments` in the new agent's `input_schema` and grants it `aegis.attachment.read`. |
 
 <Callout type="info">
-  This tool returns an `execution_id` immediately and starts an async authoring loop. Use
-  [`aegis.agent.wait`](#aegisagentwait) or [`aegis.task.wait`](#aegistaskwait) to block until the
-  generated agent is deployed.
+  This tool returns an `execution_id` immediately and starts an async authoring
+  loop. Use [`aegis.agent.wait`](#aegisagentwait) or
+  [`aegis.task.wait`](#aegistaskwait) to block until the generated agent is
+  deployed.
 </Callout>
 
 **Output:**
@@ -699,11 +706,11 @@ Retrieve agent-level activity log snapshot.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `agent_id` | `string` | Yes | — | UUID of the agent whose activity log should be retrieved. |
-| `limit` | `integer` | No | `50` | Maximum number of events to return. |
-| `offset` | `integer` | No | `0` | Zero-based starting offset into the activity log. |
+| Property   | Type      | Required | Default | Description                                               |
+| ---------- | --------- | -------- | ------- | --------------------------------------------------------- |
+| `agent_id` | `string`  | Yes      | —       | UUID of the agent whose activity log should be retrieved. |
+| `limit`    | `integer` | No       | `50`    | Maximum number of events to return.                       |
+| `offset`   | `integer` | No       | `0`     | Zero-based starting offset into the activity log.         |
 
 **Output:**
 
@@ -732,19 +739,19 @@ Semantic search over deployed agents by natural-language query.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `query` | `string` | Yes | — | Natural-language description of the agent you are looking for. |
-| `tenant_id` | `string` | No | current tenant | Tenant ID to search within. |
-| `limit` | `integer` | No | `10` | Maximum results (1–100, tier-dependent cap). |
-| `min_score` | `number` | No | `0.3` | Minimum relevance score threshold (0.0–1.0). |
-| `labels` | `object` | No | — | Label key-value pairs to filter by. All must match. |
-| `status` | `string` | No | — | Filter by agent status. One of: `active`, `paused`, `failed`. |
-| `include_platform_templates` | `boolean` | No | `true` | Include platform-provided template agents. |
+| Property                     | Type      | Required | Default        | Description                                                    |
+| ---------------------------- | --------- | -------- | -------------- | -------------------------------------------------------------- |
+| `query`                      | `string`  | Yes      | —              | Natural-language description of the agent you are looking for. |
+| `tenant_id`                  | `string`  | No       | current tenant | Tenant ID to search within.                                    |
+| `limit`                      | `integer` | No       | `10`           | Maximum results (1–100, tier-dependent cap).                   |
+| `min_score`                  | `number`  | No       | `0.3`          | Minimum relevance score threshold (0.0–1.0).                   |
+| `labels`                     | `object`  | No       | —              | Label key-value pairs to filter by. All must match.            |
+| `status`                     | `string`  | No       | —              | Filter by agent status. One of: `active`, `paused`, `failed`.  |
+| `include_platform_templates` | `boolean` | No       | `true`         | Include platform-provided template agents.                     |
 
 <Callout type="info">
-  `aegis.agent.search` requires a Cortex connection. Results are returned sorted by score
-  descending.
+  `aegis.agent.search` requires a Cortex connection. Results are returned sorted
+  by score descending.
 </Callout>
 
 **Output:**
@@ -770,8 +777,8 @@ Semantic search over deployed agents by natural-language query.
 ### `aegis.agent.wait`
 
 <Callout type="info">
-  `aegis.agent.wait` is an alias for [`aegis.task.wait`](#aegistaskwait). Both tools share
-  identical parameters and output shape.
+  `aegis.agent.wait` is an alias for [`aegis.task.wait`](#aegistaskwait). Both
+  tools share identical parameters and output shape.
 </Callout>
 
 Alias for aegis.task.wait. Blocks until an agent execution completes.
@@ -780,11 +787,11 @@ Alias for aegis.task.wait. Blocks until an agent execution completes.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the execution to wait for. |
-| `poll_interval_seconds` | `integer` | No | `10` | Seconds between status polls (minimum: 1). |
-| `timeout_seconds` | `integer` | No | `300` | Maximum seconds to wait before returning a timeout (minimum: 1). |
+| Property                | Type      | Required | Default | Description                                                      |
+| ----------------------- | --------- | -------- | ------- | ---------------------------------------------------------------- |
+| `execution_id`          | `string`  | Yes      | —       | UUID of the execution to wait for.                               |
+| `poll_interval_seconds` | `integer` | No       | `10`    | Seconds between status polls (minimum: 1).                       |
+| `timeout_seconds`       | `integer` | No       | `300`   | Maximum seconds to wait before returning a timeout (minimum: 1). |
 
 **Output:**
 
@@ -817,14 +824,14 @@ Performs strict deterministic and semantic workflow validation, then registers o
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `manifest_yaml` | `string` | Yes | — | Full Workflow manifest YAML to parse, validate, semantically judge, and register. |
-| `force` | `boolean` | No | `false` | Overwrite an existing version if it already exists. |
-| `task_context` | `string` | No | — | Optional task context to guide semantic judges. |
-| `judge_agents` | `array` | No | — | Judge agent names to use for semantic validation. |
-| `min_score` | `number` | No | — | Minimum consensus score required for deployment. |
-| `min_confidence` | `number` | No | — | Minimum consensus confidence required for deployment. |
+| Property         | Type      | Required | Default | Description                                                                       |
+| ---------------- | --------- | -------- | ------- | --------------------------------------------------------------------------------- |
+| `manifest_yaml`  | `string`  | Yes      | —       | Full Workflow manifest YAML to parse, validate, semantically judge, and register. |
+| `force`          | `boolean` | No       | `false` | Overwrite an existing version if it already exists.                               |
+| `task_context`   | `string`  | No       | —       | Optional task context to guide semantic judges.                                   |
+| `judge_agents`   | `array`   | No       | —       | Judge agent names to use for semantic validation.                                 |
+| `min_score`      | `number`  | No       | —       | Minimum consensus score required for deployment.                                  |
+| `min_confidence` | `number`  | No       | —       | Minimum consensus confidence required for deployment.                             |
 
 **Output:**
 
@@ -845,11 +852,11 @@ Lists currently registered workflows and metadata.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
-| `scope` | `string` | No | — | Scope filter. One of: `global` (global workflows only), `visible` (user + tenant + global). Omit to list all for the tenant. |
-| `user_id` | `string` | No | — | Optional user ID for `visible` scope filter. |
+| Property    | Type     | Required | Default      | Description                                                                                                                  |
+| ----------- | -------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `tenant_id` | `string` | No       | local tenant | Optional tenant identifier.                                                                                                  |
+| `scope`     | `string` | No       | —            | Scope filter. One of: `global` (global workflows only), `visible` (user + tenant + global). Omit to list all for the tenant. |
+| `user_id`   | `string` | No       | —            | Optional user ID for `visible` scope filter.                                                                                 |
 
 **Output:**
 
@@ -874,9 +881,9 @@ Validate a workflow manifest against the schema.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `manifest_yaml` | `string` | Yes | — | Full Workflow manifest YAML to parse and deterministically validate. |
+| Property        | Type     | Required | Default | Description                                                          |
+| --------------- | -------- | -------- | ------- | -------------------------------------------------------------------- |
+| `manifest_yaml` | `string` | Yes      | —       | Full Workflow manifest YAML to parse and deterministically validate. |
 
 **Output:**
 
@@ -897,10 +904,10 @@ Updates an existing Workflow manifest in the registry.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `manifest_yaml` | `string` | Yes | — | Full Workflow manifest YAML to update an existing workflow. |
-| `force` | `boolean` | No | `false` | Overwrite an existing version if it already exists. |
+| Property        | Type      | Required | Default | Description                                                 |
+| --------------- | --------- | -------- | ------- | ----------------------------------------------------------- |
+| `manifest_yaml` | `string`  | Yes      | —       | Full Workflow manifest YAML to update an existing workflow. |
+| `force`         | `boolean` | No       | `false` | Overwrite an existing version if it already exists.         |
 
 **Output:**
 
@@ -921,9 +928,9 @@ Exports a Workflow manifest by name.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Name of the workflow to export. |
+| Property | Type     | Required | Default | Description                     |
+| -------- | -------- | -------- | ------- | ------------------------------- |
+| `name`   | `string` | Yes      | —       | Name of the workflow to export. |
 
 **Output:**
 
@@ -939,8 +946,9 @@ Exports a Workflow manifest by name.
 ### `aegis.workflow.delete`
 
 <Callout type="warn">
-  Deleting a workflow removes the definition from the registry. In-progress executions are not
-  terminated, but new executions of this workflow will no longer be possible.
+  Deleting a workflow removes the definition from the registry. In-progress
+  executions are not terminated, but new executions of this workflow will no
+  longer be possible.
 </Callout>
 
 Removes a registered workflow from the registry by name.
@@ -949,9 +957,9 @@ Removes a registered workflow from the registry by name.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Name of the workflow to delete. |
+| Property | Type     | Required | Default | Description                     |
+| -------- | -------- | -------- | ------- | ------------------------------- |
+| `name`   | `string` | Yes      | —       | Name of the workflow to delete. |
 
 **Output:**
 
@@ -970,14 +978,14 @@ Executes a registered workflow by name with optional input parameters.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Name of the workflow to execute. |
-| `intent` | `string` | No | — | Natural-language description of the goal for this run. Injected into workflow input and available to agentic states and task activities. |
-| `input` | `object` | No | — | Workflow input parameters. |
-| `blackboard` | `object` | No | — | Optional blackboard overrides merged into the execution before startup. |
-| `version` | `string` | No | latest | Semantic version of the workflow to execute. When omitted, the latest deployed version is used. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property     | Type     | Required | Default      | Description                                                                                                                              |
+| ------------ | -------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`       | `string` | Yes      | —            | Name of the workflow to execute.                                                                                                         |
+| `intent`     | `string` | No       | —            | Natural-language description of the goal for this run. Injected into workflow input and available to agentic states and task activities. |
+| `input`      | `object` | No       | —            | Workflow input parameters.                                                                                                               |
+| `blackboard` | `object` | No       | —            | Optional blackboard overrides merged into the execution before startup.                                                                  |
+| `version`    | `string` | No       | latest       | Semantic version of the workflow to execute. When omitted, the latest deployed version is used.                                          |
+| `tenant_id`  | `string` | No       | local tenant | Optional tenant identifier.                                                                                                              |
 
 **Output:**
 
@@ -998,13 +1006,14 @@ Generates a Workflow manifest from a natural-language objective.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `input` | `string` | Yes | — | Natural-language workflow objective. |
+| Property | Type     | Required | Default | Description                          |
+| -------- | -------- | -------- | ------- | ------------------------------------ |
+| `input`  | `string` | Yes      | —       | Natural-language workflow objective. |
 
 <Callout type="info">
   Returns an `execution_id` immediately and starts an async authoring loop. Use
-  [`aegis.workflow.wait`](#aegisworkflowwait) to block until the generated workflow is registered.
+  [`aegis.workflow.wait`](#aegisworkflowwait) to block until the generated
+  workflow is registered.
 </Callout>
 
 **Output:**
@@ -1024,11 +1033,11 @@ Returns paginated workflow execution events.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution whose event log should be retrieved. |
-| `limit` | `integer` | No | `50` | Maximum number of events to return (max 200). |
-| `offset` | `integer` | No | `0` | Number of events to skip for pagination. |
+| Property       | Type      | Required | Default | Description                                                         |
+| -------------- | --------- | -------- | ------- | ------------------------------------------------------------------- |
+| `execution_id` | `string`  | Yes      | —       | UUID of the workflow execution whose event log should be retrieved. |
+| `limit`        | `integer` | No       | `50`    | Maximum number of events to return (max 200).                       |
+| `offset`       | `integer` | No       | `0`     | Number of events to skip for pagination.                            |
 
 **Output:**
 
@@ -1061,11 +1070,11 @@ Polls a workflow execution until it reaches a terminal state and returns the res
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution to wait for. |
-| `poll_interval_seconds` | `integer` | No | `5` | Seconds between polls. |
-| `timeout_seconds` | `integer` | No | `300` | Maximum wait time in seconds. |
+| Property                | Type      | Required | Default | Description                                 |
+| ----------------------- | --------- | -------- | ------- | ------------------------------------------- |
+| `execution_id`          | `string`  | Yes      | —       | UUID of the workflow execution to wait for. |
+| `poll_interval_seconds` | `integer` | No       | `5`     | Seconds between polls.                      |
+| `timeout_seconds`       | `integer` | No       | `300`   | Maximum wait time in seconds.               |
 
 **Output (completed):**
 
@@ -1102,9 +1111,9 @@ Cancel a running workflow execution.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution to cancel. |
+| Property       | Type     | Required | Default | Description                               |
+| -------------- | -------- | -------- | ------- | ----------------------------------------- |
+| `execution_id` | `string` | Yes      | —       | UUID of the workflow execution to cancel. |
 
 **Output:**
 
@@ -1126,10 +1135,10 @@ Send human input response to a paused workflow execution.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution to signal. |
-| `response` | `string` | Yes | — | Human input response text to send to the paused workflow. |
+| Property       | Type     | Required | Default | Description                                               |
+| -------------- | -------- | -------- | ------- | --------------------------------------------------------- |
+| `execution_id` | `string` | Yes      | —       | UUID of the workflow execution to signal.                 |
+| `response`     | `string` | Yes      | —       | Human input response text to send to the paused workflow. |
 
 **Output:**
 
@@ -1151,13 +1160,13 @@ Remove a workflow execution record.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution to remove. |
+| Property       | Type     | Required | Default | Description                               |
+| -------------- | -------- | -------- | ------- | ----------------------------------------- |
+| `execution_id` | `string` | Yes      | —       | UUID of the workflow execution to remove. |
 
 <Callout type="info">
-  The execution must be in a terminal state (`completed`, `failed`, or `cancelled`) before it can
-  be removed.
+  The execution must be in a terminal state (`completed`, `failed`, or
+  `cancelled`) before it can be removed.
 </Callout>
 
 **Output:**
@@ -1180,15 +1189,16 @@ Promote a workflow from user scope to tenant scope.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Workflow name or ID to promote. |
-| `target_scope` | `string` | No | `global` | Target scope. One of: `tenant`, `global`. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property       | Type     | Required | Default      | Description                               |
+| -------------- | -------- | -------- | ------------ | ----------------------------------------- |
+| `name`         | `string` | Yes      | —            | Workflow name or ID to promote.           |
+| `target_scope` | `string` | No       | `global`     | Target scope. One of: `tenant`, `global`. |
+| `tenant_id`    | `string` | No       | local tenant | Optional tenant identifier.               |
 
 <Callout type="info">
-  Promotion elevates a workflow's visibility scope, making it available to a wider set of users.
-  Promoting to `global` makes the workflow visible to all tenants on the platform.
+  Promotion elevates a workflow's visibility scope, making it available to a
+  wider set of users. Promoting to `global` makes the workflow visible to all
+  tenants on the platform.
 </Callout>
 
 **Output:**
@@ -1210,15 +1220,16 @@ Demote a workflow from tenant scope to user scope.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Workflow name or ID to demote. |
-| `target_scope` | `string` | No | `tenant` | Target scope. One of: `tenant`, `user`. |
-| `user_id` | `string` | No | — | Owner user ID when demoting to user scope. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property       | Type     | Required | Default      | Description                                |
+| -------------- | -------- | -------- | ------------ | ------------------------------------------ |
+| `name`         | `string` | Yes      | —            | Workflow name or ID to demote.             |
+| `target_scope` | `string` | No       | `tenant`     | Target scope. One of: `tenant`, `user`.    |
+| `user_id`      | `string` | No       | —            | Owner user ID when demoting to user scope. |
+| `tenant_id`    | `string` | No       | local tenant | Optional tenant identifier.                |
 
 <Callout type="info">
-  Demotion narrows a workflow's visibility scope, restricting access to a smaller audience.
+  Demotion narrows a workflow's visibility scope, restricting access to a
+  smaller audience.
 </Callout>
 
 **Output:**
@@ -1240,12 +1251,12 @@ Lists workflow executions, optionally filtered.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `limit` | `integer` | No | `20` | Maximum number of results to return. |
-| `offset` | `integer` | No | `0` | Pagination offset. |
-| `workflow_id` | `string` | No | — | Optional workflow UUID or workflow name filter. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property      | Type      | Required | Default      | Description                                     |
+| ------------- | --------- | -------- | ------------ | ----------------------------------------------- |
+| `limit`       | `integer` | No       | `20`         | Maximum number of results to return.            |
+| `offset`      | `integer` | No       | `0`          | Pagination offset.                              |
+| `workflow_id` | `string`  | No       | —            | Optional workflow UUID or workflow name filter. |
+| `tenant_id`   | `string`  | No       | local tenant | Optional tenant identifier.                     |
 
 **Output:**
 
@@ -1274,10 +1285,10 @@ Returns details of a specific workflow execution.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution to inspect. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property       | Type     | Required | Default      | Description                                |
+| -------------- | -------- | -------- | ------------ | ------------------------------------------ |
+| `execution_id` | `string` | Yes      | —            | UUID of the workflow execution to inspect. |
+| `tenant_id`    | `string` | No       | local tenant | Optional tenant identifier.                |
 
 **Output:**
 
@@ -1303,10 +1314,10 @@ Returns current status of a workflow execution.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow execution to inspect. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property       | Type     | Required | Default      | Description                                |
+| -------------- | -------- | -------- | ------------ | ------------------------------------------ |
+| `execution_id` | `string` | Yes      | —            | UUID of the workflow execution to inspect. |
+| `tenant_id`    | `string` | No       | local tenant | Optional tenant identifier.                |
 
 **Output:**
 
@@ -1329,18 +1340,18 @@ Semantic search over registered workflows.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `query` | `string` | Yes | — | Natural-language description of the workflow you are looking for. |
-| `tenant_id` | `string` | No | current tenant | Tenant ID to search within. |
-| `limit` | `integer` | No | `10` | Maximum results (1–100, tier-dependent cap). |
-| `min_score` | `number` | No | `0.3` | Minimum relevance score threshold (0.0–1.0). |
-| `labels` | `object` | No | — | Label key-value pairs to filter by. All must match. |
-| `include_platform_templates` | `boolean` | No | `true` | Include platform-provided template workflows. |
+| Property                     | Type      | Required | Default        | Description                                                       |
+| ---------------------------- | --------- | -------- | -------------- | ----------------------------------------------------------------- |
+| `query`                      | `string`  | Yes      | —              | Natural-language description of the workflow you are looking for. |
+| `tenant_id`                  | `string`  | No       | current tenant | Tenant ID to search within.                                       |
+| `limit`                      | `integer` | No       | `10`           | Maximum results (1–100, tier-dependent cap).                      |
+| `min_score`                  | `number`  | No       | `0.3`          | Minimum relevance score threshold (0.0–1.0).                      |
+| `labels`                     | `object`  | No       | —              | Label key-value pairs to filter by. All must match.               |
+| `include_platform_templates` | `boolean` | No       | `true`         | Include platform-provided template workflows.                     |
 
 <Callout type="info">
-  `aegis.workflow.search` requires a Cortex connection. Results are returned sorted by score
-  descending.
+  `aegis.workflow.search` requires a Cortex connection. Results are returned
+  sorted by score descending.
 </Callout>
 
 **Output:**
@@ -1379,17 +1390,17 @@ Starts a new agent execution (task) by agent UUID or name.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `agent_id` | `string` | Yes | — | UUID or name of the agent to execute. |
-| `intent` | `string` | No | — | Natural-language description of what the agent should accomplish. Steers the LLM prompt directly. Complementary to structured `input`. |
-| `input` | `object` | No | — | Structured data for the agent, validated against `spec.input_schema` when declared. The well-known sub-field `input.prompt` (string) holds the full task instructions or user request. |
-| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the agent should read. The agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools` to consume them. |
-| `version` | `string` | No | latest | Semantic version of the agent to execute. When omitted, the latest deployed version is used. |
+| Property      | Type     | Required | Default | Description                                                                                                                                                                                                                                                              |
+| ------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent_id`    | `string` | Yes      | —       | UUID or name of the agent to execute.                                                                                                                                                                                                                                    |
+| `intent`      | `string` | No       | —       | Natural-language description of what the agent should accomplish. Steers the LLM prompt directly. Complementary to structured `input`.                                                                                                                                   |
+| `input`       | `object` | No       | —       | Structured data for the agent, validated against `spec.input_schema` when declared. The well-known sub-field `input.prompt` (string) holds the full task instructions or user request.                                                                                   |
+| `attachments` | `array`  | No       | —       | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the agent should read. The agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools` to consume them. |
+| `version`     | `string` | No       | latest  | Semantic version of the agent to execute. When omitted, the latest deployed version is used.                                                                                                                                                                             |
 
 <Callout type="info">
-  Use `intent` for natural-language steering and `input.prompt` for structured task instructions.
-  Both can be provided together.
+  Use `intent` for natural-language steering and `input.prompt` for structured
+  task instructions. Both can be provided together.
 </Callout>
 
 **Output:**
@@ -1411,9 +1422,9 @@ Returns the current status and output of an execution by UUID.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the execution to check. |
+| Property       | Type     | Required | Default | Description                     |
+| -------------- | -------- | -------- | ------- | ------------------------------- |
+| `execution_id` | `string` | Yes      | —       | UUID of the execution to check. |
 
 **Output:**
 
@@ -1440,10 +1451,10 @@ Lists recent executions, optionally filtered by agent.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `agent_id` | `string` | No | — | Optional UUID to filter executions by agent. |
-| `limit` | `integer` | No | `20` | Maximum number of results. |
+| Property   | Type      | Required | Default | Description                                  |
+| ---------- | --------- | -------- | ------- | -------------------------------------------- |
+| `agent_id` | `string`  | No       | —       | Optional UUID to filter executions by agent. |
+| `limit`    | `integer` | No       | `20`    | Maximum number of results.                   |
 
 **Output:**
 
@@ -1468,9 +1479,9 @@ Cancels an active agent execution by UUID.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the execution to cancel. |
+| Property       | Type     | Required | Default | Description                      |
+| -------------- | -------- | -------- | ------- | -------------------------------- |
+| `execution_id` | `string` | Yes      | —       | UUID of the execution to cancel. |
 
 **Output:**
 
@@ -1489,13 +1500,14 @@ Removes a completed or failed execution record by UUID.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the execution to remove. |
+| Property       | Type     | Required | Default | Description                      |
+| -------------- | -------- | -------- | ------- | -------------------------------- |
+| `execution_id` | `string` | Yes      | —       | UUID of the execution to remove. |
 
 <Callout type="info">
-  The execution must be in a terminal state. Use [`aegis.task.cancel`](#aegistaskcancel) first if
-  the execution is still running.
+  The execution must be in a terminal state. Use
+  [`aegis.task.cancel`](#aegistaskcancel) first if the execution is still
+  running.
 </Callout>
 
 **Output:**
@@ -1515,11 +1527,11 @@ Returns paginated execution events for a task by UUID.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the execution whose event log should be retrieved. |
-| `limit` | `integer` | No | `50` | Maximum number of events to return (capped at 200). |
-| `offset` | `integer` | No | `0` | Zero-based starting offset into the persisted event log. |
+| Property       | Type      | Required | Default | Description                                                |
+| -------------- | --------- | -------- | ------- | ---------------------------------------------------------- |
+| `execution_id` | `string`  | Yes      | —       | UUID of the execution whose event log should be retrieved. |
+| `limit`        | `integer` | No       | `50`    | Maximum number of events to return (capped at 200).        |
+| `offset`       | `integer` | No       | `0`     | Zero-based starting offset into the persisted event log.   |
 
 **Output:**
 
@@ -1550,11 +1562,11 @@ Polls an execution until it reaches a terminal state and returns the result.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the execution to wait for. |
-| `poll_interval_seconds` | `integer` | No | `10` | Seconds between status polls (minimum: 1). |
-| `timeout_seconds` | `integer` | No | `300` | Maximum seconds to wait before returning a timeout (minimum: 1). |
+| Property                | Type      | Required | Default | Description                                                      |
+| ----------------------- | --------- | -------- | ------- | ---------------------------------------------------------------- |
+| `execution_id`          | `string`  | Yes      | —       | UUID of the execution to wait for.                               |
+| `poll_interval_seconds` | `integer` | No       | `10`    | Seconds between status polls (minimum: 1).                       |
+| `timeout_seconds`       | `integer` | No       | `300`   | Maximum seconds to wait before returning a timeout (minimum: 1). |
 
 **Output:**
 
@@ -1580,30 +1592,30 @@ Read a file from a completed execution's workspace volume. Use this to retrieve 
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | The execution ID to retrieve a file from. |
-| `path` | `string` | Yes | — | File path relative to /workspace (e.g. `output.md` or `/workspace/output.md`). |
+| Property       | Type     | Required | Default | Description                                                                    |
+| -------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------ |
+| `execution_id` | `string` | Yes      | —       | The execution ID to retrieve a file from.                                      |
+| `path`         | `string` | Yes      | —       | File path relative to /workspace (e.g. `output.md` or `/workspace/output.md`). |
 
 **Available in:** Agentic, Execute, Workflow modes
 
 <Callout type="info">
-  The path is automatically normalized — both `/workspace/report.md` and `report.md` resolve to
-  the same file. Works after execution completes, while the volume is still available (ephemeral
-  volumes are cleaned up based on TTL).
+  The path is automatically normalized — both `/workspace/report.md` and
+  `report.md` resolve to the same file. Works after execution completes, while
+  the volume is still available (ephemeral volumes are cleaned up based on TTL).
 </Callout>
 
 **Output schema:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `execution_id` | `string` | The execution ID the file was retrieved from. |
-| `path` | `string` | Normalized file path relative to `/workspace`. |
-| `content` | `string` | File contents as text. **Present only for text files.** |
-| `content_type` | `string` | MIME type of the file (e.g. `text/plain`, `image/png`, `application/pdf`). |
-| `is_binary` | `boolean` | `true` if the file is binary, `false` for text files. |
-| `download_url` | `string` | Signed URL for out-of-band file download. **Present only for binary files.** |
-| `size_bytes` | `number` | Size of the file in bytes. |
+| Field          | Type      | Description                                                                  |
+| -------------- | --------- | ---------------------------------------------------------------------------- |
+| `execution_id` | `string`  | The execution ID the file was retrieved from.                                |
+| `path`         | `string`  | Normalized file path relative to `/workspace`.                               |
+| `content`      | `string`  | File contents as text. **Present only for text files.**                      |
+| `content_type` | `string`  | MIME type of the file (e.g. `text/plain`, `image/png`, `application/pdf`).   |
+| `is_binary`    | `boolean` | `true` if the file is binary, `false` for text files.                        |
+| `download_url` | `string`  | Signed URL for out-of-band file download. **Present only for binary files.** |
+| `size_bytes`   | `number`  | Size of the file in bytes.                                                   |
 
 Text files include their content inline in the `content` field so LLMs can consume it directly. Binary files (images, PDFs, archives, etc.) omit `content` and instead provide a `download_url` for out-of-band retrieval by the client application.
 
@@ -1634,9 +1646,10 @@ Text files include their content inline in the `content` field so LLMs can consu
 ```
 
 <Callout type="info">
-  The download URL points to the REST endpoint `GET /v1/executions/:id/files/*path`, which streams
-  the file directly from the storage backend. The URL includes a short-lived authentication token
-  and expires after the volume's TTL.
+  The download URL points to the REST endpoint `GET
+  /v1/executions/:id/files/*path`, which streams the file directly from the
+  storage backend. The URL includes a short-lived authentication token and
+  expires after the volume's TTL.
 </Callout>
 
 ---
@@ -1653,19 +1666,19 @@ This is the read path for files dispatched via the `attachments` field on `aegis
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the volume containing the attachment. Typically the `volume_id` of an `AttachmentRef` from the dispatch's `attachments` array. |
-| `path` | `string` | Yes | — | Path inside the volume. Typically the `path` of an `AttachmentRef` from the dispatch's `attachments` array. |
+| Property    | Type     | Required | Default | Description                                                                                                                            |
+| ----------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the volume containing the attachment. Typically the `volume_id` of an `AttachmentRef` from the dispatch's `attachments` array. |
+| `path`      | `string` | Yes      | —       | Path inside the volume. Typically the `path` of an `AttachmentRef` from the dispatch's `attachments` array.                            |
 
 **Output schema:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `content` | `string` | File contents, base64-encoded. |
-| `mime_type` | `string` | MIME type detected by content-sniffing. |
-| `size` | `integer` | Size of the file in bytes. |
-| `sha256` | `string` | Hex-encoded SHA-256 digest of the file bytes. |
+| Field       | Type      | Description                                   |
+| ----------- | --------- | --------------------------------------------- |
+| `content`   | `string`  | File contents, base64-encoded.                |
+| `mime_type` | `string`  | MIME type detected by content-sniffing.       |
+| `size`      | `integer` | Size of the file in bytes.                    |
+| `sha256`    | `string`  | Hex-encoded SHA-256 digest of the file bytes. |
 
 ---
 
@@ -1683,15 +1696,15 @@ Starts the intent-to-execution pipeline: discovers or generates an agent, writes
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `intent` | `string` | Yes | — | Natural-language description of what to execute (e.g. `"resize images in /workspace to 800x600"`). |
-| `inputs` | `object` | No | — | Optional structured inputs passed to the pipeline. |
-| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated execution should be able to read. References are passed deterministically to the generated code agent and surface in its workspace. |
-| `volume_id` | `string` | No | ephemeral | Optional persistent volume ID to use as workspace. When omitted, an ephemeral volume is created. |
-| `language` | `string` | No | `python` | Execution language. One of: `python`, `javascript`, `bash`. |
-| `timeout_seconds` | `integer` | No | — | Optional execution timeout in seconds. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property          | Type      | Required | Default      | Description                                                                                                                                                                                                                                                        |
+| ----------------- | --------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `intent`          | `string`  | Yes      | —            | Natural-language description of what to execute (e.g. `"resize images in /workspace to 800x600"`).                                                                                                                                                                 |
+| `inputs`          | `object`  | No       | —            | Optional structured inputs passed to the pipeline.                                                                                                                                                                                                                 |
+| `attachments`     | `array`   | No       | —            | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated execution should be able to read. References are passed deterministically to the generated code agent and surface in its workspace. |
+| `volume_id`       | `string`  | No       | ephemeral    | Optional persistent volume ID to use as workspace. When omitted, an ephemeral volume is created.                                                                                                                                                                   |
+| `language`        | `string`  | No       | `python`     | Execution language. One of: `python`, `javascript`, `bash`.                                                                                                                                                                                                        |
+| `timeout_seconds` | `integer` | No       | —            | Optional execution timeout in seconds.                                                                                                                                                                                                                             |
+| `tenant_id`       | `string`  | No       | local tenant | Optional tenant identifier.                                                                                                                                                                                                                                        |
 
 **Output:**
 
@@ -1714,10 +1727,10 @@ Returns the current status of an intent-to-execution pipeline run.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `pipeline_execution_id` | `string` | Yes | — | UUID of the pipeline execution to check. |
-| `tenant_id` | `string` | No | local tenant | Optional tenant identifier. |
+| Property                | Type     | Required | Default      | Description                              |
+| ----------------------- | -------- | -------- | ------------ | ---------------------------------------- |
+| `pipeline_execution_id` | `string` | Yes      | —            | UUID of the pipeline execution to check. |
+| `tenant_id`             | `string` | No       | local tenant | Optional tenant identifier.              |
 
 **Output (running):**
 
@@ -1749,8 +1762,9 @@ Returns the current status of an intent-to-execution pipeline run.
 ### `aegis.execute.wait`
 
 <Callout type="info">
-  `aegis.execute.wait` is an alias for [`aegis.workflow.wait`](#aegisworkflowwait). Pass the
-  `pipeline_execution_id` returned by [`aegis.execute.intent`](#aegisexecuteintent) as the
+  `aegis.execute.wait` is an alias for
+  [`aegis.workflow.wait`](#aegisworkflowwait). Pass the `pipeline_execution_id`
+  returned by [`aegis.execute.intent`](#aegisexecuteintent) as the
   `execution_id` parameter.
 </Callout>
 
@@ -1760,11 +1774,11 @@ Alias for aegis.workflow.wait. Blocks until pipeline execution completes.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `execution_id` | `string` | Yes | — | UUID of the workflow/pipeline execution to wait for. Pass the `pipeline_execution_id` from `aegis.execute.intent`. |
-| `poll_interval_seconds` | `integer` | No | `5` | Seconds between polls. |
-| `timeout_seconds` | `integer` | No | `300` | Maximum wait time in seconds. |
+| Property                | Type      | Required | Default | Description                                                                                                        |
+| ----------------------- | --------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `execution_id`          | `string`  | Yes      | —       | UUID of the workflow/pipeline execution to wait for. Pass the `pipeline_execution_id` from `aegis.execute.intent`. |
+| `poll_interval_seconds` | `integer` | No       | `5`     | Seconds between polls.                                                                                             |
+| `timeout_seconds`       | `integer` | No       | `300`   | Maximum wait time in seconds.                                                                                      |
 
 **Output:** Same shape as [`aegis.workflow.wait`](#aegisworkflowwait).
 
@@ -1788,7 +1802,7 @@ List all MCP tools available to your security context with pagination and option
 
 **`skip_judge`:** `true`
 
-*No parameters — accepts an empty object `{}`.*
+_No parameters — accepts an empty object `{}`._
 
 **Output:**
 
@@ -1815,9 +1829,9 @@ Search for MCP tools by keyword, name pattern, source, category, or tags. Return
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `query` | `string` | No | — | Search term matched against tool names and descriptions. |
+| Property | Type     | Required | Default | Description                                              |
+| -------- | -------- | -------- | ------- | -------------------------------------------------------- |
+| `query`  | `string` | No       | —       | Search term matched against tool names and descriptions. |
 
 **Output:**
 
@@ -1849,7 +1863,7 @@ Returns system version, status, and capabilities.
 
 **`skip_judge`:** `true`
 
-*No parameters — accepts an empty object `{}`.*
+_No parameters — accepts an empty object `{}`._
 
 **Output:**
 
@@ -1871,11 +1885,11 @@ Returns the current node configuration.
 
 **`skip_judge`:** `true`
 
-*No parameters — accepts an empty object `{}`.*
+_No parameters — accepts an empty object `{}`._
 
 <Callout type="info">
-  Returns the raw YAML of the active `node-config.yaml`. See the
-  [Node Configuration Reference](/docs/reference/node-config) for the full schema.
+  Returns the raw YAML of the active `node-config.yaml`. See the [Node
+  Configuration Reference](/docs/reference/node-config) for the full schema.
 </Callout>
 
 **Output:**
@@ -1899,9 +1913,9 @@ Returns the canonical JSON Schema for a manifest kind (agent or workflow).
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `key` | `string` | Yes | — | Schema key to retrieve. Supported values: `"agent/manifest/v1"`, `"workflow/manifest/v1"`. |
+| Property | Type     | Required | Default | Description                                                                                |
+| -------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------ |
+| `key`    | `string` | Yes      | —       | Schema key to retrieve. Supported values: `"agent/manifest/v1"`, `"workflow/manifest/v1"`. |
 
 **Output:** The full JSON Schema object for the requested manifest type.
 
@@ -1913,10 +1927,10 @@ Validates a manifest YAML string against its canonical JSON Schema.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `kind` | `string` | Yes | — | Manifest kind to validate against. Supported values: `"agent"`, `"workflow"`. |
-| `manifest_yaml` | `string` | Yes | — | Full manifest YAML text to validate against the canonical schema. |
+| Property        | Type     | Required | Default | Description                                                                   |
+| --------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------- |
+| `kind`          | `string` | Yes      | —       | Manifest kind to validate against. Supported values: `"agent"`, `"workflow"`. |
+| `manifest_yaml` | `string` | Yes      | —       | Full manifest YAML text to validate against the canonical schema.             |
 
 **Output:**
 
@@ -1941,14 +1955,15 @@ List all supported standard runtime environments (language/version pairs). Call 
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `language` | `string` | No | — | Filter by language name (e.g. `"python"`, `"go"`). |
+| Property   | Type     | Required | Default | Description                                        |
+| ---------- | -------- | -------- | ------- | -------------------------------------------------- |
+| `language` | `string` | No       | —       | Filter by language name (e.g. `"python"`, `"go"`). |
 
 <Callout type="info">
-  Call `aegis.runtime.list` before writing `spec.runtime` in agent manifests to verify the exact
-  `language` + `version` identifiers accepted by the platform. See the
-  [Standard Runtime Registry](/docs/reference/standard-runtime-registry) for the full list.
+  Call `aegis.runtime.list` before writing `spec.runtime` in agent manifests to
+  verify the exact `language` + `version` identifiers accepted by the platform.
+  See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry)
+  for the full list.
 </Callout>
 
 **Output:**
@@ -1979,9 +1994,10 @@ relative to the volume root. Volume ownership, quota, and tier limits are enforc
 orchestrator backend; the tool-availability gate itself is uniform across all tiers.
 
 <Callout type="info">
-  The `aegis.file.*` family is distinct from the agent-workspace `fs.*` family. `fs.*` operates on
-  the mounted ephemeral workspace inside a running agent container; `aegis.file.*` operates on the
-  caller's persistent user volumes by `volume_id`.
+  The `aegis.file.*` family is distinct from the agent-workspace `fs.*` family.
+  `fs.*` operates on the mounted ephemeral workspace inside a running agent
+  container; `aegis.file.*` operates on the caller's persistent user volumes by
+  `volume_id`.
 </Callout>
 
 ### `aegis.file.list`
@@ -1992,10 +2008,10 @@ List directory contents in a user volume.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the target volume. |
-| `path` | `string` | Yes | — | Directory path relative to the volume root. |
+| Property    | Type     | Required | Default | Description                                 |
+| ----------- | -------- | -------- | ------- | ------------------------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the target volume.                  |
+| `path`      | `string` | Yes      | —       | Directory path relative to the volume root. |
 
 **Output:** Directory listing with entry names and `file` / `directory` type discriminators.
 
@@ -2007,10 +2023,10 @@ Read the contents of a file in a user volume.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the target volume. |
-| `path` | `string` | Yes | — | File path relative to the volume root. |
+| Property    | Type     | Required | Default | Description                            |
+| ----------- | -------- | -------- | ------- | -------------------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the target volume.             |
+| `path`      | `string` | Yes      | —       | File path relative to the volume root. |
 
 **Output:** File contents. Text files return inline string content. Binary files return a
 base64-encoded payload or a short-lived download URL depending on size.
@@ -2024,11 +2040,11 @@ if it does.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the target volume. |
-| `path` | `string` | Yes | — | File path relative to the volume root. |
-| `content` | `string` | Yes | — | File content. Binary payloads must be base64-encoded by the caller. |
+| Property    | Type     | Required | Default | Description                                                         |
+| ----------- | -------- | -------- | ------- | ------------------------------------------------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the target volume.                                          |
+| `path`      | `string` | Yes      | —       | File path relative to the volume root.                              |
+| `content`   | `string` | Yes      | —       | File content. Binary payloads must be base64-encoded by the caller. |
 
 **Output:** Confirmation with path and bytes written. Fails if the write would exceed the
 volume's quota.
@@ -2045,10 +2061,10 @@ Delete a file or directory in a user volume.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the target volume. |
-| `path` | `string` | Yes | — | File or directory path relative to the volume root. |
+| Property    | Type     | Required | Default | Description                                         |
+| ----------- | -------- | -------- | ------- | --------------------------------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the target volume.                          |
+| `path`      | `string` | Yes      | —       | File or directory path relative to the volume root. |
 
 **Output:** Confirmation with the deleted path.
 
@@ -2060,10 +2076,10 @@ Create a directory in a user volume, including any missing parent directories.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the target volume. |
-| `path` | `string` | Yes | — | Directory path relative to the volume root. |
+| Property    | Type     | Required | Default | Description                                 |
+| ----------- | -------- | -------- | ------- | ------------------------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the target volume.                  |
+| `path`      | `string` | Yes      | —       | Directory path relative to the volume root. |
 
 **Output:** Confirmation with the created path.
 
@@ -2071,7 +2087,7 @@ Create a directory in a user volume, including any missing parent directories.
 
 ## Git Repository Tools (`aegis.git.*`)
 
-Manage SeaweedFS-backed git repository bindings. A *binding* pairs a remote repository with a
+Manage SeaweedFS-backed git repository bindings. A _binding_ pairs a remote repository with a
 persistent volume mounted at `/workspace/{label}`. The clone is performed asynchronously —
 `aegis.git.clone` returns immediately with the binding in a `Pending`/`Cloning` state; use
 `aegis.git.status` to poll until ready. `aegis.git.commit`, `aegis.git.push`, and `aegis.git.diff`
@@ -2085,15 +2101,15 @@ Create a git repo binding and trigger an asynchronous clone into a workspace vol
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `repo_url` | `string` | Yes | — | Repository URL (`https://...` or `git@...`). |
-| `label` | `string` | Yes | — | Human-readable binding name; the clone is mounted at `/workspace/{label}`. |
-| `credential_binding_id` | `string` | No | — | UUID of a credential binding (SSH key or API key) for private repos. |
-| `git_ref` | `object` | No | `{ kind: "branch", value: "main" }` | Git ref to check out. Fields: `kind` (`branch` / `tag` / `commit`) and `value`. |
-| `sparse_paths` | `array` | No | — | Optional list of sparse-checkout paths. |
-| `auto_refresh` | `boolean` | No | `false` | Enable webhook-driven auto-refresh. |
-| `shallow` | `boolean` | No | `true` | Perform a shallow clone. |
+| Property                | Type      | Required | Default                             | Description                                                                     |
+| ----------------------- | --------- | -------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| `repo_url`              | `string`  | Yes      | —                                   | Repository URL (`https://...` or `git@...`).                                    |
+| `label`                 | `string`  | Yes      | —                                   | Human-readable binding name; the clone is mounted at `/workspace/{label}`.      |
+| `credential_binding_id` | `string`  | No       | —                                   | UUID of a credential binding (SSH key or API key) for private repos.            |
+| `git_ref`               | `object`  | No       | `{ kind: "branch", value: "main" }` | Git ref to check out. Fields: `kind` (`branch` / `tag` / `commit`) and `value`. |
+| `sparse_paths`          | `array`   | No       | —                                   | Optional list of sparse-checkout paths.                                         |
+| `auto_refresh`          | `boolean` | No       | `false`                             | Enable webhook-driven auto-refresh.                                             |
+| `shallow`               | `boolean` | No       | `true`                              | Perform a shallow clone.                                                        |
 
 **Output:** The newly created binding DTO with status `Pending` or `Cloning`.
 
@@ -2105,10 +2121,10 @@ List the caller's git repo bindings.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `page` | `integer` | No | — | Pagination page number. |
-| `limit` | `integer` | No | — | Maximum results per page. |
+| Property | Type      | Required | Default | Description               |
+| -------- | --------- | -------- | ------- | ------------------------- |
+| `page`   | `integer` | No       | —       | Pagination page number.   |
+| `limit`  | `integer` | No       | —       | Maximum results per page. |
 
 **Output:** Paginated list of binding DTOs.
 
@@ -2121,9 +2137,9 @@ last commit SHA, and `last_cloned_at` timestamp.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+| Property     | Type     | Required | Default | Description                   |
+| ------------ | -------- | -------- | ------- | ----------------------------- |
+| `binding_id` | `string` | Yes      | —       | UUID of the git repo binding. |
 
 **Output:** Binding DTO with status and most recent commit information.
 
@@ -2136,17 +2152,17 @@ or re-verify the pinned ref (for tag / commit refs).
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+| Property     | Type     | Required | Default | Description                   |
+| ------------ | -------- | -------- | ------- | ----------------------------- |
+| `binding_id` | `string` | Yes      | —       | UUID of the git repo binding. |
 
 **Output:** Confirmation with updated status fields.
 
 ### `aegis.git.delete`
 
 <Callout type="warn">
-  Deletes the binding and cascade-deletes the associated volume. Any uncommitted or unpushed work
-  in the bound volume is lost.
+  Deletes the binding and cascade-deletes the associated volume. Any uncommitted
+  or unpushed work in the bound volume is lost.
 </Callout>
 
 Soft-delete a git repo binding and cascade-delete the associated volume.
@@ -2155,9 +2171,9 @@ Soft-delete a git repo binding and cascade-delete the associated volume.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
+| Property     | Type     | Required | Default | Description                   |
+| ------------ | -------- | -------- | ------- | ----------------------------- |
+| `binding_id` | `string` | Yes      | —       | UUID of the git repo binding. |
 
 **Output:** Confirmation of deletion.
 
@@ -2170,10 +2186,10 @@ SHA. Fails if there are no changes to commit.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
-| `message` | `string` | Yes | — | Commit message. |
+| Property     | Type     | Required | Default | Description                   |
+| ------------ | -------- | -------- | ------- | ----------------------------- |
+| `binding_id` | `string` | Yes      | —       | UUID of the git repo binding. |
+| `message`    | `string` | Yes      | —       | Commit message.               |
 
 **Output:** Object containing the new commit SHA.
 
@@ -2186,11 +2202,11 @@ authenticated remotes.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
-| `remote` | `string` | No | `origin` | Remote name. |
-| `ref` | `string` | No | current branch | Ref to push. |
+| Property     | Type     | Required | Default        | Description                   |
+| ------------ | -------- | -------- | -------------- | ----------------------------- |
+| `binding_id` | `string` | Yes      | —              | UUID of the git repo binding. |
+| `remote`     | `string` | No       | `origin`       | Remote name.                  |
+| `ref`        | `string` | No       | current branch | Ref to push.                  |
 
 **Output:** Confirmation of push with remote and ref details.
 
@@ -2202,10 +2218,10 @@ Return the unified diff of the bound volume's working tree (or index, if `staged
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `binding_id` | `string` | Yes | — | UUID of the git repo binding. |
-| `staged` | `boolean` | No | `false` | If `true`, return the diff of the index against `HEAD`. |
+| Property     | Type      | Required | Default | Description                                             |
+| ------------ | --------- | -------- | ------- | ------------------------------------------------------- |
+| `binding_id` | `string`  | Yes      | —       | UUID of the git repo binding.                           |
+| `staged`     | `boolean` | No       | `false` | If `true`, return the diff of the index against `HEAD`. |
 
 **Output:** Unified-diff text.
 
@@ -2226,12 +2242,12 @@ Persist a TypeScript program to the caller's script library.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `name` | `string` | Yes | — | Unique script name (≤128 bytes; no `/` or `\`). Duplicate names return 409. |
-| `code` | `string` | Yes | — | TypeScript program source (≤256 KiB). |
-| `description` | `string` | No | — | Optional free-form description (≤2 KiB). |
-| `tags` | `array` | No | — | Optional tags — lowercase alphanumeric plus `-` / `_`, ≤32 chars each, ≤16 tags. |
+| Property      | Type     | Required | Default | Description                                                                      |
+| ------------- | -------- | -------- | ------- | -------------------------------------------------------------------------------- |
+| `name`        | `string` | Yes      | —       | Unique script name (≤128 bytes; no `/` or `\`). Duplicate names return 409.      |
+| `code`        | `string` | Yes      | —       | TypeScript program source (≤256 KiB).                                            |
+| `description` | `string` | No       | —       | Optional free-form description (≤2 KiB).                                         |
+| `tags`        | `array`  | No       | —       | Optional tags — lowercase alphanumeric plus `-` / `_`, ≤32 chars each, ≤16 tags. |
 
 **Output:** The saved script DTO with its assigned `id` and `version: 1`.
 
@@ -2243,10 +2259,10 @@ List the caller's saved scripts with optional filters.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `tag` | `string` | No | — | Filter scripts that contain this tag. |
-| `q` | `string` | No | — | Case-insensitive substring filter on script name. |
+| Property | Type     | Required | Default | Description                                       |
+| -------- | -------- | -------- | ------- | ------------------------------------------------- |
+| `tag`    | `string` | No       | —       | Filter scripts that contain this tag.             |
+| `q`      | `string` | No       | —       | Case-insensitive substring filter on script name. |
 
 **Output:** Array of script DTOs (without the `versions` field).
 
@@ -2258,9 +2274,9 @@ Retrieve a saved script by ID, including its full version history.
 
 **`skip_judge`:** `true`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `id` | `string` | Yes | — | UUID of the saved script. |
+| Property | Type     | Required | Default | Description               |
+| -------- | -------- | -------- | ------- | ------------------------- |
+| `id`     | `string` | Yes      | —       | UUID of the saved script. |
 
 **Output:** Script DTO with `versions` array. Returns 404 for scripts the caller does not own.
 
@@ -2272,21 +2288,21 @@ Update a saved script. Bumps the version monotonically and appends to the script
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `id` | `string` | Yes | — | UUID of the saved script. |
-| `name` | `string` | Yes | — | Script name (≤128 bytes). |
-| `code` | `string` | Yes | — | TypeScript program source (≤256 KiB). |
-| `description` | `string` | No | — | Optional free-form description. |
-| `tags` | `array` | No | — | Optional tags. |
+| Property      | Type     | Required | Default | Description                           |
+| ------------- | -------- | -------- | ------- | ------------------------------------- |
+| `id`          | `string` | Yes      | —       | UUID of the saved script.             |
+| `name`        | `string` | Yes      | —       | Script name (≤128 bytes).             |
+| `code`        | `string` | Yes      | —       | TypeScript program source (≤256 KiB). |
+| `description` | `string` | No       | —       | Optional free-form description.       |
+| `tags`        | `array`  | No       | —       | Optional tags.                        |
 
 **Output:** Updated script DTO with the new version number.
 
 ### `aegis.script.delete`
 
 <Callout type="info">
-  `aegis.script.delete` is a soft delete — the name reservation is released and new scripts may
-  reuse the name, but the version history is retained for audit.
+  `aegis.script.delete` is a soft delete — the name reservation is released and
+  new scripts may reuse the name, but the version history is retained for audit.
 </Callout>
 
 Soft-delete a saved script.
@@ -2295,9 +2311,9 @@ Soft-delete a saved script.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `id` | `string` | Yes | — | UUID of the saved script. |
+| Property | Type     | Required | Default | Description               |
+| -------- | -------- | -------- | ------- | ------------------------- |
+| `id`     | `string` | Yes      | —       | UUID of the saved script. |
 
 **Output:** Empty body on success.
 
@@ -2317,10 +2333,10 @@ Provision a new persistent volume with a specified storage quota.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `label` | `string` | Yes | — | Human-readable volume name. |
-| `size_limit_bytes` | `integer` | Yes | — | Storage quota in bytes. Must fall within the caller's tier quota. |
+| Property           | Type      | Required | Default | Description                                                       |
+| ------------------ | --------- | -------- | ------- | ----------------------------------------------------------------- |
+| `label`            | `string`  | Yes      | —       | Human-readable volume name.                                       |
+| `size_limit_bytes` | `integer` | Yes      | —       | Storage quota in bytes. Must fall within the caller's tier quota. |
 
 **Output:** The created volume DTO, including its `volume_id`.
 
@@ -2332,14 +2348,15 @@ List all persistent volumes owned by the current user.
 
 **`skip_judge`:** `true`
 
-*No parameters — accepts an empty object `{}`.*
+_No parameters — accepts an empty object `{}`._
 
 **Output:** Array of volume DTOs.
 
 ### `aegis.volume.delete`
 
 <Callout type="warn">
-  Deleting a volume is destructive and irreversible. All files stored in the volume are removed.
+  Deleting a volume is destructive and irreversible. All files stored in the
+  volume are removed.
 </Callout>
 
 Delete a persistent user volume and all of its contents.
@@ -2348,9 +2365,9 @@ Delete a persistent user volume and all of its contents.
 
 **`skip_judge`:** `false`
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `volume_id` | `string` | Yes | — | UUID of the volume to delete. |
+| Property    | Type     | Required | Default | Description                   |
+| ----------- | -------- | -------- | ------- | ----------------------------- |
+| `volume_id` | `string` | Yes      | —       | UUID of the volume to delete. |
 
 **Output:** Confirmation of deletion.
 
@@ -2362,7 +2379,7 @@ Get storage quota usage for the current user.
 
 **`skip_judge`:** `true`
 
-*No parameters — accepts an empty object `{}`.*
+_No parameters — accepts an empty object `{}`._
 
 **Output:** Quota summary — total bytes allowed by the caller's tier and bytes currently used
 across their volumes.
@@ -2372,9 +2389,10 @@ across their volumes.
 ## Zaru UI Tools
 
 <Callout type="info">
-  `zaru.init`, `zaru.mode`, and `zaru.docs` are intercepted by the `zaru-mcp-server` and are never
-  forwarded to the AEGIS orchestrator. They are only available when using the StreamableHTTP
-  transport and are injected by the Zaru MCP server at the point of tool advertisement.
+  `zaru.init`, `zaru.mode`, and `zaru.docs` are intercepted by the
+  `zaru-mcp-server` and are never forwarded to the AEGIS orchestrator. They are
+  only available when using the StreamableHTTP transport and are injected by the
+  Zaru MCP server at the point of tool advertisement.
 </Callout>
 
 ### `zaru.init`
@@ -2385,9 +2403,9 @@ Activate Zaru in any MCP client. Call this tool at the start of a session to ret
 
 **`skip_judge`:** N/A (never reaches the orchestrator)
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `mode` | `string` | No | `chat` | The initial mode to activate. One of: `chat`, `agentic`, `architect`, `operator`, `execute`. |
+| Property | Type     | Required | Default | Description                                                                                  |
+| -------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------- |
+| `mode`   | `string` | No       | `chat`  | The initial mode to activate. One of: `chat`, `agentic`, `architect`, `operator`, `execute`. |
 
 **Output:**
 
@@ -2408,10 +2426,10 @@ Switch to a different conversation mode. Use this when the user's request cannot
 
 **`skip_judge`:** N/A (never reaches the orchestrator)
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `target_mode` | `string` | Yes | — | The mode to switch to. One of: `chat`, `agentic`, `architect`, `operator`, `execute`. |
-| `reason` | `string` | Yes | — | Short, plain-language explanation for the user. One sentence. |
+| Property      | Type     | Required | Default | Description                                                                           |
+| ------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------- |
+| `target_mode` | `string` | Yes      | —       | The mode to switch to. One of: `chat`, `agentic`, `architect`, `operator`, `execute`. |
+| `reason`      | `string` | Yes      | —       | Short, plain-language explanation for the user. One sentence.                         |
 
 **Output:**
 
@@ -2435,9 +2453,9 @@ Search AEGIS and Zaru documentation. Results are fetched from `docs.100monkeys.a
 
 **`skip_judge`:** N/A (never reaches the orchestrator)
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `query` | `string` | Yes | — | What the user wants to know about AEGIS or Zaru. |
+| Property | Type     | Required | Default | Description                                      |
+| -------- | -------- | -------- | ------- | ------------------------------------------------ |
+| `query`  | `string` | Yes      | —       | What the user wants to know about AEGIS or Zaru. |
 
 **Output:**
 
@@ -2458,11 +2476,82 @@ Search AEGIS and Zaru documentation. Results are fetched from `docs.100monkeys.a
 **Example call:**
 
 ```typescript
-zaru.docs({ query: "how to create an agent" })
+zaru.docs({ query: "how to create an agent" });
 ```
 
 <Callout type="info">
-  `zaru.docs` is handled entirely by the `zaru-mcp-server`. It searches the published documentation
-  at `docs.100monkeys.ai` and returns matching sections with titles, content excerpts, and direct
-  URLs. Results are cached per query for 5 minutes to reduce latency on repeated lookups.
+  `zaru.docs` is handled entirely by the `zaru-mcp-server`. It searches the
+  published documentation at `docs.100monkeys.ai` and returns matching sections
+  with titles, content excerpts, and direct URLs. Results are cached per query
+  for 5 minutes to reduce latency on repeated lookups.
 </Callout>
+
+---
+
+## Edge Fleet Tools
+
+System-tier tools for multi-host fleet operations against user-installed edge daemons. Gated by an operator/tenant-admin SecurityContext.
+
+### `aegis.edge.fleet.invoke`
+
+Invoke any registered tool against an `EdgeTarget` with a `FleetDispatchPolicy`. Server-streamed: per-node `CommandProgress` chunks stream back tagged with `node_id`; the terminal payload is `FleetExecutionResult`.
+
+**Inputs:**
+
+| Field                             | Type         | Description                                                                         |
+| --------------------------------- | ------------ | ----------------------------------------------------------------------------------- |
+| `target`                          | tagged-union | One of `{ Node: <id> }`, `{ Group: <id> }`, `{ Selector: {...} }`, `{ All: null }`. |
+| `tool`                            | string       | Registered tool name. Must declare `fleet_capable: true` for multi-target dispatch. |
+| `args`                            | object       | Tool-specific argument map.                                                         |
+| `policy.mode`                     | enum         | `{ Sequential: null }`, `{ Parallel: null }`, or `{ Rolling: { batch: N } }`.       |
+| `policy.max_concurrency`          | int?         | Optional cap on concurrent in-flight dispatches.                                    |
+| `policy.failure_policy`           | enum         | `{ FailFast: null }`, `{ ContinueOnError: null }`, or `{ StopAfter: N }`.           |
+| `policy.require_min_targets`      | int?         | Refuse upfront if fewer matches resolve.                                            |
+| `policy.per_target_deadline_secs` | int          | Propagated as `EdgeCommand.deadline`. Default 60.                                   |
+
+**Outputs (streamed):**
+
+- `command_progress` events, one per chunk, tagged with `node_id` and `command_id`.
+- `command_result` events, one per terminal per-node outcome.
+- A terminal `fleet_result` payload with `fleet_command_id`, `targets_resolved`, `targets_skipped`, `per_node`, and `summary { ok, err, timed_out, cancelled, not_started }`.
+
+### `aegis.edge.fleet.list`
+
+Resolve an `EdgeTarget` to a node list without dispatching.
+
+**Inputs:**
+
+| Field    | Type         | Description                              |
+| -------- | ------------ | ---------------------------------------- |
+| `target` | tagged-union | Same shape as `aegis.edge.fleet.invoke`. |
+
+**Outputs:**
+
+```json
+{
+  "resolved": [{ "node_id": "...", "name": "...", "status": "Connected" }],
+  "skipped": [{ "node_id": "...", "reason": "Disconnected" }]
+}
+```
+
+### `aegis.edge.fleet.cancel`
+
+Broadcast `Cancel` to every in-flight per-node command in a fleet operation.
+
+**Inputs:**
+
+| Field              | Type   | Description                                   |
+| ------------------ | ------ | --------------------------------------------- |
+| `fleet_command_id` | string | The id returned by `aegis.edge.fleet.invoke`. |
+
+**Outputs:**
+
+```json
+{
+  "fleet_command_id": "f-...",
+  "cancelled": 12,
+  "already_terminal": 5
+}
+```
+
+For the broader fleet model, see [fleet operations](/docs/concepts/fleet-operations).

@@ -141,32 +141,37 @@ Service accounts should include `x-tenant-id` in call metadata to execute agents
 **Example (TypeScript):**
 
 ```typescript
-import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
+import * as grpc from "@grpc/grpc-js";
+import * as protoLoader from "@grpc/proto-loader";
 
-const pkgDef = protoLoader.loadSync('aegis_runtime.proto');
+const pkgDef = protoLoader.loadSync("aegis_runtime.proto");
 const proto = grpc.loadPackageDefinition(pkgDef).aegis.runtime.v1 as any;
 
-const client = new proto.AegisRuntime('localhost:50051', grpc.credentials.createInsecure());
+const client = new proto.AegisRuntime(
+  "localhost:50051",
+  grpc.credentials.createInsecure(),
+);
 
 const stream = client.ExecuteAgent({
-  agent_id: 'agt-uuid-here',
-  input: 'Write a primality check function',
-  context_json: '{}',
+  agent_id: "agt-uuid-here",
+  input: "Write a primality check function",
+  context_json: "{}",
 });
 
-stream.on('data', (event: any) => {
+stream.on("data", (event: any) => {
   if (event.execution_started) {
-    console.log('Started:', event.execution_started.execution_id);
+    console.log("Started:", event.execution_started.execution_id);
   } else if (event.iteration_started) {
-    console.log(`Iteration ${event.iteration_started.iteration_number}: ${event.iteration_started.action}`);
+    console.log(
+      `Iteration ${event.iteration_started.iteration_number}: ${event.iteration_started.action}`,
+    );
   } else if (event.execution_completed) {
-    console.log('Output:', event.execution_completed.final_output);
+    console.log("Output:", event.execution_completed.final_output);
   }
 });
 
-stream.on('end', () => console.log('Done'));
-stream.on('error', (err: Error) => console.error(err));
+stream.on("end", () => console.log("Done"));
+stream.on("error", (err: Error) => console.error(err));
 ```
 
 ---
@@ -365,13 +370,13 @@ message IngestStimulusResponse {
 
 **Status Codes:**
 
-| gRPC Status | Meaning |
-|---|---|
-| `OK` | Stimulus routed and workflow started. |
-| `ALREADY_EXISTS` | Idempotent duplicate (returns original `stimulus_id`). |
-| `INVALID_ARGUMENT` | Low confidence classification or no router configured. |
-| `INTERNAL` | RouterAgent or workflow execution failure. |
-| `PERMISSION_DENIED` | OIDC identity not authorized. |
+| gRPC Status         | Meaning                                                |
+| ------------------- | ------------------------------------------------------ |
+| `OK`                | Stimulus routed and workflow started.                  |
+| `ALREADY_EXISTS`    | Idempotent duplicate (returns original `stimulus_id`). |
+| `INVALID_ARGUMENT`  | Low confidence classification or no router configured. |
+| `INTERNAL`          | RouterAgent or workflow execution failure.             |
+| `PERMISSION_DENIED` | OIDC identity not authorized.                          |
 
 ---
 
@@ -398,16 +403,16 @@ The `final_output_json` field contains the structured output produced by evaluat
 
 ## Error Codes
 
-| gRPC Status | Meaning |
-|---|---|
-| `OK` | Success. |
-| `NOT_FOUND` | Agent or pattern not found. |
-| `INVALID_ARGUMENT` | Malformed request or input validation error. |
-| `PERMISSION_DENIED` | SecurityContext or policy violation. |
-| `RESOURCE_EXHAUSTED` | Rate limit or iteration limit reached. |
-| `UNAUTHENTICATED` | Missing or invalid Bearer token. |
-| `INTERNAL` | Unhandled error — check daemon logs. |
-| `UNAVAILABLE` | Orchestrator temporarily down. |
+| gRPC Status          | Meaning                                      |
+| -------------------- | -------------------------------------------- |
+| `OK`                 | Success.                                     |
+| `NOT_FOUND`          | Agent or pattern not found.                  |
+| `INVALID_ARGUMENT`   | Malformed request or input validation error. |
+| `PERMISSION_DENIED`  | SecurityContext or policy violation.         |
+| `RESOURCE_EXHAUSTED` | Rate limit or iteration limit reached.       |
+| `UNAUTHENTICATED`    | Missing or invalid Bearer token.             |
+| `INTERNAL`           | Unhandled error — check daemon logs.         |
+| `UNAVAILABLE`        | Orchestrator temporarily down.               |
 
 ---
 
@@ -448,18 +453,18 @@ service NodeClusterService {
 
 ### RPC Summary
 
-| RPC | Auth Required | Direction | Description |
-|-----|---------------|-----------|-------------|
-| `AttestNode` | No | Worker → Controller | Initiate node attestation |
-| `ChallengeNode` | No | Controller → Worker (response) | Cryptographic challenge to prove keypair ownership |
-| `RegisterNode` | Yes | Worker → Controller | Register with capability advertisement after attestation |
-| `Heartbeat` | Yes | Worker → Controller | Periodic status update; response may carry `NodeCommand`s |
-| `DeregisterNode` | Yes | Worker → Controller | Graceful deregistration |
-| `RouteExecution` | Yes | Any → Controller | Request an `ExecutionRoute` (target worker) for an execution |
-| `ForwardExecution` | Yes | Controller → Worker | Execute an agent on this worker; streams `ExecutionEvent` back |
-| `SyncConfig` | Yes | Worker → Controller | Request current config from controller |
-| `PushConfig` | Yes | Controller → Worker | Controller pushes updated config to worker |
-| `ListPeers` | Yes | Any → Controller | List all registered `NodePeer`s and their status |
+| RPC                | Auth Required | Direction                      | Description                                                    |
+| ------------------ | ------------- | ------------------------------ | -------------------------------------------------------------- |
+| `AttestNode`       | No            | Worker → Controller            | Initiate node attestation                                      |
+| `ChallengeNode`    | No            | Controller → Worker (response) | Cryptographic challenge to prove keypair ownership             |
+| `RegisterNode`     | Yes           | Worker → Controller            | Register with capability advertisement after attestation       |
+| `Heartbeat`        | Yes           | Worker → Controller            | Periodic status update; response may carry `NodeCommand`s      |
+| `DeregisterNode`   | Yes           | Worker → Controller            | Graceful deregistration                                        |
+| `RouteExecution`   | Yes           | Any → Controller               | Request an `ExecutionRoute` (target worker) for an execution   |
+| `ForwardExecution` | Yes           | Controller → Worker            | Execute an agent on this worker; streams `ExecutionEvent` back |
+| `SyncConfig`       | Yes           | Worker → Controller            | Request current config from controller                         |
+| `PushConfig`       | Yes           | Controller → Worker            | Controller pushes updated config to worker                     |
+| `ListPeers`        | Yes           | Any → Controller               | List all registered `NodePeer`s and their status               |
 
 ---
 
@@ -741,18 +746,18 @@ Each RPC carries `execution_id` and `volume_id` for authorization. The orchestra
 
 ### RPC Summary
 
-| RPC | Description |
-|-----|-------------|
-| `Lookup` | Resolve a filename within a directory to its file attributes and handle. |
-| `GetAttr` | Retrieve file or directory metadata (size, permissions, timestamps). |
-| `ReadDir` | List directory entries. |
-| `Read` | Read bytes from a file at a given offset. |
-| `Write` | Write bytes to a file at a given offset. |
-| `Create` | Create a new file. |
-| `Remove` | Delete a file. |
-| `Rename` | Rename or move a file. |
-| `MkDir` | Create a directory. |
-| `RmDir` | Remove a directory. |
+| RPC       | Description                                                              |
+| --------- | ------------------------------------------------------------------------ |
+| `Lookup`  | Resolve a filename within a directory to its file attributes and handle. |
+| `GetAttr` | Retrieve file or directory metadata (size, permissions, timestamps).     |
+| `ReadDir` | List directory entries.                                                  |
+| `Read`    | Read bytes from a file at a given offset.                                |
+| `Write`   | Write bytes to a file at a given offset.                                 |
+| `Create`  | Create a new file.                                                       |
+| `Remove`  | Delete a file.                                                           |
+| `Rename`  | Rename or move a file.                                                   |
+| `MkDir`   | Create a directory.                                                      |
+| `RmDir`   | Remove a directory.                                                      |
 
 ---
 
@@ -796,3 +801,39 @@ message UnmountResponse {}
 3. FUSE daemon returns the host path in `MountResponse.mount_path`.
 4. Orchestrator bind-mounts the host path into the agent container at the manifest-declared `mount_path`.
 5. When the execution ends, orchestrator calls `Unmount` to tear down the FUSE mountpoint.
+
+---
+
+## Edge Mode Extensions to `NodeClusterService`
+
+Two new RPCs extend the existing `NodeClusterService` for edge daemon support. There is no separate `EdgeService` — daemon attestation, registration, rotation, and stream all flow through the same service on port `50056`.
+
+### `ConnectEdge`
+
+```proto
+rpc ConnectEdge(stream EdgeEvent) returns (stream EdgeCommand);
+```
+
+A bidirectional stream. The daemon sends `EdgeEvent` (Hello, Heartbeat, CommandResult, CommandProgress, CapabilityUpdate); the server sends `EdgeCommand` (InvokeTool, Cancel, PushConfig, Drain, Shutdown). Every message carries a `SealNodeEnvelope` proving daemon identity. `InvokeTool` carries an inner `SealEnvelope` proving user identity — the **two-envelope SEAL pattern**.
+
+### `RotateEdgeKey`
+
+```proto
+rpc RotateEdgeKey(RotateEdgeKeyRequest) returns (RotateEdgeKeyResponse);
+```
+
+Atomic key rotation with a **dual-signature** requirement: the request is signed by both the old key (proof of authority) and the new key (proof of possession). The server commits the rotation in a single PostgreSQL transaction (update pubkey, blacklist old token, issue new token) and records both pubkeys for an overlap window so the active gRPC stream survives the swap.
+
+### `ChallengeNode` bootstrap proof
+
+The existing `ChallengeNodeRequest` gains an optional `bootstrap_proof` oneof for edge enrollment:
+
+```proto
+oneof bootstrap_proof {
+  string enrollment_token = 4;
+}
+```
+
+Set when `role = NODE_ROLE_EDGE`. The server validates the JWT, atomically redeems `jti`, persists the `EdgeDaemon` row, and issues a `NodeSecurityToken` with a new `tid` claim — the persistent tenant binding for the daemon's lifetime.
+
+For the full edge gRPC reference (message shapes, error codes, transport details), see [relay gRPC API](/docs/reference/relay-grpc-api).

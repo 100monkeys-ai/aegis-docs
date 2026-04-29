@@ -5,7 +5,7 @@ description: Production runbook for the SEAL Gateway — container image, Docker
 
 # Deployment
 
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from "fumadocs-ui/components/callout";
 
 This page is the operational runbook for running the SEAL Gateway in
 production. It assumes you have already worked through the
@@ -21,12 +21,12 @@ migrations against its database on startup, and exits cleanly on `SIGTERM`.
 
 ## Distribution
 
-| Surface | Location |
-|---|---|
-| Container image (latest) | `ghcr.io/100monkeys-ai/aegis-seal-gateway:latest` |
-| Container image (semver) | `ghcr.io/100monkeys-ai/aegis-seal-gateway:<version>` |
+| Surface                      | Location                                               |
+| ---------------------------- | ------------------------------------------------------ |
+| Container image (latest)     | `ghcr.io/100monkeys-ai/aegis-seal-gateway:latest`      |
+| Container image (semver)     | `ghcr.io/100monkeys-ai/aegis-seal-gateway:<version>`   |
 | Container image (commit pin) | `ghcr.io/100monkeys-ai/aegis-seal-gateway:sha-<short>` |
-| Source | `github.com/100monkeys-ai/aegis-seal-gateway` |
+| Source                       | `github.com/100monkeys-ai/aegis-seal-gateway`          |
 
 The published image is **linux/amd64 only** at the time of writing. The
 GitHub Actions release workflow installs the `x86_64-unknown-linux-gnu` Rust
@@ -52,12 +52,12 @@ explorer slices server-side, but the full response is buffered in memory
 first). CLI invocation adds memory and disk pressure for the duration of the
 container.
 
-| Profile | RAM | CPU | Disk |
-|---|---|---|---|
-| Idle / dev | 256 MB | 0.25 vCPU | 200 MB image + 50 MB SQLite |
-| Light prod (≤ 50 calls/min) | 512 MB | 0.5 vCPU | 1 GB ephemeral + DB |
-| Heavy prod (workflows + CLI) | 1–2 GB | 1–2 vCPU | 5 GB ephemeral + DB |
-| Heavy multi-tenant SaaS | 2–4 GB per replica | 2–4 vCPU per replica | External Postgres |
+| Profile                      | RAM                | CPU                  | Disk                        |
+| ---------------------------- | ------------------ | -------------------- | --------------------------- |
+| Idle / dev                   | 256 MB             | 0.25 vCPU            | 200 MB image + 50 MB SQLite |
+| Light prod (≤ 50 calls/min)  | 512 MB             | 0.5 vCPU             | 1 GB ephemeral + DB         |
+| Heavy prod (workflows + CLI) | 1–2 GB             | 1–2 vCPU             | 5 GB ephemeral + DB         |
+| Heavy multi-tenant SaaS      | 2–4 GB per replica | 2–4 vCPU per replica | External Postgres           |
 
 CLI tooling pulls and runs OCI images at request time. Size your ephemeral
 disk for the largest tool image you plan to register, plus a working set of
@@ -84,7 +84,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8089:8089"   # HTTP control + invocation
+      - "8089:8089" # HTTP control + invocation
       - "50055:50055" # gRPC services
     environment:
       SEAL_GATEWAY_CONFIG_PATH: /etc/aegis/seal-gateway-config.yaml
@@ -148,9 +148,9 @@ The gateway runs migrations against the empty Postgres database on first
 start. Subsequent restarts are idempotent.
 
 <Callout type="warn">
-The OpenBao service shown above runs in dev mode with an in-memory backend
-and an unsealed root token. For production, run a real OpenBao cluster with
-auto-unseal, persistent storage, and token-based or AppRole authentication.
+  The OpenBao service shown above runs in dev mode with an in-memory backend and
+  an unsealed root token. For production, run a real OpenBao cluster with
+  auto-unseal, persistent storage, and token-based or AppRole authentication.
 </Callout>
 
 ---
@@ -312,9 +312,9 @@ behind a ClusterIP Service. Front it with your existing Ingress / Gateway
 API resource for TLS termination.
 
 <Callout type="info">
-Multi-replica deployments require Postgres. SQLite mode does not coordinate
-writes across replicas — running two SQLite-backed gateways behind a load
-balancer will produce divergent state and audit gaps.
+  Multi-replica deployments require Postgres. SQLite mode does not coordinate
+  writes across replicas — running two SQLite-backed gateways behind a load
+  balancer will produce divergent state and audit gaps.
 </Callout>
 
 ---
@@ -383,16 +383,16 @@ user if you intend to register CLI tools.
 The gateway speaks two database dialects and picks one based on the
 `database.url` scheme.
 
-| Dimension | SQLite | Postgres |
-|---|---|---|
-| Connection | `sqlite://gateway.db` | `postgres://...` or `postgresql://...` |
-| Single-node | Yes | Yes |
-| Multi-replica | No (file-locked) | Yes |
-| `UserBound` credentials | No | Yes |
-| Audit-write throughput | ~1k events/sec | Limited by Postgres tuning |
-| Backups | File copy | `pg_dump` |
-| Operational overhead | Zero | Standard Postgres ops |
-| Best for | Dev, single-team, air-gapped | SaaS, multi-tenant, multi-replica |
+| Dimension               | SQLite                       | Postgres                               |
+| ----------------------- | ---------------------------- | -------------------------------------- |
+| Connection              | `sqlite://gateway.db`        | `postgres://...` or `postgresql://...` |
+| Single-node             | Yes                          | Yes                                    |
+| Multi-replica           | No (file-locked)             | Yes                                    |
+| `UserBound` credentials | No                           | Yes                                    |
+| Audit-write throughput  | ~1k events/sec               | Limited by Postgres tuning             |
+| Backups                 | File copy                    | `pg_dump`                              |
+| Operational overhead    | Zero                         | Standard Postgres ops                  |
+| Best for                | Dev, single-team, air-gapped | SaaS, multi-tenant, multi-replica      |
 
 The gateway detects the dialect at startup. Switching dialects requires a
 fresh database — there is no built-in migration tool for SQLite-to-Postgres.
@@ -404,11 +404,11 @@ fresh database — there is no built-in migration tool for SQLite-to-Postgres.
 Migrations are managed by `sqlx::migrate!` and run automatically when the
 gateway starts. The embedded migrations are:
 
-| File | Purpose |
-|---|---|
-| `0001_initial_schema.sql` | Creates `api_specs`, `workflows`, `cli_tools`, `seal_sessions`, `security_contexts`, `seen_jtis`, `gateway_events`. |
-| `0002_tenant_id_columns.sql` | Adds `tenant_id` columns and indexes to all tenant-scoped tables. NULL means system-global; non-NULL means tenant-owned. |
-| `0003_seen_jtis_expires_at_index.sql` | Adds an index on `seen_jtis.expires_at` so the periodic JTI cleanup job (every 30 seconds) is cheap. |
+| File                                  | Purpose                                                                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `0001_initial_schema.sql`             | Creates `api_specs`, `workflows`, `cli_tools`, `seal_sessions`, `security_contexts`, `seen_jtis`, `gateway_events`.      |
+| `0002_tenant_id_columns.sql`          | Adds `tenant_id` columns and indexes to all tenant-scoped tables. NULL means system-global; non-NULL means tenant-owned. |
+| `0003_seen_jtis_expires_at_index.sql` | Adds an index on `seen_jtis.expires_at` so the periodic JTI cleanup job (every 30 seconds) is cheap.                     |
 
 Inspect the applied migrations with `sqlx migrate info` (against the same
 database URL) or query the `_sqlx_migrations` table directly. Migrations are
@@ -419,10 +419,10 @@ upgrading.**
 
 ## Networking
 
-| Port | Protocol | Purpose |
-|---|---|---|
-| `8089` | HTTP/1.1 + HTTP/2 | Operator API (`/v1/specs`, `/v1/workflows`, …), invocation API (`/v1/invoke`, `/v1/seal/invoke`), web UI, Swagger UI, `/health`, OpenAPI JSON. |
-| `50055` | HTTP/2 (gRPC) | `ToolWorkflowService` and `GatewayInvocationService`. |
+| Port    | Protocol          | Purpose                                                                                                                                        |
+| ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `8089`  | HTTP/1.1 + HTTP/2 | Operator API (`/v1/specs`, `/v1/workflows`, …), invocation API (`/v1/invoke`, `/v1/seal/invoke`), web UI, Swagger UI, `/health`, OpenAPI JSON. |
+| `50055` | HTTP/2 (gRPC)     | `ToolWorkflowService` and `GatewayInvocationService`.                                                                                          |
 
 Both ports default to binding on `0.0.0.0`. Override with
 `SEAL_GATEWAY_BIND` and `SEAL_GATEWAY_GRPC_BIND`.
@@ -478,9 +478,9 @@ volumes:
 ```
 
 <Callout type="warn">
-Mounting the host Docker socket gives the gateway container root-equivalent
-control over the host. Do this only on isolated nodes you fully trust, and
-prefer the bundled rootless `podman` path for anything else.
+  Mounting the host Docker socket gives the gateway container root-equivalent
+  control over the host. Do this only on isolated nodes you fully trust, and
+  prefer the bundled rootless `podman` path for anything else.
 </Callout>
 
 ---
@@ -494,9 +494,9 @@ storage gateway. Three config fields control the client side:
 ```yaml
 spec:
   cli:
-    nfs_server_host: "storage.internal"  # NFS server hostname or IP
-    nfs_port: 2049                       # NFS data port
-    nfs_mount_port: 20048                # Mountd port
+    nfs_server_host: "storage.internal" # NFS server hostname or IP
+    nfs_port: 2049 # NFS data port
+    nfs_mount_port: 20048 # Mountd port
 ```
 
 If you are not using NFS-backed CLI tools, leave these at their defaults
@@ -574,3 +574,27 @@ backed up.
   [Observability](/docs/gateway/observability).
 - **When something goes wrong**:
   [Troubleshooting](/docs/gateway/troubleshooting).
+
+---
+
+## Edge-Targeted Tools Bypass the Gateway
+
+When a tool descriptor declares `executor: edge` or a tool call carries an explicit `target` argument referencing an edge host, the dispatch path **bypasses the SEAL Tooling Gateway entirely**. The two layers serve different purposes:
+
+| Layer                    | Purpose                                                                                                                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SEAL Tooling Gateway** | Compresses outbound REST/CLI-style calls to SaaS APIs (GitHub, Slack, OpenAI, …) — credential proxying, ephemeral CLI tools, macro-tool workflows.                                                  |
+| **Edge daemon**          | Executes tool calls on a user-owned host via a SEAL-authenticated bidirectional gRPC stream — local commands, filesystem operations, anything the daemon's `local_tools` and `mount_points` permit. |
+
+There is no overlap and no fallback. If an MCP tool descriptor declares `executor: edge`, the dispatcher routes via the `EdgeRouter`; if it declares anything else, the dispatcher follows the standard tool-routing decision (which may end up at the Tooling Gateway).
+
+### SecurityContext semantics carry over
+
+Despite the bypass, **the same SecurityContext discipline applies on the daemon as it would at the gateway**. Each `InvokeTool` carries:
+
+- An outer `SealNodeEnvelope` proving controller-to-daemon identity.
+- An inner `SealEnvelope` carrying `user_security_token`, `tenant_id`, and `security_context_name`.
+
+The daemon resolves `security_context_name` against `spec.security_contexts` from its **local merged config** and applies the same network policy, filesystem policy, resource limits, and Semantic Judge gating that would apply on the controller. Identity-policy fail-closed posture is preserved end to end.
+
+For the user-facing edge-tools surface, see [edge mode overview](/docs/concepts/edge-mode-overview); for the security model, see [edge security](/docs/concepts/edge-security).

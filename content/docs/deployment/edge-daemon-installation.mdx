@@ -1,0 +1,287 @@
+---
+title: Edge Daemon Installation
+description: Install the AEGIS edge daemon on Linux (systemd user unit), macOS (launchd plist), or Windows (NSSM service), with the hardened service templates.
+---
+
+# Edge Daemon Installation
+
+The AEGIS edge daemon ships as part of the standard `aegis` CLI binary. Installation on a host is a two-step process: drop the binary in place, then register a service-manager unit so it runs in the background as a user service. This page documents the unit templates and platform-specific details.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+For the end-to-end "install + enroll + verify" flow, see [edge host setup](/docs/guides/edge-host-setup). This page is the deployment reference.
+
+---
+
+## Binary install
+
+### Linux (x86_64, aarch64)
+
+```bash
+curl -fsSL https://get.aegis.example/install.sh | bash
+```
+
+The installer drops `aegis` into `/usr/local/bin` (or `~/.local/bin` if running unprivileged). Verify:
+
+```bash
+aegis --version
+which aegis
+```
+
+For air-gapped installs, download the static binary tarball from the release artifact registry and extract into your preferred path.
+
+### macOS (x86_64, arm64)
+
+```bash
+brew install aegis-cli
+```
+
+Or via the install script (Homebrew not required):
+
+```bash
+curl -fsSL https://get.aegis.example/install.sh | bash
+```
+
+### Windows (x86_64)
+
+```powershell
+iwr -useb https://get.aegis.example/install.ps1 | iex
+```
+
+The installer drops `aegis.exe` into `%LOCALAPPDATA%\Programs\aegis\`, prepends it to user `PATH`, and registers the NSSM helper.
+
+---
+
+## Service registration
+
+`aegis edge service install` is the canonical entry point — it auto-detects the OS and writes the appropriate unit. The sections below show what it produces on each platform.
+
+### Linux — systemd user unit
+
+Path: `~/.config/systemd/user/aegis-edge.service`
+
+```ini
+[Unit]
+Description=AEGIS Edge Daemon
+Documentation=https://docs.aegis.example/deployment/edge-daemon-installation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=%h/.local/bin/aegis edge run --config %h/.aegis/edge/aegis-config.yaml
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=%h/.aegis/edge
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Resource hints (override per host as needed)
+LimitNOFILE=65535
+
+[Install]
+WantedBy=default.target
+```
+
+Enable lingering so the unit keeps running across logout:
+
+```bash
+loginctl enable-linger "$USER"
+systemctl --user daemon-reload
+systemctl --user enable --now aegis-edge.service
+```
+
+To check status:
+
+```bash
+systemctl --user status aegis-edge.service
+journalctl --user -u aegis-edge.service -f
+```
+
+### macOS — launchd plist
+
+Path: `~/Library/LaunchAgents/io.aegis.edge.plist`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>io.aegis.edge</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/local/bin/aegis</string>
+      <string>edge</string>
+      <string>run</string>
+      <string>--config</string>
+      <string>/Users/USERNAME/.aegis/edge/aegis-config.yaml</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+      <key>NetworkState</key>
+      <true/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/.aegis/edge/logs/aegis-edge.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/.aegis/edge/logs/aegis-edge.err.log</string>
+  </dict>
+</plist>
+```
+
+Load the plist:
+
+```bash
+launchctl load ~/Library/LaunchAgents/io.aegis.edge.plist
+launchctl start io.aegis.edge
+```
+
+To check status:
+
+```bash
+launchctl list | grep io.aegis.edge
+log show --predicate 'process == "aegis"' --last 10m
+```
+
+### Windows — NSSM service
+
+Path: managed by NSSM under the service name `aegis-edge`.
+
+The NSSM descriptor template:
+
+```json
+{
+  "name": "aegis-edge",
+  "displayName": "AEGIS Edge Daemon",
+  "description": "AEGIS edge daemon — receives MCP tool calls via SEAL.",
+  "executable": "%LOCALAPPDATA%\\Programs\\aegis\\aegis.exe",
+  "arguments": "edge run --config %USERPROFILE%\\.aegis\\edge\\aegis-config.yaml",
+  "startup": "automatic",
+  "stdout": "%USERPROFILE%\\.aegis\\edge\\logs\\aegis-edge.out.log",
+  "stderr": "%USERPROFILE%\\.aegis\\edge\\logs\\aegis-edge.err.log",
+  "rotateLogs": true,
+  "rotateLogsBytes": 10485760
+}
+```
+
+Install and start:
+
+```powershell
+aegis edge service install
+Start-Service aegis-edge
+Get-Service aegis-edge
+```
+
+---
+
+## Local state layout
+
+Wherever the daemon runs, the on-disk layout under `~/.aegis/edge/` is the same:
+
+```text
+~/.aegis/edge/
+├── aegis-config.yaml          # merged hierarchical config
+├── node.key                   # Ed25519 private key (mode 0600)
+├── node.key.pub
+├── node.token                 # NodeSecurityToken
+├── enrollment.jwt             # short-lived; consumed once by enroll
+├── logs/                      # service-manager log destination
+├── secrets/                   # local KV store (mode 0700)
+└── archive/                   # rotated keys retained during overlap window
+```
+
+Permission expectations:
+
+| Path                       | Mode             |
+| -------------------------- | ---------------- |
+| `~/.aegis/edge/`           | `0700`           |
+| `~/.aegis/edge/secrets/`   | `0700`           |
+| `~/.aegis/edge/node.key`   | `0600`           |
+| `~/.aegis/edge/node.token` | `0600`           |
+| Everything else            | `0644` (default) |
+
+`aegis edge enroll` enforces these on bootstrap; if the daemon detects a mode that's too permissive at startup, it logs a warning and chmods to the expected mode.
+
+---
+
+## Network requirements
+
+| Direction | Port | Destination                                                 |
+| --------- | ---- | ----------------------------------------------------------- |
+| Outbound  | 443  | `relay.myzaru.com` (SaaS) or your controller endpoint (OSS) |
+| Inbound   | none | The daemon does not bind any listening port                 |
+
+The daemon multiplexes all traffic — heartbeats, capability updates, command results, command progress streams — over a single long-lived h2 gRPC connection. There is no ancillary fallback channel and no peer-to-peer.
+
+For corporate networks: the daemon respects standard `HTTPS_PROXY`, `https_proxy`, and `NO_PROXY` environment variables when it dials the controller. Set them in the service unit's `Environment=` directives (Linux) or via `launchctl setenv` (macOS) if your network requires a proxy.
+
+---
+
+## Resource footprint
+
+| Resource     | Idle               | Active (one in-flight tool call)           |
+| ------------ | ------------------ | ------------------------------------------ |
+| CPU          | ≤1% of one core    | Bounded by the tool itself                 |
+| RSS          | ~30–50 MB          | +20–40 MB for the gRPC streaming machinery |
+| Disk (state) | ~few KB            | +log volume                                |
+| Network      | ≤1 KB/s heartbeats | Bounded by tool I/O                        |
+
+The daemon is small — it is a thin SEAL/gRPC wrapper around the existing AEGIS executor. The footprint is dominated by whatever tool runs underneath.
+
+---
+
+## Updating the daemon
+
+Updates ship as a new `aegis` CLI binary. To upgrade:
+
+1. Replace the binary (re-run the install script, `brew upgrade aegis-cli`, or the Windows installer).
+2. Restart the service:
+   - Linux: `systemctl --user restart aegis-edge.service`
+   - macOS: `launchctl kickstart -k gui/$UID/io.aegis.edge`
+   - Windows: `Restart-Service aegis-edge`
+
+The active gRPC stream is dropped; the daemon reconnects with the existing key and token. Tools that were in flight are reported back as `EdgeDisconnected` to the dispatcher.
+
+For rolling fleet upgrades, see [edge operational patterns](/docs/deployment/edge-operational-patterns).
+
+---
+
+## Uninstalling
+
+```bash
+aegis edge logout              # local revocation: deletes node.token, node.key
+aegis edge service uninstall   # removes the service unit / plist / NSSM entry
+rm -rf ~/.aegis/edge           # purge any remaining state
+```
+
+The remote `EdgeDaemon` row remains in the controller until an operator runs `aegis edge keys revoke-remote <node-id>` (or it cascades from tenant deletion). Uninstalling the local daemon does not by itself revoke the binding — but the daemon will never reconnect, so the row will appear `Disconnected` indefinitely.
+
+---
+
+## What's next
+
+- [Edge Host Setup](/docs/guides/edge-host-setup) — end-to-end install + enroll + verify.
+- [Edge Relay Deployment](/docs/deployment/edge-relay-deployment) — how to deploy the Relay Coordinator in self-hosted setups.
+- [Edge Operational Patterns](/docs/deployment/edge-operational-patterns) — day-2 ops, monitoring, log collection, decommissioning.
+- [Edge Config Reference](/docs/reference/edge-config) — every field of `cluster.edge` with defaults.
+- [Edge CLI Reference](/docs/reference/edge-cli) — `aegis edge service` and friends.

@@ -295,51 +295,51 @@ Because these handlers run in the orchestrator address space, credential isolati
 
 Operate on a workspace volume through the `AegisFSAL`. They share the same authorization boundary as the `fs.*` tools: path canonicalization, UID/GID squashing, `FilesystemPolicy` enforcement, quota tracking, and `StorageEvent` publication. The difference is naming and scope — `aegis.file.*` tools explicitly address a named volume and are invokable outside an execution context (for example, from Zaru canvas sessions operating on persistent workspaces).
 
-| Tool | Description |
-|---|---|
-| `aegis.file.list` | List entries in a directory on a workspace volume. |
-| `aegis.file.read` | Read the bytes (or decoded text) of a file on a workspace volume. |
-| `aegis.file.write` | Write content to a file, creating or overwriting as needed. |
-| `aegis.file.delete` | Remove a file or directory entry. |
-| `aegis.file.mkdir` | Create a directory (including parents) on a workspace volume. |
+| Tool                | Description                                                       |
+| ------------------- | ----------------------------------------------------------------- |
+| `aegis.file.list`   | List entries in a directory on a workspace volume.                |
+| `aegis.file.read`   | Read the bytes (or decoded text) of a file on a workspace volume. |
+| `aegis.file.write`  | Write content to a file, creating or overwriting as needed.       |
+| `aegis.file.delete` | Remove a file or directory entry.                                 |
+| `aegis.file.mkdir`  | Create a directory (including parents) on a workspace volume.     |
 
 ### `aegis.volume.*` — tenant-scoped volume CRUD
 
 Manage the `Volume` aggregate at the orchestrator level. These tools are routed to the `VolumeManager` and operate on the SeaweedFS (or configured `StorageProvider`) directory that backs the volume, not on individual files inside it.
 
-| Tool | Description |
-|---|---|
-| `aegis.volume.create` | Provision a new volume in the caller's tenant with the requested ownership, size limit, and access mode. |
-| `aegis.volume.list` | Enumerate volumes visible to the caller's tenant. |
+| Tool                  | Description                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `aegis.volume.create` | Provision a new volume in the caller's tenant with the requested ownership, size limit, and access mode.   |
+| `aegis.volume.list`   | Enumerate volumes visible to the caller's tenant.                                                          |
 | `aegis.volume.delete` | Decommission a volume; triggers the `Deleting → Deleted` state transition and SeaweedFS directory cleanup. |
-| `aegis.volume.quota` | Read the current size limit and usage for a volume. |
+| `aegis.volume.quota`  | Read the current size limit and usage for a volume.                                                        |
 
 ### `aegis.git.*` — git repository bindings
 
 Bind one or more Git repositories into a workspace volume and maintain a working copy that both agents and container steps can read and modify. The orchestrator handles clone, fetch, and refresh against the remote and write-back operations (commit, push, diff) from the local working directory — including for long-running Zaru canvas sessions where the workspace persists between agent executions.
 
-| Tool | Description |
-|---|---|
-| `aegis.git.clone` | Clone a remote repository into a workspace volume and create a repository binding. |
-| `aegis.git.list` | List repository bindings attached to a workspace volume. |
-| `aegis.git.status` | Report working-tree status (staged, unstaged, untracked) for a repository binding. |
-| `aegis.git.refresh` | Fetch from the remote and fast-forward the working copy of a repository binding. |
-| `aegis.git.delete` | Remove a repository binding and clean up its working directory. |
-| `aegis.git.commit` | Stage and commit working-directory changes back to the repository binding. |
-| `aegis.git.push` | Push committed changes to the configured remote. |
-| `aegis.git.diff` | Produce a diff of working-directory, staged, or committed changes for a binding. |
+| Tool                | Description                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `aegis.git.clone`   | Clone a remote repository into a workspace volume and create a repository binding. |
+| `aegis.git.list`    | List repository bindings attached to a workspace volume.                           |
+| `aegis.git.status`  | Report working-tree status (staged, unstaged, untracked) for a repository binding. |
+| `aegis.git.refresh` | Fetch from the remote and fast-forward the working copy of a repository binding.   |
+| `aegis.git.delete`  | Remove a repository binding and clean up its working directory.                    |
+| `aegis.git.commit`  | Stage and commit working-directory changes back to the repository binding.         |
+| `aegis.git.push`    | Push committed changes to the configured remote.                                   |
+| `aegis.git.diff`    | Produce a diff of working-directory, staged, or committed changes for a binding.   |
 
 ### `aegis.script.*` — saved TypeScript programs
 
 Store and manage named TypeScript programs as versioned artifacts on the orchestrator. Saved scripts are the persistence backend for Zaru code mode and for reusable execution primitives authored by agents or operators. Every save creates a new version; earlier versions remain retrievable until the script is deleted.
 
-| Tool | Description |
-|---|---|
-| `aegis.script.save` | Create or update a script; each save records a new version in the script's history. |
-| `aegis.script.list` | List saved scripts visible to the caller. |
-| `aegis.script.get` | Retrieve a script by name — either the latest version or a specific historical version. |
+| Tool                  | Description                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| `aegis.script.save`   | Create or update a script; each save records a new version in the script's history.        |
+| `aegis.script.list`   | List saved scripts visible to the caller.                                                  |
+| `aegis.script.get`    | Retrieve a script by name — either the latest version or a specific historical version.    |
 | `aegis.script.update` | Update an existing script's metadata or source; equivalent to `save` for an existing name. |
-| `aegis.script.delete` | Delete a script and all its historical versions. |
+| `aegis.script.delete` | Delete a script and all its historical versions.                                           |
 
 ---
 
@@ -347,33 +347,33 @@ Store and manage named TypeScript programs as versioned artifacts on the orchest
 
 When a tool call is rejected, the orchestrator returns a structured error to the agent and publishes a `ToolPolicyViolation` or `CommandPolicyViolation` event. The variant describes the specific rule that fired:
 
-| Violation | Cause |
-|---|---|
-| `ToolNotAllowed` | Tool name not present in the agent's `spec.tools` list |
-| `ToolExplicitlyDenied` | Tool name matches an entry in the `SecurityContext` `deny_list` |
-| `RateLimitExceeded` | Execution has hit `max_calls_per_execution` or the per-tool rate window |
-| `PathOutsideBoundary` | Filesystem path is not prefixed by any entry in `path_allowlist` |
-| `PathTraversalAttempt` | Path contains `..` components — rejected unconditionally |
-| `DomainNotAllowed` | Target domain not in `domain_allowlist` |
-| `SubcommandNotAllowed` | First positional argument not in `subcommand_allowlist` for the command |
-| `CommandNotAllowed` | Base command not present in `subcommand_allowlist` at all |
-| `OutputSizeLimitExceeded` | Subprocess stdout+stderr exceeds `max_output_bytes` |
+| Violation                 | Cause                                                                   |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `ToolNotAllowed`          | Tool name not present in the agent's `spec.tools` list                  |
+| `ToolExplicitlyDenied`    | Tool name matches an entry in the `SecurityContext` `deny_list`         |
+| `RateLimitExceeded`       | Execution has hit `max_calls_per_execution` or the per-tool rate window |
+| `PathOutsideBoundary`     | Filesystem path is not prefixed by any entry in `path_allowlist`        |
+| `PathTraversalAttempt`    | Path contains `..` components — rejected unconditionally                |
+| `DomainNotAllowed`        | Target domain not in `domain_allowlist`                                 |
+| `SubcommandNotAllowed`    | First positional argument not in `subcommand_allowlist` for the command |
+| `CommandNotAllowed`       | Base command not present in `subcommand_allowlist` at all               |
+| `OutputSizeLimitExceeded` | Subprocess stdout+stderr exceeds `max_output_bytes`                     |
 
 ---
 
 ## Tool Routing Decision Table
 
-| Tool pattern | SEAL policy check | Routing path | Executor |
-|---|---|---|---|
-| `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list` | Filesystem path allowlist + traversal check | Path 1 — FSAL | `AegisFSAL` on orchestrator host; writes visible via NFS mount |
-| `cmd.run` | `subcommand_allowlist` | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py` |
-| `web.fetch`, `web.search` | Domain allowlist + rate limit | Path 2 — SEAL External | `web-search` Tool Server on host |
-| `email.send`, `email.read` | Domain and account allowlist | Path 2 — SEAL External | `gmail-tools` Tool Server on host |
-| `aegis.file.*` | Filesystem path allowlist + traversal check (scoped to a named volume) | Orchestrator-native | `AegisFSAL` on orchestrator host; operates against a named workspace volume |
-| `aegis.volume.*` | Tenant ownership check | Orchestrator-native | `VolumeManager` on orchestrator host; talks to `StorageProvider` |
-| `aegis.git.*` | Tenant + volume ownership check; remote URL allowlist on `clone` and `push` | Orchestrator-native | In-process Git handler on orchestrator host; maintains working copy on a workspace volume |
-| `aegis.script.*` | Tenant ownership check | Orchestrator-native | In-process script registry on orchestrator host; versioned storage in PostgreSQL |
-| Any unregistered tool | — | Rejected before routing | `ToolPolicyViolation` event emitted, 403 returned |
+| Tool pattern                                               | SEAL policy check                                                           | Routing path               | Executor                                                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------- |
+| `fs.read`, `fs.write`, `fs.create`, `fs.delete`, `fs.list` | Filesystem path allowlist + traversal check                                 | Path 1 — FSAL              | `AegisFSAL` on orchestrator host; writes visible via NFS mount                            |
+| `cmd.run`                                                  | `subcommand_allowlist`                                                      | Path 3 — Dispatch Protocol | `subprocess` inside agent container via `bootstrap.py`                                    |
+| `web.fetch`, `web.search`                                  | Domain allowlist + rate limit                                               | Path 2 — SEAL External     | `web-search` Tool Server on host                                                          |
+| `email.send`, `email.read`                                 | Domain and account allowlist                                                | Path 2 — SEAL External     | `gmail-tools` Tool Server on host                                                         |
+| `aegis.file.*`                                             | Filesystem path allowlist + traversal check (scoped to a named volume)      | Orchestrator-native        | `AegisFSAL` on orchestrator host; operates against a named workspace volume               |
+| `aegis.volume.*`                                           | Tenant ownership check                                                      | Orchestrator-native        | `VolumeManager` on orchestrator host; talks to `StorageProvider`                          |
+| `aegis.git.*`                                              | Tenant + volume ownership check; remote URL allowlist on `clone` and `push` | Orchestrator-native        | In-process Git handler on orchestrator host; maintains working copy on a workspace volume |
+| `aegis.script.*`                                           | Tenant ownership check                                                      | Orchestrator-native        | In-process script registry on orchestrator host; versioned storage in PostgreSQL          |
+| Any unregistered tool                                      | —                                                                           | Rejected before routing    | `ToolPolicyViolation` event emitted, 403 returned                                         |
 
 ---
 
@@ -381,22 +381,22 @@ When a tool call is rejected, the orchestrator returns a structured error to the
 
 Every routing decision publishes a domain event on the internal event bus. These events feed the Cortex learning system and can be forwarded to external audit sinks. See [Event Bus](/docs/architecture/event-bus) for the subscription and consumer model.
 
-| Event | Trigger |
-|---|---|
-| `MCPToolEvent::InvocationRequested` | `SealMiddleware` accepts and validates an envelope |
-| `MCPToolEvent::InvocationCompleted` | Tool result returned to agent |
-| `MCPToolEvent::InvocationFailed` | Tool server error or subprocess non-zero exit |
-| `MCPToolEvent::ToolPolicyViolation` | `PolicyEngine` denies the call before routing |
-| `CommandExecutionEvent::CommandExecutionStarted` | Dispatch message sent to `bootstrap.py` |
-| `CommandExecutionEvent::CommandExecutionCompleted` | `bootstrap.py` re-posts result with exit code |
-| `CommandExecutionEvent::CommandExecutionFailed` | Subprocess timeout or OS error |
-| `CommandExecutionEvent::CommandPolicyViolation` | `SubcommandAllowlist` check failed |
-| `StorageEvent::FileWritten` | `AegisFSAL` completes a write to a volume |
-| `StorageEvent::FileRead` | `AegisFSAL` completes a read from a volume |
-| `StorageEvent::PathTraversalBlocked` | `AegisFSAL` rejects a `..`-containing path |
-| `StorageEvent::UnauthorizedVolumeAccess` | File handle `execution_id` does not match caller |
-| `SealEvent::PolicyViolationBlocked` | `SecurityContext` policy blocks a tool call |
-| `SealEvent::SignatureVerificationFailed` | Ed25519 signature on envelope is invalid |
+| Event                                              | Trigger                                            |
+| -------------------------------------------------- | -------------------------------------------------- |
+| `MCPToolEvent::InvocationRequested`                | `SealMiddleware` accepts and validates an envelope |
+| `MCPToolEvent::InvocationCompleted`                | Tool result returned to agent                      |
+| `MCPToolEvent::InvocationFailed`                   | Tool server error or subprocess non-zero exit      |
+| `MCPToolEvent::ToolPolicyViolation`                | `PolicyEngine` denies the call before routing      |
+| `CommandExecutionEvent::CommandExecutionStarted`   | Dispatch message sent to `bootstrap.py`            |
+| `CommandExecutionEvent::CommandExecutionCompleted` | `bootstrap.py` re-posts result with exit code      |
+| `CommandExecutionEvent::CommandExecutionFailed`    | Subprocess timeout or OS error                     |
+| `CommandExecutionEvent::CommandPolicyViolation`    | `SubcommandAllowlist` check failed                 |
+| `StorageEvent::FileWritten`                        | `AegisFSAL` completes a write to a volume          |
+| `StorageEvent::FileRead`                           | `AegisFSAL` completes a read from a volume         |
+| `StorageEvent::PathTraversalBlocked`               | `AegisFSAL` rejects a `..`-containing path         |
+| `StorageEvent::UnauthorizedVolumeAccess`           | File handle `execution_id` does not match caller   |
+| `SealEvent::PolicyViolationBlocked`                | `SecurityContext` policy blocks a tool call        |
+| `SealEvent::SignatureVerificationFailed`           | Ed25519 signature on envelope is invalid           |
 
 ---
 
@@ -408,3 +408,24 @@ Every routing decision publishes a domain event on the internal event bus. These
 - [Node Configuration Reference](/docs/reference/node-config) — `mcp_servers`, `builtin_dispatchers`, `security_contexts` fields
 - [Agent Manifest Reference](/docs/reference/agent-manifest) — `spec.tools`, `subcommand_allowlist`, tool config schemas
 - [Configuring Tools](/docs/agents/configuring-tools) — practical guide to enabling `cmd.run` and adding external MCP servers
+
+---
+
+## Edge-Targeted Tools
+
+When a tool descriptor declares `executor: edge` or a tool call carries an explicit `target` argument referencing an edge host, the dispatcher consults the **`EdgeRouter`** before falling through to the standard orchestrator/worker paths. The `EdgeRouter` resolves the target — a single node, a saved group, an ad-hoc selector, or `all` — to a list of `node_id`s, then dispatches per-node `InvokeTool` commands across the active gRPC streams to those daemons.
+
+Routing decision order:
+
+1. **Explicit `args.target`** → resolve via `EdgeFleetResolver` (tenant-scoped). `Node`, `Group`, `Selector`, or `All`.
+2. **Single-laptop default** → `executor: edge` with no explicit target and exactly one connected edge in the tenant uses it implicitly.
+3. **Fall through** → standard orchestrator/worker routing.
+4. **Unresolvable** → `EdgeUnavailable` synchronously.
+
+In **SaaS** deployments, the dispatcher in `api.myzaru.com` issues each per-node `InvokeTool` to the Relay Coordinator at `relay.myzaru.com`, which forwards across the connected stream. **Fleet bookkeeping** (correlating `fleet_command_id`, broadcasting cancellations, aggregating partial results) lives in the dispatcher, not the Relay — keeping the Relay stateless w.r.t. fleet semantics so it scales horizontally.
+
+In **OSS** deployments, the controller co-hosts the edge handling — there is no separate Relay process.
+
+**Local verification on the daemon.** Each `InvokeTool` is wrapped in a two-envelope SEAL: the outer envelope proves controller-to-daemon identity; the inner envelope carries the user's `user_security_token`, `tenant_id`, and `security_context_name`. The daemon verifies both, resolves the security context against its local merged config, and applies the same Layer 1 / Layer 2 policy that would apply on the controller. Edge-targeted tools therefore **bypass the SEAL Tooling Gateway** entirely — the gateway compresses outbound REST/CLI calls to SaaS APIs, while edge tools execute locally on the user's host.
+
+For the user-facing model, see [edge mode overview](/docs/concepts/edge-mode-overview); for fleet semantics, see [fleet operations](/docs/concepts/fleet-operations).

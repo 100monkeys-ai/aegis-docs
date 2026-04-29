@@ -1,0 +1,320 @@
+---
+title: Fleet Operations
+description: Targeting, dispatch policies, failure policies, and per-node streaming results for multi-host edge fleet operations.
+---
+
+# Fleet Operations
+
+Edge Mode treats multi-target dispatch — running one tool against many hosts — as a **first-class** capability, not an afterthought layered on top of single-target calls. The targeting model, the dispatch policies, the failure policies, and the result-streaming protocol are all designed for the operational shapes you actually need: rolling restarts, parallel ad-hoc commands, sequential audits, and "fan out across every host that matches this tag."
+
+This page covers:
+
+1. The unified `EdgeTarget` targeting model.
+2. Tags vs labels.
+3. Edge groups (saved selectors).
+4. The dispatch decision order.
+5. Fan-out semantics (`Sequential` / `Parallel` / `Rolling`).
+6. Failure policies.
+7. Result aggregation and streaming.
+8. The system-tier MCP tools (`aegis.edge.fleet.invoke|list|cancel`).
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+---
+
+## The unified targeting model: `EdgeTarget`
+
+Every form of multi-target selection — single node, named group, ad-hoc match, "everything I can reach" — is expressed as a single value object. This is the operator's mental model:
+
+```text
+EdgeTarget =
+  | Node(node_id)        # single, by id
+  | Group(name)          # saved selector
+  | Selector(...)        # ad-hoc match
+  | All                  # every Connected edge of this tenant
+```
+
+All four forms are **tenant-scoped** at the router boundary. `All` does not mean "every edge in the platform" — it means "every Connected edge bound to my tenant." A delegated service account using `X-Tenant-Id` is bounded by the same rule: it sees only the edges of tenants it has been delegated to.
+
+### `Node(id)`
+
+A single node by its node id. Resolves to `[id]` if the daemon is owned by the caller's tenant and currently `Connected`; otherwise the dispatcher returns `EdgeUnavailable` synchronously without retry.
+
+### `Selector(...)`
+
+An ad-hoc match expression. The selector evaluates `EdgeCapabilities.satisfies(s)` across every Connected edge of the tenant.
+
+```text
+EdgeSelector {
+    os:     Optional[String]    # e.g. "linux"
+    arch:   Optional[String]    # e.g. "x86_64"
+    tools:  Vec<String>         # ALL must be present (AND across tools)
+    labels: Vec<LabelMatch>     # see below
+    tags:   Vec<TagMatch>       # see below
+}
+```
+
+`LabelMatch` and `TagMatch` give you the fine-grained operators most ops teams reach for:
+
+| LabelMatch      | Meaning                              |
+| --------------- | ------------------------------------ |
+| `Equals(k, v)`  | Label `k` is set to `v` exactly.     |
+| `Exists(k)`     | Label `k` is set (any value).        |
+| `In(k, values)` | Label `k` is set to one of `values`. |
+
+| TagMatch        | Meaning                                          |
+| --------------- | ------------------------------------------------ |
+| `Has(t)`        | Tag `t` is present on the daemon.                |
+| `AnyOf([...])`  | Daemon has at least one of the listed tags (OR). |
+| `AllOf([...])`  | Daemon has every listed tag (AND).               |
+| `NoneOf([...])` | Daemon has none of the listed tags (negation).   |
+
+Multiple selector fields combine with **AND**: every condition must hold.
+
+### `Group(name)`
+
+A reference to a saved `EdgeGroup`. Membership is **dynamic** — evaluated at dispatch time, not at group creation time. An edge that comes online after the group was defined is automatically a member if it matches the saved selector.
+
+### `All`
+
+Every Connected edge of the caller's tenant. Useful for read-only audits ("which kernel is everyone running?"); for state-mutating tools, prefer a more specific target.
+
+---
+
+## Tags vs labels — both, and they are different
+
+Both attributes already exist on `EdgeCapabilities`; both are queryable in the same selector. They serve different purposes:
+
+|                   | Labels                                                              | Tags                                                              |
+| ----------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Shape**         | `HashMap<String, String>` (typed key/value)                         | `Vec<String>` (flat strings)                                      |
+| **Set by**        | The daemon (in its config)                                          | The operator (via Zaru / REST)                                    |
+| **Mutable from**  | The host (requires daemon restart)                                  | The server (no daemon touch needed)                               |
+| **Use for**       | Daemon-advertised facts (`os=linux`, `region=home`, `gpu=rtx-4090`) | Operator-managed classifiers (`prod`, `db-host`, `team-platform`) |
+| **Example match** | `labels=region=us`                                                  | `tags=prod`                                                       |
+
+The distinction matters because the daemon-advertised view is **immutable from the daemon's perspective on the operator side** — the daemon cannot accidentally tag itself `prod` and join the production fleet. Tags are operator-controlled; labels are host-controlled. Both are visible in selectors, but the trust boundary between them is sharp.
+
+<Callout type="info">
+  A common pattern: use labels for "what is this host" (architecture, region,
+  GPU), and tags for "what role does this host play" (production, staging, db,
+  web). Tags belong to the org; labels belong to the host.
+</Callout>
+
+---
+
+## Edge groups (saved selectors)
+
+A group is a named, reusable selector. Groups are tenant-scoped and persisted server-side.
+
+```text
+EdgeGroup {
+    id:               EdgeGroupId
+    tenant_id:        TenantId
+    name:             String           # unique per tenant
+    selector:         EdgeSelector     # evaluated at dispatch time
+    pinned_members:   Vec<NodeId>      # always-include overrides
+    created_by:       UserId
+    created_at:       DateTime<Utc>
+}
+```
+
+### Why dynamic membership?
+
+If you create a `production-db-hosts` group with selector `tags=prod,db`, and later you add a new database host, that host should automatically be part of the group without you having to remember to update the membership list. Static group membership is an anti-pattern in fleet ops; AEGIS does dynamic membership by default.
+
+### Why pinned members?
+
+Sometimes you need an escape hatch — "always include this specific host in this group, regardless of the selector." Pinned members are the union with the selector result, so a host can be in the group either by matching or by being pinned. Use sparingly; prefer fixing the selector.
+
+---
+
+## The dispatch decision order
+
+When you call an MCP tool, the dispatcher walks four steps in order:
+
+1. **Explicit `args.target`** — resolve via `EdgeFleetResolver` (tenant-scoped):
+   - `Node(id)` → `[id]` if owned + `Connected`, else `EdgeUnavailable`.
+   - `Group(id)` → look up the group, evaluate the selector against the tenant's connected edges, union with pinned members.
+   - `Selector(s)` → match `EdgeCapabilities.satisfies(s)` across the tenant's connected edges.
+   - `All` → every Connected edge of the tenant.
+2. **Single-laptop default** — descriptor `executor: edge` and no explicit target and the tenant has exactly one connected edge → use it.
+3. **Fall through** — descriptor neither `executor: edge` nor target args present → existing orchestrator/worker routing.
+4. **No target** — none of the above resolves → `EdgeUnavailable` synchronously.
+
+Step 2 is the one-laptop ergonomic default. If you only have one edge daemon, you don't need to specify a target — the dispatcher routes to it implicitly. As soon as you enroll a second edge, you must be explicit.
+
+---
+
+## Fan-out semantics: `FleetMode`
+
+`FleetDispatchPolicy.mode` controls how the resolved targets are visited.
+
+### `Sequential`
+
+One node at a time, in resolved order. Slow but predictable; useful for audits where you want to read the output node by node. The next dispatch starts only after the current one terminates (`CommandResult` received, deadline fired, or `Cancel` acknowledged).
+
+### `Parallel`
+
+All targets dispatched concurrently, up to `max_concurrency` (defaults to the resolved target count). Fastest fan-out; appropriate for read-only and idempotent operations.
+
+### `Rolling { batch }`
+
+Targets visited in waves of `batch` nodes. The next wave starts only after the previous wave terminates. Combine with `failure_policy: StopAfter(N)` for the canonical "redeploy in waves and halt on first regression" pattern:
+
+```text
+mode:           Rolling { batch: 5 }
+failure_policy: StopAfter(1)
+```
+
+The `max_concurrency` cap also applies to rolling — useful when `batch` is large but you want to throttle.
+
+---
+
+## Failure policies: `FailurePolicy`
+
+Combined orthogonally with `FleetMode`:
+
+### `FailFast`
+
+The first error cancels every in-flight dispatch (broadcasting `Cancel` to active per-node commands) and prevents subsequent batches from starting. Default for state-mutating tools.
+
+### `ContinueOnError`
+
+Every per-node call runs to completion regardless of failures elsewhere. The aggregate result reports `ok`, `err`, and `timed_out` counts. Default for read-only tools.
+
+### `StopAfter(N)`
+
+Like `ContinueOnError` until `N` failures have been observed; then halts further dispatch. The canonical "rolling deploy with a tolerance" knob.
+
+### `require_min_targets`
+
+Refuses dispatch upfront if fewer than `N` connected matches resolve. Use when "if it can't reach at least 5 hosts, don't run at all" is your safety contract.
+
+### `per_target_deadline`
+
+Propagated to the daemon as `EdgeCommand.deadline`. Default 60 seconds. Whichever side fires first wins; the loser is best-effort cancelled.
+
+---
+
+## Result aggregation and streaming
+
+A multi-target dispatch produces one `FleetExecutionResult`:
+
+```text
+FleetExecutionResult {
+    fleet_command_id:  FleetCommandId
+    targets_resolved:  Vec<NodeId>
+    targets_skipped:   Vec<(NodeId, SkipReason)>   // Disconnected, RevokedDuringDispatch, ...
+    per_node:          Vec<(NodeId, EdgeResult)>
+    summary:           FleetSummary { ok, err, timed_out }
+}
+```
+
+Per-node results stream back to the caller as `CommandProgress` chunks tagged with `node_id`. Zaru renders a live grid: each cell shows the host, a status pill, the exit code (when the host completes), and a tail of stdout/stderr. You don't wait for the slowest host — you see fast hosts complete while slow hosts are still streaming.
+
+The terminal `FleetExecutionResult` arrives once every per-node call has terminated (completed, errored, timed out, cancelled, or skipped).
+
+### Cancellation
+
+A live fleet run can be cancelled with:
+
+```bash
+aegis edge fleet cancel <fleet-command-id>
+```
+
+The dispatcher broadcasts `Cancel { command_id }` to every in-flight per-node command. The daemons honor it best-effort — any wrapped tool that respects context cancellation will halt; native external processes get a SIGTERM. Already-completed nodes are not affected.
+
+The same operation is exposed as the system-tier MCP tool `aegis.edge.fleet.cancel`.
+
+---
+
+## System-tier MCP tools
+
+Three system-tier tools live in `aegis-mcp-tools` and are gated by an operator/tenant-admin SecurityContext:
+
+### `aegis.edge.fleet.invoke`
+
+Invokes any registered tool against an `EdgeTarget` with a `FleetDispatchPolicy`. Per-node `CommandProgress` chunks stream back tagged with `node_id`; the terminal payload is `FleetExecutionResult`.
+
+### `aegis.edge.fleet.list`
+
+Resolves an `EdgeTarget` to a `Vec<NodeId>` _without_ dispatching. Operationally critical before destructive fan-outs — the answer to "show me which hosts this selector hits before I run anything." Zaru's selector preview panel is built on this tool.
+
+### `aegis.edge.fleet.cancel`
+
+Broadcasts `Cancel` to every in-flight per-node command in a fleet operation, addressed by `fleet_command_id`.
+
+### `fleet_capable: bool`
+
+Tool descriptors carry a `fleet_capable` flag. Tools that are inherently single-target (e.g. interactive shells, file uploads where the target host matters semantically) declare `fleet_capable: false` and refuse multi-target dispatch even when the caller tries to fan them out.
+
+---
+
+## Recipes
+
+### Rolling restart with halt-on-first-failure
+
+```bash
+aegis edge fleet run \
+  --target group:web-tier \
+  --tool service.restart --arg name=nginx \
+  --mode rolling=5 \
+  --on-error stop-after=1 \
+  --deadline 30s
+```
+
+### Parallel read-only audit across the whole fleet
+
+```bash
+aegis edge fleet run \
+  --target all \
+  --tool cmd.run --arg cmd="uname -r" \
+  --mode parallel \
+  --on-error continue
+```
+
+### Refuse to dispatch unless at least 3 hosts match
+
+```bash
+aegis edge fleet run \
+  --target tags=db,prod \
+  --tool cmd.run --arg cmd="systemctl status postgres" \
+  --require-min 3
+```
+
+### Preview a selector before running anything destructive
+
+```bash
+aegis edge fleet preview --target tags=prod
+```
+
+### Cancel a runaway fleet operation
+
+```bash
+aegis edge fleet cancel a3f4...c8d2
+```
+
+---
+
+## What this buys you
+
+| Property                                              | Mechanism                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Tenant-bounded fan-out**                            | Every target form is filtered through `effective_tenant`.                      |
+| **Dynamic group membership**                          | Selectors evaluated at dispatch time; new hosts auto-join.                     |
+| **Operator-controlled tags + host-controlled labels** | Sharp trust boundary between the two.                                          |
+| **Per-node streaming**                                | `CommandProgress` chunks tagged with `node_id` enable live UX.                 |
+| **Cancellation**                                      | One `fleet_command_id` cancels every in-flight per-node command.               |
+| **Failure policy choice**                             | FailFast / Continue / StopAfter cover the operationally important shapes.      |
+| **Preview before dispatch**                           | `aegis.edge.fleet.list` surfaces the resolved target set without side effects. |
+
+---
+
+## What's next
+
+- [Edge Tag and Group Management](/docs/guides/edge-tag-and-group-management) — assign tags, build groups, preview selectors.
+- [Edge Fleet Operations Guide](/docs/guides/edge-fleet-operations) — end-to-end walkthroughs for rolling deploys, ad-hoc commands, and cancellation.
+- [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge fleet` flag.
+- [Edge Security](/docs/concepts/edge-security) — the local SecurityContext enforcement that gates each per-node call.
+- [Edge Mode Overview](/docs/concepts/edge-mode-overview) — start here if you skipped the intro.

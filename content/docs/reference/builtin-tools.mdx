@@ -3,12 +3,15 @@ title: Built-in Tools
 description: Reference documentation for the built-in MCP tools provided by the AEGIS Orchestrator
 ---
 
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from "fumadocs-ui/components/callout";
 
 The AEGIS Orchestrator provides a set of native, built-in tools out of the box. These tools are implemented internally for high performance, deep security integration, and specialized infrastructure abstraction. Built-in tools bypass the overhead of sidecar MCP servers.
 
 <Callout type="info">
-  For complete input and output schemas for all built-in tools, see the [MCP Tool Reference](/docs/reference/mcp-tool-reference). This page documents the `skip_judge` policy, argument validation, and the per-tool compiled-in defaults.
+  For complete input and output schemas for all built-in tools, see the [MCP
+  Tool Reference](/docs/reference/mcp-tool-reference). This page documents the
+  `skip_judge` policy, argument validation, and the per-tool compiled-in
+  defaults.
 </Callout>
 
 Built-in tools are divided into two main categories:
@@ -19,11 +22,12 @@ Built-in tools are divided into two main categories:
 ## Inner-Loop Judge Optimization (`skip_judge`)
 
 <Callout type="info">
-  `skip_judge` applies **only to agents executing inside the 100monkeys inner loop** (i.e. calls
-  routed through `bootstrap.py` via the Dispatch Protocol). External agents calling
-  `/v1/seal/invoke` directly are subject to SEAL authentication, policy, and argument validation
-  (see [Argument Validation](#argument-validation) below) but are **never** sent to the semantic
-  judge.
+  `skip_judge` applies **only to agents executing inside the 100monkeys inner
+  loop** (i.e. calls routed through `bootstrap.py` via the Dispatch Protocol).
+  External agents calling `/v1/seal/invoke` directly are subject to SEAL
+  authentication, policy, and argument validation (see [Argument
+  Validation](#argument-validation) below) but are **never** sent to the
+  semantic judge.
 </Callout>
 
 When an agent manifest enables `spec.execution.tool_validation`, the orchestrator may run a **semantic judge before the tool call is dispatched**. The judge evaluates the proposed tool use and arguments, not the output of a completed tool run. This adds latency, but it can stop unsafe or incorrect actions before they reach a side effect boundary.
@@ -36,88 +40,88 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/agents
 
 **Compiled-in defaults:**
 
-| Tool | `skip_judge` default | Rationale |
-|------|---------------------|-----------|
-| `cmd.run` | `false` | State-mutating — subprocess output must be validated |
-| `fs.read` | `true` | Read-only |
-| `fs.write` | `false` | State-mutating |
-| `fs.list` | `true` | Read-only |
-| `fs.grep` | `true` | Read-only |
-| `fs.glob` | `true` | Read-only |
-| `fs.edit` | `false` | State-mutating |
-| `fs.multi_edit` | `false` | State-mutating |
-| `fs.create_dir` | `false` | State-mutating |
-| `fs.delete` | `false` | State-mutating — destructive |
-| `web.search` | `true` | Read-only external lookup |
-| `web.fetch` | `true` | Read-only HTTP fetch |
-| `aegis.agent.list` | `true` | Read-only registry lookup |
-| `aegis.agent.search` | `true` | Read-only semantic search |
-| `aegis.workflow.list` | `true` | Read-only registry lookup |
-| `aegis.workflow.search` | `true` | Read-only semantic search |
-| `aegis.schema.get` | `true` | Read-only schema lookup |
-| `aegis.schema.validate` | `true` | Read-only validation |
-| `aegis.agent.export` | `true` | Read-only manifest lookup |
-| `aegis.workflow.export` | `true` | Read-only manifest lookup |
-| `aegis.agent.create` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
-| `aegis.agent.update` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
-| `aegis.agent.delete` | `true` | Manifest registry operation — the tool does not execute code and the registry-write path has its own validation |
-| `aegis.agent.generate` | `false` | Creates new agent via inner authoring loop. The agent-creator-agent always executes in the `default` security context, regardless of the caller's tier. |
-| `aegis.workflow.create` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
-| `aegis.workflow.update` | `true` | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
-| `aegis.workflow.delete` | `false` | Destructive — removes workflow from registry |
-| `aegis.workflow.run` | `false` | Execution trigger — spawns a workflow run |
-| `aegis.workflow.generate` | `false` | Creates new workflow via inner authoring loop |
-| `aegis.workflow.executions.list` | `true` | Read-only workflow execution listing |
-| `aegis.task.execute` | `false` | Execution trigger — spawns an agent execution |
-| `aegis.task.status` | `true` | Read-only execution status query |
-| `aegis.task.wait` | `true` | Read-only blocking poll until terminal state |
-| `aegis.task.list` | `true` | Read-only execution listing |
-| `aegis.task.logs` | `true` | Read-only execution log query |
-| `aegis.execution.file` | `true` | Read-only — retrieves a file from a completed execution's workspace volume. Text files include inline content; binary files (images, PDFs, etc.) include a download URL for out-of-band retrieval. |
-| `aegis.workflow.logs` | `true` | Read-only execution log query |
-| `aegis.workflow.executions.get` | `true` | Read-only execution detail query |
-| `aegis.workflow.status` | `true` | Read-only execution status query |
-| `aegis.task.cancel` | `false` | State-mutating — terminates a running execution |
-| `aegis.task.remove` | `false` | Destructive — deletes an execution record |
-| `aegis.agent.logs` | `true` | Read-only agent activity log query |
-| `aegis.agent.wait` | `true` | Alias for `aegis.task.wait` |
-| `aegis.workflow.wait` | `true` | Read-only blocking poll until terminal state |
-| `aegis.execute.wait` | `true` | Alias for `aegis.workflow.wait` |
-| `aegis.workflow.cancel` | `true` | Read-query against execution state — cancellation is a state transition request, not a code execution |
-| `aegis.workflow.signal` | `true` | State-signal delivery to paused execution — not an execution tool invocation |
-| `aegis.workflow.remove` | `true` | Registry delete of a terminal execution record — no semantic execution risk |
-| `aegis.workflow.validate` | `true` | Read-only schema validation — parses and deterministically validates YAML but deploys nothing |
-| `aegis.workflow.promote` | `false` | Scope elevation — changes workflow visibility; not skip_judge by default |
-| `aegis.workflow.demote` | `false` | Scope reduction — changes workflow visibility; not skip_judge by default |
-| `aegis.execute.intent` | `false` | Execution trigger — spawns intent-to-execution pipeline |
-| `aegis.execute.status` | `true` | Read-only pipeline status query |
-| `aegis.tools.list` | `true` | Read-only tool discovery |
-| `aegis.tools.search` | `true` | Read-only tool search |
-| `aegis.system.info` | `true` | Read-only node status query |
-| `aegis.system.config` | `true` | Read-only configuration access |
-| `aegis.runtime.list` | `true` | Read-only runtime listing |
-| `aegis.file.list` | `true` | Read-only volume directory listing |
-| `aegis.file.read` | `true` | Read-only file content read |
-| `aegis.file.write` | `false` | State-mutating — writes file content in a user volume |
-| `aegis.file.delete` | `false` | Destructive — removes a file or directory from a user volume |
-| `aegis.file.mkdir` | `false` | State-mutating — creates a directory in a user volume |
-| `aegis.volume.create` | `false` | State-mutating — provisions a new persistent volume |
-| `aegis.volume.list` | `true` | Read-only volume listing |
-| `aegis.volume.delete` | `false` | Destructive — deletes a volume and all contents |
-| `aegis.volume.quota` | `true` | Read-only quota usage lookup |
-| `aegis.git.clone` | `false` | State-mutating — creates a binding and triggers clone |
-| `aegis.git.list` | `true` | Read-only binding listing |
-| `aegis.git.status` | `true` | Read-only clone/refresh status lookup |
-| `aegis.git.refresh` | `false` | State-mutating — fetches and checks out the pinned ref |
-| `aegis.git.delete` | `false` | Destructive — soft-deletes binding and cascades to volume |
-| `aegis.git.commit` | `false` | State-mutating — stages and commits workdir changes |
-| `aegis.git.push` | `false` | State-mutating — pushes commits to the remote |
-| `aegis.git.diff` | `true` | Read-only unified diff of workdir or index |
-| `aegis.script.save` | `false` | State-mutating — persists a new TypeScript program |
-| `aegis.script.list` | `true` | Read-only script listing |
-| `aegis.script.get` | `true` | Read-only script fetch with version history |
-| `aegis.script.update` | `false` | State-mutating — updates a script and bumps its version |
-| `aegis.script.delete` | `false` | Destructive — soft-deletes a saved script |
+| Tool                             | `skip_judge` default | Rationale                                                                                                                                                                                                                             |
+| -------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cmd.run`                        | `false`              | State-mutating — subprocess output must be validated                                                                                                                                                                                  |
+| `fs.read`                        | `true`               | Read-only                                                                                                                                                                                                                             |
+| `fs.write`                       | `false`              | State-mutating                                                                                                                                                                                                                        |
+| `fs.list`                        | `true`               | Read-only                                                                                                                                                                                                                             |
+| `fs.grep`                        | `true`               | Read-only                                                                                                                                                                                                                             |
+| `fs.glob`                        | `true`               | Read-only                                                                                                                                                                                                                             |
+| `fs.edit`                        | `false`              | State-mutating                                                                                                                                                                                                                        |
+| `fs.multi_edit`                  | `false`              | State-mutating                                                                                                                                                                                                                        |
+| `fs.create_dir`                  | `false`              | State-mutating                                                                                                                                                                                                                        |
+| `fs.delete`                      | `false`              | State-mutating — destructive                                                                                                                                                                                                          |
+| `web.search`                     | `true`               | Read-only external lookup                                                                                                                                                                                                             |
+| `web.fetch`                      | `true`               | Read-only HTTP fetch                                                                                                                                                                                                                  |
+| `aegis.agent.list`               | `true`               | Read-only registry lookup                                                                                                                                                                                                             |
+| `aegis.agent.search`             | `true`               | Read-only semantic search                                                                                                                                                                                                             |
+| `aegis.workflow.list`            | `true`               | Read-only registry lookup                                                                                                                                                                                                             |
+| `aegis.workflow.search`          | `true`               | Read-only semantic search                                                                                                                                                                                                             |
+| `aegis.schema.get`               | `true`               | Read-only schema lookup                                                                                                                                                                                                               |
+| `aegis.schema.validate`          | `true`               | Read-only validation                                                                                                                                                                                                                  |
+| `aegis.agent.export`             | `true`               | Read-only manifest lookup                                                                                                                                                                                                             |
+| `aegis.workflow.export`          | `true`               | Read-only manifest lookup                                                                                                                                                                                                             |
+| `aegis.agent.create`             | `true`               | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
+| `aegis.agent.update`             | `true`               | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
+| `aegis.agent.delete`             | `true`               | Manifest registry operation — the tool does not execute code and the registry-write path has its own validation                                                                                                                       |
+| `aegis.agent.generate`           | `false`              | Creates new agent via inner authoring loop. The agent-creator-agent always executes in the `default` security context, regardless of the caller's tier.                                                                               |
+| `aegis.workflow.create`          | `true`               | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
+| `aegis.workflow.update`          | `true`               | Manifest deployment tool — payload contains a YAML manifest with tool names in `spec.tools`; the policy judge would hallucinate policy violations when reading tool names in manifest content rather than actual execution tool calls |
+| `aegis.workflow.delete`          | `false`              | Destructive — removes workflow from registry                                                                                                                                                                                          |
+| `aegis.workflow.run`             | `false`              | Execution trigger — spawns a workflow run                                                                                                                                                                                             |
+| `aegis.workflow.generate`        | `false`              | Creates new workflow via inner authoring loop                                                                                                                                                                                         |
+| `aegis.workflow.executions.list` | `true`               | Read-only workflow execution listing                                                                                                                                                                                                  |
+| `aegis.task.execute`             | `false`              | Execution trigger — spawns an agent execution                                                                                                                                                                                         |
+| `aegis.task.status`              | `true`               | Read-only execution status query                                                                                                                                                                                                      |
+| `aegis.task.wait`                | `true`               | Read-only blocking poll until terminal state                                                                                                                                                                                          |
+| `aegis.task.list`                | `true`               | Read-only execution listing                                                                                                                                                                                                           |
+| `aegis.task.logs`                | `true`               | Read-only execution log query                                                                                                                                                                                                         |
+| `aegis.execution.file`           | `true`               | Read-only — retrieves a file from a completed execution's workspace volume. Text files include inline content; binary files (images, PDFs, etc.) include a download URL for out-of-band retrieval.                                    |
+| `aegis.workflow.logs`            | `true`               | Read-only execution log query                                                                                                                                                                                                         |
+| `aegis.workflow.executions.get`  | `true`               | Read-only execution detail query                                                                                                                                                                                                      |
+| `aegis.workflow.status`          | `true`               | Read-only execution status query                                                                                                                                                                                                      |
+| `aegis.task.cancel`              | `false`              | State-mutating — terminates a running execution                                                                                                                                                                                       |
+| `aegis.task.remove`              | `false`              | Destructive — deletes an execution record                                                                                                                                                                                             |
+| `aegis.agent.logs`               | `true`               | Read-only agent activity log query                                                                                                                                                                                                    |
+| `aegis.agent.wait`               | `true`               | Alias for `aegis.task.wait`                                                                                                                                                                                                           |
+| `aegis.workflow.wait`            | `true`               | Read-only blocking poll until terminal state                                                                                                                                                                                          |
+| `aegis.execute.wait`             | `true`               | Alias for `aegis.workflow.wait`                                                                                                                                                                                                       |
+| `aegis.workflow.cancel`          | `true`               | Read-query against execution state — cancellation is a state transition request, not a code execution                                                                                                                                 |
+| `aegis.workflow.signal`          | `true`               | State-signal delivery to paused execution — not an execution tool invocation                                                                                                                                                          |
+| `aegis.workflow.remove`          | `true`               | Registry delete of a terminal execution record — no semantic execution risk                                                                                                                                                           |
+| `aegis.workflow.validate`        | `true`               | Read-only schema validation — parses and deterministically validates YAML but deploys nothing                                                                                                                                         |
+| `aegis.workflow.promote`         | `false`              | Scope elevation — changes workflow visibility; not skip_judge by default                                                                                                                                                              |
+| `aegis.workflow.demote`          | `false`              | Scope reduction — changes workflow visibility; not skip_judge by default                                                                                                                                                              |
+| `aegis.execute.intent`           | `false`              | Execution trigger — spawns intent-to-execution pipeline                                                                                                                                                                               |
+| `aegis.execute.status`           | `true`               | Read-only pipeline status query                                                                                                                                                                                                       |
+| `aegis.tools.list`               | `true`               | Read-only tool discovery                                                                                                                                                                                                              |
+| `aegis.tools.search`             | `true`               | Read-only tool search                                                                                                                                                                                                                 |
+| `aegis.system.info`              | `true`               | Read-only node status query                                                                                                                                                                                                           |
+| `aegis.system.config`            | `true`               | Read-only configuration access                                                                                                                                                                                                        |
+| `aegis.runtime.list`             | `true`               | Read-only runtime listing                                                                                                                                                                                                             |
+| `aegis.file.list`                | `true`               | Read-only volume directory listing                                                                                                                                                                                                    |
+| `aegis.file.read`                | `true`               | Read-only file content read                                                                                                                                                                                                           |
+| `aegis.file.write`               | `false`              | State-mutating — writes file content in a user volume                                                                                                                                                                                 |
+| `aegis.file.delete`              | `false`              | Destructive — removes a file or directory from a user volume                                                                                                                                                                          |
+| `aegis.file.mkdir`               | `false`              | State-mutating — creates a directory in a user volume                                                                                                                                                                                 |
+| `aegis.volume.create`            | `false`              | State-mutating — provisions a new persistent volume                                                                                                                                                                                   |
+| `aegis.volume.list`              | `true`               | Read-only volume listing                                                                                                                                                                                                              |
+| `aegis.volume.delete`            | `false`              | Destructive — deletes a volume and all contents                                                                                                                                                                                       |
+| `aegis.volume.quota`             | `true`               | Read-only quota usage lookup                                                                                                                                                                                                          |
+| `aegis.git.clone`                | `false`              | State-mutating — creates a binding and triggers clone                                                                                                                                                                                 |
+| `aegis.git.list`                 | `true`               | Read-only binding listing                                                                                                                                                                                                             |
+| `aegis.git.status`               | `true`               | Read-only clone/refresh status lookup                                                                                                                                                                                                 |
+| `aegis.git.refresh`              | `false`              | State-mutating — fetches and checks out the pinned ref                                                                                                                                                                                |
+| `aegis.git.delete`               | `false`              | Destructive — soft-deletes binding and cascades to volume                                                                                                                                                                             |
+| `aegis.git.commit`               | `false`              | State-mutating — stages and commits workdir changes                                                                                                                                                                                   |
+| `aegis.git.push`                 | `false`              | State-mutating — pushes commits to the remote                                                                                                                                                                                         |
+| `aegis.git.diff`                 | `true`               | Read-only unified diff of workdir or index                                                                                                                                                                                            |
+| `aegis.script.save`              | `false`              | State-mutating — persists a new TypeScript program                                                                                                                                                                                    |
+| `aegis.script.list`              | `true`               | Read-only script listing                                                                                                                                                                                                              |
+| `aegis.script.get`               | `true`               | Read-only script fetch with version history                                                                                                                                                                                           |
+| `aegis.script.update`            | `false`              | State-mutating — updates a script and bumps its version                                                                                                                                                                               |
+| `aegis.script.delete`            | `false`              | Destructive — soft-deletes a saved script                                                                                                                                                                                             |
 
 These defaults can be overridden per-tool in the node configuration. `skip_judge` is an **operator-level** flag — agents cannot influence it.
 
@@ -125,7 +129,7 @@ These defaults can be overridden per-tool in the node configuration. `skip_judge
 
 ## Argument Validation
 
-Before any tool call is dispatched — on **both** the inner-loop path and the external SEAL path — the orchestrator validates that all required parameters are present and non-null.  If validation fails the call is rejected immediately with an `InvalidArguments` error; no execution target is allocated and no judge is invoked.
+Before any tool call is dispatched — on **both** the inner-loop path and the external SEAL path — the orchestrator validates that all required parameters are present and non-null. If validation fails the call is rejected immediately with an `InvalidArguments` error; no execution target is allocated and no judge is invoked.
 
 **External SEAL callers** (`POST /v1/seal/invoke`) receive a standard MCP JSON-RPC error response:
 
@@ -142,55 +146,55 @@ Before any tool call is dispatched — on **both** the inner-loop path and the e
 
 The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
 
-| Condition | HTTP status | JSON-RPC code |
-|-----------|-------------|---------------|
-| Missing / null required argument | `422 Unprocessable Entity` | `-32602` |
-| Malformed envelope / missing tool name | `400 Bad Request` | `-32600` |
-| Session expired or bad signature | `401 Unauthorized` | `-32000` |
-| Policy violation or inactive session | `403 Forbidden` | `-32000` |
-| Judge timeout or internal error | `500 Internal Server Error` | `-32603` |
+| Condition                              | HTTP status                 | JSON-RPC code |
+| -------------------------------------- | --------------------------- | ------------- |
+| Missing / null required argument       | `422 Unprocessable Entity`  | `-32602`      |
+| Malformed envelope / missing tool name | `400 Bad Request`           | `-32600`      |
+| Session expired or bad signature       | `401 Unauthorized`          | `-32000`      |
+| Policy violation or inactive session   | `403 Forbidden`             | `-32000`      |
+| Judge timeout or internal error        | `500 Internal Server Error` | `-32603`      |
 
 **Required parameters by tool:**
 
-| Tool | Required parameters |
-|------|---------------------|
-| `aegis.execute` | `prompt` |
-| `aegis.execute.intent` | `intent` |
-| `aegis.execute.status` | `pipeline_execution_id` |
-| `aegis.agent.create`, `aegis.agent.update` | `manifest_yaml` |
-| `aegis.agent.export` | `name` |
-| `aegis.agent.delete`, `aegis.task.execute` | `agent_id` |
-| `aegis.agent.search`, `aegis.workflow.search` | `query` |
-| `aegis.agent.generate`, `aegis.workflow.generate` | `input` |
-| `aegis.workflow.create`, `aegis.workflow.update` | `manifest_yaml` |
-| `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run` | `name` |
-| `aegis.workflow.logs`, `aegis.task.logs` | `execution_id` |
-| `aegis.workflow.status`, `aegis.workflow.executions.get` | `execution_id` |
-| `aegis.task.status`, `aegis.task.wait`, `aegis.agent.wait`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id` |
-| `aegis.execution.file` | `execution_id`, `path` |
-| `aegis.workflow.cancel`, `aegis.workflow.wait`, `aegis.execute.wait`, `aegis.workflow.remove` | `execution_id` |
-| `aegis.workflow.signal` | `execution_id`, `response` |
-| `aegis.agent.logs` | `agent_id` |
-| `aegis.schema.get` | `key` |
-| `aegis.schema.validate` | `kind`, `manifest_yaml` |
-| `cmd.run` | `command` (must be a non-empty string) |
-| `fs.read`, `fs.list`, `fs.create_dir`, `fs.delete` | `path` |
-| `fs.write` | `path`, `content` |
-| `fs.edit` | `path`, `target_content`, `replacement_content` |
-| `fs.multi_edit` | `path`, `edits` |
-| `fs.grep`, `fs.glob` | `pattern`, `path` |
-| `web.search` | `query` |
-| `web.fetch` | `url` |
-| `aegis.file.list`, `aegis.file.read`, `aegis.file.delete`, `aegis.file.mkdir` | `volume_id`, `path` |
-| `aegis.file.write` | `volume_id`, `path`, `content` |
-| `aegis.volume.create` | `label`, `size_limit_bytes` |
-| `aegis.volume.delete` | `volume_id` |
-| `aegis.git.clone` | `repo_url`, `label` |
-| `aegis.git.status`, `aegis.git.refresh`, `aegis.git.delete`, `aegis.git.push`, `aegis.git.diff` | `binding_id` |
-| `aegis.git.commit` | `binding_id`, `message` |
-| `aegis.script.save` | `name`, `code` |
-| `aegis.script.get`, `aegis.script.delete` | `id` |
-| `aegis.script.update` | `id`, `name`, `code` |
+| Tool                                                                                                 | Required parameters                             |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `aegis.execute`                                                                                      | `prompt`                                        |
+| `aegis.execute.intent`                                                                               | `intent`                                        |
+| `aegis.execute.status`                                                                               | `pipeline_execution_id`                         |
+| `aegis.agent.create`, `aegis.agent.update`                                                           | `manifest_yaml`                                 |
+| `aegis.agent.export`                                                                                 | `name`                                          |
+| `aegis.agent.delete`, `aegis.task.execute`                                                           | `agent_id`                                      |
+| `aegis.agent.search`, `aegis.workflow.search`                                                        | `query`                                         |
+| `aegis.agent.generate`, `aegis.workflow.generate`                                                    | `input`                                         |
+| `aegis.workflow.create`, `aegis.workflow.update`                                                     | `manifest_yaml`                                 |
+| `aegis.workflow.export`, `aegis.workflow.delete`, `aegis.workflow.run`                               | `name`                                          |
+| `aegis.workflow.logs`, `aegis.task.logs`                                                             | `execution_id`                                  |
+| `aegis.workflow.status`, `aegis.workflow.executions.get`                                             | `execution_id`                                  |
+| `aegis.task.status`, `aegis.task.wait`, `aegis.agent.wait`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id`                                  |
+| `aegis.execution.file`                                                                               | `execution_id`, `path`                          |
+| `aegis.workflow.cancel`, `aegis.workflow.wait`, `aegis.execute.wait`, `aegis.workflow.remove`        | `execution_id`                                  |
+| `aegis.workflow.signal`                                                                              | `execution_id`, `response`                      |
+| `aegis.agent.logs`                                                                                   | `agent_id`                                      |
+| `aegis.schema.get`                                                                                   | `key`                                           |
+| `aegis.schema.validate`                                                                              | `kind`, `manifest_yaml`                         |
+| `cmd.run`                                                                                            | `command` (must be a non-empty string)          |
+| `fs.read`, `fs.list`, `fs.create_dir`, `fs.delete`                                                   | `path`                                          |
+| `fs.write`                                                                                           | `path`, `content`                               |
+| `fs.edit`                                                                                            | `path`, `target_content`, `replacement_content` |
+| `fs.multi_edit`                                                                                      | `path`, `edits`                                 |
+| `fs.grep`, `fs.glob`                                                                                 | `pattern`, `path`                               |
+| `web.search`                                                                                         | `query`                                         |
+| `web.fetch`                                                                                          | `url`                                           |
+| `aegis.file.list`, `aegis.file.read`, `aegis.file.delete`, `aegis.file.mkdir`                        | `volume_id`, `path`                             |
+| `aegis.file.write`                                                                                   | `volume_id`, `path`, `content`                  |
+| `aegis.volume.create`                                                                                | `label`, `size_limit_bytes`                     |
+| `aegis.volume.delete`                                                                                | `volume_id`                                     |
+| `aegis.git.clone`                                                                                    | `repo_url`, `label`                             |
+| `aegis.git.status`, `aegis.git.refresh`, `aegis.git.delete`, `aegis.git.push`, `aegis.git.diff`      | `binding_id`                                    |
+| `aegis.git.commit`                                                                                   | `binding_id`, `message`                         |
+| `aegis.script.save`                                                                                  | `name`, `code`                                  |
+| `aegis.script.get`, `aegis.script.delete`                                                            | `id`                                            |
+| `aegis.script.update`                                                                                | `id`, `name`, `code`                            |
 
 Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`, `aegis.volume.list`, `aegis.volume.quota`, `aegis.git.list`, `aegis.script.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string. `aegis.git.list` accepts optional `page` / `limit` integers. `aegis.script.list` accepts optional `tag` and `q` filter strings.
 
@@ -396,3 +400,32 @@ A call like `cmd.run(command="cargo", args=["build"])` is permitted, while `cmd.
 - `SubcommandNotAllowed`: The first positional argument is not in the allowed list for that base command.
 - `OutputSizeLimitExceeded`: The combined `stdout` and `stderr` exceeded the `max_output_bytes` limit (default 512 KB).
 - `ExecTimeoutCeilingExceeded`: The execution exceeded the `timeout_ceiling_secs`.
+
+---
+
+## Edge Fleet Tools (System Tier)
+
+Three system-tier tools handle multi-host fleet operations against user-installed edge daemons. They are gated by an operator/tenant-admin SecurityContext and surface in operator-mode conversations and the Zaru Fleet Launcher.
+
+### `aegis.edge.fleet.invoke`
+
+Invoke any registered tool against an `EdgeTarget` (`Node` / `Group` / `Selector` / `All`) with a `FleetDispatchPolicy`. Per-node `CommandProgress` chunks stream back tagged with `node_id`; the terminal payload is a `FleetExecutionResult` carrying `targets_resolved`, `targets_skipped`, `per_node`, and a summary.
+
+The dispatch policy controls fan-out:
+
+- **Mode**: `Sequential`, `Parallel`, or `Rolling { batch }`.
+- **Failure policy**: `FailFast`, `ContinueOnError`, or `StopAfter(N)`.
+- **`require_min_targets`**: refuses upfront if fewer matches resolve.
+- **`per_target_deadline_secs`**: propagated to each daemon as `EdgeCommand.deadline`.
+
+Tool descriptors carry a `fleet_capable: bool` flag — tools that are inherently single-target refuse multi-target dispatch even when the caller tries to fan them out.
+
+### `aegis.edge.fleet.list`
+
+Resolve an `EdgeTarget` to a node list **without** dispatching. Operationally critical before destructive fan-outs — Zaru's selector preview panel is built on this tool.
+
+### `aegis.edge.fleet.cancel`
+
+Broadcast `Cancel { command_id }` to every in-flight per-node command in a fleet operation, addressed by `fleet_command_id`. Already-completed nodes are unaffected.
+
+For the full fleet model, see [fleet operations](/docs/concepts/fleet-operations); for the REST shape, see [edge REST API](/docs/reference/edge-rest-api).

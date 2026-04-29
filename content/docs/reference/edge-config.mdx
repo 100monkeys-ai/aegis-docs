@@ -1,0 +1,252 @@
+---
+title: Edge Config Reference
+description: Reference for the cluster.edge configuration block, file layout, permission expectations, auto-generated template fields, and the bootstrap prompt matrix.
+---
+
+# Edge Config Reference
+
+This page is the canonical reference for edge-daemon configuration. It covers the `cluster.edge` block, the on-disk layout under `~/.aegis/edge/`, the bootstrap prompt matrix used by `aegis edge enroll`, and the matching Relay Coordinator config.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+For broader configuration context, see [configuration](/docs/deployment/configuration) and [node config reference](/docs/reference/node-config).
+
+---
+
+## File location
+
+The edge daemon reads a single merged config from `~/.aegis/edge/aegis-config.yaml` by default. The path is overridable via `--config <path>` on every daemon-side command.
+
+The merged config is the result of layering, in order:
+
+1. The daemon's bundled defaults.
+2. `~/.aegis/config.yaml` (user-level shared config, if present).
+3. `~/.aegis/edge/aegis-config.yaml` (edge-specific config).
+4. `PushConfig` deltas pushed from the controller during the active stream.
+
+Lower layers override higher layers. The final merged result is what the daemon evaluates.
+
+---
+
+## The `cluster.edge` block
+
+Required when `cluster.role: edge`. The validator rejects edge configs that omit it.
+
+```yaml
+cluster:
+  enabled: true
+  role: edge
+  controller:
+    endpoint: relay.example.com:443
+    tls:
+      enabled: true
+  node_keypair_path: ~/.aegis/edge/node.key
+  heartbeat_interval_secs: 30
+  edge:
+    tenant_id: u-... # written by `aegis edge enroll`, immutable
+    enrollment_token_path: ~/.aegis/edge/enrollment.jwt
+    node_security_token_path: ~/.aegis/edge/node.token
+    stream_reconnect_backoff_secs: [1, 2, 5, 15, 60]
+    capabilities:
+      local_tools: [shell, docker, kubectl]
+      mount_points: ["/", "/home/jeshua"]
+      custom_labels:
+        region: home
+        gpu: rtx-4090
+```
+
+### Field reference
+
+| Field                                        | Type               | Default                        | Description                                                                                        |
+| -------------------------------------------- | ------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `cluster.enabled`                            | bool               | —                              | Must be `true` for an edge daemon.                                                                 |
+| `cluster.role`                               | enum               | —                              | Must be `edge` for the daemon. The Relay uses `relay-coordinator`.                                 |
+| `cluster.controller.endpoint`                | string             | —                              | Endpoint to dial. Populated from the enrollment token's `cep` claim.                               |
+| `cluster.controller.tls.enabled`             | bool               | `true`                         | Use TLS on the connection. Should be `true` for any production deployment.                         |
+| `cluster.node_keypair_path`                  | path               | `~/.aegis/edge/node.key`       | Path to the daemon's Ed25519 private key.                                                          |
+| `cluster.heartbeat_interval_secs`            | int                | `30`                           | Heartbeat cadence.                                                                                 |
+| `cluster.edge.tenant_id`                     | string             | —                              | The tenant the daemon is bound to. Written by `aegis edge enroll`; immutable thereafter.           |
+| `cluster.edge.enrollment_token_path`         | path               | `~/.aegis/edge/enrollment.jwt` | Where the one-time enrollment token is stored before redemption.                                   |
+| `cluster.edge.node_security_token_path`      | path               | `~/.aegis/edge/node.token`     | Where the persistent `NodeSecurityToken` is stored.                                                |
+| `cluster.edge.stream_reconnect_backoff_secs` | array<int>         | `[1, 2, 5, 15, 60]`            | Exponential backoff schedule on stream loss. After the last value, retry steady at the last value. |
+| `cluster.edge.capabilities.local_tools`      | array<string>      | host-detected                  | Which built-in tools the daemon can serve.                                                         |
+| `cluster.edge.capabilities.mount_points`     | array<string>      | `["/"]`                        | Filesystem roots the daemon may operate against (subject to SecurityContext).                      |
+| `cluster.edge.capabilities.custom_labels`    | map<string,string> | `{}`                           | Daemon-advertised labels — queryable in selectors.                                                 |
+| `cluster.edge.capabilities.os`               | string             | host-detected                  | OS identifier. Auto-filled.                                                                        |
+| `cluster.edge.capabilities.arch`             | string             | host-detected                  | Architecture identifier. Auto-filled.                                                              |
+
+<Callout type="info">
+  `tenant_id` is written by `aegis edge enroll` and **must not be hand-edited.**
+  It is the persistent tenant binding, mirrored in the `tid` claim on the
+  `NodeSecurityToken`. Editing it locally does not move the binding — the server
+  still enforces the `tid` from the token.
+</Callout>
+
+### Validator behavior
+
+| Condition                                                      | Behavior                                                    |
+| -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `role: edge` and `cluster.edge` block missing                  | Reject.                                                     |
+| `role: edge` and `cluster_grpc_port` set                       | Reject — the daemon does not bind a server.                 |
+| `role: edge` and `cluster.edge.tenant_id` missing              | Reject — the daemon is unenrolled. Run `aegis edge enroll`. |
+| `role: edge` and `controller.tls.enabled: false` in production | Warn. Reject in strict-mode deployments.                    |
+
+---
+
+## On-disk layout
+
+```text
+~/.aegis/edge/
+├── aegis-config.yaml          # this file
+├── node.key                   # Ed25519 private key (mode 0600)
+├── node.key.pub               # Ed25519 public key
+├── node.token                 # NodeSecurityToken (issued at enrollment)
+├── enrollment.jwt             # consumed once; deleted on success
+├── logs/                      # service-manager log destination
+├── secrets/                   # local KV store (mode 0700)
+└── archive/                   # rotated keys retained during overlap window
+```
+
+### Permission expectations
+
+| Path                       | Mode   | Why                                          |
+| -------------------------- | ------ | -------------------------------------------- |
+| `~/.aegis/edge/`           | `0700` | The directory holds private keys and tokens. |
+| `~/.aegis/edge/secrets/`   | `0700` | Local secrets store.                         |
+| `~/.aegis/edge/node.key`   | `0600` | Private key.                                 |
+| `~/.aegis/edge/node.token` | `0600` | Bearer token.                                |
+| Other files                | `0644` | Default.                                     |
+
+`aegis edge enroll` enforces these on bootstrap. The daemon also re-checks at startup; if any file is too permissive it logs a warning and chmods to the expected mode.
+
+---
+
+## Bootstrap prompt matrix
+
+`aegis edge enroll` runs a `BootstrapPlan` before contacting the server. For each artifact, the CLI either creates it (if missing), prompts (if present and ambiguous), or proceeds non-interactively (with `--force` / `--keep-existing` / `--non-interactive`).
+
+| Artifact                           | Path                                                                                                                | If missing                                                                                                                | If present                                                                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config dir                         | `~/.aegis/edge/`                                                                                                    | Create (mode `0700`)                                                                                                      | Verify perms; chmod if too permissive                                                                                                                                                                 |
+| `aegis-config.yaml`                | `~/.aegis/edge/aegis-config.yaml`                                                                                   | Generate from a host-aware template (detect OS/arch, suggest `local_tools` from `which`, sensible default `mount_points`) | Prompt: **Use existing / Overwrite / Merge / Abort**                                                                                                                                                  |
+| Ed25519 keypair                    | `~/.aegis/edge/node.key` (+ `.pub`)                                                                                 | Generate via OS CSPRNG, persist `0600`                                                                                    | Prompt: **Reuse existing / Generate new / Abort**. "Generate new" is destructive — the existing daemon (if enrolled elsewhere) will be locked out at next attest; printed warning makes that explicit |
+| Enrollment token                   | `~/.aegis/edge/enrollment.jwt`                                                                                      | N/A (passed on CLI)                                                                                                       | Prompt before clobbering a different token; existing token consumed and atomically deleted on success regardless                                                                                      |
+| `node.token` (`NodeSecurityToken`) | `~/.aegis/edge/node.token`                                                                                          | Written after successful `ChallengeNode`                                                                                  | Prompt: **Reuse / Replace / Abort**. Reuse only valid if the existing token's `node_id` matches the new keypair's; otherwise force Replace                                                            |
+| systemd user unit                  | `~/.config/systemd/user/aegis-edge.service` (Linux) / launchd plist (macOS) / NSSM (Windows)                        | Install + enable lingering                                                                                                | Skip if present; offer `aegis edge service reinstall` separately                                                                                                                                      |
+| Local secrets store                | `~/.aegis/edge/secrets/` (file-backed by default; OpenBao-backed if `secrets.backend` already set in merged config) | Create with `0700`; seed an empty KV store                                                                                | Verify perms                                                                                                                                                                                          |
+
+### Non-interactive flag matrix
+
+| Flag                | Effect on each prompt                                                          |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `--non-interactive` | Fails with exit 4.                                                             |
+| `--force`           | Assumes **Overwrite** for every conflict.                                      |
+| `--keep-existing`   | Assumes **Reuse**; fails if Reuse would be unsafe (e.g. mismatched `node_id`). |
+| `--dry-run`         | Prints the plan without writing files or contacting the server.                |
+
+---
+
+## Auto-generated template fields
+
+When `aegis edge enroll` writes a fresh `aegis-config.yaml`, it fills the following fields automatically based on host inspection:
+
+| Field                       | Source                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------- |
+| `capabilities.os`           | `uname -s` (Linux/macOS), `Get-CimInstance Win32_OperatingSystem` (Windows).                |
+| `capabilities.arch`         | `uname -m` mapped to `x86_64` / `arm64` / `aarch64`.                                        |
+| `capabilities.local_tools`  | `which shell docker kubectl podman git ssh kubectl` filtered to those that exist on `PATH`. |
+| `capabilities.mount_points` | `["/"]` on Linux/macOS; `["C:\\"]` on Windows.                                              |
+| `controller.endpoint`       | Extracted from the enrollment token's `cep` claim.                                          |
+| `edge.tenant_id`            | Extracted from the enrollment token's `tid` claim and confirmed by the server's response.   |
+
+Minimal template (`--minimal`):
+
+```yaml
+cluster:
+  enabled: true
+  role: edge
+  controller:
+    endpoint: relay.example.com:443
+    tls: { enabled: true }
+  edge:
+    tenant_id: <filled-by-enroll>
+```
+
+Defaults are filled at runtime; only the minimum required fields appear on disk.
+
+---
+
+## Relay Coordinator config
+
+For the SaaS-side process:
+
+```yaml
+cluster:
+  enabled: true
+  role: relay-coordinator
+  cluster_grpc_port: 50056
+  ingress:
+    public_endpoint: relay.example.com # advertised in enrollment tokens (cep claim)
+```
+
+The Relay does **not** require `mcp_servers`, `builtin_dispatchers`, or `security_contexts` — it does not execute tools, only relays them.
+
+| Field                             | Description                                                                               |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| `cluster.role`                    | Must be `relay-coordinator`.                                                              |
+| `cluster.cluster_grpc_port`       | Internal gRPC port; default `50056`.                                                      |
+| `cluster.ingress.public_endpoint` | The endpoint baked into enrollment-token `cep` claims for daemons binding via this Relay. |
+
+---
+
+## Common configuration recipes
+
+### Daemon behind a corporate proxy
+
+```yaml
+cluster:
+  edge:
+    proxy:
+      https_proxy: http://corp-proxy.example.com:3128
+      no_proxy: 127.0.0.1,localhost,*.example.internal
+```
+
+Or set `HTTPS_PROXY` / `NO_PROXY` environment variables in the service unit's `Environment=` directives.
+
+### Daemon with restricted mount points
+
+```yaml
+cluster:
+  edge:
+    capabilities:
+      mount_points: ["/srv/aegis-workspace"]
+```
+
+The daemon's filesystem operations are bounded by the SecurityContext, but `mount_points` is the daemon-advertised list visible in selectors and helps you reason about reachability.
+
+### Daemon with extended labels for fine-grained selectors
+
+```yaml
+cluster:
+  edge:
+    capabilities:
+      custom_labels:
+        environment: production
+        region: us-east-1
+        availability_zone: us-east-1a
+        gpu: rtx-4090
+        cuda_version: "12.2"
+```
+
+These labels are queryable in any selector via `labels=Equals(k,v)`, `labels=Exists(k)`, or `labels=In(k,v1,v2)`.
+
+---
+
+## What's next
+
+- [Edge CLI Reference](/docs/reference/edge-cli) — every command that reads or writes this config.
+- [Edge Host Setup](/docs/guides/edge-host-setup) — guided walk-through that exercises the bootstrap matrix.
+- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — service-manager templates that consume this config.
+- [Edge REST API](/docs/reference/edge-rest-api) — REST endpoints for issuing enrollment tokens and managing hosts.
+- [Configuration](/docs/deployment/configuration) — the broader `aegis-config.yaml` reference.
+- [Node Configuration](/docs/reference/node-config) — the broader cluster role schema (Controller / Worker / Hybrid / Edge / RelayCoordinator).

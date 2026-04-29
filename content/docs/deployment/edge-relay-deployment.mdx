@@ -1,0 +1,277 @@
+---
+title: Edge Relay Deployment
+description: Deploy the Relay Coordinator service for self-hosted AEGIS — pod manifest, ingress, h2c reverse-proxy configuration, certificates, and bootstrap.
+---
+
+# Edge Relay Deployment
+
+The **Relay Coordinator** is the SaaS-facing process that brokers connections between edge daemons and the rest of AEGIS. On myzaru.com it runs at `relay.myzaru.com`. Self-hosted operators can deploy their own Relay Coordinator when they want a multi-tenant relay separate from their cluster controller — for instance, when running multiple isolated tenant fleets behind a single ingress.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+This page covers:
+
+1. Whether you need a Relay at all.
+2. The pod manifest and configuration.
+3. Ingress (Caddy h2c reverse-proxy).
+4. DNS and certificates.
+5. Bootstrap (Keycloak client, OpenBao secrets).
+6. Smoke testing.
+
+---
+
+## Do you need a Relay Coordinator?
+
+| Deployment shape                               | Need a Relay?                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| Single-node OSS controller, small org          | **No.** Edge daemons connect directly to your controller's port `50056`. |
+| Multi-node OSS cluster, single tenant          | **No.** Same as above — controller co-hosts edge enrollment.             |
+| Self-hosted multi-tenant SaaS-style deployment | **Yes.** A dedicated Relay slices fleet routing per tenant cleanly.      |
+| myzaru.com SaaS                                | **Yes** (already deployed).                                              |
+
+If you don't deploy a Relay, the controller's existing `NodeClusterService` accepts edge enrollments and stream connections alongside its existing worker membership traffic. **The Relay is a deployment of the same code, not a different code path.** You opt into it when you need horizontal scaling or stricter tenant isolation than co-locating with the controller provides.
+
+---
+
+## Pod manifest
+
+The Relay runs as a separate pod under your platform-deployment Podman setup. The canonical manifest lives at `podman/pods/relay-coordinator/pod-relay-coordinator.yaml`.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: relay-coordinator
+  labels:
+    app: aegis
+    role: relay-coordinator
+spec:
+  containers:
+    - name: relay-coordinator
+      image: ghcr.io/100monkeys/aegis-orchestrator:latest
+      args:
+        - "run"
+        - "--config"
+        - "/etc/aegis/aegis-config.yaml"
+      ports:
+        - containerPort: 50056
+          name: grpc
+          protocol: TCP
+      env:
+        - name: AEGIS_ROLE
+          value: relay-coordinator
+        - name: KEYCLOAK_ENDPOINT
+          value: https://auth.myzaru.com
+        - name: OPENBAO_ENDPOINT
+          value: https://secrets.myzaru.com
+        - name: POSTGRES_DSN
+          valueFrom:
+            secretKeyRef:
+              name: relay-postgres
+              key: dsn
+      volumeMounts:
+        - mountPath: /etc/aegis
+          name: config
+          readOnly: true
+        - mountPath: /var/lib/aegis
+          name: state
+      livenessProbe:
+        grpc:
+          port: 50056
+          service: grpc.health.v1.Health
+        initialDelaySeconds: 5
+        periodSeconds: 10
+      readinessProbe:
+        grpc:
+          port: 50056
+          service: grpc.health.v1.Health
+        initialDelaySeconds: 2
+        periodSeconds: 5
+  volumes:
+    - name: config
+      configMap:
+        name: relay-config
+    - name: state
+      persistentVolumeClaim:
+        claimName: relay-state
+```
+
+### Configuration
+
+The Relay's `aegis-config.yaml`:
+
+```yaml
+cluster:
+  enabled: true
+  role: relay-coordinator
+  cluster_grpc_port: 50056
+  ingress:
+    public_endpoint: relay.example.com # advertised in enrollment tokens (cep claim)
+
+# Standard AEGIS dependencies — same shape as the controller.
+keycloak:
+  endpoint: https://auth.example.com
+openbao:
+  endpoint: https://secrets.example.com
+postgres:
+  dsn: $POSTGRES_DSN
+```
+
+`mcp_servers`, `builtin_dispatchers`, and `security_contexts` are **not** required on the Relay — it does not execute tools, only relays them.
+
+---
+
+## Ingress: Caddy h2c reverse-proxy
+
+The Relay terminates gRPC over h2 with TLS. Edge daemons connect to the public TLS endpoint; Caddy passes traffic through to the Relay's gRPC port using h2c (HTTP/2 cleartext) on the internal network.
+
+Add a Caddyfile block:
+
+```caddy
+{$DOMAIN_RELAY:relay.localhost} {
+    encode zstd gzip
+
+    reverse_proxy relay-coordinator:50056 {
+        transport http {
+            versions h2c
+        }
+    }
+
+    tls {
+        # Lego / ACME via Cloudflare DNS challenge — same setup as your other subdomains.
+    }
+
+    log {
+        output file /var/log/caddy/relay.log
+        format json
+    }
+}
+```
+
+Set `DOMAIN_RELAY=relay.example.com` in your platform-deployment `.env` file. In dev, the default is `relay.localhost`.
+
+<Callout type="warn">
+  The reverse-proxy must speak h2c to the upstream — gRPC requires HTTP/2
+  end-to-end. A misconfigured proxy that downgrades to HTTP/1.1 will appear to
+  "almost work" (handshakes succeed, then streams fail). If you see streams
+  disconnecting immediately after Hello, suspect the proxy.
+</Callout>
+
+---
+
+## DNS and certificates
+
+Add a DNS A or AAAA record pointing `relay.example.com` (or whatever your `DOMAIN_RELAY` is set to) at the Caddy ingress. In `aegis-platform-deployment`, the Cloudflare-managed entry slots into `infra/dns.tf` alongside the other subdomains.
+
+The TLS certificate is issued by Caddy's existing Lego/ACME flow — typically the Cloudflare DNS challenge — and renewed automatically. No additional cert handling is required for the Relay specifically.
+
+---
+
+## Bootstrap: Keycloak client and OpenBao secrets
+
+The Relay needs:
+
+1. A Keycloak service-account client in the `aegis-system` realm with the roles required to issue enrollment tokens, accept attestations, and route fleet calls.
+2. OpenBao secrets paths under `aegis-system/relay-coordinator/...` for the Keycloak client secret and the JWT signing-key reference.
+
+Both are seeded by the bootstrap script:
+
+```bash
+./scripts/bootstrap-relay-coordinator.sh
+```
+
+The script:
+
+- Creates the `relay-coordinator` Keycloak client.
+- Issues an OpenBao AppRole and writes its credentials.
+- Registers the Relay as a cluster node with role `relay-coordinator`.
+- Seeds the JWT signing key reference (the Transit key shared with the controller for token issuance and verification).
+
+The script is idempotent — re-running it on a deployed Relay updates secrets in place rather than creating duplicates.
+
+The Keycloak roles created (also added by `scripts/bootstrap-keycloak.sh`):
+
+- `aegis.edge.fleet.manage` — required for the system-tier `aegis.edge.fleet.*` MCP tools.
+- `aegis.edge.enroll` — required for issuing enrollment tokens.
+- `aegis.edge.heartbeat` — granted to the Relay service account itself.
+
+---
+
+## Profiles
+
+`aegis-platform-deployment` ships two relevant profiles:
+
+- `profiles/full.conf` — wires the Relay Coordinator pod into the full SaaS-shape stack alongside the controller, MCP server, Caddy, Keycloak, OpenBao, Postgres, etc.
+- `profiles/relay-coordinator.conf` — brings up _only_ the Relay Coordinator. Use this for self-hosted setups that already have an external orchestrator and IAM and want to add edge daemon capability without redeploying everything.
+
+Bring up the full stack:
+
+```bash
+./scripts/deploy.sh --profile full
+```
+
+Or only the Relay:
+
+```bash
+./scripts/deploy.sh --profile relay-coordinator
+```
+
+---
+
+## Smoke test
+
+Once the Relay is running, smoke-test it from any host with the `aegis` CLI:
+
+```bash
+# Issue a fresh enrollment token via the REST API.
+curl -X POST https://api.example.com/api/edge/enrollment-tokens \
+  -H "Authorization: Bearer $USER_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "smoke-test-host"}'
+
+# Run the enrollment from a target host.
+aegis edge enroll <token>
+
+# Confirm the daemon connected.
+aegis edge status
+```
+
+Or verify Relay liveness directly with `grpcurl`:
+
+```bash
+grpcurl -insecure relay.example.com:443 grpc.health.v1.Health/Check
+```
+
+```text
+{
+  "status": "SERVING"
+}
+```
+
+If the health check returns SERVING but enrollment fails, the typical culprit is one of:
+
+- Caddy proxying HTTP/1.1 instead of h2c (see warning above).
+- The Relay's signing key not matching the controller's (re-run `bootstrap-relay-coordinator.sh`).
+- DNS not yet propagated (wait, or set `/etc/hosts` for testing).
+
+---
+
+## Operational characteristics
+
+| Property                         | Value                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| Stateless w.r.t. fleet semantics | Yes — fleet bookkeeping lives in the API dispatcher, not the Relay.         |
+| Horizontally scalable            | Yes — multiple Relay replicas behind a load balancer once HA lands.         |
+| Holds long-lived gRPC streams    | Yes — egress connection budget should account for the connected-edge count. |
+| Persists `EdgeDaemon` rows       | Yes — uses the same `edge_daemons` table as the controller.                 |
+| Persists fleet command state     | No — fleet state is dispatcher-local.                                       |
+
+---
+
+## What's next
+
+- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — install the daemon side.
+- [Edge Operational Patterns](/docs/deployment/edge-operational-patterns) — day-2 ops for both the Relay and the daemons.
+- [Multi-Tenancy](/docs/deployment/multi-tenancy) — tenant isolation guarantees that span the Relay.
+- [Relay gRPC API](/docs/reference/relay-grpc-api) — `ConnectEdge` and `RotateEdgeKey` reference.
+- [Edge Config Reference](/docs/reference/edge-config) — daemon-side config that points at the Relay.

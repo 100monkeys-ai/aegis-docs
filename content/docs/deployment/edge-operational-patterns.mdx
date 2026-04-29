@@ -1,0 +1,244 @@
+---
+title: Edge Operational Patterns
+description: Day-2 operations for AEGIS edge daemons — monitoring health, log and trace collection, daemon updates, decommissioning, and incident response.
+---
+
+# Edge Operational Patterns
+
+Once you have edge daemons enrolled and a Relay (or controller) accepting their connections, the day-2 work begins: monitoring health, collecting logs and traces, updating daemons, decommissioning hosts, and responding to incidents. This page is the operator playbook.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+---
+
+## Monitoring daemon health
+
+Health is observable on three surfaces.
+
+### From Zaru
+
+**Vault → Edge Hosts** is the primary surface. Each host shows:
+
+- A status pill: **Connected**, **Disconnected**, **Unhealthy**, **Revoked**.
+- Last heartbeat timestamp (under `last_heartbeat_at`).
+- Capability snapshot (OS, arch, tools, labels, tags).
+- Command history (last N tool calls dispatched to the host).
+
+A daemon is `Unhealthy` when no heartbeat has arrived within `stale_threshold_secs` (default 90s = 3× heartbeat interval). It transitions back to `Connected` automatically on the next successful heartbeat.
+
+### From the CLI
+
+```bash
+aegis edge ls --connected            # only Connected hosts
+aegis edge ls --output json          # full record per host
+aegis edge status                    # local view from the host itself
+```
+
+### From metrics
+
+The controller / Relay exposes Prometheus metrics for the edge surface:
+
+| Metric                                               | Type      | Meaning                                     |
+| ---------------------------------------------------- | --------- | ------------------------------------------- |
+| `aegis_edge_daemons_total{status,tenant}`            | Gauge     | Count of edge daemons by status and tenant. |
+| `aegis_edge_stream_seconds_total`                    | Counter   | Aggregate stream lifetime.                  |
+| `aegis_edge_heartbeats_total{tenant}`                | Counter   | Heartbeat events received.                  |
+| `aegis_edge_commands_dispatched_total{tool,outcome}` | Counter   | Per-tool dispatch outcomes.                 |
+| `aegis_edge_command_duration_seconds{tool}`          | Histogram | Per-tool dispatch latency.                  |
+| `aegis_edge_fleet_runs_total{outcome}`               | Counter   | Fleet runs by outcome.                      |
+| `aegis_edge_fleet_targets_skipped_total{reason}`     | Counter   | Per-skip-reason counts.                     |
+
+Standard alerting: fire on `aegis_edge_daemons_total{status="Unhealthy"} > 0` for more than 5 minutes, or on the rate of `aegis_edge_commands_dispatched_total{outcome!="ok"}` exceeding a threshold.
+
+---
+
+## Log and trace collection
+
+The daemon emits structured logs and OpenTelemetry traces. Collection paths differ by deployment shape but the data shape is consistent.
+
+### Log destinations
+
+| Platform                  | Default path                                              |
+| ------------------------- | --------------------------------------------------------- |
+| Linux (systemd user unit) | `journalctl --user -u aegis-edge.service`                 |
+| macOS (launchd)           | `~/.aegis/edge/logs/aegis-edge.{out,err}.log`             |
+| Windows (NSSM)            | `%USERPROFILE%\.aegis\edge\logs\aegis-edge.{out,err}.log` |
+
+Logs are JSON-formatted by default. Each line carries `timestamp`, `level`, `node_id`, `tenant_id`, `command_id` (where applicable), and event fields.
+
+### Streaming logs back to AEGIS
+
+If the daemon's merged config includes an OTLP exporter pointing at your platform's collector (typically `otel.example.com:4317`), the daemon ships logs and traces back automatically. Same shape as orchestrator and worker telemetry; same retention, same alerts.
+
+```yaml
+# In ~/.aegis/edge/aegis-config.yaml
+observability:
+  otlp:
+    endpoint: otel.example.com:4317
+    insecure: false
+    headers:
+      x-tenant-id: ${tenant_id}
+```
+
+Network policy permitting, the OTLP egress reuses the daemon's existing TLS connection budget. If your network blocks OTLP egress, the daemon falls back to local logs and you ship them out-of-band.
+
+### Trace correlation
+
+Every dispatched command carries an inherited trace context. A fleet run starts one trace at the dispatcher, fans out one span per per-node command, and each daemon nests its tool execution under that span. Searching for the `fleet_command_id` in your tracing UI surfaces the full distributed picture.
+
+---
+
+## Daemon updates
+
+Daemons are forward-compatible with controller and Relay versions within the AEGIS major version line. You should still keep them current.
+
+### Single-host update
+
+```bash
+# 1. Pull the new binary.
+curl -fsSL https://get.aegis.example/install.sh | bash
+
+# 2. Restart the service.
+systemctl --user restart aegis-edge.service     # Linux
+launchctl kickstart -k gui/$UID/io.aegis.edge   # macOS
+Restart-Service aegis-edge                      # Windows
+
+# 3. Verify.
+aegis edge status
+```
+
+The active gRPC stream is dropped; the daemon reconnects with the existing key and token. Tools that were in flight are reported back as `EdgeDisconnected` to the dispatcher.
+
+### Fleet-wide update
+
+If you ship daemon binaries from a known location on each host (typical for managed fleets), use `cmd.run` as a fleet operation to drive the upgrade:
+
+```bash
+aegis edge fleet run \
+  --target tags=managed-fleet \
+  --tool cmd.run --arg cmd="/opt/aegis/upgrade.sh && systemctl --user restart aegis-edge.service" \
+  --mode rolling=5 \
+  --on-error stop-after=1 \
+  --deadline 120s
+```
+
+For unmanaged fleets, the daemon owners run the update themselves on a cadence.
+
+---
+
+## Capacity planning
+
+| Resource               | Per-daemon           | Per-Relay (10k connected daemons)               |
+| ---------------------- | -------------------- | ----------------------------------------------- |
+| CPU                    | ≤1% of one core idle | ~2 vCPU steady, ~8 vCPU peak                    |
+| RSS                    | 30–50 MB idle        | ~4 GB                                           |
+| Network                | <1 KB/s heartbeats   | ~10 Mbps steady, peak bounded by fleet activity |
+| Persistent connections | 1 per daemon         | 10k                                             |
+
+The Relay is connection-limit-bound before it is CPU-bound. The single biggest knob is `ulimit -n` (or its OS equivalent) on the Relay host — provision generously.
+
+---
+
+## Decommissioning a host
+
+There are two paths, depending on whether you have access to the host.
+
+### Host-side (you can shell into the host)
+
+```bash
+aegis edge logout                # deletes node.token, node.key
+aegis edge service uninstall     # removes the service unit
+rm -rf ~/.aegis/edge             # purge state
+```
+
+The remote `EdgeDaemon` row remains on the controller until an operator revokes it explicitly. The daemon will appear `Disconnected` indefinitely.
+
+### Operator-side (you can't get to the host)
+
+```bash
+aegis edge keys revoke-remote <node-id>
+```
+
+The server marks the daemon `Revoked`, blacklists its `NodeSecurityToken`, and drops the stream. The daemon's next reconnect attempt fails attestation. The host owner must obtain a fresh enrollment token and re-enroll if they want to rebind.
+
+### Tenant-deletion cascade
+
+When a tenant is deleted, every edge daemon bound to that tenant is automatically revoked. The cascade is part of the tenant-deletion transaction; no orphaned daemon state is left behind.
+
+---
+
+## Incident response patterns
+
+### Suspected key leak (one host)
+
+```bash
+# 1. Rotate the suspect host immediately.
+aegis edge keys rotate                   # run on the host, or:
+aegis edge keys revoke-remote <node-id>  # if you can't reach the host
+
+# 2. Check command history in Zaru for any unexpected dispatches in the suspected window.
+# 3. Audit logs from the host.
+```
+
+### Suspected key leak (blast radius)
+
+```bash
+# Rotate every potentially-affected daemon.
+aegis edge fleet keys rotate \
+  --target tags=AnyOf(potentially-affected,prod) \
+  --mode rolling=10 \
+  --on-error continue
+```
+
+If the blast radius is unclear, target `all`. Fleet rotation is bounded; rotating the entire fleet is the right answer in genuine emergencies.
+
+### Daemon won't reconnect
+
+Walk through:
+
+1. `systemctl --user status aegis-edge.service` — is it running?
+2. Daemon logs — what's the last error?
+3. Outbound network to `relay.example.com:443` (or your controller endpoint)?
+4. JWT validation errors? Check host clock skew.
+5. `EdgeDaemon.status = Revoked` server-side? Re-enroll.
+
+### Stream churn (frequent disconnects/reconnects)
+
+Most likely network instability. Check:
+
+- The daemon's reconnect backoff (default `[1, 2, 5, 15, 60]`s). Frequent reconnects with the backoff capped at 60s indicates a sustained connectivity issue.
+- The Relay or controller side — load, file-descriptor exhaustion, ingress proxy timeouts.
+- TLS handshake errors in Caddy logs (proxy version mismatch, certificate rotation race).
+
+---
+
+## Tenant migrations
+
+Edge daemons are tenant-bound at enrollment and immutable post-enrollment. To move a daemon from one tenant to another:
+
+1. Revoke the daemon under the old tenant (`aegis edge keys revoke-remote` or `aegis edge logout`).
+2. Issue a fresh enrollment token under the new tenant.
+3. Run `aegis edge enroll <new-token>` on the host.
+
+There is no "transfer" operation by design — the binding is an identity claim, and identity claims are not transferred, they are reissued.
+
+---
+
+## Health metrics worth alerting on
+
+| Alert                      | Condition                                                              | Action                              |
+| -------------------------- | ---------------------------------------------------------------------- | ----------------------------------- |
+| Daemon Unhealthy           | `aegis_edge_daemons_total{status="Unhealthy"} > 0` for 5m              | Investigate per-daemon              |
+| High dispatch failure rate | `rate(aegis_edge_commands_dispatched_total{outcome!="ok"}[5m]) > 0.05` | Look at logs, recent config changes |
+| Heartbeat starvation       | `rate(aegis_edge_heartbeats_total[5m]) ≈ 0`                            | Network issue or Relay outage       |
+| Fleet runs halting         | `rate(aegis_edge_fleet_runs_total{outcome="halted"}[1h]) > 0`          | Inspect halt reasons                |
+
+---
+
+## What's next
+
+- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — initial setup.
+- [Edge Relay Deployment](/docs/deployment/edge-relay-deployment) — the Relay side of the stream.
+- [Edge Key Rotation](/docs/guides/edge-key-rotation) — routine and incident-driven rotation.
+- [Observability](/docs/deployment/observability) — broader platform observability that edge slots into.
+- [Multi-Tenancy](/docs/deployment/multi-tenancy) — tenant isolation guarantees relevant to operations.

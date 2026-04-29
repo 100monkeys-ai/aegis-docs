@@ -1,0 +1,201 @@
+---
+title: Edge Mode Overview
+description: How AEGIS Edge Mode lets you install a daemon on your own host, bind it to your tenant, and route MCP tool calls through it to perform local operations.
+---
+
+# Edge Mode Overview
+
+Edge Mode lets you install an AEGIS daemon on **your own host** — a laptop, home server, work VM, or any other machine you control — bind it to your tenant (or a team tenant), and have MCP tool invocations from Zaru chats or system-tier security contexts execute _on that host_. Operationally this is similar to Ansible or SaltStack agents, but pull-based: the daemon opens a long-lived gRPC stream outward, so it works behind NAT and home routers without inbound port forwarding.
+
+The motivating use cases:
+
+- "Run a shell command on my home server from Zaru."
+- "Sync these files from my laptop into my workflow."
+- "Roll a configuration change across the five hosts I tagged `prod`."
+- "Restart the service on every host in the `db-hosts` group, one wave at a time."
+
+Edge Mode is the operational layer that makes those interactions safe, tenant-isolated, and recoverable.
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="info">
+  Edge daemons are **tenant-bound at enrollment time**. A daemon enrolled into
+  your personal tenant cannot be reached from any other tenant — including team
+  tenants you also belong to. Cross-tenant access is rejected at the router
+  boundary, not at the daemon, so a misconfigured client cannot accidentally
+  leak access.
+</Callout>
+
+---
+
+## Where the daemon runs
+
+The Edge Daemon is a single binary distributed alongside the rest of the AEGIS CLI. It runs as a **user-level service** on the host:
+
+| Platform | Service Manager                              | Path                                         |
+| -------- | -------------------------------------------- | -------------------------------------------- |
+| Linux    | systemd user unit + `loginctl enable-linger` | `~/.config/systemd/user/aegis-edge.service`  |
+| macOS    | launchd plist                                | `~/Library/LaunchAgents/io.aegis.edge.plist` |
+| Windows  | NSSM service                                 | `aegis-edge` Windows service                 |
+
+State is kept under `~/.aegis/edge/`:
+
+```text
+~/.aegis/edge/
+├── aegis-config.yaml          # merged hierarchical config (cluster.edge block)
+├── node.key                   # Ed25519 private key (mode 0600)
+├── node.key.pub               # Ed25519 public key
+├── node.token                 # NodeSecurityToken (issued at enrollment)
+├── enrollment.jwt             # short-lived enrollment token (consumed once)
+├── secrets/                   # local KV store (mode 0700)
+└── archive/                   # rotated keys retained during overlap window
+```
+
+The daemon never opens an inbound port on your host. All traffic is outbound to a single endpoint — the controller in OSS deployments, or the Relay Coordinator in SaaS — over a TLS-protected, h2-multiplexed gRPC channel.
+
+---
+
+## Two deployment topologies, one protocol
+
+Edge Mode runs on **the same gRPC protocol, the same domain aggregates, and the same SEAL discipline** in both deployment shapes. The difference is purely topological — where the daemon connects and how tenants are resolved.
+
+### OSS / self-hosted
+
+If you run AEGIS yourself, edge daemons connect directly to your existing controller (the node you run as `controller` or `hybrid`). No additional process is required. The controller's existing port `50056` accepts edge enrollments and stream connections alongside its existing worker membership traffic.
+
+```text
+                   ┌─────────────────────────┐
+   aegis-edge ───▶ │ AEGIS Controller :50056 │
+   (your host)     │ (role: controller       │
+                   │  or hybrid)             │
+                   └─────────────────────────┘
+```
+
+Tenants are resolved against whatever tenant model your deployment uses — a single org tenant, a small set of team tenants, or per-user tenants if you mirror the SaaS shape.
+
+### SaaS (myzaru.com)
+
+The myzaru.com SaaS deployment runs a dedicated **Relay Coordinator** service exposed at `relay.myzaru.com:443`. The Relay is multi-tenant: it accepts daemons from every user tenant and team tenant on the platform and routes commands strictly within tenant boundaries.
+
+```text
+                              ┌──────────────────────────┐
+   aegis-edge ─── (TLS h2) ─▶ │ relay.myzaru.com:443     │ ◀── api.myzaru.com
+   (your host)                │ (Relay Coordinator)      │     dispatcher
+                              └──────────────────────────┘
+```
+
+The Relay is **stateless** with respect to fleet semantics — fleet bookkeeping (correlating per-node results, broadcasting cancellations, aggregating summaries) lives in the dispatcher in `api.myzaru.com`. This separation lets the Relay scale horizontally behind a load balancer when MyZaru goes high-availability, without changing daemon or fleet behavior.
+
+<Callout type="info">
+  The existing `zaru-edge` Caddy reverse-proxy pod is **not** related to Edge
+  Mode. It is the public ingress proxy for myzaru.com web traffic. The Relay
+  Coordinator is a separate service. The vocabulary collision is unfortunate;
+  documentation distinguishes them explicitly.
+</Callout>
+
+---
+
+## Tenant binding
+
+Every Edge Daemon is bound to exactly one tenant at enrollment, and that binding is **immutable** for the life of the daemon. The binding is encoded as a `tid` claim on the `NodeSecurityToken` issued during enrollment, and the server cross-checks it on every request.
+
+There are three flavors of tenant the binding can resolve to:
+
+1. **Personal tenants** — issued automatically when you sign up. `tid` resolves to your user tenant.
+2. **Team tenants** — when an admin issues an enrollment token under a team scope, the daemon is registered against that team. Any team member with the appropriate seat and role can route through it.
+3. **Service-account-delegated tenants** — service accounts using `X-Tenant-Id` headers resolve to an `effective_tenant`. The router filters connected edges to that tenant only; a delegated service account cannot reach edges of tenants it has not been delegated to.
+
+To change the tenant binding, you must revoke the daemon and re-enroll it under a fresh enrollment token.
+
+---
+
+## What flows through the stream
+
+Once the daemon is connected, the gRPC stream carries two oneof messages — one in each direction — and a `command_id` correlates each request to its response.
+
+### Daemon → server (`EdgeEvent`)
+
+| Event              | Purpose                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `Hello`            | First message after connect; carries SEAL envelope, capabilities, stream id. |
+| `Heartbeat`        | Liveness signal; replaces unary heartbeat for edge daemons.                  |
+| `CommandResult`    | Terminal result for a per-call command.                                      |
+| `CommandProgress`  | Streaming chunk of tool output (stdout/stderr) for live UX.                  |
+| `CapabilityUpdate` | Hot-update of the daemon's advertised capabilities.                          |
+
+### Server → daemon (`EdgeCommand`)
+
+| Command      | Purpose                                                               |
+| ------------ | --------------------------------------------------------------------- |
+| `InvokeTool` | Run a registered tool with given args under a named security context. |
+| `Cancel`     | Cancel an in-flight `command_id`.                                     |
+| `PushConfig` | Push a hierarchical config delta.                                     |
+| `Drain`      | Refuse new work, finish in-flight, prepare for shutdown.              |
+| `Shutdown`   | Terminate the daemon.                                                 |
+
+Every `EdgeEvent` carries an outer `SealNodeEnvelope` proving daemon identity, and `InvokeTool` commands carry an inner `SealEnvelope` carrying the user's security context. This **two-envelope pattern** is described in detail in [edge security](/docs/concepts/edge-security).
+
+---
+
+## Routing decisions
+
+When you call an MCP tool that targets edge hosts, the dispatcher walks a four-step decision order:
+
+1. **Explicit target.** If the tool call carries a `target` argument (a node id, a group reference, an ad-hoc selector, or `all`), the resolver walks that target across the tenant's connected edges.
+2. **Single-laptop default.** If the tool descriptor declares `executor: edge` and the tenant has exactly one connected edge, that edge is used implicitly.
+3. **Fall through.** Otherwise the call falls through to existing orchestrator/worker routing.
+4. **No target.** If none of the above resolves to a usable edge, the call fails with `EdgeUnavailable` synchronously rather than waiting for a timeout.
+
+[Fleet operations](/docs/concepts/fleet-operations) covers multi-target dispatch (groups, selectors, `all`) and the policies that govern fan-out.
+
+---
+
+## What edge daemons are not
+
+To avoid confusion with neighboring concepts:
+
+- **Edge daemons are not orchestrator peers.** They do not appear in the controller's worker pool, they cannot receive `ForwardExecution`, and they are excluded from `healthy_workers()` selection.
+- **Edge daemons are not tunnels.** The stream is for protocol-level command dispatch and result correlation, not generic TCP tunneling.
+- **Edge daemons are not the SEAL Tooling Gateway.** The Tooling Gateway compresses outbound REST/CLI calls to SaaS APIs (GitHub, Slack, OpenAI, …). Edge daemons execute tools on the user's host. The two layers are independent — see [the gateway page](/docs/gateway/deployment) for cross-references.
+- **Edge daemons are not state stores.** The daemon's local secrets store is a convenience for tool execution; the canonical secret store still lives in your tenant's OpenBao mount.
+
+---
+
+## Operational profile
+
+| Property                   | Value                                              |
+| -------------------------- | -------------------------------------------------- |
+| Default heartbeat interval | 30 seconds                                         |
+| Default reconnect backoff  | `[1, 2, 5, 15, 60]` seconds (then steady at 60s)   |
+| Default per-call deadline  | 60 seconds                                         |
+| Outbound port required     | 443 (SaaS) or 50056 (OSS)                          |
+| Inbound port required      | None                                               |
+| Persistence model          | Fail-fast — no command queue when disconnected     |
+| Tenant scope               | One daemon ↔ one tenant, immutable post-enrollment |
+
+---
+
+## What's next
+
+- [Edge Security](/docs/concepts/edge-security) — the two-envelope SEAL pattern, enrollment token lifecycle, key rotation, and local SecurityContext enforcement.
+- [Fleet Operations](/docs/concepts/fleet-operations) — dispatch modes, failure policies, and the per-node streaming result model.
+- [Edge Host Setup](/docs/guides/edge-host-setup) — install the daemon on Linux, macOS, or Windows, enroll it from Zaru, and confirm connectivity.
+- [Edge Daemon Installation](/docs/deployment/edge-daemon-installation) — service manager templates and systemd/launchd/NSSM unit details.
+- [Edge CLI Reference](/docs/reference/edge-cli) — every `aegis edge` subcommand with flags, examples, and exit codes.
+
+---
+
+## Glossary
+
+| Term                  | Definition                                                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Edge Daemon**       | The long-lived process running on the user's host. Opens the gRPC stream, executes incoming tool calls, returns results.         |
+| **Relay Coordinator** | The SaaS-side multi-tenant service exposed at `relay.myzaru.com` that brokers connections from edge daemons.                     |
+| **Enrollment Token**  | A short-lived (≤15-minute) JWT redeemed once by `aegis edge enroll` to bind a daemon to a tenant.                                |
+| **NodeSecurityToken** | The persistent token issued post-enrollment, carrying the `tid` claim that pins the daemon to its tenant.                        |
+| **EdgeTarget**        | The unified targeting expression — `Node(id)`, `Group(name)`, `Selector(...)`, or `All`.                                         |
+| **EdgeSelector**      | An ad-hoc match expression over `os`, `arch`, `tools`, `labels`, and `tags`.                                                     |
+| **EdgeGroup**         | A named, reusable selector with optional pinned members; tenant-scoped.                                                          |
+| **FleetCommand**      | A multi-target dispatch with a single `fleet_command_id` correlating per-node results.                                           |
+| **Tag**               | A flat, server-side classifier set via Zaru or REST (e.g. `prod`, `db-host`). Mutable without touching the daemon.               |
+| **Label**             | A typed key/value attribute the daemon advertises about itself (e.g. `region=home`, `gpu=rtx-4090`). Set in the daemon's config. |
