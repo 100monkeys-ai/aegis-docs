@@ -22,7 +22,7 @@ By the end you'll know how to:
 ## Prerequisites
 
 - At least two enrolled edge hosts in your tenant. See [edge host setup](/docs/zaru/edge-host-setup).
-- Tags or groups defined for the targeting you want. See [tag and group management](/docs/guides/edge-tag-and-group-management).
+- Tags or groups defined for the targeting you want. See [tag and group management](/docs/zaru/edge-tag-and-group-management).
 - A user with permission to call the system-tier `aegis.edge.fleet.*` MCP tools (operator or tenant-admin).
 
 ---
@@ -244,20 +244,20 @@ In Zaru, **Vault → Edge Hosts → Fleet Runs** lists every run with the same f
 
 ## Anti-patterns
 
-| ❌ Don't                                                    | ✅ Do                                                                                                        |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--target all --on-error continue` for state-mutating tools | Use a more specific target, prefer `--on-error fail-fast` or `--on-error stop-after=N`.                      |
-| Skip `--require-min` for safety-critical operations         | Set a floor that matches your contract.                                                                      |
-| Run destructive fan-outs without preview                    | `aegis edge fleet preview` first; check the resolved set.                                                    |
-| Long deadlines on rolling deploys                           | Short per-target deadlines force fast failures and tighter waves.                                            |
-| Re-using a single tag for unrelated meanings                | Pick tag axes — see [tag conventions](/docs/guides/edge-tag-and-group-management#tag-conventions-that-work). |
+| ❌ Don't                                                    | ✅ Do                                                                                                      |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `--target all --on-error continue` for state-mutating tools | Use a more specific target, prefer `--on-error fail-fast` or `--on-error stop-after=N`.                    |
+| Skip `--require-min` for safety-critical operations         | Set a floor that matches your contract.                                                                    |
+| Run destructive fan-outs without preview                    | `aegis edge fleet preview` first; check the resolved set.                                                  |
+| Long deadlines on rolling deploys                           | Short per-target deadlines force fast failures and tighter waves.                                          |
+| Re-using a single tag for unrelated meanings                | Pick tag axes — see [tag conventions](/docs/zaru/edge-tag-and-group-management#tag-conventions-that-work). |
 
 ---
 
 ## What's next
 
 - [Fleet Operations (concept)](/docs/concepts/fleet-operations) — the full model behind these commands.
-- [Edge Tag and Group Management](/docs/guides/edge-tag-and-group-management) — for richer targeting.
+- [Edge Tag and Group Management](/docs/zaru/edge-tag-and-group-management) — for richer targeting.
 - [Edge Key Rotation](/docs/guides/edge-key-rotation) — fleet-wide key rotation as a special case of fleet operations.
 - [Edge CLI Reference](/docs/reference/edge-cli) — every flag.
 - [Edge REST API](/docs/reference/edge-rest-api) — `/api/edge/fleet/*` endpoints if you're driving fleet runs programmatically.
