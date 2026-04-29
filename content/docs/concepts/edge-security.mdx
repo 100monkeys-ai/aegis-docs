@@ -76,7 +76,7 @@ An enrollment token is the single artifact that takes a host from "no AEGIS trus
 
 ### Issuance
 
-A user (or team admin) clicks **Add Edge Host** in Zaru. Zaru calls `POST /api/edge/enrollment-tokens`. The `IssueEnrollmentToken` application service mints a JWT with these claims:
+A user (or team admin) clicks **Add Edge Host** in Zaru. Zaru calls `POST /v1/edge/enrollment-tokens`. The `IssueEnrollmentToken` application service mints a JWT with these claims:
 
 | Claim         | Meaning                                                                                                                                    |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |

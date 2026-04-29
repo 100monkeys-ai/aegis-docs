@@ -1,11 +1,11 @@
 ---
 title: Edge REST API
-description: HTTP reference for the /api/edge/* surface — enrollment tokens, hosts, tags, groups, fleet preview, fleet invoke, fleet cancel, and run history.
+description: HTTP reference for the /v1/edge/* surface — enrollment tokens, hosts, tags, groups, fleet preview, fleet invoke, fleet cancel, and run history.
 ---
 
 # Edge REST API
 
-The `/api/edge/*` namespace is the HTTP surface for managing edge daemons, tags, groups, and fleet operations. Every operation here is mirrored by an `aegis edge` CLI command and, where appropriate, by a system-tier MCP tool.
+The `/v1/edge/*` namespace is the HTTP surface for managing edge daemons, tags, groups, and fleet operations. Every operation here is mirrored by an `aegis edge` CLI command and, where appropriate, by a system-tier MCP tool.
 
 import { Callout } from "fumadocs-ui/components/callout";
 
@@ -21,7 +21,7 @@ For broader API context, see [REST API reference](/docs/reference/rest-api).
 
 ## Enrollment tokens
 
-### `POST /api/edge/enrollment-tokens`
+### `POST /v1/edge/enrollment-tokens`
 
 Issue a new enrollment token bound to the caller's `effective_tenant`.
 
@@ -64,7 +64,7 @@ Issue a new enrollment token bound to the caller's `effective_tenant`.
 
 ## Hosts
 
-### `GET /api/edge/hosts`
+### `GET /v1/edge/hosts`
 
 List edge hosts in the caller's tenant.
 
@@ -103,7 +103,7 @@ List edge hosts in the caller's tenant.
 }
 ```
 
-### `GET /api/edge/hosts/:id`
+### `GET /v1/edge/hosts/:id`
 
 Get a single host's full record, including recent command history.
 
@@ -132,7 +132,7 @@ Get a single host's full record, including recent command history.
 }
 ```
 
-### `PATCH /api/edge/hosts/:id`
+### `PATCH /v1/edge/hosts/:id`
 
 Update a host's display name and/or tags.
 
@@ -148,11 +148,11 @@ Update a host's display name and/or tags.
 The `tags` array is a **complete replacement** — to add or remove individual tags atomically, use the `tags` add/remove subresource:
 
 ```http
-POST /api/edge/hosts/:id/tags
+POST /v1/edge/hosts/:id/tags
 { "add": ["db-host"], "remove": ["staging"] }
 ```
 
-### `DELETE /api/edge/hosts/:id`
+### `DELETE /v1/edge/hosts/:id`
 
 Revoke an edge host. Marks the daemon `Revoked`, blacklists its `NodeSecurityToken`, drops the active gRPC stream.
 
@@ -162,7 +162,7 @@ Revoke an edge host. Marks the daemon `Revoked`, blacklists its `NodeSecurityTok
 
 ## Groups
 
-### `GET /api/edge/groups`
+### `GET /v1/edge/groups`
 
 List groups in the tenant.
 
@@ -184,7 +184,7 @@ List groups in the tenant.
 }
 ```
 
-### `POST /api/edge/groups`
+### `POST /v1/edge/groups`
 
 Create a group.
 
@@ -203,7 +203,7 @@ Create a group.
 }
 ```
 
-### `GET /api/edge/groups/:id`
+### `GET /v1/edge/groups/:id`
 
 Fetch a single group, with the resolved member list at request time.
 
@@ -223,7 +223,7 @@ Fetch a single group, with the resolved member list at request time.
 }
 ```
 
-### `PATCH /api/edge/groups/:id`
+### `PATCH /v1/edge/groups/:id`
 
 Update a group's name, selector, or pinned members.
 
@@ -234,7 +234,7 @@ Update a group's name, selector, or pinned members.
 }
 ```
 
-### `DELETE /api/edge/groups/:id`
+### `DELETE /v1/edge/groups/:id`
 
 Delete a group.
 
@@ -242,7 +242,7 @@ Delete a group.
 
 ## Fleet operations
 
-### `POST /api/edge/fleet/preview`
+### `POST /v1/edge/fleet/preview`
 
 Resolve a target to a node list **without dispatching**.
 
@@ -287,7 +287,7 @@ The `target` field is a tagged-union over `Node`, `Group`, `Selector`, `All`:
 }
 ```
 
-### `POST /api/edge/fleet/invoke`
+### `POST /v1/edge/fleet/invoke`
 
 Dispatch a tool against a target with a fleet dispatch policy. **Server-streamed** — the response is `text/event-stream` with one event per `CommandProgress` chunk and a terminal `FleetExecutionResult`.
 
@@ -339,7 +339,7 @@ data: {
 | `EdgeUnavailable`        | A `Node` target is offline or not found.                                              |
 | `Halted`                 | `failure_policy` triggered a halt. The terminal `fleet_result` carries the breakdown. |
 
-### `POST /api/edge/fleet/:fleet_command_id/cancel`
+### `POST /v1/edge/fleet/:fleet_command_id/cancel`
 
 Broadcast `Cancel` to every in-flight per-node command in a fleet operation.
 
@@ -353,7 +353,7 @@ Broadcast `Cancel` to every in-flight per-node command in a fleet operation.
 }
 ```
 
-### `GET /api/edge/fleet/runs`
+### `GET /v1/edge/fleet/runs`
 
 List historical fleet runs in the tenant.
 
@@ -386,7 +386,7 @@ List historical fleet runs in the tenant.
 }
 ```
 
-### `GET /api/edge/fleet/runs/:fleet_command_id`
+### `GET /v1/edge/fleet/runs/:fleet_command_id`
 
 Fetch a single run with per-node detail.
 

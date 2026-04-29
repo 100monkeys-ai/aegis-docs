@@ -224,7 +224,7 @@ Edge daemons are authenticated by a two-step bootstrap: a short-lived **enrollme
 
 ### Token issuance
 
-Issued via `POST /api/edge/enrollment-tokens` with the user's existing JWT in the `Authorization` header. The endpoint requires the `aegis.edge.enroll` role. The token is a short-lived JWT (default ≤15 minutes) signed by the same OpenBao Transit key that signs `NodeSecurityToken`. Its claims:
+Issued via `POST /v1/edge/enrollment-tokens` with the user's existing JWT in the `Authorization` header. The endpoint requires the `aegis.edge.enroll` role. The token is a short-lived JWT (default ≤15 minutes) signed by the same OpenBao Transit key that signs `NodeSecurityToken`. Its claims:
 
 | Claim         | Meaning                                                             |
 | ------------- | ------------------------------------------------------------------- |

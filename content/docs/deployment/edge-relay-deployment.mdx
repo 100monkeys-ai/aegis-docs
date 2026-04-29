@@ -224,7 +224,7 @@ Once the Relay is running, smoke-test it from any host with the `aegis` CLI:
 
 ```bash
 # Issue a fresh enrollment token via the REST API.
-curl -X POST https://api.example.com/api/edge/enrollment-tokens \
+curl -X POST https://api.example.com/v1/edge/enrollment-tokens \
   -H "Authorization: Bearer $USER_JWT" \
   -H "Content-Type: application/json" \
   -d '{"name": "smoke-test-host"}'
