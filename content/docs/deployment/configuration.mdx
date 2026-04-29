@@ -226,8 +226,10 @@ runtime:
 # ─── Network ──────────────────────────────────────────────────────────────────
 # Optional. Has safe defaults.
 network:
-  # Bind address for all listeners. Default: 0.0.0.0
-  bind_address: "0.0.0.0"
+  # Bind address for all listeners. Default: 127.0.0.1 (loopback).
+  # Binding a non-loopback address requires either `tls` configured below or
+  # `allow_insecure_bind: true` (operator-acknowledged opt-out — see below).
+  bind_address: "127.0.0.1"
   # HTTP REST API port. Default: 8088
   port: 8088
   # gRPC API port (inner-loop transport, Temporal workers). Default: 50051
@@ -241,6 +243,17 @@ network:
     cert_path: "/etc/aegis/tls/server.crt"
     key_path: "/etc/aegis/tls/server.key"
     ca_path: null # Optional CA certificate path
+  # Operator-acknowledged opt-out of the non-loopback-without-TLS startup gate.
+  # Default: false (fail-closed — pod refuses to start with a non-loopback bind
+  # and no TLS).
+  #
+  # Set true ONLY when TLS is terminated UPSTREAM of this pod by a
+  # trusted-network ingress (e.g. Caddy in the same Podman pod-network) AND the
+  # bound endpoint is reachable only from inside that trusted network. The
+  # validator emits a WARN log on every boot when the override is engaged so the
+  # decision is visible in startup logs and audit trails. NEVER set this on a
+  # publicly-exposed host — every external request would transit cleartext.
+  allow_insecure_bind: false
 
 # ─── Cluster ──────────────────────────────────────────────────────────────────
 # Optional. Configures the node's role in the multi-node cluster topology.
@@ -792,16 +805,29 @@ Optional. Controls how agent containers are launched.
 
 Optional. Configures ports and TLS.
 
-| Key                          | Type   | Default   | Description                                                        |
-| ---------------------------- | ------ | --------- | ------------------------------------------------------------------ |
-| `bind_address`               | string | `0.0.0.0` | Network interface to bind all listeners                            |
-| `port`                       | u16    | `8088`    | HTTP REST API port                                                 |
-| `grpc_port`                  | u16    | `50051`   | gRPC API port                                                      |
-| `orchestrator_endpoint`      | string | null      | WebSocket URL for edge → orchestrator connection (edge nodes only) |
-| `heartbeat_interval_seconds` | u64    | `30`      | Health check ping interval                                         |
-| `tls.cert_path`              | string | —         | TLS certificate path                                               |
-| `tls.key_path`               | string | —         | TLS private key path                                               |
-| `tls.ca_path`                | string | null      | CA certificate path (optional)                                     |
+| Key                          | Type   | Default     | Description                                                                                                                                                                  |
+| ---------------------------- | ------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bind_address`               | string | `127.0.0.1` | Network interface to bind all listeners. Defaults to loopback; binding a non-loopback address requires either `tls` configured or `allow_insecure_bind: true`.               |
+| `port`                       | u16    | `8088`      | HTTP REST API port                                                                                                                                                           |
+| `grpc_port`                  | u16    | `50051`     | gRPC API port                                                                                                                                                                |
+| `orchestrator_endpoint`      | string | null        | WebSocket URL for edge → orchestrator connection (edge nodes only)                                                                                                           |
+| `heartbeat_interval_seconds` | u64    | `30`        | Health check ping interval                                                                                                                                                   |
+| `tls.cert_path`              | string | —           | TLS certificate path                                                                                                                                                         |
+| `tls.key_path`               | string | —           | TLS private key path                                                                                                                                                         |
+| `tls.ca_path`                | string | null        | CA certificate path (optional)                                                                                                                                               |
+| `allow_insecure_bind`        | bool   | `false`     | Operator-acknowledged opt-out of the non-loopback-without-TLS startup gate. Set `true` ONLY when TLS is terminated upstream by a trusted-network ingress. See callout below. |
+
+<Callout type="warn">
+**`allow_insecure_bind` is an opt-out, not a default.** AEGIS refuses to start when `bind_address` is a non-loopback address (e.g. `0.0.0.0`) and `tls` is not configured — every public request would otherwise transit cleartext.
+
+Set `allow_insecure_bind: true` only when **all** of the following are true:
+
+- TLS is terminated **upstream** of this pod by a trusted-network ingress (Caddy, nginx, or an equivalent reverse proxy in the same Podman pod-network).
+- The pod's bind endpoint is reachable **only** from inside that trusted network — never from the public internet.
+- You accept the audit-trail consequence: a `WARN` entry is emitted on every boot recording that the override is engaged.
+
+The reference [pod architecture](/docs/deployment/pod-architecture) and [Caddy edge proxy](/docs/deployment/caddy-edge-proxy) deployments use this opt-out because Caddy fronts the backend pods on a private Podman network. Setting `allow_insecure_bind: true` on a publicly-exposed host is a serious security regression.
+</Callout>
 
 ---
 

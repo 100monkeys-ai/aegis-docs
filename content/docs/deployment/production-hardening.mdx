@@ -34,6 +34,8 @@ This page provides a checklist and guidance for hardening AEGIS platform deploym
 
 Deploy the [Caddy edge proxy](/docs/deployment/caddy-edge-proxy) for automatic TLS on all public-facing endpoints. Caddy handles certificate issuance and renewal via ACME.
 
+When Caddy (or another trusted-network ingress) terminates TLS upstream of the AEGIS backend pods, those pods bind a non-loopback address inside the trusted Podman network without configuring in-pod TLS. AEGIS refuses to start in this shape unless the operator opts out explicitly via `network.allow_insecure_bind: true` in `aegis-config.yaml`. The default is `false` (fail-closed), and a `WARN` log entry is emitted on every boot when the opt-out is engaged. **Never set this flag on a publicly-exposed host** — see the [Node Configuration reference](/docs/reference/node-config#specnetwork) for the full field description.
+
 ### Internal TLS
 
 For high-security environments, enable TLS on internal pod communication:

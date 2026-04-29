@@ -116,7 +116,9 @@ spec:
 
   # ─── Network ────────────────────────────────────────────────────────────────
   network:
-    bind_address: "0.0.0.0"
+    bind_address: "127.0.0.1" # Default. Bind a non-loopback address only with TLS
+    # configured below — or, when TLS is terminated upstream by a trusted-network
+    # ingress (e.g. Caddy in the same pod-network), with `allow_insecure_bind: true`.
     port: 8088
     grpc_port: 50051
     orchestrator_endpoint: null # WebSocket URL for edge → orchestrator (edge nodes only)
@@ -124,6 +126,7 @@ spec:
     tls:
       cert_path: "/etc/aegis/tls/server.crt"
       key_path: "/etc/aegis/tls/server.key"
+    allow_insecure_bind: false # Operator-acknowledged opt-out — see field reference below
 
   # ─── Storage ────────────────────────────────────────────────────────────────
   storage:
@@ -549,16 +552,29 @@ Optional. Controls how agent containers are launched.
 
 Optional. Configures ports and TLS.
 
-| Key                          | Type   | Default   | Description                                                        |
-| ---------------------------- | ------ | --------- | ------------------------------------------------------------------ |
-| `bind_address`               | string | `0.0.0.0` | Network interface to bind all listeners                            |
-| `port`                       | u16    | `8088`    | HTTP REST API port                                                 |
-| `grpc_port`                  | u16    | `50051`   | gRPC API port                                                      |
-| `orchestrator_endpoint`      | string | null      | WebSocket URL for edge → orchestrator connection (edge nodes only) |
-| `heartbeat_interval_seconds` | u64    | `30`      | Health check ping interval                                         |
-| `tls.cert_path`              | string | —         | TLS certificate path                                               |
-| `tls.key_path`               | string | —         | TLS private key path                                               |
-| `tls.ca_path`                | string | null      | CA certificate path (optional)                                     |
+| Key                          | Type   | Default     | Description                                                                                                                                                                             |
+| ---------------------------- | ------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bind_address`               | string | `127.0.0.1` | Network interface to bind all listeners. Defaults to loopback; binding a non-loopback address requires either `tls` configured or `allow_insecure_bind: true`.                          |
+| `port`                       | u16    | `8088`      | HTTP REST API port                                                                                                                                                                      |
+| `grpc_port`                  | u16    | `50051`     | gRPC API port                                                                                                                                                                           |
+| `orchestrator_endpoint`      | string | null        | WebSocket URL for edge → orchestrator connection (edge nodes only)                                                                                                                      |
+| `heartbeat_interval_seconds` | u64    | `30`        | Health check ping interval                                                                                                                                                              |
+| `tls.cert_path`              | string | —           | TLS certificate path                                                                                                                                                                    |
+| `tls.key_path`               | string | —           | TLS private key path                                                                                                                                                                    |
+| `tls.ca_path`                | string | null        | CA certificate path (optional)                                                                                                                                                          |
+| `allow_insecure_bind`        | bool   | `false`     | Operator-acknowledged opt-out of the non-loopback-without-TLS startup gate. Set `true` ONLY when TLS is terminated upstream by a trusted-network ingress. See callout below.            |
+
+<Callout type="warn">
+**`allow_insecure_bind` is an opt-out, not a default.** AEGIS refuses to start when `bind_address` is a non-loopback address (e.g. `0.0.0.0`) and `tls` is not configured — every public request would otherwise transit cleartext.
+
+Set `allow_insecure_bind: true` only when **all** of the following are true:
+
+- TLS is terminated **upstream** of this pod by a trusted-network ingress (Caddy, nginx, or an equivalent reverse proxy in the same Podman pod-network).
+- The pod's bind endpoint is reachable **only** from inside that trusted network — never from the public internet.
+- You accept the audit-trail consequence: a `WARN` entry is emitted on every boot recording that the override is engaged.
+
+Setting `allow_insecure_bind: true` on a publicly-exposed host is a serious security regression — every external request would transit cleartext.
+</Callout>
 
 ---
 
