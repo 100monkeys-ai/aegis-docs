@@ -162,6 +162,8 @@ The Zaru web client at [ask.myzaru.com](https://ask.myzaru.com) declares a fixed
 
 Capability gating is purely additive: external clients see the same tool catalog and the same prompts minus the capability-specific guidance. If a client does not declare `chat-uploads`, the prompt omits attachment instructions and the platform rejects out-of-band attachment payloads on tool calls.
 
+Your [Memory](/docs/zaru/memory) is _not_ capability-gated. It is auto-loaded into Zaru's system prompt for any MCP client connected as your user — Claude Desktop, Windsurf, Cursor, and the rest get the same memory the Zaru web app does.
+
 ---
 
 ## Switching Modes

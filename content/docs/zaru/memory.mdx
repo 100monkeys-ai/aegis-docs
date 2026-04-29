@@ -1,0 +1,111 @@
+---
+title: Memory
+description: A single, evolving markdown document Zaru keeps about you so the next conversation builds on the last.
+---
+
+# Memory
+
+Memory is how Zaru remembers _you_. It is a single, free-form markdown document — one per user — that captures the things that make working with you feel less like a cold start every time: your preferences, your work style, the projects you keep coming back to, recurring frustrations, the names of people and tools you mention often.
+
+The relationship Zaru has with you is yours. Memory is what makes it portable.
+
+---
+
+## What Memory Is
+
+A plain markdown blob. No fixed schema, no required sections, no structured fields. You can write headings, bullet lists, paragraphs, code fences — whatever helps Zaru recall context quickly. Common things to capture:
+
+- Communication style ("prefer bullet points over prose", "skip preamble")
+- Domain context ("I work on a Rust orchestration platform called AEGIS")
+- Tooling preferences ("use `pnpm` not `npm`", "Vim keybindings")
+- People and projects you reference often
+- Standing constraints ("never suggest deployment steps — I handle deploys")
+- Recurring goals or problems you are working through
+
+Memory is loaded into Zaru's system prompt at the start of every conversation, in every mode, before you say anything.
+
+---
+
+## Viewing and Editing Memory
+
+Open the Zaru client, go to **Settings → Memory**. You will see a live markdown editor with the current contents.
+
+- **Edit inline** — type directly into the editor. Markdown renders as you would expect.
+- **Save** — changes auto-save on blur with a short debounce. A "Last updated" timestamp shows the most recent write.
+- **Reset** — the **Reset Memory** button clears the document entirely. Reset is destructive and immediate; there is no undo.
+
+Editing memory yourself is the fastest way to nudge Zaru in a new direction. Add a line, save, and the next message you send will reflect it.
+
+---
+
+## How Zaru Updates Memory
+
+Zaru can update memory mid-conversation when you tell him something worth remembering. He does this on his own, without asking, when the signal is clear.
+
+**Worked example:**
+
+> **You:** Quick note for next time — I prefer bullet points over prose. Long paragraphs lose me.
+>
+> **Zaru:** Got it. Adding that to memory now.
+>
+> _(Zaru calls `zaru.memory.set` with an updated document that now includes a "Communication style" section with "prefers bullet points over prose".)_
+
+The next time you start a conversation — minutes later or weeks later, in Zaru Web or any other connected client — Zaru opens with that preference already loaded. You will not have to repeat it.
+
+Zaru is conservative about what he writes. Memory is meant to stay signal-rich, not become a transcript. Throwaway questions, one-off context, and conversation noise do not land in memory. Durable preferences, project context, and standing instructions do.
+
+---
+
+## Cross-Client Consistency
+
+Memory belongs to your user account, not to any one client. Whichever MCP client you connect to the Zaru server with — Zaru Web, Claude Desktop, Windsurf, Cursor, VS Code Copilot, Gemini CLI, or anything else — the same memory is loaded into Zaru's system prompt for that session.
+
+That means:
+
+- Update memory in Zaru Web, and Claude Desktop sees the change on its next session.
+- Tell Zaru a preference from Windsurf, and it shows up the next time you open Zaru Web.
+- The "Reset Memory" button in Zaru's settings clears memory for every client at once.
+
+The relationship Zaru has with you is yours, not the client's.
+
+---
+
+## What Memory Is Not
+
+Memory is _not_:
+
+- **A transcript or chat history.** Past conversations are stored separately and are not what Zaru reads at session start. Memory is the distilled, durable signal — not the log.
+- **A place for secrets.** Do not put API keys, passwords, tokens, or other credentials into memory. Use [The Vault](/docs/zaru/vault) for credentials — vault values are masked, scoped, and never injected into a model's prompt.
+- **Shared with teammates.** Memory is strictly per-user. Even on team plans, your memory stays yours; teammates have their own.
+- **A long-term archive.** Anything you do not actively want Zaru to remember should not be in memory. If it stops being relevant, edit it out.
+
+---
+
+## Best Practices
+
+- **Keep it tight.** A focused, well-curated memory beats a sprawling one. Zaru has a finite attention budget at the top of every conversation; every line should earn its place.
+- **Let Zaru curate, then prune.** Zaru is good at adding signal as you talk. You are better at deciding what to keep. Skim memory occasionally and trim what no longer applies.
+- **Edit when you want a hard nudge.** If Zaru keeps doing something you do not want, opening the memory page and writing the instruction yourself is the most direct fix.
+- **Use markdown structure when it helps you.** Headings like `## Communication style`, `## Current projects`, `## Standing instructions` make memory easier for both of you to scan, but they are optional.
+- **Treat it as living.** Your preferences and projects change. Memory should change with them.
+
+---
+
+## Reset and Privacy
+
+Memory lives in the Zaru-side database alongside your account, not in the underlying model. To clear it:
+
+1. Open **Settings → Memory** in the Zaru client.
+2. Click **Reset Memory** and confirm.
+
+After reset, the document is empty. Zaru's next session will start with a blank slate — no preferences, no project context, no history. He will begin building memory again only as you give him reason to.
+
+Deleting your account removes memory along with everything else.
+
+---
+
+## See Also
+
+- [The Vault](/docs/zaru/vault) — store credentials, never in memory.
+- [Chat](/docs/zaru/chat) — where memory shapes every conversation.
+- [Connect Zaru to Any MCP Client](/docs/zaru/mcp-client-setup) — same memory, every client.
