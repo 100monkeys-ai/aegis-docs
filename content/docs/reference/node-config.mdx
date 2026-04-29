@@ -359,6 +359,11 @@ spec:
       #   ca_cert_path: null                          # custom CA cert for self-signed backends
     metrics:
       enabled: true
+      # Bind address for the Prometheus exposition endpoint.
+      # Defaults to 127.0.0.1 (loopback). Off-host scraping requires
+      # an explicit non-loopback value AND an authenticating reverse proxy
+      # in front of the metrics port — never expose this directly.
+      bind_address: "127.0.0.1"
       port: 9091
       path: "/metrics"
     tracing:
@@ -973,11 +978,12 @@ Optional.
 
 #### `metrics`
 
-| Key               | Type   | Default    | Description                        |
-| ----------------- | ------ | ---------- | ---------------------------------- |
-| `metrics.enabled` | bool   | `true`     | Enable Prometheus metrics          |
-| `metrics.port`    | u16    | `9091`     | Prometheus metrics exposition port |
-| `metrics.path`    | string | `/metrics` | HTTP path for scraping             |
+| Key                    | Type   | Default       | Description                                                                                                                                                                                                                                       |
+| ---------------------- | ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metrics.enabled`      | bool   | `true`        | Enable Prometheus metrics                                                                                                                                                                                                                         |
+| `metrics.bind_address` | string | `127.0.0.1`   | Network interface the Prometheus exporter binds. Defaults to loopback to prevent unauthenticated network exposure of internal counters and labels. Set a non-loopback address only when the endpoint is fronted by an authenticating reverse proxy. |
+| `metrics.port`         | u16    | `9091`        | Prometheus metrics exposition port                                                                                                                                                                                                                |
+| `metrics.path`         | string | `/metrics`    | HTTP path for scraping                                                                                                                                                                                                                            |
 
 #### `tracing`
 

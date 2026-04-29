@@ -508,13 +508,14 @@ The metrics endpoint is served over a dedicated HTTP listener, separate from the
 
 ### Quick Start
 
-By default, Prometheus metrics are enabled on port `9091`. You can configure this in your node configuration:
+By default, Prometheus metrics are enabled on port `9091` and bound to `127.0.0.1` (loopback) so the endpoint is not reachable from the network until you opt in. You can configure this in your node configuration:
 
 ```yaml
 spec:
   observability:
     metrics:
       enabled: true
+      bind_address: "127.0.0.1" # default; set non-loopback only behind an authenticating proxy
       port: 9091
       path: "/metrics"
 ```
@@ -551,7 +552,7 @@ For a complete list of available metrics, labels, and descriptions, see the [Met
 
 ### Security Note
 
-The metrics endpoint is **unauthenticated** by design, following standard Prometheus patterns. Ensure that the metrics port (`9091` by default) is protected by your network firewall or Kubernetes `NetworkPolicy` and is not exposed to the public internet.
+The metrics endpoint is **unauthenticated** by design, following standard Prometheus patterns. To prevent accidental exposure, the exporter binds `127.0.0.1` by default — Prometheus must scrape from the same host (or via a tunneled / proxied target). Off-host scraping requires you to set `metrics.bind_address` explicitly **and** front the port with an authenticating reverse proxy or a tightly scoped firewall / Kubernetes `NetworkPolicy`. Never expose port `9091` directly to the public internet.
 
 ---
 

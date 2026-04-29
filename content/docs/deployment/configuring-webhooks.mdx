@@ -19,24 +19,24 @@ The `{source}` path segment is the source name — use a lowercase slug that ide
 
 ## Step 1 — Set the HMAC Secret
 
-For each source, set an environment variable on the orchestrator:
+Webhook secrets are scoped per `(tenant, source)` so two tenants registering the same `source_name` (for example, both calling theirs `github`) hold completely independent secrets. For each `(tenant, source)` pair, set an environment variable on the orchestrator:
 
 ```bash
-# Pattern: AEGIS_WEBHOOK_SECRET_<UPPER_SOURCE>
-# Hyphens and dots are replaced with underscores
+# Pattern: AEGIS_WEBHOOK_SECRET_<UPPER_TENANT>_<UPPER_SOURCE>
+# Hyphens and dots in tenant id and source name are replaced with underscores
 
-export AEGIS_WEBHOOK_SECRET_GITHUB="your-shared-secret-here"
-export AEGIS_WEBHOOK_SECRET_STRIPE="another-secret"
-export AEGIS_WEBHOOK_SECRET_MY_CI="third-secret"
+export AEGIS_WEBHOOK_SECRET_U_ABC123_GITHUB="your-shared-secret-here"
+export AEGIS_WEBHOOK_SECRET_U_ABC123_STRIPE="another-secret"
+export AEGIS_WEBHOOK_SECRET_U_DEF456_MY_CI="third-secret"
 ```
 
 The mapping is:
 
-- Source `github` → `AEGIS_WEBHOOK_SECRET_GITHUB`
-- Source `my-ci` → `AEGIS_WEBHOOK_SECRET_MY_CI`
-- Source `my.service` → `AEGIS_WEBHOOK_SECRET_MY_SERVICE`
+- `(tenant=u-abc123, source=github)` → `AEGIS_WEBHOOK_SECRET_U_ABC123_GITHUB`
+- `(tenant=u-abc123, source=my-ci)` → `AEGIS_WEBHOOK_SECRET_U_ABC123_MY_CI`
+- `(tenant=u-def456, source=my.service)` → `AEGIS_WEBHOOK_SECRET_U_DEF456_MY_SERVICE`
 
-If no environment variable is found for the requested source, the orchestrator returns `401 secret_not_found` and the request is rejected.
+The tenant for an inbound webhook is resolved from the `(tenant, source_name)` registration written when the webhook was registered. If no environment variable is found for the resolved `(tenant, source)` pair, the orchestrator returns `401 secret_not_found` and the request is rejected.
 
 ---
 
@@ -176,7 +176,7 @@ A well-designed `RouterAgent` prompt can use `X-GitHub-Event` to route `push` ev
 | `401` | `missing_signature`     | `X-Aegis-Signature` header absent             |
 | `400` | `malformed_signature`   | Header not in `sha256=<hex>` format           |
 | `400` | `invalid_hex`           | Hex portion contains non-hex characters       |
-| `401` | `secret_not_found`      | No `AEGIS_WEBHOOK_SECRET_<SOURCE>` configured |
+| `401` | `secret_not_found`      | No `AEGIS_WEBHOOK_SECRET_<TENANT>_<SOURCE>` configured for the resolved `(tenant, source)` pair |
 | `401` | `invalid_signature`     | HMAC digest does not match                    |
 | `409` | `idempotent_duplicate`  | Already processed within 24-hour window       |
 | `422` | `classification_failed` | RouterAgent confidence below threshold        |
@@ -249,6 +249,38 @@ When the orchestrator receives a subscription event, it:
 4. Returns `200` to Stripe to acknowledge receipt
 
 See [Zaru Overview — Subscription Billing](/docs/zaru/overview#subscription-billing) for the full tier lifecycle.
+
+---
+
+## Git Repository Webhooks
+
+Git-repo backed persistent volumes expose a separate webhook endpoint that triggers a re-pull of the configured repository. Unlike the generic stimulus webhook, the git webhook authenticates via a per-volume secret carried in a request header — never in the URL path.
+
+### Endpoint
+
+```text
+POST /v1/webhooks/git
+Content-Type: application/json
+X-Aegis-Webhook-Secret: <secret>
+```
+
+The volume to refresh is identified by the request body. The shared secret is set on the volume when it is created and is verified in constant time against the value supplied in the `X-Aegis-Webhook-Secret` header. The secret is encrypted at rest via OpenBao Transit; only a SHA-256 lookup hash is stored on the row, and the cleartext is wiped from memory immediately after the request is verified.
+
+### Configuration
+
+Configure your git provider (GitHub, GitLab, Gitea, Bitbucket Server, etc.) to send push events to:
+
+```text
+https://your-aegis-node/v1/webhooks/git
+```
+
+Set the request to include the header:
+
+```text
+X-Aegis-Webhook-Secret: <the secret you configured on the volume>
+```
+
+Requests missing the header, presenting a malformed value, or carrying a secret that does not match the registered volume are rejected with `401`. The response never echoes the configured secret or its hash.
 
 ---
 
