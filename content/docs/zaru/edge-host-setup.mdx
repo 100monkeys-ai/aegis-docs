@@ -137,8 +137,8 @@ For automation (CI, config management, headless installs):
 ### What the CLI does on the wire
 
 1. Decodes the JWT (without verifying — the server will verify) and extracts the `cep` claim. That's the controller endpoint, baked into the token, so the CLI works against SaaS or self-hosted with no environment variables.
-2. Generates the Ed25519 keypair if one doesn't exist.
-3. Calls `AttestNode { role: EDGE, public_key, … }` against the endpoint. Anonymous, rate-limited 5/min.
+2. Generates the Ed25519 keypair if one doesn't exist, and mints the daemon's `node_id` (UUID v4) at first enrollment, persisting it in `aegis-config.yaml`. Subsequent re-enrollments on the same host reuse the same UUID — the daemon's identity is stable.
+3. Calls `AttestNode { role: EDGE, node_id, public_key, … }` against the endpoint. Anonymous, rate-limited 5/min.
 4. Calls `ChallengeNode` with the enrollment token attached as `bootstrap_proof`.
 5. The server validates the JWT, atomically redeems the `jti`, persists the `EdgeDaemon` row binding `node_id` ↔ `tenant_id`, and returns a `NodeSecurityToken`.
 6. The CLI writes `node.token`, finalizes the local config, starts the service, and opens the `ConnectEdge` stream.
