@@ -34,7 +34,7 @@ By the end, the daemon will be visible as **Connected** in Zaru's edge host list
 2. Navigate to **Vault → Edge Hosts**.
 3. Click **Add Edge Host**.
 4. Pick the tenant the daemon should be bound to. The picker shows your personal tenant plus any team tenants you have admin rights over.
-5. (Optional) Give the host a friendly name. You can edit this later — it's just a display label.
+5. (Optional) Give the host a friendly name. The name shows in the **Vault → Edge Hosts** list and the host detail page; you can rename it later by clicking the host name on its detail page and editing inline.
 6. Click **Issue Token**.
 
 Zaru shows a copyable command of the form:
@@ -185,7 +185,11 @@ capabilities:
 
 ### From Zaru
 
-Open **Vault → Edge Hosts**. Within one heartbeat interval (default 30s) the new host appears in the list with a green **Connected** badge. Click into it to see capabilities, labels, tags (none yet), and command history.
+Open **Vault → Edge Hosts**. Within one heartbeat interval (default 30s) the new host appears in the list — labelled with the friendly name you supplied at enrollment — and a green **Connected** badge. Click into it to see capabilities, labels, tags (none yet), and command history. From the detail page you can:
+
+- **Rename** — click the host name in the header to edit it inline; press **Save** to persist.
+- **Edit tags** — add or remove operator-managed classifiers used by selectors and groups.
+- **Revoke** — click the **Revoke** button. After confirmation, Zaru deletes the host's row, blacklists its `NodeSecurityToken`, and drops the live `ConnectEdge` stream. The daemon can be re-enrolled later under a fresh token.
 
 ---
 
@@ -221,17 +225,22 @@ Repeat phases 1–3 on each host. Each daemon gets a unique `node_id`; all of th
 
 ## Decommissioning a host
 
-When you no longer want a host bound:
+When you no longer want a host bound, you have three equivalent paths:
 
 ```bash
-# On the host: delete local state and disable the service.
+# On the host: revoke the daemon server-side, then delete local state
+# and disable the service.
 aegis edge logout
 
 # Or, from any operator-side workstation, revoke the binding centrally:
 aegis edge keys revoke-remote <node-id>
 ```
 
-Either path marks the daemon `Revoked`, blacklists its `NodeSecurityToken`, and drops the stream. The host can be re-enrolled later under a fresh enrollment token if you wish.
+Or click **Revoke** on the host's detail page in **Vault → Edge Hosts**.
+
+`aegis edge logout` calls `DELETE /v1/edge/hosts/{node_id}` against the orchestrator first (using the operator profile you're logged in as) and then removes the entire `~/.aegis/edge` directory. Pass `--no-server` to skip the server hop, or `--force` to proceed with local cleanup even when the server-side revoke fails for a reason other than 404.
+
+All three paths mark the daemon `Revoked`, blacklist its `NodeSecurityToken`, and drop the stream. The host can be re-enrolled later under a fresh enrollment token if you wish.
 
 ---
 
