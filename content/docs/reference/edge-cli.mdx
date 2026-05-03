@@ -17,10 +17,14 @@ For step-by-step guides, see [edge host setup](/docs/zaru/edge-host-setup), [edg
 
 ```text
 # Daemon-side (runs on the user's host)
-aegis edge enroll <token> [--config <path>]
+aegis edge enroll <token> [--config <path>] [--no-service]
 aegis edge status [--output json|yaml|table]
-aegis edge logout
-aegis edge service install|uninstall|reinstall
+aegis edge logout [--no-server] [--no-service] [--force]
+aegis edge service install [--force] [--keep-existing] [--non-interactive]
+aegis edge service uninstall
+aegis edge service status
+aegis edge service restart
+aegis edge service logs [--follow] [--lines N]
 
 # Operator-side (runs anywhere with a Zaru-issued user token)
 aegis edge ls [--tag T]... [--label K=V]... [--connected] [--output json|yaml|table]
@@ -69,6 +73,7 @@ aegis edge enroll <token> [flags]
 | `--keep-existing`            | Assume **Reuse** for every conflict. Fails if a Reuse decision would be unsafe (e.g. mismatched `node_id`). |
 | `--dry-run`                  | Print the bootstrap plan without writing files or contacting the server.                                    |
 | `--minimal`                  | Use the minimal config template instead of the annotated one.                                               |
+| `--no-service`               | Skip the post-enrollment OS service install. Use when you run your own supervisor.                          |
 | `--output json\|yaml\|table` | Output format for the bootstrap plan. Default `table`.                                                      |
 
 **Behavior:** see the [bootstrap prompt matrix in `edge-config`](/docs/reference/edge-config#bootstrap-prompt-matrix).
@@ -108,27 +113,43 @@ capabilities:
 
 ### `aegis edge logout`
 
-Local revocation. Deletes `node.token` and `node.key`, stops the service. The remote `EdgeDaemon` row remains until an operator runs `aegis edge keys revoke-remote`.
+Revoke server-side, stop + remove the OS service unit, then delete the entire `~/.aegis/edge` directory. The remote `EdgeDaemon` row is removed via `DELETE /v1/edge/hosts/{node_id}` using your operator profile.
 
 ```bash
-aegis edge logout [--purge]
+aegis edge logout [--no-server] [--no-service] [--force]
 ```
 
 **Flags:**
 
-| Flag      | Description                            |
-| --------- | -------------------------------------- |
-| `--purge` | Also remove `~/.aegis/edge/` entirely. |
+| Flag           | Description                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------- |
+| `--no-server`  | Skip the server-side `DELETE` and only clear local state.                                                     |
+| `--no-service` | Leave the OS service unit in place. Useful when you manage the supervisor yourself.                           |
+| `--force`      | Proceed with local cleanup even when the server-side revoke fails for a reason other than 404 (already gone). |
 
 ### `aegis edge service`
 
-Manage the OS-level service unit. Subcommands `install`, `uninstall`, `reinstall`.
+Manage the OS-level service unit. The supervisor is detected at runtime: `systemd --user` on Linux, `launchd` on macOS, NSSM on Windows.
 
 ```bash
-aegis edge service install        # Detect OS, write the appropriate unit, enable + start.
-aegis edge service uninstall      # Stop, disable, remove the unit.
-aegis edge service reinstall      # uninstall + install.
+aegis edge service install        # Detect OS, render the unit template, write it, enable + start. Idempotent.
+aegis edge service uninstall      # Stop, disable, remove the unit. Idempotent (no error if not installed).
+aegis edge service status         # Print active/inactive/failed/not-installed plus PID, uptime, recent log tail.
+aegis edge service restart        # Restart the supervisor unit.
+aegis edge service logs           # Tail recent logs (journalctl --user / log show / NSSM log path).
+aegis edge service logs --follow  # Stream logs as they arrive.
+aegis edge service logs --lines N # Tail N lines (default 200).
 ```
+
+**`install` flags:**
+
+| Flag                | Description                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `--force`           | Overwrite an existing unit whose content differs from the rendered template.             |
+| `--keep-existing`   | Keep the existing unit if its content differs from the rendered template (no overwrite). |
+| `--non-interactive` | Disable interactive prompts (CI / config-management). Conflicts surface as errors.       |
+
+The unit's `ExecStart` is rendered against the currently-running `aegis` binary path (`std::env::current_exe()`), so the unit launches the same binary that ran `aegis edge enroll`.
 
 ---
 

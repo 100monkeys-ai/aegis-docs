@@ -63,16 +63,18 @@ curl -fsSL https://get.100monkeys.ai | bash
 
 # Verify.
 aegis --version
+```
 
-# Pre-stage the systemd user unit. (`aegis edge enroll` will install it
-# automatically if you skip this step.)
+`aegis edge enroll` will install and start the systemd user unit for you after the handshake completes — no separate `aegis edge service install` step is required. To pre-stage the unit (or reinstall it after a CLI upgrade) run it manually:
+
+```bash
 aegis edge service install
 ```
 
-Linger must be enabled for the service to keep running after you log out:
+Linger lets the user service keep running after you log out. `aegis edge enroll` attempts to enable it on your behalf via `loginctl enable-linger`, but on most distributions that call requires `sudo` / polkit and may be skipped with a printed warning. To enable it explicitly:
 
 ```bash
-loginctl enable-linger "$USER"
+sudo loginctl enable-linger "$USER"
 ```
 
 The unit lives at `~/.config/systemd/user/aegis-edge.service` with hardening flags (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome=true`, `ReadWritePaths=~/.aegis/edge`). See [edge daemon installation](/docs/deployment/edge-daemon-installation) for the full unit spec.
@@ -82,10 +84,9 @@ The unit lives at `~/.config/systemd/user/aegis-edge.service` with hardening fla
 ```bash
 brew install aegis-cli   # or: curl -fsSL https://get.100monkeys.ai | bash
 aegis --version
-aegis edge service install
 ```
 
-The launchd plist lives at `~/Library/LaunchAgents/io.aegis.edge.plist`. It's loaded with `RunAtLoad=true` and `KeepAlive=true` so the daemon restarts on crash and across reboots.
+`aegis edge enroll` will install and load the LaunchAgent for you. The plist lives at `~/Library/LaunchAgents/io.aegis.edge.plist`. It's loaded with `RunAtLoad=true` and `KeepAlive=true` so the daemon restarts on crash and across reboots.
 
 ### Windows
 
@@ -93,10 +94,17 @@ The launchd plist lives at `~/Library/LaunchAgents/io.aegis.edge.plist`. It's lo
 # PowerShell, as a regular user (admin needed only to register the NSSM service).
 iwr -useb https://get.100monkeys.ai | iex
 aegis --version
-aegis edge service install
 ```
 
-The NSSM service is registered as `aegis-edge` and configured to start automatically.
+`aegis edge enroll` registers the NSSM service for you, provided `nssm.exe` is on `PATH`. The service is registered as `AegisEdge` and configured to start automatically.
+
+### Skipping automatic service install
+
+If you run your own process supervisor (your own systemd unit, Docker, Kubernetes, …) pass `--no-service` to `aegis edge enroll` to skip the install step. You are then responsible for launching `aegis edge daemon` under your supervisor.
+
+```bash
+aegis edge enroll <token> --no-service
+```
 
 ---
 
@@ -238,7 +246,23 @@ aegis edge keys revoke-remote <node-id>
 
 Or click **Revoke** on the host's detail page in **Vault → Edge Hosts**.
 
-`aegis edge logout` calls `DELETE /v1/edge/hosts/{node_id}` against the orchestrator first (using the operator profile you're logged in as) and then removes the entire `~/.aegis/edge` directory. Pass `--no-server` to skip the server hop, or `--force` to proceed with local cleanup even when the server-side revoke fails for a reason other than 404.
+`aegis edge logout` calls `DELETE /v1/edge/hosts/{node_id}` against the orchestrator first (using the operator profile you're logged in as), then stops + removes the OS service unit, then removes the entire `~/.aegis/edge` directory. Pass `--no-server` to skip the server hop, `--no-service` to leave the supervisor unit in place (for users who manage it themselves), or `--force` to proceed with local cleanup even when the server-side revoke fails for a reason other than 404.
+
+## Managing the OS service
+
+The `aegis edge service` family wraps the platform supervisor (systemd user / launchd / NSSM). Use it when you want to inspect or operate the unit outside the enroll/logout flow.
+
+```bash
+aegis edge service install              # idempotent install + enable + start
+aegis edge service uninstall            # idempotent stop + disable + remove unit
+aegis edge service status               # active/inactive/failed/not-installed + pid + recent logs
+aegis edge service restart              # restart the supervisor unit
+aegis edge service logs                 # tail recent logs
+aegis edge service logs --follow        # stream logs as they arrive
+aegis edge service logs --lines 500     # tail more history
+```
+
+`install` accepts `--force` to overwrite an existing unit whose contents differ from the rendered template, and `--keep-existing` to keep the existing unit unchanged. Without either, an existing-but-different unit is reported as a conflict so you can decide.
 
 All three paths mark the daemon `Revoked`, blacklist its `NodeSecurityToken`, and drop the stream. The host can be re-enrolled later under a fresh enrollment token if you wish.
 
