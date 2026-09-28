@@ -72,7 +72,7 @@ Wrangler reads these values automatically — no extra flags needed.
    | Framework preset | Next.js (Static HTML Export) |
    | Build command | `npm run build` |
    | Build output directory | `out` |
-   | Node.js version | `20` (set in Environment Variables as `NODE_VERSION=20`) |
+   | Node.js version | Read from `.nvmrc` (24). Do not set `NODE_VERSION`: the build checks that it runs on the Node `.nvmrc` names |
 
 4. Click **Save and Deploy**.
 
@@ -97,7 +97,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
