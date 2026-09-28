@@ -288,7 +288,7 @@ Returns the node version, health status (`healthy | unhealthy`), and the full li
 {}
 ```
 
-Returns the full `node-config.yaml` as a string — useful for agents performing self-diagnostic checks or configuration audits.
+Returns the node's configuration, parsed, as `config`. Every secret setting is shown as the reference it is written with (such as `env:STRIPE_SECRET_KEY`), or as `[REDACTED]` when it is written literally; addresses are shown without any credential in them. Useful for agents performing self-diagnostic checks or configuration audits.
 
 ---
 
