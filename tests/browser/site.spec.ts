@@ -238,8 +238,8 @@ test('in-site navigation', async ({ page }) => {
   const input = page.getByRole('dialog').getByRole('textbox').or(page.getByRole('dialog').getByRole('combobox'));
   const wanted = sourceTitle('deployment/firecracker');
   await input.first().fill(wanted);
-  // Results are buttons; the page's own result is named by its breadcrumb and title.
-  const result = page.getByRole('dialog').getByRole('button', { name: new RegExp(`${wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).first();
+  // Results are options in a listbox; the page's own result is named by its breadcrumb and title.
+  const result = page.getByRole('dialog').getByRole('option', { name: new RegExp(`${wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).first();
   await expect(result).toBeVisible();
   await result.click();
   await expectDocsPage(page, 'deployment/firecracker');
