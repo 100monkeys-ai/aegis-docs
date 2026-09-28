@@ -4,7 +4,7 @@ const withMDX = createMDX();
 
 /** @type {import('next').NextConfig} */
 const config = {
-  serverExternalPackages: ['@takumi-rs/image-response'],
+  serverExternalPackages: ['@takumi-rs/core'],
   output: 'export',
   // next/image optimization is not supported in static exports;
   // Cloudflare Pages serves images as-is from the out/ directory.

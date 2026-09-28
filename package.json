@@ -19,7 +19,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwind-merge": "^3.7.0",
-    "@takumi-rs/image-response": "^2.14.0"
+    "takumi-js": "^2.14.0"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
