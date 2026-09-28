@@ -1896,18 +1896,34 @@ Returns the current node configuration.
 _No parameters — accepts an empty object `{}`._
 
 <Callout type="info">
-  Returns the raw YAML of the active `node-config.yaml`. See the [Node
-  Configuration Reference](/docs/reference/node-config) for the full schema.
+  Returns the node configuration, parsed from the active configuration file,
+  never the file's text. Every secret setting is shown as the reference it is
+  written with (such as `env:STRIPE_SECRET_KEY`), or as `[REDACTED]` when it is
+  written literally; addresses are shown without any credential in them. See
+  the [Node Configuration Reference](/docs/reference/node-config) for the full
+  schema.
 </Callout>
 
 **Output:**
 
 ```json
 {
+  "tool": "aegis.system.config",
   "config_path": "/etc/aegis/node-config.yaml",
-  "content_yaml": "..."
+  "config": {
+    "apiVersion": "100monkeys.ai/v1",
+    "kind": "NodeConfig",
+    "metadata": { "name": "..." },
+    "spec": {
+      "database": { "url": "env:AEGIS_DATABASE_URL" },
+      "billing": { "stripe_secret_key": "[REDACTED]" }
+    }
+  }
 }
 ```
+
+If the file cannot be read as a node configuration, the output carries `error`,
+naming the line and column, and none of the file's text.
 
 ---
 

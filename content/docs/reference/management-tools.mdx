@@ -840,11 +840,11 @@ Returns AEGIS node metadata, health status, software version, and the list of av
 
 ### `aegis.system.config`
 
-Returns the full contents of the active `node-config.yaml`, including LLM provider settings, runtime configuration, and tool/MCP server registrations as read at daemon startup.
+Returns the node configuration, parsed from the active configuration file, including LLM provider settings, runtime configuration, and tool/MCP server registrations. Every secret setting is shown as the reference it is written with (such as `env:STRIPE_SECRET_KEY`), or as `[REDACTED]` when it is written literally; addresses are shown without any credential in them. The file's text is never returned.
 
 **Parameters:** None.
 
-**Returns:** A JSON object containing `config_path` (absolute path to the loaded config file) and `content_yaml` (the raw YAML string).
+**Returns:** A JSON object containing `config_path` (absolute path to the loaded config file) and `config` (the parsed configuration). If the file cannot be read as a node configuration, the object carries `error`, naming the line and column, instead.
 
 ---
 
