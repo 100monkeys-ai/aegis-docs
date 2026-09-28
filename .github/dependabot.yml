@@ -13,6 +13,10 @@ updates:
       - "javascript"
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # Node is 24. Its types follow it.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     groups:
       production-dependencies:
         dependency-type: "production"
