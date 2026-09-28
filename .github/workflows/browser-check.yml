@@ -1,0 +1,49 @@
+name: Browser Check
+
+# Builds the static site, serves out/ on localhost, and runs the Playwright
+# browser check in Chromium (tests/browser/site.spec.ts): pages load with the
+# right title and heading, the sidebar and highlighted code are present, and
+# in-site navigation works. The full-page screenshots are kept as an artifact.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  browser-check:
+    name: Build and browser check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Runner size
+        run: |
+          nproc
+          free -m
+      - run: npm ci
+      - name: Build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: /usr/bin/time -v npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser check
+        env:
+          BROWSER_CHECK_SHOTS: test-results/screenshots
+        run: /usr/bin/time -v npm run test:browser
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-check-screenshots
+          path: test-results/
+          retention-days: 14
