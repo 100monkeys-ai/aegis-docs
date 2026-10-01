@@ -99,22 +99,29 @@ Multiple semantic validators, when present, are evaluated in order. The first re
 
 The orchestrator starts the judge as a child execution and passes a structured payload that describes the proposed tool use.
 
-The payload includes:
+The payload has exactly these eight fields:
 
-- `task`
-- `proposed_tool_call`
-- `available_tools`
-- `worker_mounts`
-- `output`
-- `criteria`
-- `validation_context`
-- `policy_violations`
+| Field | Contents |
+|---|---|
+| `task` | The worker's own task text: its prompt template rendered from the execution's input and its manifest, the same text the worker received as its prompt and the outer-loop judges receive as their `task`. |
+| `proposed_tool_call` | `name`, the tool the agent wants to run, and `arguments`, its arguments as described below. |
+| `available_tools` | The names of the tools available to the worker. |
+| `criteria` | The `criteria` text of the `tool_validation` entry. |
+| `tool_audit_history` | An object whose `tool_calls` lists the worker's earlier tool calls, in order, each with `tool_name`, `arguments_summary` (the same argument views as below), `status`, `result_summary` and `error`. |
+| `worker_mounts` | The mount paths of the worker's volumes. |
+| `execution_id` | The worker's execution id. |
+| `validation_context` | Always `semantic_judge_pre_execution_inner_loop`. Use it as a cue when debugging execution traces or judge prompts. |
 
-The `output` key is a compatibility field name. For tool-call judging it contains a serialized preview of the proposed tool call, not the output of a completed tool run.
+The file tools and `cmd.run` show the judge what the call would do, however long its arguments are:
 
-The `validation_context` value is fixed by the runtime to `semantic_judge_pre_execution_inner_loop`. Use that string as a cue when debugging execution traces or judge prompts.
+- For `fs.write`, `fs.edit`, `fs.multi_edit`, `fs.create_dir` and `fs.delete`, `path` is verbatim, and every other string at any depth is verbatim up to 800 characters; a longer one appears as `{"bytes", "head", "tail"}`: its size in bytes, its first 600 characters and its last 200.
+- For `cmd.run`, `command` is verbatim up to 4,096 bytes; a longer command appears as `{"bytes", "head", "tail"}` with its first 2,048 characters and its last 1,024. Its other arguments are shown as the file tools' are.
 
-The `policy_violations` field is a list of tool names that were blocked by platform policy earlier in the same iteration. If no tool calls were policy-blocked, the list is empty. Judges can use this field to distinguish "agent attempted a tool but was denied by policy" from "agent never tried to call this tool at all."
+Other tools' arguments are passed in a compacted form, small values verbatim and large ones summarized.
+
+If the worker's execution cannot be read, or its task renders empty, the judged tool call fails with an internal error naming the execution: a tool call is never judged without its objective.
+
+The built-in `tool-call-policy-judge` runs on the model alias `tool-judge`, which the node must map (see [Aliases the Built-In Agents Name](/docs/deployment/llm-providers#aliases-the-built-in-agents-name)). Its instruction names the eight fields above and tells it to judge only the proposed call: the history is context, and an earlier refused call is never a reason to refuse this one.
 
 The judge must return a `GradientResult`-shaped JSON object:
 
@@ -132,7 +139,7 @@ The judge must return a `GradientResult`-shaped JSON object:
 }
 ```
 
-The orchestrator extracts JSON from the judge's final output and treats malformed output, failed execution, cancelled execution, or timeout as a rejection path.
+The orchestrator extracts JSON from the judge's final output and reads it by the verdict contract described in [How a Judge's Verdict Is Read](/docs/agents/validation#how-a-judges-verdict-is-read): `score` is required, and a verdict without `confidence` reads as `0.8`. It treats unreadable output, failed execution, cancelled execution, or timeout as a rejection path.
 
 `worker_mounts` is the source of truth for filesystem context available to the judge. It describes the inherited mount paths exposed to the child execution and should be used instead of guessing at workspace layout.
 

@@ -52,6 +52,29 @@ See [File Uploads in Chat](/docs/zaru/chat#file-uploads-in-chat) for the user-fa
 
 ---
 
+## Waiting on Long Executions
+
+An MCP client gives up on a tool call after about a minute, so on Zaru's MCP server (`https://mcp.myzaru.com/mcp/v1`) one call to a wait tool (`aegis.agent.wait`, `aegis.task.wait`, `aegis.execute.wait`, `aegis.workflow.wait`) waits at most **45 seconds**. A `timeout_seconds` that is a whole number from 0 to 45 is used as given; a larger value, a fractional value or none waits 45 seconds. Each wait tool's description says so.
+
+When the execution finishes within the wait, the result is the execution's final status and output. When it is still running, the call returns an ordinary result rather than an error:
+
+```json
+{
+  "tool": "aegis.task.wait",
+  "execution_id": "e1f2a3b4-...",
+  "status": "running",
+  "iteration_count": 2,
+  "still_running": true,
+  "timed_out": true,
+  "waited_seconds": 45,
+  "message": "Execution e1f2a3b4-... is still running after 45s, iteration count 2. Repeat this same aegis.task.wait call to continue waiting."
+}
+```
+
+A workflow's result carries `current_state` in place of `iteration_count`. To keep waiting, repeat the same call.
+
+---
+
 ## Zaru Client Tools — All Modes
 
 These five tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.
@@ -183,11 +206,11 @@ Follow with `aegis.agent.wait` to block until generation completes.
 | ----------------------- | -------- | ------- | ------------------------------------------------------------- |
 | `execution_id`          | Yes      | —       | ID returned by `aegis.agent.generate` or `aegis.task.execute` |
 | `poll_interval_seconds` | No       | 10      | Seconds between internal polls                                |
-| `timeout_seconds`       | No       | 300     | Maximum wait time                                             |
+| `timeout_seconds`       | No       | 45      | Seconds this call waits, at most 45 ([Waiting on Long Executions](#waiting-on-long-executions)) |
 
 ```json
 // aegis.agent.wait
-{ "execution_id": "e1f2a3b4-...", "timeout_seconds": 120 }
+{ "execution_id": "e1f2a3b4-...", "timeout_seconds": 45 }
 ```
 
 **`aegis.agent.logs`** — Retrieves deployment events and execution summaries for a specific agent by UUID.
@@ -231,14 +254,14 @@ Follow with `aegis.agent.wait` to block until generation completes.
 | ----------------------- | -------- | ------- | ---------------------------- |
 | `execution_id`          | Yes      | —       | ID from `aegis.task.execute` |
 | `poll_interval_seconds` | No       | 10      | Seconds between polls        |
-| `timeout_seconds`       | No       | 300     | Maximum wait time            |
+| `timeout_seconds`       | No       | 45      | Seconds this call waits, at most 45 ([Waiting on Long Executions](#waiting-on-long-executions)) |
 
 ```json
 // aegis.task.wait
 {
   "execution_id": "e1f2a3b4-...",
   "poll_interval_seconds": 5,
-  "timeout_seconds": 180
+  "timeout_seconds": 30
 }
 ```
 
@@ -355,11 +378,11 @@ Blocks until the pipeline execution completes. Pass the `pipeline_execution_id` 
 | ----------------------- | -------- | ------- | ------------------------------------------------------- |
 | `execution_id`          | Yes      | —       | The `pipeline_execution_id` from `aegis.execute.intent` |
 | `poll_interval_seconds` | No       | 5       | Seconds between polls                                   |
-| `timeout_seconds`       | No       | 300     | Maximum wait time                                       |
+| `timeout_seconds`       | No       | 45      | Seconds this call waits, at most 45 ([Waiting on Long Executions](#waiting-on-long-executions)) |
 
 ```json
 // aegis.execute.wait
-{ "execution_id": "p1b2c3d4-...", "timeout_seconds": 60 }
+{ "execution_id": "p1b2c3d4-...", "timeout_seconds": 45 }
 ```
 
 ### `aegis.workflow.wait`
@@ -397,11 +420,11 @@ Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.wor
 | ----------------------- | -------- | ------- | ----------------------- |
 | `execution_id`          | Yes      | —       | Workflow execution UUID |
 | `poll_interval_seconds` | No       | 5       | Seconds between polls   |
-| `timeout_seconds`       | No       | 300     | Maximum wait time       |
+| `timeout_seconds`       | No       | 45      | Seconds this call waits, at most 45 ([Waiting on Long Executions](#waiting-on-long-executions)) |
 
 ```json
 // aegis.workflow.wait
-{ "execution_id": "e1f2a3b4-...", "timeout_seconds": 600 }
+{ "execution_id": "e1f2a3b4-...", "timeout_seconds": 45 }
 ```
 
 **`aegis.workflow.list`** — Lists all registered workflows with name, version, and initial state. No required parameters.

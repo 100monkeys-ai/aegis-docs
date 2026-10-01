@@ -168,7 +168,7 @@ cargo add serde
 For all StandardRuntime agents, the orchestrator:
 
 1. Resolves `language`+`version` → Docker image via the registry
-2. Creates the container: `docker run -d --name aegis-<execution_id> <image> tail -f /dev/null`
+2. Creates the container with the main process `/bin/sh -c "trap 'exit 0' TERM; tail -f /dev/null & wait"`, which only keeps the container alive and exits as soon as the container is told to stop
 3. Checks whether `/usr/local/bin/aegis-bootstrap` already exists inside the container
 4. If absent, uploads the orchestrator's `assets/bootstrap.py` to `/usr/local/bin/aegis-bootstrap`
 5. Executes `python /usr/local/bin/aegis-bootstrap <prompt>`

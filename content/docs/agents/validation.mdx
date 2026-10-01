@@ -85,7 +85,7 @@ While the outer-loop `validation` runs at the **end** of an iteration, AEGIS als
 
 This is a pre-execution semantic judge for tool intent, not a post-execution output review. If an agent proposes a dangerous `cmd.run` payload, the orchestrator pauses the execution, submits the proposed tool call to the semantic judge, and uses the returned gradient result to either permit the invocation or reject it synchronously.
 
-The judge payload includes the current task context, the proposed tool call, the available tool list, the worker mount context, the judge criteria, and a validation-context marker that tells the judge it is operating in the inner loop. The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares that verdict to `min_score` and `min_confidence`; if either check fails, the call is blocked and the agent gets a reasoning-rich retry signal without consuming the full iteration.
+The judge payload includes the worker's own rendered task, the proposed tool call with its arguments, the available tool list, the worker's earlier tool calls, the worker mount context, the judge criteria, and a validation-context marker that tells the judge it is operating in the inner loop. The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares that verdict to `min_score` and `min_confidence`; if either check fails, the call is blocked and the agent gets a reasoning-rich retry signal without consuming the full iteration.
 
 Operationally, this reduces blast radius. Unsafe or low-confidence tool intent is stopped before side effects occur, the decision is auditable as its own child execution, and operators can keep hard policy enforcement separate from semantic review.
 
@@ -110,6 +110,34 @@ This means judge executions are:
 - **Audited** — every judge invocation generates the full set of execution events (`ExecutionStarted`, `IterationCompleted`, etc.), making the validation decision fully inspectable.
 
 Use execution APIs and logs to inspect judge executions spawned by a parent.
+
+---
+
+## How a Judge's Verdict Is Read
+
+A judge is any agent, a tenant's own included, so the orchestrator reads its verdict by what it carries rather than by one exact field set. The verdict is the first fenced code block of the judge's last output when it has one, otherwise the whole output, parsed as a JSON object:
+
+| Field | How it is read |
+|---|---|
+| `score` | Required: a number from `0.0` to `1.0`. A verdict without one, or with one out of range, cannot be read. |
+| `confidence` | Absent or `null`, it reads as `0.8`. Present, it must be a number from `0.0` to `1.0`, or the verdict cannot be read. |
+| `reasoning` | A string. Absent, it reads from `feedback`, then `message`, otherwise empty. |
+| `signals` | A list of `{category, score, message}`. Absent, it reads from a `dimensions` map: each entry whose value is a number, or an object with a numeric `score`, becomes a signal named for its key. |
+| any other field | Kept in `metadata`, beside the verdict's own `metadata` object. |
+
+So a judge that answers `{"valid": true, "score": 0.95, "dimensions": {"accuracy": 1.0}, "feedback": "Correct."}` is read as score `0.95`, confidence `0.8`, reasoning `"Correct."` and one signal `accuracy`. A `min_confidence` above `0.8` therefore fails every verdict that states no confidence.
+
+### When a Verdict Cannot Be Read
+
+An output that is not JSON, or JSON without a usable `score`, is a **judge fault**: the judge's failure, not the worker's. For `semantic` and `multi_judge` validators the orchestrator then:
+
+1. Publishes a `JudgeFault` validation event naming the judge agent, the reason and the judge's output.
+2. Runs the judge once more, as a fresh child execution with the same input, and reads that verdict.
+3. On a second fault, ends the worker's execution as failed, with the judge fault as its reason (`judge fault: judge agent '<name>' returned a verdict the orchestrator cannot read (it faulted twice, ...)`). The worker is handed no feedback on its output and no further iteration is spent.
+
+For `multi_judge`, a judge that faults twice counts as a judge that did not succeed. The consensus proceeds when `min_judges_required` judges still succeed; when they do not and one of the failures was a judge fault, the execution ends failed with that fault as its reason.
+
+An ordinary low score is not a fault: it moves the iteration to `Refining` as described above. The inner-loop tool judge reads its verdict the same way but does not re-run on an unreadable output; the tool call is refused (see [Tool-Call Judging](/docs/agents/tool-call-judging)).
 
 ---
 

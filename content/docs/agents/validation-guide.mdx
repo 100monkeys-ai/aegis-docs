@@ -146,17 +146,18 @@ The tool judge sees a semantic payload rather than raw output:
 
 | Field | Purpose |
 |---|---|
-| `task` | The task or instruction currently being executed. |
-| `proposed_tool_call` | The tool name and arguments the agent wants to run. |
-| `available_tools` | The tool list visible to the worker at that point in the inner loop. |
-| `worker_mounts` | The inherited mount context available to the judge execution. |
+| `task` | The worker's own task text, rendered from its prompt template and input: the same text the worker received. |
+| `proposed_tool_call` | The tool name and arguments the agent wants to run. File-tool paths and `cmd.run` commands up to 4,096 bytes are verbatim; longer text appears as its size, head and tail. |
+| `available_tools` | The names of the tools available to the worker. |
 | `criteria` | The rubric text configured by the operator or agent author. |
-| `validation_context` | A marker that identifies the inner-loop pre-execution judge path. |
-| `policy_violations` | List of tool names blocked by platform policy earlier in this iteration. Empty if none were blocked. |
+| `tool_audit_history` | The worker's earlier tool calls, in order, with their arguments, status, result and error. |
+| `worker_mounts` | The inherited mount context available to the judge execution. |
+| `execution_id` | The worker's execution id. |
+| `validation_context` | Always `semantic_judge_pre_execution_inner_loop`, the marker of the inner-loop pre-execution judge path. |
 
-The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares both thresholds before allowing the tool to execute.
+The judge returns a JSON verdict with `score`, `confidence`, and `reasoning`, plus optional `signals` and `metadata`. The orchestrator compares both thresholds before allowing the tool to execute. The full payload and argument rules are on [Tool-Call Judging](/docs/agents/tool-call-judging#judge-contract).
 
-Judges can use `policy_violations` to reason about what the agent attempted versus what the platform permitted. For example, if the agent's workflow required calling a tool that was policy-blocked, the judge can reflect that in its `reasoning` and score the attempt charitably rather than penalizing the agent for a tool gap caused by platform constraints.
+The tool judge's payload carries no `policy_violations` field; that list goes to the outer-loop judges, at the end of an iteration.
 
 ---
 
@@ -262,7 +263,7 @@ spec:
               type: string
 ```
 
-The judge runtime writes its final verdict as text output, and the orchestrator parses that output as JSON. The judge should emit a JSON object containing the verdict fields on its final turn; the runtime does not require a verdict file path. `worker_mounts` is still the source of truth for filesystem context available to the judge, but verdict transport is text-based.
+The judge runtime writes its final verdict as text output, and the orchestrator reads the first fenced code block of that output, or the whole output when it has none, as a JSON object (see [How a Judge's Verdict Is Read](/docs/agents/validation#how-a-judges-verdict-is-read)). The judge should emit a JSON object containing the verdict fields on its final turn; the runtime does not require a verdict file path. `worker_mounts` is still the source of truth for filesystem context available to the judge, but verdict transport is text-based.
 
 Judge input payloads expose mounted filesystem context through `worker_mounts` (array of inherited mount paths). Treat this as the source of truth for artifact discovery.
 
@@ -365,7 +366,7 @@ Because judge outputs influence whether an iteration succeeds, a compromised jud
 
 - **Disable network access when possible.** A judge evaluating code output rarely needs to make outbound calls. Use `security.network.mode: none` to prevent a prompt-injected payload from exfiltrating data or calling arbitrary APIs from inside the judge container. If the judge must call an LLM provider, use `mode: allow` and restrict `allowlist` to that provider's domain only (e.g., `api.openai.com`).
 - **Set a short timeout.** Judgment should be fast. Use `resources.timeout: "60s"` or tighter to prevent a misbehaving judge from blocking iteration indefinitely.
-- **Validate judge output strictly.** The `output.schema` in the judge manifest should require `score`, `confidence`, and `reasoning` as non-nullable fields. An invalid or missing verdict is treated as a failing score by the orchestrator.
+- **Validate judge output strictly.** The `output.schema` in the judge manifest should require `score`, `confidence`, and `reasoning` as non-nullable fields. A verdict the orchestrator cannot read, with no usable `score`, is a judge fault, not a failing score: the judge is run once more, and a second fault ends the worker's execution as failed with the fault as its reason (see [When a Verdict Cannot Be Read](/docs/agents/validation#when-a-verdict-cannot-be-read)).
 
 ---
 

@@ -633,6 +633,39 @@ List invoices for the current user.
 
 ---
 
+## Model Aliases
+
+### `GET /v1/llm/aliases/{alias}`
+
+Returns the model a call on a model alias is sent to, read from the node's provider registry, the one every agent's model call is routed through. A caller outside the orchestrator uses it to select the same model the node's alias table names. The answer carries no endpoint, header or key.
+
+**Path parameters:**
+
+| Parameter | Description                                      |
+| --------- | ------------------------------------------------ |
+| `alias`   | A model alias from `spec.llm_providers[].models` |
+
+**Request headers:**
+
+| Header          | Required | Description |
+| --------------- | -------- | ----------- |
+| `Authorization` | ✓        | Bearer JWT  |
+
+**Response `200`:**
+
+```json
+{ "alias": "default", "model": "@cf/zai-org/glm-5.3-flash" }
+```
+
+**Errors:**
+
+| HTTP  | Body                                       | Cause                                                                    |
+| ----- | ------------------------------------------ | ------------------------------------------------------------------------ |
+| `401` | `{"error": "Authentication required"}`     | No authenticated identity, including a node configured without `spec.iam` |
+| `404` | `{"error": "Model alias not configured"}`  | The node maps no model to that alias                                     |
+
+---
+
 ## Health
 
 ### `GET /health`

@@ -156,6 +156,31 @@ Any provider that exposes an OpenAI-compatible API (e.g., vLLM, LM Studio, Toget
           context_window: 8192
 ```
 
+An assistant message that carries only tool calls is sent with `content: ""`, so servers that require `content` on every message accept the second request of a tool cycle. A tool name the model returns is mapped back to the exact name AEGIS sent, so tools such as `fs.create_dir` and `fs.multi_edit` round-trip unchanged.
+
+### Request Headers
+
+A provider of type `openai` or `openai-compatible` can carry `headers`, a map of header name to value. The orchestrator sends each header on every request to that provider, chat and health check alike, beside `Authorization`. Use it for a value the provider's API needs on each call, such as the AI Gateway a Cloudflare Workers AI request is routed through:
+
+```yaml
+spec:
+  llm_providers:
+    - name: "workers-ai"
+      type: "openai-compatible"
+      endpoint: "https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1"
+      api_key: "env:CLOUDFLARE_AI_API_TOKEN"
+      headers:
+        cf-aig-gateway-id: "<gateway-name>"
+      enabled: true
+      models:
+        - alias: "default"
+          model: "@cf/zai-org/glm-5.3-flash"
+          capabilities: ["chat", "code", "reasoning"]
+          context_window: 1048576
+```
+
+A header value is configuration, not a secret: keep keys in `api_key`. The node configuration is refused at validation when a provider configures a header named `authorization` in any letter case, because the key has its own field. A header name or value that is not valid HTTP refuses that provider's adapter with an error naming the provider and the header, never the value. The `anthropic`, `gemini` and `ollama` adapters do not send `headers`.
+
 ---
 
 ## Selection Strategy
@@ -176,6 +201,8 @@ spec:
 | `prefer-local` | Use the local provider if it defines the requested alias; fall back to cloud providers |
 | `round-robin` | Distribute requests across providers that define the alias |
 | `failover` | Always use `default_provider`; switch to next provider only on error |
+
+A model answer with no text and no tool call is not returned to the agent as its output: it counts as a failed attempt (`empty generation: model '<model>' on alias '<alias>' returned no text and no tool call`) and is retried within `max_retries`, then tried once on `fallback_provider` when one is set. When every attempt is spent, the error reaches the agent and fails the iteration.
 
 ---
 
@@ -199,6 +226,21 @@ spec:
 ```
 
 If `model` is omitted, it defaults to `"default"`.
+
+### Aliases the Built-In Agents Name
+
+The built-in agent templates name four aliases, so a node that deploys them maps each one:
+
+| Alias | Built-in agents |
+|-------|-----------------|
+| `smart` | the bash, python and javascript executors, the code validator, the output formatter, the agent creator, the workflow creator's validator and planner, `hello-world` |
+| `judge` | `agent-generator-judge`, `code-quality-judge`, `workflow-generator-judge` |
+| `tool-judge` | `tool-call-policy-judge`, the inner-loop tool judge that `hello-world`, the agent creator and the workflow creator's validator name in `tool_validation` |
+| `default` | `skill-validator` |
+
+An alias the node does not map fails every call made on it with `Model alias '<alias>' not found`. The configuration `aegis init` writes maps `default`, `smart` and `judge`; add a `tool-judge` entry to a provider's `models` before running agents that `tool-call-policy-judge` judges, or each of their judged tool calls is refused.
+
+Any authenticated caller can read which model an alias resolves to with [`GET /v1/llm/aliases/{alias}`](/docs/reference/rest-api#model-aliases).
 
 ---
 
@@ -241,6 +283,7 @@ Running executions continue using the provider that was active when they started
 | `api_key` | string | Except Ollama | API key value or `env:VAR_NAME` reference. Never hardcode keys. |
 | `endpoint` / `base_url` | string | Ollama, Azure | Override the default API endpoint. |
 | `api_version` | string | Azure only | API version string for Azure OpenAI. |
+| `headers` | map of string to string | No | Headers sent on every request beside `Authorization`, by the `openai` and `openai-compatible` adapters. A header named `authorization` is refused. See [Request Headers](#request-headers). |
 
 ### Model Entry Fields
 

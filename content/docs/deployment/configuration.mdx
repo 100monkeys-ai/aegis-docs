@@ -751,6 +751,7 @@ Required array. At least one entry with at least one model is required.
 | `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `ollama` \| `openai-compatible` |
 | `endpoint`                    | string   | ✅       | —       | API endpoint URL                                           |
 | `api_key`                     | string   | ❌       | null    | API key. Supports `env:` and `secret:`.                    |
+| `headers`                     | map      | ❌       | null    | Header name to value, sent on every request beside `Authorization` (`openai` and `openai-compatible` only). A header named `authorization` is refused. See [Request Headers](/docs/deployment/llm-providers#request-headers). |
 | `enabled`                     | bool     | ❌       | `true`  | Whether this provider is active                            |
 | `models[].alias`              | string   | ✅       | —       | Alias referenced in agent manifests                        |
 | `models[].model`              | string   | ✅       | —       | Provider-side model identifier                             |
@@ -769,7 +770,7 @@ Optional. Controls runtime provider selection strategy.
 | `strategy`          | enum   | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
 | `default_provider`  | string | null           | Provider to use when no preference is specified                             |
 | `fallback_provider` | string | null           | Provider to use if the primary fails                                        |
-| `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure                                       |
+| `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt. |
 | `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
 
 ---

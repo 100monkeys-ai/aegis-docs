@@ -400,6 +400,8 @@ COPY bootstrap.js /agent/bootstrap.js
 CMD ["tail", "-f", "/dev/null"]
 ```
 
+The orchestrator creates every agent container with the command `/bin/sh -c "trap 'exit 0' TERM; tail -f /dev/null & wait"`, which replaces the image's `CMD` and exits as soon as the container is stopped, so the image must provide `/bin/sh` and `tail`. Your bootstrap runs beside it, started by the orchestrator.
+
 The custom bootstrap must implement the dispatch protocol to communicate with the orchestrator via `AEGIS_ORCHESTRATOR_URL`. The orchestrator sets this variable at container start to the correct host address for the active runtime (Docker or Podman).
 
 ---
