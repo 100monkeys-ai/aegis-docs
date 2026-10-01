@@ -1,0 +1,151 @@
+---
+title: Zaru CLI Configuration
+description: Where the zaru program reads its settings, every configuration key it reads, and the project file zaru.toml.
+---
+
+## Where settings come from
+
+Zaru reads settings from five layers. A later layer overrides an earlier one:
+
+| Layer | Where | What it may set |
+| --- | --- | --- |
+| 1. built-in | the program's own defaults | everything |
+| 2. user config | `~/.zaru/config.toml` | every key |
+| 3. project config | `./zaru.toml` in the directory you run in | only `[project]`, `[runtime]` and `[[validator]]`, with the limits below |
+| 4. environment | variables named `ZARU_` plus the key | every key that holds text, a number or `true`/`false` |
+| 5. flag | `--runtime`, `--model`, `--mode` | `runtime.tier`, `model.default`, `tools.mode` |
+
+`zaru config explain <key>` prints the key's value at every layer and marks the one in effect.
+
+**The environment variable for a key** is `ZARU_` followed by the key in upper case with its dots turned into underscores: `model.default` is `ZARU_MODEL_DEFAULT`, `runtime.max_iterations` is `ZARU_RUNTIME_MAX_ITERATIONS`. `ZARU_CREDENTIAL_KEY` is the one exception: it holds the credential store's encryption key (see [Installation](/docs/zaru-cli/installation#where-stored-keys-live)) and is not a configuration key.
+
+**An unknown key is refused, not ignored.** A misspelt key in either file, or a `ZARU_` variable that names no key, stops the program with a message naming the key, the layer, and the nearest key that does exist.
+
+**Keys and tokens do not belong in the files.** A value in `config.toml` or `zaru.toml` that is shaped like a bearer token is refused. Store keys with `zaru providers keys add` and Nuclear Notes tokens with `zaru notes tokens add`.
+
+## Every key
+
+These are all the keys the program reads at commit `f9deca3d`. A key marked "not from a project" is refused if `./zaru.toml` tries to set it, because a repository you cloned must not be able to change where your prompts go or how much Zaru asks you.
+
+### Models and providers
+
+| Key | Holds | Default | Meaning |
+| --- | --- | --- | --- |
+| `model.default` | text | none | The model a task uses. `--model` sets it for one run. A model alias such as `cheap` as the value means the model that alias resolves to; anything else is the model's identifier. |
+| `model.fast`, `model.smart`, `model.cheap`, `model.local` | text | none | The models the other four model aliases resolve to. `zaru models` shows each alias and what it resolves to. |
+| `provider.<alias>.kind` | text, not from a project | none | Which provider answers for that model alias: `gemini`, `ollama` or `openai-compatible`. `<alias>` is `default`, `fast`, `smart`, `cheap` or `local`. When it is not set, the first of `gemini`, `ollama`, `openai-compatible` that is usable is chosen: `gemini` when a Gemini key is stored, the other two when you configured their endpoint. |
+| `provider.gemini.endpoint` | text, not from a project | `https://generativelanguage.googleapis.com` | Where Gemini is reached. |
+| `provider.ollama.endpoint` | text, not from a project | `http://localhost:11434` | Where the Ollama server listens. |
+| `provider.openai_compatible.endpoint` | text, not from a project | none | The base URL of an OpenAI-compatible server; Zaru adds `/chat/completions`. |
+| `provider.gemini.context_tokens`, `provider.ollama.context_tokens`, `provider.openai_compatible.context_tokens` | whole number | none | The model's context window in tokens. See [The context window](/docs/zaru-cli/running-a-task#the-context-window). |
+| `provider.anthropic.endpoint`, `provider.aegis.endpoint`, `provider.anthropic.context_tokens`, `provider.aegis.context_tokens` | as above | none | Read, and unused: these two kinds have no client at this commit. |
+| `inference.default`, `inference.fast`, `inference.smart`, `inference.cheap`, `inference.local` | text | `local` for an Ollama model, `frontier` for any other | Whether the alias's model counts as `local` or `frontier`. It decides the default of `runtime.max_iterations` at the `contained` and `linked` tiers. |
+
+### Retrying a provider
+
+When a provider's connection fails or breaks, a response stalls, or it answers HTTP 408, 429 or any 5xx, Zaru asks again, a bounded number of times, and says so. Other 4xx answers and refusals the provider states in words are not retried; you are shown the provider's words.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `provider.retries` | `3` | The most retries of one request. At least 1. |
+| `provider.retry_backoff_seconds` | `1` | The first wait; each later wait doubles it (1 s, 2 s, 4 s). At least 1. |
+| `provider.retry_jitter_seconds` | `1` | Up to this many seconds added at random to each wait. At least 0. |
+| `provider.retry_wait_ceiling_seconds` | `30` | The longest single wait, including a longer `Retry-After` the provider asks for. At least 1. |
+| `provider.stall_seconds` | `60` | A response that has begun and then sends nothing for this long is abandoned as stalled. At least 1. The clock starts at the first byte, so a slow first byte is not a stall. |
+
+### Permissions
+
+| Key | Holds | Default | Meaning |
+| --- | --- | --- | --- |
+| `tools.mode` | text, not from a project | `ask` | The permission mode: `ask`, `allow` or `yolo`. `--mode` and `ZARU_TOOLS_MODE` set it too. See [Permissions](/docs/zaru-cli/permissions#permission-modes). |
+| `tools.allowlist` | a list, not from a project | empty | The calls `allow` mode runs without asking, each the exact line a prompt shows, such as `"cmd.run cargo test"`. See [The allowlist](/docs/zaru-cli/permissions#the-allowlist). Set it in `~/.zaru/config.toml`. |
+
+### Runtime
+
+| Key | Holds | Default | Meaning |
+| --- | --- | --- | --- |
+| `runtime.tier` | text, not from a project | `bare` | The runtime tier: `bare`, `contained` or `linked`. `--runtime` sets it for one run. At this commit only `bare` does anything; the other two change no behaviour, and the program says so. |
+| `runtime.max_iterations` | whole number; a project may lower it, not raise it | `1` at `bare`; at `contained`, `3` for a local model and `5` for a frontier one; at `linked`, the same | How many attempts the validator loop makes. See [Validators and the iteration loop](/docs/zaru-cli/running-a-task#validators-and-the-iteration-loop). |
+| `runtime.max_tool_exchanges` | whole number; a project may lower it, not raise it | `50` | The most model replies one task may have. At the limit the task stops, the session stays open, and typing `continue` goes on. |
+
+### The terminal
+
+| Key | Holds | Default | Meaning |
+| --- | --- | --- | --- |
+| `terminal.mouse` | `true` or `false`, not from a project | `true` | Whether a session takes the mouse, so that the scroll wheel scrolls the transcript. `false` gives mouse selection back to your terminal. With it on, hold Shift while you drag to select text in most terminals. |
+| `tips` | `true` or `false` | `true` | Whether a session shows a standing tip in the hint strip below the input while the input is empty. |
+
+### Nuclear Notes
+
+| Key | Holds | Default | Meaning |
+| --- | --- | --- | --- |
+| `notes.<alias>.agent_tools` | a list, not from a project | none | The tools of the Nuclear Notes instance whose token is stored under `<alias>` that the model may call. With none listed, the model is offered none of them. |
+| `persona.path` | text, not from a project | `zaru/persona` | The Nuclear Notes page whose text is sent as the system prompt instead of Zaru's own, read with the token that holds the composer role from the workspace `project.workspace` names. With no token, no workspace or no such page, Zaru's own system prompt is used. |
+
+### The project
+
+| Key | Holds | Meaning |
+| --- | --- | --- |
+| `project.name` | text | The project's name. |
+| `project.workspace` | text | The Nuclear Notes workspace this project reads. `persona.path` is read from it. |
+
+## The project file, `./zaru.toml`
+
+`zaru.toml` in the directory you run `zaru` in is the project's own file. It may hold only three tables; any other is refused:
+
+- `[project]`: `name` and `workspace`.
+- `[runtime]`: `max_iterations` and `max_tool_exchanges`, which it may lower and not raise. `tier` is refused here.
+- `[[validator]]`: the commands that check the model's work, below.
+
+`zaru init` writes an example `./zaru.toml` if there is none, and never overwrites one:
+
+```toml
+[project]
+name = "acme-api"
+workspace = "acme-engineering"   # the Nuclear Notes workspace this project reads
+
+[runtime]
+max_iterations = 3
+
+[[validator]]
+name = "build"
+run  = "cargo build --locked"
+expect = "exit-zero"
+
+[[validator]]
+name = "test"
+run  = "cargo test --all"
+expect = "exit-zero"
+after = ["build"]
+
+[[validator]]
+name = "shape"
+run  = "cargo run -- --emit-schema"
+expect = { json_schema = "schema/output.json" }
+```
+
+### Validator fields
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `name` | yes | The validator's name, which `after` refers to. |
+| `run` | yes | The command to run. |
+| `expect` | yes | What counts as a pass: `"exit-zero"`, `{ exit-code = 2 }`, `{ matches = "<regex>" }` or `{ json_schema = "<file>" }`. A schema file must be inside the working directory. |
+| `after` | no | The names of validators that run before this one. The order comes from `after` alone; the order of the file only breaks ties. A cycle, a name nothing declares, or two validators with one name are refused before anything runs. |
+
+Validators are commands, so none runs until you approve them; see [Approving validators](/docs/zaru-cli/permissions#approving-validators).
+
+## Files under `~/.zaru/`
+
+The program creates `~/.zaru/` readable only by you. What it keeps there:
+
+| Path | Holds |
+| --- | --- |
+| `config.toml` | Your settings. You create it; Zaru never writes it. |
+| `credentials.json` | Stored provider keys and Nuclear Notes tokens, encrypted. |
+| `sessions/<id>/` | One directory per session: `transcript.jsonl`, `meta.toml`, and the full output of anything the screen shortened. |
+| `history.jsonl` | The lines you typed at a session's prompt, kept per working directory. |
+| `approved-validators.jsonl` | Which validator commands you approved, per directory. |
+| `admissions.jsonl` | Which projects' commands and skills you admitted. |
+| `commands/` | Your own commands and skills. See [Commands and skills](/docs/zaru-cli/commands#your-own-commands-and-skills). |
+| `corpus.jsonl`, `persona.jsonl`, `tips.jsonl` | Cached Nuclear Notes page and atom names, the cached persona page, and which tips were shown. |

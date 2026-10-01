@@ -1,0 +1,12 @@
+{
+  "title": "Zaru CLI",
+  "pages": [
+    "overview",
+    "installation",
+    "configuration",
+    "commands",
+    "running-a-task",
+    "permissions",
+    "zaru-web-and-aegis"
+  ]
+}

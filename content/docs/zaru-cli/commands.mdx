@@ -1,0 +1,142 @@
+---
+title: Zaru CLI Command Reference
+description: Every command, flag and in-session command of the zaru program, and its exit codes.
+---
+
+`zaru "<task>"` runs one task in the current directory and exits. `zaru` with no arguments opens an interactive session when it runs in a terminal, and prints the help text when it does not. Everything else is a command below.
+
+## The help text
+
+This is what `zaru --help` prints at commit `f9deca3d`. It lists exactly the commands and flags the binary implements. `zaru help`, `zaru` outside a terminal, and `--help` after any command print the same text.
+
+```text
+zaru 0.0.0
+
+usage: zaru [flags] [<command>]
+
+commands:
+  runtime                               print the tier and what changing it would alter
+  notes tokens                          print the stored Nuclear Notes tokens and which is the composer's
+  notes tokens add <alias> <host>       store a Nuclear Notes token, read from standard input; add the word `apex` after the host for a credential with no instance boundary
+  notes tokens describe <alias> <text>  set what that token is for; the words after the alias are the description
+  notes tokens rm <alias>               remove that token and its stored value
+  notes use <alias>                     move the composer role to that token, so the hint strip searches with it
+  config explain <key>                  print every layer's value for one key, with the effective one marked
+  learned                               print what this session wrote to craft memory
+  inbox                                 print the deposits waiting to be read
+  sessions list                         print every session on this machine
+  sessions rm <id>                      delete a session's directory
+  models                                print each model alias, what it resolved to, and where
+  init                                  write a project manifest into this directory, once, if there is none
+  providers keys                        print which providers this machine holds a key for
+  providers keys add <kind>             store a provider's API key, read from standard input
+  providers keys rm <kind>              remove that provider's key and its stored value
+  help                                  print this
+  validators approve                    show the commands this project's zaru.toml declares and ask to approve them
+  validators list                       print every project whose validators are approved, and their commands
+
+flags:
+  --runtime <tier>      set runtime.tier for this run, at the highest layer
+  --model <identifier>  set model.default for this run, at the same layer
+  --mode <mode>         set tools.mode for this run, at the same layer: ask, allow or yolo
+  --resume <id>         restore a session and print its transcript
+  --continue            the same, for the most recent session started in this directory
+  --help                print this
+  --version             print the version and what this binary is composed of
+
+`zaru "<task>"` runs a turn: it asks the model, runs the tools it
+asks for under the permission model, and writes a transcript you can
+read with `cat`. A project that declares validators in `./zaru.toml`
+runs the iteration loop instead, and `--resume` and `--continue`
+reopen a session where each line you type is a turn. Store a key
+with `providers keys add <kind>` first. What it cannot do yet: the
+provider kind(s) `anthropic`, `aegis`, which carry no client, and a
+membrane at the contained and linked tiers, which enforce nothing
+yet.
+```
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `zaru runtime` | Prints the runtime tier in effect and what changing it would alter. |
+| `zaru models` | Prints each model alias (`default`, `fast`, `smart`, `cheap`, `local`), the model it resolves to, and where that came from, with the context window a session would use and its source. |
+| `zaru config explain <key>` | Prints the key's value at every layer, with the one in effect marked. See [Configuration](/docs/zaru-cli/configuration). |
+| `zaru init` | Writes an example project manifest, `./zaru.toml`, into this directory, once, if there is none. It never overwrites one. |
+| `zaru providers keys` | Prints which providers this machine holds a key for. |
+| `zaru providers keys add <kind>` | Stores a provider's API key, read from standard input. Of the kinds with a client, `gemini` needs a key and `openai-compatible` uses one if you store it; `ollama` uses none. |
+| `zaru providers keys rm <kind>` | Removes that provider's key and its stored value. |
+| `zaru validators approve` | Shows the validator commands this project's `zaru.toml` declares and asks you to approve them. See [Approving validators](/docs/zaru-cli/permissions#approving-validators). |
+| `zaru validators list` | Prints every project whose validators you approved, and their commands. |
+| `zaru sessions list` | Prints the ID of every session on this machine, or `no sessions`. |
+| `zaru sessions rm <id>` | Deletes that session's directory. |
+| `zaru notes tokens` | Prints the stored Nuclear Notes tokens and which one holds the composer role. |
+| `zaru notes tokens add <alias> <host>` | Stores a Nuclear Notes token under `<alias>` for the instance at `<host>`, read from standard input. Add the word `apex` after the host for a token with no instance boundary. |
+| `zaru notes tokens describe <alias> <text>` | Sets what that token is for; the words after the alias are the description. |
+| `zaru notes tokens rm <alias>` | Removes that token and its stored value. |
+| `zaru notes use <alias>` | Moves the composer role to that token, so the session's suggestions search with it. |
+| `zaru learned` | Meant to print what a session wrote to craft memory. This build has no craft memory and prints `nothing learned this session — this harness has no craft memory to write to yet`. |
+| `zaru inbox` | Meant to print deposits waiting to be read. This build prints `no deposits — nothing is armed to make one, and this harness can arm nothing yet`. |
+| `zaru help` | Prints the help text. |
+
+## Flags
+
+| Flag | What it does |
+| --- | --- |
+| `--runtime <tier>` | Sets `runtime.tier` for this run, at the highest layer: `bare`, `contained` or `linked`. |
+| `--model <identifier>` | Sets `model.default` for this run. A model alias such as `cheap` means the model that alias resolves to; anything else is the model's identifier. |
+| `--mode <mode>` | Sets `tools.mode` for this run: `ask`, `allow` or `yolo`. |
+| `--resume <id>` | Reopens the session with that ID. In a terminal it opens the session, rebuilt from its transcript, so the model is sent the same conversation it had; when the output is not a terminal it prints the session's transcript and exits. |
+| `--continue` | The same, for the most recent session started in this directory. |
+| `--help` | Prints the help text. |
+| `--version` | Prints the version and the crates the binary is built from. |
+
+**How flags are written.** `--runtime contained` and `--runtime=contained` mean the same. There are no short flags. `--` ends the flags: every word after it is part of the task, which is how you give a task that starts with a dash.
+
+## In a session
+
+In an interactive session, a line that starts with `/` is a command; any other line is a task, and each task continues the same conversation. The session opens with the line "type a task, or `/help` for what this harness can do".
+
+| Command | What it does |
+| --- | --- |
+| `/help` | Prints the help text. |
+| `/exit` | Leaves the session. Ctrl-C when nothing is running and the input is empty also leaves. |
+| `/runtime`, `/models`, `/init`, `/learned`, `/inbox` | The same as the command of that name. |
+| `/config explain <key>` | The same as `zaru config explain <key>`. |
+| `/session list`, `/session rm <id>` | The same as `zaru sessions list` and `zaru sessions rm <id>`. The in-session spelling is singular. |
+| `/session resume <id>` | Switches this session to the session with that ID. |
+| `/session continue` | Switches to the most recent session started in this directory. |
+| `/providers keys`, `/providers keys rm <kind>` | The same as the command of that name. |
+| `/providers keys add <kind>` | Asks for the key in a masked field (Enter stores it; Esc or Ctrl-C cancels), stores it, and reopens the session with it, so the next task uses it. |
+| `/notes tokens`, `/notes tokens describe <alias> <text>`, `/notes tokens rm <alias>`, `/notes use <alias>` | The same as the command of that name. |
+| `/notes tokens add <alias> <host>` | Asks for the token in a masked field and stores it. |
+| `/validators list` | The same as `zaru validators list`. |
+
+A command that works only outside a session, such as `/validators approve`, says so and names the `zaru` spelling to run instead. `/stack` and `/memory` are names the program reserves; it answers that they are not implemented yet.
+
+**Keys while a task runs.** Ctrl-C while a task runs, or at a permission prompt, stops the task and keeps the session open. In a session the scroll wheel scrolls the transcript; see `terminal.mouse` on [Configuration](/docs/zaru-cli/configuration#the-terminal).
+
+## Your own commands and skills
+
+A session also runs commands you write as files. A **command** is a prompt template: typing `/<name> <words>` sends its text, with the words filled in, as the task. It cannot run anything itself. A **skill** is the same with validators added, which the iteration loop runs.
+
+| Kind | File | Holds |
+| --- | --- | --- |
+| Command | `<name>.md` | TOML front matter between `+++` lines (`name`, `description`), then the text |
+| Skill | `<name>.skill.md` | The same, and `[[validator]]` blocks in the front matter |
+
+They load from two places: `~/.zaru/commands/` (yours) and `./.zaru/commands/` (the project's). A project's commands and skills do not load until you admit them: the session asks "this project offers commands, and none of them is loaded until you admit it. Admit them here?" with `[y/N · esc or ctrl-c says no]`, and your answer is kept per project in `~/.zaru/admissions.jsonl`.
+
+In the text, `$ARGUMENTS` is everything typed after the name, and `$1` to `$9` are its words, one-indexed; a word that was not typed is empty. Any other `$` is literal text, except `$0`, `$10` and other digit runs, which are refused when the file loads.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The command succeeded. |
+| 1 | The work failed: the validators never all passed. |
+| 2 | Something you can fix: a missing key or model, a bad setting, an unknown command. The message says what to change. |
+| 3 | A problem outside Zaru, such as the network or the provider. The message says whether to wait. |
+| 4 | The current runtime tier cannot do what was asked. |
+| 70 | A bug in Zaru. The message says how to report it. |
+| 128 + n | The session or task was ended by signal n: 143 for `SIGTERM`, 130 for `SIGINT`, 129 for `SIGHUP`. |

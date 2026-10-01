@@ -1,0 +1,96 @@
+---
+title: Running a Task with the Zaru CLI
+description: What the zaru program does and shows while a task runs, the tools the model can call, the context window, validators, and sessions.
+---
+
+## What you see
+
+Run `zaru` with the task in quotes, from the directory you want it to work in:
+
+```sh
+zaru "read src/main.rs and tell me what it does"
+```
+
+```text
+Zaru is not a sandbox. Tool calls run on your machine with your permissions. A permission prompt asks before a call runs; it does not limit what an allowed call can do.
+
+fs.read /home/you/project/src/main.rs — permitted
+  read src/main.rs · lines 1 to 42 of 42
+
+<the model's answer>
+
+tokens: 120 prompt + 7 completion = 127, counted by the provider
+
+no validators are declared, so the iteration loop cannot run · declare one in `./zaru.toml`
+```
+
+In order: the warning that Zaru is not a sandbox, printed at the start of every task; each tool call the model made, whether it ran, and what it did; the model's answer; the tokens the task used as the provider counted them; and, when the project declares no validators, a note saying so.
+
+The task is a loop of exchanges. Zaru sends the conversation to the model; the model answers, or asks for tool calls; Zaru runs each call it is allowed to run (asking you first where the [permission mode](/docs/zaru-cli/permissions) says so) and sends the results back; this repeats until the model answers without asking for a tool. A task may have at most `runtime.max_tool_exchanges` model replies, 50 unless you set it. At the limit the task stops, the session stays open, and typing `continue` goes on.
+
+When there is no terminal to ask on, for example when `zaru` runs in a script, a call that needs your permission is refused and the model is told so.
+
+## The tools
+
+The model has seven built-in tools. Each runs on your machine as you.
+
+| Tool | What it does |
+| --- | --- |
+| `fs.read` | Reads a UTF-8 text file, at most 500 numbered lines at a time, and says how many lines the file has and where to start to read on. It refuses a binary file, or one that is not UTF-8, naming its size. |
+| `fs.list` | Lists the names in one folder. |
+| `fs.search` | Looks for plain text in the files under a folder, and in their names. A needle with no capital letters matches any case; a call can ask for exact case, whole words or one file type. It skips what `.gitignore` and `.ignore` files name, the folders `.git`, `target`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv` and `venv`, and lock files, unless the call asks to include them (`.git` is skipped even then). It shows at most 40 matching lines, grouped by file. |
+| `fs.write` | Creates a file or replaces a whole file, and says which it did and how large the old file was. |
+| `fs.edit` | Replaces text that occurs exactly once in a file, or every occurrence when the call asks. It keeps the file's line endings and final newline; when the text is not found it shows the nearest lines. |
+| `cmd.run` | Starts a program directly, without a shell, in the working directory, with only `PATH`, `HOME`, `LANG`, `LC_ALL` and `TMPDIR` from your environment, and stops it after two minutes. Nothing limits what the program does while it runs. |
+| `web.fetch` | Fetches an `http` or `https` URL. It refuses this machine's own addresses and the link-local range, which includes the cloud metadata address `169.254.169.254`. A redirect to another host is asked about again. |
+
+The model can also call a Nuclear Notes instance's tools, but only the ones you list under `notes.<alias>.agent_tools` in `~/.zaru/config.toml`; see [Configuration](/docs/zaru-cli/configuration#nuclear-notes).
+
+## What a tool call shows
+
+Under each tool call the screen shows what the call did, as the model was given it:
+
+- **A command:** its exit code and how many lines it printed on standard output and on standard error, then its last 7 lines. Lines from standard output start with `out` and lines from standard error with `err`. The output is shown when the command ends, not while it runs.
+- **An edit or a write:** the lines it changed, with each line's number. A removed line is marked `-` and an added line `+`, with 2 unchanged lines on each side of a change, and at most 7 rows. A new file shows its first 5 lines and how long it is.
+- **A read, a listing, a search or a fetch:** one line saying what came back.
+
+When a block leaves lines out or cuts a long line, all of it is kept in a file in the session's directory, such as `~/.zaru/sessions/<id>/shown-0001.txt`, and the block names the file. A stored key is shown as its marker, never its value. Output that would move the cursor, clear the screen or change the terminal's title is shown written out, for example `\u{1b}[2J`, and the terminal does not act on it. Nothing shown here is sent to the model.
+
+## Interactive sessions
+
+Run `zaru` with no arguments in a terminal to open a session. Each task you type continues the same conversation: the model is sent every earlier task, reply, tool call and tool result in it. Ctrl-C while a task runs stops it and keeps the session open; `/exit`, or Ctrl-C when nothing is running and the input is empty, leaves. The commands you can type in a session are on the [command reference](/docs/zaru-cli/commands#in-a-session).
+
+The status line shows the runtime tier, the session ID, how much of the model's context window the conversation uses, and the tokens the provider counted for the last request. The context figure is an estimate, marked `~`, for example `~2.1k/4.0k`: Zaru has no tokenizer, so it divides a request's bytes by a bytes-per-token ratio. The ratio starts at 3 bytes a token and, after each answer, follows what the provider counted.
+
+## The context window
+
+When a session opens, Zaru asks the provider how large the model's context window is: Gemini's model description, Ollama's `show`, or the `/models` list of an OpenAI-compatible server. If the provider does not say, Zaru uses `provider.<kind>.context_tokens` from your configuration, and if that is not set, its own default: 1,048,576 tokens for Gemini and 4,096 for Ollama. An OpenAI-compatible server has no default, so if it does not say, you must set the key. Your setting can lower what the provider says and never raises it.
+
+For Ollama the model's own figure only lowers the window, because Ollama serves the window Zaru asks for, and asking for the model's full length can take gigabytes of memory; set `provider.ollama.context_tokens` to use more. Every Ollama request also tells the server not to cut the prompt (`"truncate": false`). `zaru models` shows the window and where it came from.
+
+**When the conversation gets long.** At three quarters of the window Zaru summarises the oldest turns and says so; the whole history stays in the transcript. The last eighth of the window is kept for the model's answer, so a request is sent only when its estimate fits in the other seven eighths. If one request cannot fit, for example after a tool returned a very large result, Zaru does not send it: it says how large the request is, which tool result is largest, and what to do.
+
+## Validators and the iteration loop
+
+A validator is a command in `./zaru.toml` that checks the model's work, such as a build or a test run ([Validator fields](/docs/zaru-cli/configuration#validator-fields)). When a project declares validators, a task runs as a loop: the model makes a change, the validators run, and if any fails, its output goes back to the model for another attempt. The loop stops when every validator passes or when it reaches `runtime.max_iterations` attempts, which is one at the `bare` tier unless you set it. If the validators never all pass, `zaru` exits with code 1.
+
+Validators are commands, so none runs until you approve them: see [Approving validators](/docs/zaru-cli/permissions#approving-validators).
+
+## Sessions and the transcript
+
+Each task creates a session: a directory under `~/.zaru/sessions/` named by a 26-character session ID. Session files are readable only by you and are kept until you delete them with `zaru sessions rm <id>`; nothing deletes them for you.
+
+```sh
+zaru sessions list
+cat ~/.zaru/sessions/<id>/transcript.jsonl
+```
+
+The transcript has one JSON object per line: your task, each model reply with the tool calls it asked for and their arguments, each tool call and whether it was allowed, what each call returned exactly as the model was given it, what the screen showed of each call's result, and the answer. Stored keys and tokens are replaced with a marker that begins `<redacted: ` before a model reply or a tool result is written.
+
+`zaru --continue` reopens the most recent session started in the current directory, and `zaru --resume <id>` the session with that ID. The conversation is rebuilt from the transcript, so the model is sent the conversation it had before. When the output is not a terminal, both print the session's transcript and exit instead.
+
+## What the model provider receives
+
+A short system prompt, your task, the conversation so far, the tool descriptions, and the result of every tool call, including the contents of files read, command output and fetched pages. The system prompt states the working directory, the operating system, the date, the tool names and the permission mode; if a system prompt is read from a Nuclear Notes page (`persona.path`), that page is sent instead.
+
+Zaru removes the values of the keys and tokens it has stored from what it sends. When it cannot read them (no keyring and no `ZARU_CREDENTIAL_KEY`) and the task needs none of them, it says so and goes on without removing them. It does not look for any other secret: a password in a file the model reads is sent to the provider.

@@ -1,0 +1,88 @@
+---
+title: Zaru CLI Permissions
+description: How the zaru program asks before it acts, what each answer does, the permission modes, the allowlist, and approving a project's validators and commands.
+---
+
+Zaru asks before a tool call that needs permission, and runs it only if you allow it. A prompt decides whether a call runs; it does not limit what an allowed call can do once it runs, because Zaru is not a sandbox.
+
+## The prompt
+
+Before a tool call that needs permission, Zaru shows what the call will do and asks. The question begins with the call, for example `Allow cmd.run cargo test?`, and ends with the answers it takes:
+
+```text
+[y/N/a · a allows this exact line for this session · esc says no to this call · ctrl-c stops the turn]
+```
+
+The first line names the tool and what it is addressed to: the file, the command, or the web address. Under it, a file write shows the file and its new contents, an edit shows what it replaces and with what, and a command shows how it was split into words. Markers after the tool name call out three things:
+
+| Marker | When |
+| --- | --- |
+| `[OUTSIDE the working directory]` | The file the call addresses is outside the directory you ran `zaru` in. |
+| `[matches a destructive pattern]` | The command is a recursive `rm` (`-r`, `-R`, `--recursive`) or a forced `git push` (`-f`, `--force`, `--force-with-lease`, `--force-if-includes`). The marker makes the prompt prominent; it does not by itself make Zaru ask. |
+| `[leaves this machine]` | The call goes to a Nuclear Notes instance. |
+
+## What each answer does
+
+| You type | What happens |
+| --- | --- |
+| `y` (or `yes`) | The call runs, once. |
+| `a` (or `always`) | The call runs, and the same call (the same line the prompt showed) runs without asking for the rest of the session. |
+| `h` (or `host`) | Only for `web.fetch`: the call runs, and every URL on that host is allowed for the rest of the session. |
+| `N`, Enter, Esc, or anything else | The call does not run. The model is told you said no, and the task goes on. |
+| Ctrl-C | The whole task stops: the call does not run, no other call runs, and the session stays open for your next task. |
+
+Before a fetch the prompt shows the whole URL, because a URL can carry data off your machine, and offers `h`:
+
+```text
+[y/N/a/h · a allows this exact URL for this session · h allows every URL on this host for this session · esc says no to this call · ctrl-c stops the turn]
+```
+
+**When there is no terminal to ask on**, a call that needs permission is refused and the model is told so. Zaru never treats a question nobody could answer as a yes.
+
+## Permission modes
+
+The permission mode decides which calls need asking. Set it with `tools.mode` in `~/.zaru/config.toml`, the `ZARU_TOOLS_MODE` environment variable, or `--mode` on the command line. A project's `zaru.toml` cannot set it.
+
+| Mode | What it asks about |
+| --- | --- |
+| `ask` (default) | Every file write, file edit, command, web fetch and Nuclear Notes call, and any call addressed outside the working directory. Reading, listing and searching inside the working directory do not ask. |
+| `allow` | Every call that is not on your allowlist, reads included. |
+| `yolo` | Nothing. Every call the model makes runs. |
+
+A call you allowed with `a` or `h` runs without asking for the rest of the session, in any mode.
+
+In `yolo` mode the model can write any file you can, including `~/.zaru/approved-validators.jsonl`, so it can also change which validators are approved. Use `yolo` only for a directory and a task you trust entirely.
+
+## The allowlist
+
+`tools.allowlist` in `~/.zaru/config.toml` is the list of calls that `allow` mode runs without asking. Each entry is the exact line a prompt shows: the tool, a space, and what it was addressed to.
+
+```toml
+[tools]
+mode = "allow"
+allowlist = [
+  "cmd.run cargo test",
+  "fs.read /home/you/project/src/main.rs",
+  "web.fetch docs.rs",
+]
+```
+
+For `web.fetch` an entry may name a host with no `http://` or `https://`, as `"web.fetch docs.rs"` does, which allows every URL on exactly that host. An entry whose first word is not one of the seven tools is refused with the list of them. A project's `zaru.toml` cannot set the allowlist.
+
+## Approving validators
+
+A project's validators are commands its author wrote in `./zaru.toml`, so none runs until you approve them. Before the first one runs in a project, Zaru shows every validator's name and command and asks "This project's zaru.toml declares validators. They are commands Zaru runs on your machine to check the model's work. Allow these commands to run in this project?", answered with:
+
+```text
+[y/N · esc says no · ctrl-c stops the turn]
+```
+
+Your answer is kept in `~/.zaru/approved-validators.jsonl`, never in the project, for that directory and that exact set of validators. If `zaru.toml` changes them, Zaru asks again and shows what changed. When there is no terminal to ask on, nothing runs and the task is refused: run `zaru validators approve` in the project's directory to see the commands and approve them, and `zaru validators list` to see what you have approved. The permission mode plays no part in this, `yolo` included.
+
+## Admitting a project's commands
+
+A project's own commands and skills under `./.zaru/commands/` do not load until you admit them. When a session opens in a directory whose project offers some, Zaru asks once, with `[y/N · esc or ctrl-c says no]`, and keeps your answer per project in `~/.zaru/admissions.jsonl`. Your own commands under `~/.zaru/commands/` need no admission. See [Your own commands and skills](/docs/zaru-cli/commands#your-own-commands-and-skills).
+
+## What a project cannot set
+
+Settings that decide where your prompts go or how much Zaru asks are yours alone. `./zaru.toml` is refused if it sets any of them: the permission mode, the allowlist, the runtime tier, which provider answers for a model alias and where it is reached, the persona page, which Nuclear Notes tools the model may call, and the mouse setting. It may lower `runtime.max_iterations` and `runtime.max_tool_exchanges` and may not raise them.

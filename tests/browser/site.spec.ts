@@ -19,6 +19,7 @@ const docsPages = [
   'zaru/overview',
   'zaru/chat',
   'zaru/mcp-client-setup',
+  'zaru-cli/overview',
   'gateway/overview',
   'gateway/quickstart',
   'gateway/grpc-api',

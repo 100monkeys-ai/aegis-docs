@@ -1,0 +1,115 @@
+---
+title: Installing the Zaru CLI
+description: Build the zaru program from source, choose a model, and store a provider key.
+---
+
+There is no release to download. You build `zaru` from its repository with Cargo.
+
+## Requirements
+
+- **Linux.** The program is built and tested on Linux only. It uses Unix-only APIs, so it does not build on Windows. macOS is not tested.
+- **Rust 1.98.1.** The version is pinned in the repository's `rust-toolchain.toml`, and `rustup` installs it on the first build.
+- **A C compiler** (`cc`). Some dependencies compile C code.
+- **Network access to crates.io** for the first build.
+- **A model to talk to:** a Google Gemini API key, an Ollama server, or any server with an OpenAI-compatible chat completions API.
+
+## Build and install
+
+```sh
+git clone https://github.com/100monkeys-ai/zaru-cli.git
+cd zaru-cli
+cargo install --path crates/zaru-cli --locked
+```
+
+This builds the `zaru` binary and copies it to `~/.cargo/bin`. Check that it runs:
+
+```sh
+zaru --version
+```
+
+```text
+zaru 0.0.0
+  zaru-core 0.0.0
+  zaru-tui 0.0.0
+  zaru-notes 0.0.0
+  zaru-seal 0.0.0
+  zaru-aegis 0.0.0
+```
+
+The lines under the first name the crates the binary is built from. To build without installing, run `cargo build --locked`; the binary is then `target/debug/zaru`.
+
+## Choose a model
+
+Zaru has no default model. You name one in `~/.zaru/config.toml`, a file you create yourself. Each section below is a complete first configuration.
+
+### Gemini
+
+Store your API key. It is read from standard input: paste it, press Enter, then press Ctrl-D.
+
+```sh
+zaru providers keys add gemini
+```
+
+```text
+stored a `gemini` key under the alias `provider.gemini`.
+  the value is sealed and is not printed by any command.
+```
+
+Then name the model in `~/.zaru/config.toml`:
+
+```toml
+[model]
+default = "gemini-3.6-flash"
+```
+
+With a stored Gemini key and no `provider.default.kind`, Zaru uses Gemini for the `default` model.
+
+### Ollama
+
+No key is needed. Start the server, then write `~/.zaru/config.toml`:
+
+```toml
+[model]
+default = "llama3.2"
+
+[provider.default]
+kind = "ollama"
+```
+
+Zaru connects to `http://localhost:11434`. Set `provider.ollama.endpoint` if your server is elsewhere.
+
+### An OpenAI-compatible server
+
+Give the base URL; Zaru adds `/chat/completions` to it. If the server's `/models` list does not give the model's context window, give it in tokens too:
+
+```toml
+[model]
+default = "your-model-name"
+
+[provider.default]
+kind = "openai-compatible"
+
+[provider.openai_compatible]
+endpoint = "http://localhost:8080/v1"
+context_tokens = 32768
+```
+
+The kind is spelled `openai-compatible` and the configuration table `openai_compatible`. If the server needs a key, store it with `zaru providers keys add openai-compatible`; it is sent as a `Bearer` token.
+
+## Where stored keys live
+
+Stored keys are kept in `~/.zaru/credentials.json`, readable only by you, encrypted with AES-256-GCM. The encryption key is kept in your operating system's keyring.
+
+If the machine has no keyring (a server, WSL, a container) and a task needs a stored key, `zaru` says so and stops. Set `ZARU_CREDENTIAL_KEY` to 64 lower-case hexadecimal characters in your shell profile, for example the output of `openssl rand -hex 32`, and keep that value: without it, the keys you stored cannot be read again. A task that needs no stored key, such as one for Ollama, goes on without it and says that the stored keys could not be read.
+
+No command prints a stored key's value. `zaru providers keys` lists which providers have a key, and `zaru providers keys rm <kind>` deletes one.
+
+## Run your first task
+
+From the directory you want it to work in:
+
+```sh
+zaru "read src/main.rs and tell me what it does"
+```
+
+[Running a task](/docs/zaru-cli/running-a-task) explains what it prints, and [Permissions](/docs/zaru-cli/permissions) what it asks.

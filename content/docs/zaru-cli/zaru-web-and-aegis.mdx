@@ -1,0 +1,40 @@
+---
+title: Zaru CLI, Zaru Web and AEGIS
+description: What the zaru command-line program shares with Zaru Web and with the AEGIS orchestrator at this commit, and what it does not.
+---
+
+Zaru has two surfaces: [Zaru Web](/docs/zaru/overview), the client at myzaru.com, and `zaru`, the command-line program this section documents. This page says what connects them, and the program to AEGIS, at commit `f9deca3d`.
+
+## Zaru Web
+
+**The two are separate programs today.** `zaru` does not connect to myzaru.com or to the Zaru MCP server, and it uses no Zaru account. Your Zaru Web conversations, memory, modes and API keys do not appear in the CLI, and nothing the CLI does appears in Zaru Web.
+
+| | Zaru Web | Zaru CLI |
+| --- | --- | --- |
+| Where it runs | In your browser, against the hosted platform | On your machine, as you |
+| The model | Served through the platform | The one you configure: Gemini, Ollama, or an OpenAI-compatible server |
+| Tools | AEGIS agents, workflows and tools, by MCP | Seven built-in tools that run on your machine, and the Nuclear Notes tools you allow |
+| Sign-in | A Zaru account | None; provider keys and Nuclear Notes tokens are stored on your machine |
+| Where conversations are kept | The platform | `~/.zaru/sessions/`, as plain files you can read |
+
+**Two things named `zaru init`.** On [Connect Zaru to Any MCP Client](/docs/zaru/mcp-client-setup), typing `zaru init` in an MCP client activates the Zaru MCP server's tools. That is a tool of the MCP server. The command-line program's `zaru init` is unrelated: it writes an example `./zaru.toml` into the current directory.
+
+## AEGIS
+
+**The program does not talk to AEGIS at this commit.** Every tool call runs directly on your machine, with no container, no policy evaluation and no SEAL envelope. What exists of the connection is named, so you know where it is not:
+
+- **The `aegis` provider kind** is recognised in configuration and has no client. The help text says so: "What it cannot do yet: the provider kind(s) `anthropic`, `aegis`, which carry no client".
+- **The runtime tiers.** `runtime.tier` (or `--runtime`) takes `bare`, `contained` or `linked`. `bare`, the default, uses none of the 100monkeys platform. `contained` and `linked` can be selected and change nothing about how tool calls run: the help text says "a membrane at the contained and linked tiers, which enforce nothing yet", and at those tiers the program adds that warning to the not-a-sandbox one. `zaru runtime` prints the tier in effect and what changing it would alter.
+- **The `zaru-aegis` and `zaru-seal` crates** are in the binary, as `zaru --version` lists, and carry no client yet.
+- **`/stack`** is a session command the program reserves for AEGIS components; it answers that it is not implemented yet.
+
+To run agents in AEGIS today, use Zaru Web or the [`aegis` CLI](/docs/reference/cli) against an orchestrator.
+
+## Nuclear Notes
+
+The program does talk to Nuclear Notes, 100monkeys' notes service, when you give it a token:
+
+- `zaru notes tokens add <alias> <host>` stores an access token, read from standard input.
+- With a stored token, a session suggests matching page and atom names from your notes as you type.
+- The model may call an instance's tools only if you list them under `notes.<alias>.agent_tools` in `~/.zaru/config.toml`. Each such call is marked `[leaves this machine]` and, in `ask` mode, asked about.
+- `persona.path` can name a page whose text is sent as the system prompt; see [Configuration](/docs/zaru-cli/configuration#nuclear-notes).

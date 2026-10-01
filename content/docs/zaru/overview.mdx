@@ -7,6 +7,8 @@ description: How the Zaru consumer product interfaces with the AEGIS orchestrato
 
 **Zaru** (`myzaru.com`) is the consumer-facing product built atop the AEGIS orchestrator. It uses a custom Zaru chat client (`zaru-client`) that connects to AEGIS's execution semantics via the Signed Envelope Attestation Layer (SEAL), providing users access to the Glass Laboratory UX and intelligent agent swarm orchestration.
 
+Zaru's other surface is `zaru`, a command-line program that runs on your own machine; see [Zaru CLI](/docs/zaru-cli/overview).
+
 ## Identity Bridging
 
 Zaru authenticates consumer users via an Identity Provider (e.g., OAuth 2.0 or Enterprise SAML). To bridge this web-layer identity to the AEGIS execution engine securely, the orchestrator employs the `ZaruAuthMiddleware`.

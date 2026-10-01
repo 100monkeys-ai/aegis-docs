@@ -1,0 +1,48 @@
+---
+title: Zaru CLI Overview
+description: The zaru command-line program, an AI assistant that works in your terminal. Pre-alpha, built from source.
+---
+
+`zaru` is an AI assistant that works in your terminal. You give it a task; it asks a language model, and it runs the tools the model asks for: it reads, searches and edits files, runs commands and fetches web pages, asking your permission first. Every step is written to a plain-text transcript under `~/.zaru/sessions/` that you can read with `cat`.
+
+It is the open-source, local surface of Zaru. [Zaru Web](/docs/zaru/overview) at myzaru.com is the other surface; the two are separate programs today, and [Zaru CLI, Zaru Web and AEGIS](/docs/zaru-cli/zaru-web-and-aegis) says exactly what they share.
+
+## Pre-alpha: there are no releases
+
+The program is pre-alpha. There are no releases and no packages: you build it from source, and commands, files and settings can change without notice. Its version string is `0.0.0`.
+
+Everything in this section describes the program at commit `f9deca3d` of [100monkeys-ai/zaru-cli](https://github.com/100monkeys-ai/zaru-cli), read from its code and from the help text that build prints. If you build a later commit, `zaru --help` is the authority on what that binary does.
+
+## What it does
+
+- **Runs one task** with `zaru "<task>"`, or opens an interactive session with `zaru` in a terminal, where each line you type is a task in the same conversation.
+- **Talks to the model you choose**: Google Gemini, an [Ollama](https://ollama.com) server, or any server with an OpenAI-compatible chat completions API. It has no default model; you name one.
+- **Runs seven built-in tools** for the model: `fs.read`, `fs.list`, `fs.search`, `fs.write`, `fs.edit`, `cmd.run` and `web.fetch`.
+- **Asks before it acts.** Writes, edits, commands, web fetches and anything outside the working directory are asked about first, unless you choose a different [permission mode](/docs/zaru-cli/permissions).
+- **Runs a validated loop** when a project declares validators in `./zaru.toml`: the model makes a change, the validators (a build, a test run) check it, and failures go back to the model for another attempt.
+- **Keeps sessions** you can list, reopen with `--resume` or `--continue`, and delete.
+
+## What it is not
+
+**It is not a sandbox.** Tool calls run on your machine with your user account's permissions, and the program prints that warning at the start of every task. A permission prompt asks before a call runs; it does not limit what an allowed call can do.
+
+Some things the program names are not built at this commit, and it says so when you reach them:
+
+- The `anthropic` and `aegis` provider kinds are recognised and have no client.
+- The `contained` and `linked` runtime tiers can be selected and change nothing: tool calls run directly on your machine at every tier.
+- `zaru learned` and `zaru inbox` print that there is nothing to show.
+
+## In this section
+
+| Page | What it covers |
+| --- | --- |
+| [Installation](/docs/zaru-cli/installation) | Requirements, building and installing, choosing a model, storing a provider key |
+| [Configuration](/docs/zaru-cli/configuration) | Where settings come from, every configuration key, `./zaru.toml` |
+| [Command reference](/docs/zaru-cli/commands) | Every command, flag and in-session command, and the exit codes |
+| [Running a task](/docs/zaru-cli/running-a-task) | What you see while a task runs, the tools, the context window, validators, sessions |
+| [Permissions](/docs/zaru-cli/permissions) | Permission prompts and what each answer does, modes, the allowlist, approvals |
+| [Zaru CLI, Zaru Web and AEGIS](/docs/zaru-cli/zaru-web-and-aegis) | How the program relates to the web client and to the AEGIS orchestrator |
+
+## Licence and contributing
+
+The program is licensed under Apache-2.0. Contributions are accepted under the Developer Certificate of Origin: every commit carries a `Signed-off-by` line (`git commit -s`), and there is no contributor licence agreement. The repository's `CONTRIBUTING.md` lists the checks CI runs.
