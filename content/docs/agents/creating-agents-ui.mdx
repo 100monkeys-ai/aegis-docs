@@ -54,7 +54,7 @@ The create page offers two editing modes, toggled via a switch at the top of the
 - Parse errors shown inline as you type
 - Toggle back to structured form at any time; the form fields populate from the YAML
 
-You can switch between modes freely. When switching from form to YAML, the current form state is serialized. When switching from YAML to form, the YAML is parsed and loaded into form fields.
+You can switch between modes freely. When you switch from the form to YAML after changing the form, the YAML text is rewritten from the form's fields; if you have not changed the form since the text was last set, the YAML text stays as it was. When switching from YAML to form, the YAML is parsed and loaded into form fields.
 
 ### Step 4: Fill in the Manifest
 
@@ -90,7 +90,7 @@ See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the compl
 
 ### Step 5: Submit
 
-Click **Create Agent**. The manifest is sent to the orchestrator, which:
+Click **Deploy Agent**, then choose the version in the **Save Changes** dialog. The dialog's current version is the manifest's `metadata.version`: from the YAML text while the YAML tab is the active tab, else from the form. The manifest is then sent to the orchestrator, which:
 
 1. Validates the manifest against the domain schema
 2. Resolves the runtime image (standard or custom)
@@ -105,10 +105,14 @@ On success, you are redirected to the agent detail page. On failure, validation 
 
 1. Navigate to the agent detail page (click the agent name in the list)
 2. Click **Edit** (visible only if you have mutation permissions)
-3. Modify fields in either structured form or YAML mode
-4. Click **Update Agent**
+3. Modify fields on the **Form** tab or the **YAML** tab
+4. Click **Update Agent**, then choose the version in the **Save Changes** dialog: a patch, minor or major bump of the current version, or **Force overwrite** to keep the current version and overwrite its entry
 
-The update sends `POST /v1/agents?force=true`, which overwrites the existing agent with the same name and version. The previous version snapshot is updated, but the version entry is preserved in the version history.
+The **YAML** tab shows the manifest as the orchestrator stores it, including fields the form does not model. It is rewritten from the form's fields only after you change something on the **Form** tab, so switching tabs without editing the form leaves the text as it was.
+
+The orchestrator stores the parsed manifest and returns its own serialisation of it, so comments and formatting in a manifest are not kept.
+
+The save sends `POST /v1/agents` with the version you chose. A new version creates a new entry in the version history; **Force overwrite** adds `force=true` and overwrites the existing agent with the same name and version, updating that version's snapshot.
 
 ---
 

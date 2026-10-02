@@ -231,6 +231,8 @@ make logs POD=core | grep -i "unauthorized\|volume\|fuse"
 
 Permission errors on FUSE mounts follow the same AegisFSAL authorization model as NFS. Check that the execution's manifest `FilesystemPolicy` allows the operation.
 
+The mount reports its files as owned by the container's own user, so a command the agent runs with `cmd.run` can create and change files under a read-write `/workspace` as the image's user (root in the standard runtime images). If the image runs as a non-root user given by name, the name is not resolved and the mount reports a configured default identity instead; give the user as numbers (`uid:gid`). See [File Ownership on a FUSE Mount](/docs/architecture/storage-gateway#file-ownership-on-a-fuse-mount).
+
 ### Stale FUSE Mounts
 
 **Symptoms:** Mountpoints remain under `/tmp/aegis-fuse/` after executions end; new executions fail with `mount point busy`.

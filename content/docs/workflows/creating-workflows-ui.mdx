@@ -88,7 +88,7 @@ A state with an empty `transitions: []` array is a terminal state — the workfl
 
 ### Step 5: Submit
 
-Click **Create Workflow**. The orchestrator validates the manifest, checks that referenced agents exist, and registers the workflow. Validation errors are shown inline.
+Click **Register Workflow**, then choose the version in the **Save Changes** dialog. The dialog's current version is the manifest's `metadata.version`: from the YAML text while the YAML tab is the active tab, else from the form. The orchestrator validates the manifest, checks that referenced agents exist, and registers the workflow. Validation errors are shown inline.
 
 ---
 
@@ -130,11 +130,17 @@ Scope management is not available on the consumer dashboard surface.
 
 1. Navigate to the workflow detail page (click the workflow name in the list)
 2. Click **Edit**
-3. Modify fields in structured form or YAML mode
+3. Modify fields on the **Form** tab or the **YAML** tab
 4. Use the Visualization tab to verify the updated FSM topology
-5. Click **Update Workflow**
+5. Click **Save Changes**, then choose the version in the **Save Changes** dialog: a patch, minor or major bump of the current version, or **Force overwrite** to keep the current version and overwrite its entry
 
-The update uses `POST /v1/workflows?force=true`, overwriting the existing workflow with the same name and version. The version snapshot is updated, but the version entry is preserved in the version history.
+The **YAML** tab shows the manifest as the orchestrator stores it. It is rewritten from the form's fields only after you change something on the **Form** tab, so switching tabs without editing the form leaves the text as it was.
+
+A save from the **YAML** tab sends your text as typed, with only the value of its `metadata.version` line changed to the version you chose in the dialog. Text with no `metadata.version` line is refused with a message, and nothing is saved. A save from the **Form** tab sends the form's fields.
+
+The orchestrator stores the parsed manifest and returns its own serialisation of it, so comments and formatting in a manifest are not kept: the next time you open the workflow, the **YAML** tab shows the stored manifest without them.
+
+The save registers the manifest with `POST /v1/workflows`. A new version creates a new version entry; **Force overwrite** adds `force=true` and overwrites the existing entry of the same name and version.
 
 ---
 

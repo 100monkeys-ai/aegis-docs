@@ -549,6 +549,8 @@ State output structure:
 
 Use `{{STATE.consensus.score}}`, `{{STATE.consensus.confidence}}`, and `{{STATE.agents.N.output}}` in downstream transitions and templates.
 
+**Without judges.** Without `judges_for_parallel` (the state's own judge agents, distinct from its `agents`), the state's consensus combines its agents' own verdicts by `consensus.strategy`, as judges' verdicts are combined. Each agent's output is read as a verdict: the first fenced block of the output, or else the whole output, as a JSON object with a `score` from 0.0 to 1.0 and an optional `confidence` (0.8 when absent). Agents that return no verdict are listed in `consensus.metadata.agents_without_verdict` and not counted. If none returns a verdict, the consensus has no score, and its `metadata.reasoning` says there is no score to combine.
+
 ### `kind: ContainerRun`
 
 Executes a single command in an isolated container without an LLM or iteration loop. Use `ContainerRun` for deterministic CI/CD steps: compiling, running tests, building images, and deploying artifacts.
@@ -724,8 +726,8 @@ Use `{{STATE.result}}` in downstream states to reference the child's output (blo
 | `exit_code_zero` | System, ContainerRun | Exit code was 0. |
 | `exit_code_non_zero` | System, ContainerRun | Exit code was non-zero. |
 | `exit_code` | System, ContainerRun | Exit code equals `value`. |
-| `score_above` | Agent | Agent validation score > `threshold`. |
-| `score_below` | Agent | Agent validation score < `threshold`. |
+| `score_above` | Agent, ParallelAgents | The state's score is strictly greater than `threshold`. |
+| `score_below` | Agent, ParallelAgents | The state's score is strictly less than `threshold`. |
 | `score_between` | Agent | Score between `min` and `max` (inclusive). |
 | `confidence_above` | Agent | Validation confidence > `threshold`. |
 | `consensus` | ParallelAgents | Consensus score ≥ `threshold` AND confidence ≥ `agreement`. |
@@ -735,6 +737,8 @@ Use `{{STATE.result}}` in downstream states to reference the child's output (blo
 | `input_equals_yes` | Human | Payload is `"yes"`, `"approve"`, `"approved"`, or `"true"`. |
 | `input_equals_no` | Human | Payload is `"no"`, `"reject"`, `"rejected"`, or `"false"`. |
 | `custom` | All | Handlebars `expression` evaluates to a truthy result. |
+
+**Scores:** `score_above` and `score_below` compare the state's score with `threshold`. The score is the state output's `score`, else `final_score`, else `consensus.score` (a ParallelAgents state). A state that carries no score takes neither; if no other transition then matches, the run fails with `State "<name>" carries no score for its score transitions`.
 
 **Evaluation order:** transitions are evaluated top-to-bottom. The first matching transition is taken. Always include an unconditional fallback as the last transition.
 

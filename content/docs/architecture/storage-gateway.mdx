@@ -205,6 +205,14 @@ The FUSE daemon acts as a **gRPC FSAL proxy**: every POSIX system call from an a
 5. All POSIX operations from the container flow through the kernel FUSE layer to the daemon, which proxies them via gRPC to the orchestrator's `FsalService`.
 6. When the execution ends, the orchestrator calls `FuseMountService.Unmount(execution_id, volume_id)`. The daemon unmounts the FUSE filesystem and cleans up.
 
+### File Ownership on a FUSE Mount
+
+A FUSE mount reports one owner for every file and directory on it: the identity the container's process has on the host. The mount request names that process's identity inside its container. For an agent container it is the user the image runs as, since the orchestrator sets no user on the agent container; the standard runtime images run as root. For a ContainerRun step it is the step's `run_as_user` where the step declares one, else its image's user.
+
+The daemon reports a container's root as the daemon's own user. Under rootless Podman, where Podman and the FUSE daemon run as the same user, that is the host identity of a container's root; under a rootful engine both are root. Any other identity is reported as the request names it. A non-root user given by name rather than by number is not resolved: the mount reports a configured default identity in its place, so give a non-root user as numbers (`uid:gid`).
+
+So a command an agent runs with `cmd.run` runs as its image's user, root in the standard runtime images, and can create and change files under `/workspace` when the volume is mounted read-write. What it may write is still decided by the manifest's filesystem policy: every write passes through `AegisFSAL`, and a read-only volume refuses writes.
+
 ### systemd Deployment
 
 In production deployments, the FUSE daemon runs as a systemd service that starts before the orchestrator:

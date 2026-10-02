@@ -52,12 +52,15 @@ spec:
 #### Notes
 
 - **HTML escaping is disabled.** Backticks, quotes, `<`, `>` in `{{input}}` and `{{instruction}}` are passed verbatim to the LLM. You do not need to escape them.
-- If `prompt_template` is omitted, the orchestrator uses a built-in default:
+- If `prompt_template` is omitted or empty, the orchestrator uses a built-in default:
 
   ```handlebars
-  {{#if instruction}}Task: {{instruction}}
+  {{instruction}}{{#if intent}}
 
-  {{/if}}{{#if input}}Input: {{input}}{{/if}}
+  Task: {{intent}}{{/if}}
+
+  User: {{input}}
+  Agent:
   ```
 
 - In a workflow Agent state the Blackboard's keys are also available by name, except `input` and `intent`, which are always the state's own: `{{input}}` is the state's rendered `input:` block, never the workflow's input object.

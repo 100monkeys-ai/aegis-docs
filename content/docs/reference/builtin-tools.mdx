@@ -356,8 +356,11 @@ Fetches content from a URL, optionally converting HTML pages into clean Markdown
 - `to_markdown` (boolean, optional): Convert HTML to markdown. Default is `true`.
 - `follow_redirects` (boolean, optional): Whether to follow HTTP redirects. Default is `true`.
 - `timeout_secs` (integer, optional): Request timeout in seconds. Default is `30`.
+- `offset` (integer ≥ 0, optional): Character position in the page to start from. Default is `0`. An offset at or past the end of the page is refused.
 
-**Returns:** The response body as a string (Markdown if `to_markdown` is `true` and the response is HTML, otherwise raw text/JSON).
+**Returns:** The response body in the result's `content` (Markdown if `to_markdown` is `true` and the response is HTML, otherwise raw text/JSON).
+
+**Long pages:** one call returns at most 50,000 characters of the page. When the page is longer, the result's `content` holds characters `offset` to `offset + 50,000`, and the result adds `truncated: true`, `total_chars` (the page's whole length), `offset`, `next_offset` and a `notice`; call `web.fetch` again with the same `url` and `offset` set to `next_offset` to read on. The last part carries `truncated: false` and no `next_offset`. A page within the bound comes back unchanged.
 
 **Errors:** `DomainNotAllowed` if the URL domain is not in the SecurityContext allowlist; network or timeout error if the remote server is unreachable; error if the response status is 4xx/5xx.
 

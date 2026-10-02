@@ -784,6 +784,8 @@ Storage volumes are mounted into the agent container via the orchestrator's **Ae
 
 All `spec.volumes[].mount_path` values must be rooted at `/workspace`.
 
+An agent whose declared volume cannot be mounted is not started, so it never runs without its volume. The iteration fails with an error naming the volume, its mount path and the mount's error (on the FUSE transport: `Volume <volume_id> of execution <execution_id> could not be mounted at <mount_path>: <error>`), and the next iteration, if there is one, mounts the volume again.
+
 ### `spec.execution`
 
 Controls the **100monkeys iterative execution strategy**. When `mode: iterative`, if any validation check fails the orchestrator sends the failure output back to the agent as `{{previous_error}}` and starts a new iteration (up to `max_iterations`). When `mode: one-shot`, the first run is final.

@@ -182,7 +182,7 @@ The `spec.llm_selection` block controls how the orchestrator resolves aliases wh
 spec:
   llm_selection:
     strategy: "prefer-local"     # Prefer local providers, fall back to cloud
-    default_provider: "local"    # Provider to try first for all aliases
+    default_provider: "local"    # Must name a provider in llm_providers; does not choose one
     max_retries: 3               # Retry count on transient failures
     retry_delay_ms: 1000         # Delay between retries
 ```
@@ -249,10 +249,13 @@ To change which model backs a given alias:
      llm_providers:
        - name: "openai"
          type: "openai"
+         endpoint: "https://api.openai.com/v1"
          api_key: "env:OPENAI_API_KEY"
          models:
            - alias: "default"
              model: "gpt-4o"          # Change this to swap models
+             capabilities: ["code", "reasoning"]
+             context_window: 128000
    ```
 
 2. Restart the AEGIS daemon:
@@ -284,8 +287,8 @@ Running executions continue using the provider that was active when they started
 |---|---|---|---|
 | `alias` | string | Yes | Agent-facing name (e.g., `default`, `fast`, `smart`). |
 | `model` | string | Yes | Model identifier as accepted by the provider's API. |
-| `capabilities` | string[] | No | Tags like `code`, `reasoning`, `vision`. |
-| `context_window` | integer | No | Provider's context window size in tokens. |
+| `capabilities` | string[] | Yes | Tags like `code`, `reasoning`, `vision`. |
+| `context_window` | integer | Yes | Provider's context window size in tokens. |
 | `max_output_tokens` | integer | No | Maximum output tokens to request from the provider. Default `8192`. Important for thinking-mode models (e.g., Gemini 2.5 Pro) that use output budget for internal reasoning. |
 | `temperature` | number | No | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Default `0.4`. Agents can override per-execution via `spec.runtime.temperature` in their manifest. |
 

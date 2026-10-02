@@ -93,7 +93,7 @@ Minimum viable deployment requires only a container runtime (Docker or Podman), 
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-Agent containers run on `aegis-exec-network`, isolated from platform pods on `aegis-network`. They communicate with the AEGIS orchestrator via `host.containers.internal:8088` (`/v1/dispatch-gateway` over HTTP). They do not have direct access to PostgreSQL, SeaweedFS, OpenBao, or external networks (unless the manifest `network_policy.allowlist` permits specific domains).
+Agent containers run on `aegis-exec-network`, isolated from platform pods on `aegis-network`. They communicate with the AEGIS orchestrator at the address and port of `AEGIS_ORCHESTRATOR_URL` (`/v1/dispatch-gateway` over HTTP). In the reference deployment that is the only connection an agent container can open: it has no access to PostgreSQL, SeaweedFS, OpenBao, other containers or external networks, and a command that needs another host fails after its connection times out. See [Podman Network](/docs/deployment/production-hardening#podman-network).
 
 ---
 

@@ -167,6 +167,59 @@ If `version` does not match the server's current version, the call returns a str
 
 ---
 
+## Talking to Zaru from Another Client
+
+### `zaru.chat`
+
+Runs one turn of the Zaru companion on Zaru's own model, in one of your stored Zaru Web conversations, and returns its answer. The turn is the one the chat page at ask.myzaru.com runs, with the companion's prompt, your memory and the tools of the mode, and the conversation is stored with your others: it is listed on the page and can be continued there or through the tool.
+
+Zaru's MCP server lists `zaru.chat` to every client that connects to it, and handles it itself, never forwarding it to the AEGIS orchestrator. It is not one of the companion's own tools: no mode offers it inside a Zaru turn, and a call made from inside a turn is refused with `mode_not_available`, so a turn never starts another turn.
+
+The turn runs as the user the MCP connection is authenticated as, by an `aegis_` API key or a Zaru sign-in.
+
+| Parameter         | Required | Default                                                   | Description                                                            |
+| ----------------- | -------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `message`         | Yes      | —                                                         | Your message for this turn, 1 to 32,768 characters                     |
+| `conversation_id` | No       | a new conversation                                        | UUID of a conversation of yours to continue, begun on the page or here |
+| `mode`            | No       | the conversation's stored mode, or `chat` for a new one   | `chat`, `agentic`, `workflow` or `execute`; a different mode changes the conversation's mode |
+
+```json
+// zaru.chat
+{
+  "message": "Summarise what we decided about the release yesterday.",
+  "conversation_id": "<conversation-uuid>"
+}
+```
+
+The result is a JSON object, returned as text and as structured content:
+
+| Field                   | Description                                                                                                                       |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `conversation_id`       | The conversation the turn ran in; for a new conversation, its new id                                                              |
+| `status`                | `complete`, or `incomplete` when the turn reached its time limit                                                                  |
+| `answer`                | The companion's answer                                                                                                            |
+| `tool_calls`            | Each tool call of the turn as `{ name, arguments, outcome, result, result_truncated }`; `outcome` is `ok` or `error`, and `result` is cut to 8,192 characters, with `result_truncated` saying whether it was |
+| `model`, `mode`         | The model and the mode the turn ran on                                                                                            |
+| `mode_switch_requested` | Present when the companion asked to switch modes, as `{ mode, reason }`; the switch is not applied                                |
+| `usage`                 | Present when the model reported it: `{ prompt_tokens, completion_tokens, total_tokens }`                                          |
+
+**Limits.** One call runs one turn of at most five model calls. No model call starts later than 40 seconds after the request arrives, and the turn ends at 50 seconds, so a call answers within the minute an MCP client waits. A turn that reaches the limit ends `incomplete` with what it did so far stored; to continue, send your next message in the same conversation. The companion sees the most recent 100 of the conversation's messages.
+
+**Errors.** A refusal is a tool error whose text is a JSON object `{ "error", "message" }`. The `error` is one of:
+
+| `error`                   | When                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `unauthorized`            | The connection's API key or session is not valid                                             |
+| `invalid_request`         | The arguments are not valid: `message` empty or too long, `conversation_id` not a UUID, or `mode` not a Zaru mode |
+| `conversation_not_found`  | No conversation of yours has that id                                                         |
+| `conversation_archived`   | The conversation is archived                                                                 |
+| `active_execution_exists` | A turn is already running in that conversation                                               |
+| `mode_not_available`      | `mode` is `live`, `vibecode` or `operator`, which this tool cannot run a turn in, or the call was made from inside a Zaru turn |
+| `inference_unavailable`   | Zaru cannot reach its model; try again in a moment                                           |
+| `turn_failed`             | The turn could not be run, or failed after it started; a turn that failed after it started keeps what it did stored |
+
+---
+
 ## Agentic Mode Tools
 
 Agentic mode gives the assistant access to agent discovery, generation, task execution, and monitoring. Use it when you want to run existing agents or generate new ones from a description.

@@ -84,6 +84,18 @@ The `aegis-temporal-worker` service polls the `aegis-agents` task queue and inte
 | `AEGIS_ORCHESTRATOR_URL` | Base URL of the Rust HTTP API (for event publishing) | `http://localhost:8080` |
 | `PORT` | HTTP server port for workflow registration and health endpoints | `3000` |
 
+### The Worker's Connection to the Orchestrator
+
+The worker pings the orchestrator over its gRPC connection, drops a connection that does not answer, looks up the orchestrator's name again and reconnects, so a replaced orchestrator (a new pod or container at the same name) is reached again without restarting the worker. These optional variables tune it; each takes a positive whole number of milliseconds:
+
+| Variable | Description | Default |
+|---|---|---|
+| `AEGIS_RUNTIME_GRPC_KEEPALIVE_TIME_MS` | Time after the last answered ping before the next ping, with or without calls in flight | `10000` |
+| `AEGIS_RUNTIME_GRPC_KEEPALIVE_TIMEOUT_MS` | How long a ping may go unanswered before the connection is dropped | `5000` |
+| `AEGIS_RUNTIME_GRPC_MAX_RECONNECT_BACKOFF_MS` | Longest wait between two reconnection attempts while the orchestrator is unreachable | `5000` |
+| `AEGIS_RUNTIME_GRPC_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS` | Shortest time between two lookups of the orchestrator's name | `5000` |
+| `AEGIS_RUNTIME_GRPC_CONNECT_TIMEOUT_MS` | How long a call waits for a connection before it fails as `UNAVAILABLE`, which Temporal retries | `60000` |
+
 ### Docker Compose
 
 ```yaml

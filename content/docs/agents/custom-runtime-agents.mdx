@@ -118,6 +118,8 @@ docker push myregistry/my-agent:latest
 
 `bootstrap.py` is the in-container entrypoint. It implements the **Aegis Dispatch Protocol** — a bidirectional loop over `POST /v1/dispatch-gateway` that the orchestrator uses to drive the LLM conversation and dispatch in-container commands.
 
+**How the prompt arrives.** The orchestrator runs the script as `python <bootstrap_path>` with no argument, writes the rendered prompt to its standard input and closes it. Read standard input to end of file and decode it as UTF-8; do not strip it, since that alters the prompt. A bootstrap that reads only its argument (`sys.argv[1]`) receives no prompt.
+
 <Callout type="warn">
 Do **not** import `aegis-sdk` inside a custom bootstrap script. The SDK is an API client for deploying agents from outside the runtime. A custom bootstrap must be **stdlib-only** (Python) or equivalent, to avoid a pip-install dependency before the container is ready. Use the `aegis.bootstrap` module types from the SDK only as a local reference during development — do not ship the import.
 </Callout>
@@ -135,8 +137,8 @@ The protocol has three message types:
 """Custom bootstrap — implements Aegis Dispatch Protocol.
 
 This file runs inside the agent container. It is stdlib-only; no third-party
-packages are imported. The orchestrator fully renders the prompt and passes it
-as argv[1] before this script is executed.
+packages are imported. The orchestrator fully renders the prompt, writes it to
+this script's standard input and closes it; read it to end of file as UTF-8.
 """
 import json
 import os
@@ -228,7 +230,7 @@ def run_dispatch(msg: dict) -> dict:
 
 
 def main():
-    prompt = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()
+    prompt = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.buffer.read().decode("utf-8")
     if not prompt:
         print("Error: no prompt provided", file=sys.stderr)
         sys.exit(1)
@@ -301,6 +303,11 @@ spec:
     image: "ghcr.io/my-org/my-agent:latest"
     image_pull_policy: IfNotPresent  # Always | IfNotPresent | Never
     isolation: docker
+
+  # Run the image's own bootstrap.py (Step 2). Without this, the orchestrator
+  # injects its standard bootstrap and /agent/bootstrap.py never runs.
+  advanced:
+    bootstrap_path: "/agent/bootstrap.py"
 
   task:
     instruction: |

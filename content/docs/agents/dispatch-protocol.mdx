@@ -137,7 +137,7 @@ The orchestrator scrubs sensitive environment variables (like `AEGIS_TOKEN`, `OP
 ### Resource Constraints
 
 - **Timeout**: The orchestrator enforces a hard timeout for each dispatch.
-- **Output Capping**: `bootstrap.py` truncates `stdout`/`stderr` to a maximum size (default 512 KB) to prevent memory exhaustion and large log flooding.
+- **Output Capping**: `bootstrap.py` truncates `stdout`/`stderr` to the dispatch's `max_output_bytes` to prevent memory exhaustion and large log flooding. `cmd.run` sends 1,048,576 bytes (1 MiB) unless the call gives its own `max_output_bytes`.
 - **Concurrency**: By default, only one `cmd.run` can be in-flight per execution.
 
 ---

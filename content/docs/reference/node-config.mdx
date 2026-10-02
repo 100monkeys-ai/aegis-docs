@@ -524,11 +524,12 @@ Optional. Controls runtime provider selection strategy.
 | Key                 | Type   | Default        | Description                                                                 |
 | ------------------- | ------ | -------------- | --------------------------------------------------------------------------- |
 | `strategy`          | enum   | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
-| `default_provider`  | string | null           | Provider to use when no preference is specified                             |
+| `default_provider`  | string | null           | Must name a provider in `spec.llm_providers`, or the configuration is refused. It does not choose a provider: each alias is resolved by `strategy` |
 | `fallback_provider` | string | null           | Provider to use if the primary fails                                        |
 | `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt. |
 | `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
 | `llm_overall_timeout_secs` | u64 | `30` | Wall-clock budget in seconds for one model call on an alias, covering every retry and the one `fallback_provider` attempt; when it elapses the call fails with `upstream timeout after <n>s` |
+| `llm_attempt_timeout_secs` | u64 | absent (no bound) | Bound in seconds on one attempt of a model call. An attempt with no answer when it elapses is abandoned and retried like an HTTP 408, counted against `max_retries` and inside `llm_overall_timeout_secs`. Must be positive and not above `llm_overall_timeout_secs`. A provider's HTTP 400 is never retried: the call fails at once with the provider's message |
 
 ---
 
