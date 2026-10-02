@@ -98,7 +98,9 @@ WORKDIR /agent
 COPY bootstrap.py .
 COPY output_schema.json .
 
-CMD ["python", "/agent/bootstrap.py"]
+# No CMD: the orchestrator replaces the container's command. It runs
+# /agent/bootstrap.py only when spec.advanced.bootstrap_path names it
+# (Option B, under Step 4).
 ```
 
 ```bash

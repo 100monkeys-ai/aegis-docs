@@ -117,6 +117,19 @@ For example, with the allowlist above:
 | `cmd.run {command:"bash", args:["-c","rm -rf /"]}` | Rejected — `bash` not a key in allowlist |
 | `cmd.run {command:"python", args:["-m","pytest"]}` | Allowed — `-m` is in `python` list |
 
+### The arguments of a call
+
+| Field | Shape | Default |
+|---|---|---|
+| `command` | string, required | — |
+| `args` | array of strings, such as `["-c", "env"]` | `[]` |
+| `cwd` | string | `/workspace` |
+| `env_additions` | object of string values, such as `{"INTENT_INPUTS": "{\"text\": \"hello\"}"}`; number and boolean values are taken as their text | `{}` |
+| `timeout_secs` | whole number of seconds | `600` |
+| `max_output_bytes` | whole number of bytes | `1048576` |
+
+`env_additions` is an object, not a JSON string. When `args` or `env_additions` arrives as a string holding the JSON of the right shape, the orchestrator decodes it and uses it. Any other shape, such as an `args` member that is not a string or an `env_additions` value that is an array, is refused before dispatch with a tool error that names the field and what was received, so the agent can correct the call. No argument is dropped in silence. An absent or `null` optional field takes its default.
+
 ### Receiving the result
 
 The agent receives the subprocess result as a tool result message in its LLM context. The message includes `exit_code`, `stdout`, and `stderr`. If `exit_code` is non-zero and the agent's `execution.validation.system.must_succeed` is `true`, the iteration is marked as failed and the refinement loop begins.

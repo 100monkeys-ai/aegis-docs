@@ -52,6 +52,8 @@ The `ExecutionSupervisor` drives the 100monkeys iterative refinement strategy. W
    - Score < threshold, max iterations reached → `IterationStatus::Failed` → execution fails.
    - Hard timeout hit → execution cancelled.
 
+A bootstrap that exits non-zero fails its iteration with its stderr as the error, and the next iteration starts; when every iteration fails, the execution ends failed. `AEGIS_KEEP_CONTAINER` only keeps the failed container for inspection.
+
 ### Iteration State Machine
 
 ```text

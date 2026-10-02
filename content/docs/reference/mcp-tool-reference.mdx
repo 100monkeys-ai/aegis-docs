@@ -1113,7 +1113,7 @@ The `status` field upon completion will be one of `completed`, `failed`, or `can
 
 ### `aegis.workflow.cancel`
 
-Cancel a running workflow execution.
+Cancel a workflow execution. An open run is asked to cancel; when Temporal no longer runs the execution, its record is ended as `cancelled`. A record already terminal is left as it is.
 
 **Access:** User
 

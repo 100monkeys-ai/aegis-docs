@@ -25,6 +25,7 @@ The `spec.task.prompt_template` field in an agent manifest is rendered once per 
 |----------|------|-------------|
 | `{{instruction}}` | string | The agent's `spec.task.instruction` field |
 | `{{input}}` | string | The execution input provided by the caller |
+| `{{intent}}` | string | The caller's intent; in a workflow, the state's `intent:`, else the workflow's intent |
 | `{{iteration_number}}` | integer | Current iteration count (1-indexed) |
 | `{{previous_error}}` | string | Error message from the previous iteration, if any |
 | `{{context}}` | string | Concatenated context attachment strings |
@@ -58,6 +59,8 @@ spec:
 
   {{/if}}{{#if input}}Input: {{input}}{{/if}}
   ```
+
+- In a workflow Agent state the Blackboard's keys are also available by name, except `input` and `intent`, which are always the state's own: `{{input}}` is the state's rendered `input:` block, never the workflow's input object.
 
 ---
 

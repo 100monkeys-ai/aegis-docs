@@ -639,6 +639,8 @@ List invoices for the current user.
 
 Returns the model a call on a model alias is sent to, read from the node's provider registry, the one every agent's model call is routed through. A caller outside the orchestrator uses it to select the same model the node's alias table names. The answer carries no endpoint, header or key.
 
+The route accepts an `aegis_*` API key as well as a signed-in user's JWT, and answers both the same.
+
 **Path parameters:**
 
 | Parameter | Description                                      |
@@ -649,7 +651,7 @@ Returns the model a call on a model alias is sent to, read from the node's provi
 
 | Header          | Required | Description |
 | --------------- | -------- | ----------- |
-| `Authorization` | ✓        | Bearer JWT  |
+| `Authorization` | ✓        | Bearer JWT, or an `aegis_*` API key |
 
 **Response `200`:**
 
@@ -661,7 +663,7 @@ Returns the model a call on a model alias is sent to, read from the node's provi
 
 | HTTP  | Body                                       | Cause                                                                    |
 | ----- | ------------------------------------------ | ------------------------------------------------------------------------ |
-| `401` | `{"error": "Authentication required"}`     | No authenticated identity, including a node configured without `spec.iam` |
+| `401` | `{"error": "Authentication required"}`     | No valid JWT or API key, or a revoked or expired key, including a node configured without `spec.iam` and no key |
 | `404` | `{"error": "Model alias not configured"}`  | The node maps no model to that alias                                     |
 
 ---

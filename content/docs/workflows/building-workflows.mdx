@@ -547,7 +547,7 @@ For the complete field specification and validation rules, see the [Workflow Man
 
 When a workflow contains backward transitions -- for example, a validation state that routes back to a code-generation state on failure -- the FSM can enter an unbounded retry loop if the upstream state never produces acceptable output. Two fields prevent this:
 
-- **`max_state_visits`** (per state, default `5`, ceiling `20`): limits how many times the FSM can enter a given state. Once exceeded, the workflow terminates.
+- **`max_state_visits`** (per state, default `5`, ceiling `20`): limits how many times the FSM can enter a given state. Once exceeded, the workflow execution ends `failed` with the reason `State "<name>" exceeded max_state_visits limit of <n> (<visits> visits)`.
 - **`max_total_transitions`** (workflow level, default `50`, ceiling `100`): limits the total number of state-to-state transitions across the entire execution.
 
 Set these values based on the expected retry depth of your workflow. Lower values are appropriate for pipelines where retries are unlikely to succeed after a few attempts; higher values suit workflows with legitimate multi-pass refinement.

@@ -413,6 +413,8 @@ Agent manifests reference **model aliases**, not provider-specific model names. 
 | `smart`   | High-capability model (complex reasoning)         |
 | `cheap`   | Cost-optimized model                              |
 | `local`   | Local-only model (air-gapped)                     |
+| `judge`   | The built-in judge agents that score an iteration's output |
+| `tool-judge` | The inner-loop judge of tool calls, `tool-call-policy-judge` |
 
 ### How It Works
 
@@ -490,7 +492,7 @@ Required array. At least one entry with at least one model is required.
 | Key                           | Type     | Required | Default | Description                                                                                                                                           |
 | ----------------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`                        | string   | ✅       | —       | Unique provider name                                                                                                                                  |
-| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `ollama` \| `openai-compatible`                                                                                            |
+| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `gemini` \| `ollama` \| `openai-compatible`                                                                                            |
 | `endpoint`                    | string   | ✅       | —       | API endpoint URL                                                                                                                                      |
 | `api_key`                     | string   | ❌       | null    | API key. Supports `env:` and `secret:` prefixes.                                                                                                      |
 | `headers`                     | map      | ❌       | null    | Header name to value, sent on every request beside `Authorization` by the `openai` and `openai-compatible` adapters. A header named `authorization` (any letter case) is refused at validation. See [Request Headers](/docs/deployment/llm-providers#request-headers). |
@@ -509,6 +511,7 @@ Required array. At least one entry with at least one model is required.
 | ------------------- | --------------------------------------------- | ---------------- |
 | `openai`            | OpenAI API                                    | Yes              |
 | `anthropic`         | Anthropic API                                 | Yes              |
+| `gemini`            | Google Gemini API                             | Yes              |
 | `ollama`            | Local Ollama server                           | No               |
 | `openai-compatible` | LM Studio, vLLM, or any OpenAI-compatible API | Depends          |
 
@@ -525,6 +528,7 @@ Optional. Controls runtime provider selection strategy.
 | `fallback_provider` | string | null           | Provider to use if the primary fails                                        |
 | `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt. |
 | `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
+| `llm_overall_timeout_secs` | u64 | `30` | Wall-clock budget in seconds for one model call on an alias, covering every retry and the one `fallback_provider` attempt; when it elapses the call fails with `upstream timeout after <n>s` |
 
 ---
 

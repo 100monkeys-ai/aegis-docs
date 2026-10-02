@@ -442,6 +442,8 @@ In this example, when the workflow completes, the engine renders each template v
 | `input` | string | | Handlebars template rendered as the agent's task input. Supports `{{intent}}`, `{{input.KEY}}`, `{{STATE.output}}`, `{{blackboard.KEY}}`, `{{state.feedback}}`. |
 | `isolation` | `inherit` \| `firecracker` \| `docker` \| `process` | | Override isolation mode. Default: `inherit` (from node config). |
 
+When the state's agent declares `spec.input_schema`, the state's rendered input is validated against it before the agent starts. The rendered input is text; text that is a JSON object is validated as that object. For an agent that requires an object, render the input as JSON with the `json` helper in triple braces, so it is not HTML-escaped: `input: '{"message": {{{json input.message}}} }'`. A plain string is refused with "Input validation failed: the workflow state's input is a string, and the agent's input_schema wants an object; render the state's input as a JSON object".
+
 When the agent completes, the Blackboard is updated under the state name:
 
 ```json
@@ -502,6 +504,8 @@ The signal payload is available as `{{human.feedback}}` in transition `feedback`
 | `weight` | number | | `1.0` | Weight for consensus calculation. |
 | `timeout_seconds` | integer | | `60` | Per-agent execution timeout in seconds. |
 | `poll_interval_ms` | integer | | `500` | Polling interval in milliseconds. |
+
+When an agent of the state declares `spec.input_schema`, the state's rendered input is validated against it before the agent starts. The rendered input is text; text that is a JSON object is validated as that object. For an agent that requires an object, render the input as JSON with the `json` helper in triple braces, so it is not HTML-escaped: `input: '{"message": {{{json input.message}}} }'`. A plain string is refused with "Input validation failed: the workflow state's input is a string, and the agent's input_schema wants an object; render the state's input as a JSON object".
 
 #### `consensus`
 

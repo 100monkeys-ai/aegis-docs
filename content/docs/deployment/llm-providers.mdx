@@ -26,7 +26,7 @@ Credential resolution happens in the orchestrator. The agent process never recei
 
 ### Standard Aliases
 
-AEGIS defines five conventional aliases. You can map any of these (or create your own) in your node config:
+AEGIS defines seven conventional aliases. You can map any of these (or create your own) in your node config:
 
 | Alias | Intent | Typical Mapping |
 |-------|--------|-----------------|
@@ -35,6 +35,8 @@ AEGIS defines five conventional aliases. You can map any of these (or create you
 | `smart` | Maximum capability for complex tasks | GPT-4o, Claude Sonnet, deepseek-coder-v2 |
 | `cheap` | Minimize API cost | GPT-4o-mini, Ollama local models |
 | `local` | Air-gapped / zero API cost | Any Ollama model |
+| `judge` | The built-in judge agents that score an iteration's output | A reasoning model |
+| `tool-judge` | The inner-loop judge of tool calls, `tool-call-policy-judge` | The model `judge` names |
 
 ---
 
@@ -82,6 +84,7 @@ spec:
   llm_providers:
     - name: "openai"
       type: "openai"
+      endpoint: "https://api.openai.com/v1"
       api_key: "env:OPENAI_API_KEY"
       models:
         - alias: "default"
@@ -102,20 +105,7 @@ spec:
           context_window: 128000
 ```
 
-For Azure OpenAI, add `base_url` and `api_version`:
-
-```yaml
-    - name: "azure-openai"
-      type: "openai"
-      api_key: "env:AZURE_OPENAI_KEY"
-      base_url: "https://my-resource.openai.azure.com/openai/deployments/gpt-4o"
-      api_version: "2024-02-01"
-      models:
-        - alias: "default"
-          model: "gpt-4o"
-          capabilities: ["code", "reasoning"]
-          context_window: 128000
-```
+A provider has no `base_url` or `api_version` field: `endpoint` is the base URL every request to the provider is sent to, and it is required for every provider type.
 
 ### Anthropic
 
@@ -124,6 +114,7 @@ spec:
   llm_providers:
     - name: "anthropic"
       type: "anthropic"
+      endpoint: "https://api.anthropic.com/v1"
       api_key: "env:ANTHROPIC_API_KEY"
       models:
         - alias: "default"
@@ -142,13 +133,13 @@ spec:
 
 ### OpenAI-Compatible Providers
 
-Any provider that exposes an OpenAI-compatible API (e.g., vLLM, LM Studio, Together AI) can be used with `type: "openai"` plus a custom `base_url`:
+Any provider that exposes an OpenAI-compatible API (e.g., vLLM, LM Studio, Together AI) can be used with `type: "openai"` and its own `endpoint`. `type: "openai-compatible"` uses the same adapter and counts as a local provider for the [selection strategy](#selection-strategy):
 
 ```yaml
     - name: "together"
       type: "openai"
+      endpoint: "https://api.together.xyz/v1"
       api_key: "env:TOGETHER_API_KEY"
-      base_url: "https://api.together.xyz/v1"
       models:
         - alias: "cheap"
           model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
@@ -196,11 +187,14 @@ spec:
     retry_delay_ms: 1000         # Delay between retries
 ```
 
-| Strategy | Behavior |
+| Strategy | When two enabled providers map the same alias, the alias goes to |
 |----------|----------|
-| `prefer-local` | Use the local provider if it defines the requested alias; fall back to cloud providers |
-| `round-robin` | Distribute requests across providers that define the alias |
-| `failover` | Always use `default_provider`; switch to next provider only on error |
+| `prefer-local` (default) | A local provider (`ollama`, `openai-compatible`) over a cloud one (`openai`, `anthropic`, `gemini`) |
+| `prefer-cloud` | A cloud provider over a local one |
+| `cost-optimized` | The model with the lower `cost_per_1k_tokens` |
+| `latency-optimized` | As `prefer-local` |
+
+Otherwise the provider listed first keeps the alias. Each alias is resolved to one provider and model when the node starts.
 
 A model answer with no text and no tool call is not returned to the agent as its output: it counts as a failed attempt (`empty generation: model '<model>' on alias '<alias>' returned no text and no tool call`) and is retried within `max_retries`, then tried once on `fallback_provider` when one is set. When every attempt is spent, the error reaches the agent and fails the iteration.
 
@@ -238,9 +232,9 @@ The built-in agent templates name four aliases, so a node that deploys them maps
 | `tool-judge` | `tool-call-policy-judge`, the inner-loop tool judge that `hello-world`, the agent creator and the workflow creator's validator name in `tool_validation` |
 | `default` | `skill-validator` |
 
-An alias the node does not map fails every call made on it with `Model alias '<alias>' not found`. The configuration `aegis init` writes maps `default`, `smart` and `judge`; add a `tool-judge` entry to a provider's `models` before running agents that `tool-call-policy-judge` judges, or each of their judged tool calls is refused.
+An alias the node does not map fails every call made on it with `Model alias '<alias>' not found`. The configuration `aegis init` writes maps `default`, `smart`, `judge` and `tool-judge` on the provider you choose, and `smart`, `judge` and `tool-judge` on each additional provider it adds; `tool-judge` is always on the same model as `judge`.
 
-Any authenticated caller can read which model an alias resolves to with [`GET /v1/llm/aliases/{alias}`](/docs/reference/rest-api#model-aliases).
+Any caller holding a JWT or an `aegis_*` API key can read which model an alias resolves to with [`GET /v1/llm/aliases/{alias}`](/docs/reference/rest-api#model-aliases).
 
 ---
 
@@ -279,10 +273,9 @@ Running executions continue using the provider that was active when they started
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | Yes | Internal identifier for the provider. |
-| `type` | `openai` \| `anthropic` \| `ollama` | Yes | Provider adapter to use. Use `openai` for any OpenAI-compatible API. |
+| `type` | `openai` \| `anthropic` \| `gemini` \| `ollama` \| `openai-compatible` | Yes | Provider adapter to use. `openai` and `openai-compatible` share the OpenAI adapter; `openai-compatible` counts as local for the selection strategy. |
 | `api_key` | string | Except Ollama | API key value or `env:VAR_NAME` reference. Never hardcode keys. |
-| `endpoint` / `base_url` | string | Ollama, Azure | Override the default API endpoint. |
-| `api_version` | string | Azure only | API version string for Azure OpenAI. |
+| `endpoint` | string | Yes | The API base URL requests are sent to. An empty string selects the type's default URL, such as `https://api.openai.com/v1` for `openai` and `http://localhost:11434` for `ollama`. |
 | `headers` | map of string to string | No | Headers sent on every request beside `Authorization`, by the `openai` and `openai-compatible` adapters. A header named `authorization` is refused. See [Request Headers](#request-headers). |
 
 ### Model Entry Fields

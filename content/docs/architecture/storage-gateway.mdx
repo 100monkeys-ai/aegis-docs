@@ -312,6 +312,8 @@ For example, in a code-generation workflow:
 2. The workflow transitions to a build-and-test state, which launches a container to compile and run tests.
 3. Both the agent and the container mount the **same** workspace volume — the build container sees the files the agent wrote.
 
+An Agent state's container mounts the workflow's workspace read-write at `/workspace`. A volume the agent's manifest declares at the same path is not created for that state, so `fs.*` tools, `cmd.run` and every later state, ContainerRun included, see one volume. A judge of that agent mounts it read-only.
+
 Because the volume is owned by the workflow execution (not by any individual agent execution), it is not cleaned up when the first agent finishes. It remains available until the entire workflow completes, at which point the orchestrator garbage-collects it automatically.
 
 Persistent volumes, by contrast, survive indefinitely and are managed through the volume management API. They are useful for user workspaces that should retain files across multiple independent workflow runs.

@@ -110,7 +110,7 @@ image_tag: "0.1.0-pre-alpha"
 # Array of LLM provider configurations. At least one entry is required.
 llm_providers:
   - name: openai-primary # Unique provider name on this node. Required.
-    type: openai # openai | anthropic | ollama | openai-compatible. Required.
+    type: openai # openai | anthropic | gemini | ollama | openai-compatible. Required.
     endpoint: "https://api.openai.com/v1" # API endpoint URL. Required.
     api_key: "env:OPENAI_API_KEY" # Supports env: and secret: prefixes.
     enabled: true # Default: true
@@ -748,7 +748,7 @@ Required array. At least one entry with at least one model is required.
 | Key                           | Type     | Required | Default | Description                                                |
 | ----------------------------- | -------- | -------- | ------- | ---------------------------------------------------------- |
 | `name`                        | string   | ✅       | —       | Unique provider name                                       |
-| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `ollama` \| `openai-compatible` |
+| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `gemini` \| `ollama` \| `openai-compatible` |
 | `endpoint`                    | string   | ✅       | —       | API endpoint URL                                           |
 | `api_key`                     | string   | ❌       | null    | API key. Supports `env:` and `secret:`.                    |
 | `headers`                     | map      | ❌       | null    | Header name to value, sent on every request beside `Authorization` (`openai` and `openai-compatible` only). A header named `authorization` is refused. See [Request Headers](/docs/deployment/llm-providers#request-headers). |
@@ -772,6 +772,7 @@ Optional. Controls runtime provider selection strategy.
 | `fallback_provider` | string | null           | Provider to use if the primary fails                                        |
 | `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt. |
 | `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
+| `llm_overall_timeout_secs` | u64 | `30` | Wall-clock budget in seconds for one model call on an alias, covering every retry and the one `fallback_provider` attempt; when it elapses the call fails with `upstream timeout after <n>s` |
 
 ---
 

@@ -69,8 +69,10 @@ The Glass Lab panel shows a four-stage progress view as the pipeline runs:
 ## How It Works
 
 Execute mode runs a built-in four-state pipeline behind the scenes. The Zaru client uses
-`aegis.workflow.wait` (aliased as `aegis.execute.wait`) to block server-side until the
-pipeline reaches a terminal state, rather than polling `aegis.execute.status` in a loop.
+`aegis.workflow.wait` (aliased as `aegis.execute.wait`) to wait server-side for the pipeline,
+rather than polling `aegis.execute.status` in a loop. One call waits at most 45 seconds; if
+the pipeline is still running then, the result says so (`still_running: true`) and repeating
+the same call continues the wait until the pipeline reaches a terminal state.
 
 | Stage | What happens |
 |---|---|
@@ -86,8 +88,11 @@ pipeline reaches a terminal state, rather than polling `aegis.execute.status` in
 | Language | Default | Container image | File extension |
 |---|---|---|---|
 | Python | Yes | `python:3.11-slim` | `.py` |
-| JavaScript | No | `node:20-slim` | `.js` |
-| Bash | No | `ubuntu:22.04` | `.sh` |
+| JavaScript | No | `node:20-alpine` | `.js` |
+| Bash | No | `python:3.11-slim` | `.sh` |
+
+Each language's code runs in the image of its executor agent's runtime, the image the code
+was written and tested in.
 
 Python is used when no language is specified. To request a specific language, mention it in
 your intent: "write a JavaScript function that…"

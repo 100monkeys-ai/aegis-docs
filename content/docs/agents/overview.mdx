@@ -221,20 +221,26 @@ Specify the model alias in your manifest (for example in semantic validation set
 In `aegis-config.yaml`, the node operator maps aliases to providers:
 
 ```yaml
-llm:
-  providers:
-    - name: openai-gpt4o
+spec:
+  llm_providers:
+    - name: openai
       type: openai
+      endpoint: "https://api.openai.com/v1"
       api_key: "env:OPENAI_API_KEY"
-      model: gpt-4o
-    - name: claude-sonnet-4-5
+      models:
+        - alias: default
+          model: gpt-4o
+          capabilities: [chat, code, reasoning]
+          context_window: 128000
+    - name: anthropic
       type: anthropic
+      endpoint: "https://api.anthropic.com/v1"
       api_key: "env:ANTHROPIC_API_KEY"
-      model: claude-sonnet-4-5
-  aliases:
-    default: openai-gpt4o
-    fast: claude-sonnet-4-5
-    reasoning: openai-gpt4o
+      models:
+        - alias: fast
+          model: claude-sonnet-4-5
+          capabilities: [chat, code]
+          context_window: 200000
 ```
 
 To swap the model backing the `default` alias for all agents on the node, change the alias mapping in config and restart the daemon — no manifest changes required.

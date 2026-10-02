@@ -107,6 +107,10 @@ The protocol operates as a loop that continues until the orchestrator issues a `
 5. Once the LLM produces a final text response, the orchestrator responds with `type: "final"`.
 6. `bootstrap.py` prints the content and exits.
 
+If a command cannot be started because its `cwd` does not exist or is not a directory, `bootstrap.py` reports `exit_code` 127 when the `cwd` is missing and 126 otherwise, with a `stderr` beginning `[AEGIS] cannot run command:`; the model receives that result like any other and the loop goes on.
+
+A generate request the orchestrator received but did not answer within the agent's `spec.execution.llm_timeout_seconds` is not re-sent; `bootstrap.py` exits 1 with `Error: no answer from <url> within <n> s (AEGIS_LLM_TIMEOUT_SECONDS)`.
+
 ---
 
 ## Security and Policy Enforcement
