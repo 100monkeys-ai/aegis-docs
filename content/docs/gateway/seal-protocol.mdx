@@ -264,15 +264,31 @@ For high-assurance deployments, run with both defenses enabled. For low-latency 
 
 ## Error Codes
 
-SEAL errors are returned as structured JSON with a numeric code in the response body. The HTTP status maps loosely to the code range; clients should switch on the code, not the status.
+These numeric codes are the SEAL Gateway's own. The gateway answers a SEAL refusal on its invocation endpoints (`POST /v1/invoke` and `POST /v1/seal/invoke` on the gateway) with a numeric code in this body:
 
 ```json
 {
-  "code": 2001,
-  "error": "tool 'fs.delete' is denied by SecurityContext 'research-safe'",
-  "request_id": "9b3a1c2e-..."
+  "protocol": "seal/v1",
+  "status": "error",
+  "error": {
+    "code": 2001,
+    "message": "tool denied: fs.delete",
+    "timestamp": "2026-10-04T12:00:00+00:00",
+    "request_id": "c41d7e5a-2f63-4b9e-8a10-5d3e9f7b2c64"
+  }
 }
 ```
+
+The HTTP status follows the code's range: `401` for `1001` to `1006`, `403` for the `2xxx` codes, and `400` for `1000` and the `3xxx` codes. Switch on `error.code`, not on the status. A failure that is not a SEAL refusal, such as a database error, is answered with a plain `{"error": "<text>"}` body instead.
+
+<Callout type="info">
+  The AEGIS orchestrator's own `POST /v1/seal/invoke` does not use these
+  numeric codes. It answers a refused tool call with a string code, such as
+  `TOOL_NOT_ALLOWED` or `INVALID_ARGUMENTS`, in `error.code`; see [Built-in
+  Tools: Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors).
+  Check which of the two you are calling: the gateway listens on its own port
+  (`8089` by default), the orchestrator on `8080`.
+</Callout>
 
 ### 1xxx — Envelope / Wire Errors
 
@@ -281,7 +297,7 @@ SEAL errors are returned as structured JSON with a numeric code in the response 
 | `1000` | `MALFORMED_ENVELOPE` | Envelope structure is invalid or required fields are missing. |
 | `1001` | `INVALID_SIGNATURE` | Ed25519 signature is malformed or unparseable. |
 | `1002` | `SIGNATURE_VERIFICATION_FAILED` | Signature parsed but cryptographic verification failed. |
-| `1003` | `TOKEN_EXPIRED` | JWT `exp` is in the past, or envelope timestamp is outside the ±30s window. |
+| `1003` | `TOKEN_EXPIRED` | JWT `exp` is in the past, the envelope timestamp is outside the ±30s window, or the envelope's `jti` was already seen. |
 | `1004` | `TOKEN_VERIFICATION_FAILED` | JWT signature is invalid or claims are malformed. |
 | `1005` | `SESSION_NOT_FOUND` | No active session exists for the presented identity. |
 | `1006` | `SESSION_INACTIVE` | Session exists but is in `Expired` or `Revoked` state. |
@@ -298,13 +314,13 @@ SEAL errors are returned as structured JSON with a numeric code in the response 
 | `2005` | `POLICY_VIOLATION_RATE_LIMIT_EXCEEDED` | Capability rate limit reached. |
 | `2006` | `POLICY_VIOLATION_NO_MATCHING_CAPABILITY` | No capability glob matched the requested tool (default deny). |
 
-### 3xxx — Execution Errors
+### 3xxx — Attestation Errors
 
 | Code | Name | Description |
 |---|---|---|
-| `3000` | `EXECUTION_WORKLOAD_VERIFICATION_FAILED` | Workload identity could not be verified by the runtime. |
-| `3001` | `EXECUTION_SCOPE_NOT_FOUND` | The requested context name does not exist. |
-| `3002` | `EXECUTION_FAILED` | General execution failure (upstream tool error, runtime fault). |
+| `3000` | `ATTESTATION_WORKLOAD_VERIFICATION_FAILED` | Workload identity could not be verified. |
+| `3001` | `ATTESTATION_SCOPE_NOT_FOUND` | The token's security context does not match the one requested. |
+| `3002` | `ATTESTATION_FAILED` | Attestation failed for another reason. |
 
 ---
 

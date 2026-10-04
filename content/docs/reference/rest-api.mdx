@@ -305,7 +305,9 @@ See [SEAL Protocol](/docs/gateway/seal-protocol) for the full attestation flow.
 
 SEAL-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through the orchestrator proxy. The body is a `SealEnvelope` containing a signed MCP tool call.
 
-`POST /v1/seal/invoke` is the spec-compliant path. `POST /v1/invoke` is also registered as a convenience alias and remains fully functional.
+The orchestrator registers this path only; it has no `/v1/invoke` alias. (The standalone SEAL Gateway serves both `/v1/invoke` and `/v1/seal/invoke` on its own port.)
+
+A refused or failed call is answered with a status other than 2xx and a body `{"protocol":"seal/v1","request_id":"<uuid>","status":"policy_violation|error","error":{"code","message","context","tool"}}`. Every code, its HTTP status, what it means and what to do about it are listed in [Built-in Tools: Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors). A `429` also carries `Retry-After` and the `X-RateLimit-*` headers.
 
 See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths and wire format.
 

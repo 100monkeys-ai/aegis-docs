@@ -75,6 +75,39 @@ A workflow's result carries `current_state` in place of `iteration_count`. To ke
 
 ---
 
+## When AEGIS Refuses a Tool Call
+
+Zaru's MCP server forwards the `aegis.*` tools to AEGIS. When AEGIS refuses such a call or cannot complete it, the client gets an ordinary tool result with `isError: true`, not a JSON-RPC error. The result has one text item holding a JSON object:
+
+```json
+{
+  "error": {
+    "code": "INVALID_ARGUMENTS",
+    "message": "Invalid tool arguments: required field 'execution_id' is missing or null for tool 'aegis.task.status'"
+  },
+  "request_id": "3f9c2a71-5b8e-4d0a-9c1e-7a2b6d4e8f10"
+}
+```
+
+| Field                 | Meaning |
+| --------------------- | ------- |
+| `error.code`          | AEGIS's code for the refusal, from [Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors), or `invoke_failed` (below). |
+| `error.message`       | For a refusal of your call, AEGIS's own message: what was refused and why. For `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE` and `SERVICE_UNAVAILABLE`, the fixed sentence of that table, never the failure's detail. |
+| `request_id`          | AEGIS's id for the refused call. Quote it when you report the failure: it lets an operator find what happened. |
+| `retry_after_seconds` | Present on `RATE_LIMIT_EXCEEDED` when AEGIS said how long to wait: the seconds to wait before calling again. |
+
+The server does not repeat a refused call, apart from the session renewal below. A policy refusal is deterministic: the same call gets the same answer, so change the call instead of repeating it.
+
+**The session is renewed by the server.** The server keeps a SEAL session with AEGIS for each user. When AEGIS answers `401`, meaning the session or the envelope is no longer valid, the server attests again and sends the call once more. If AEGIS answers the second call `401` as well, the result carries AEGIS's code with the message "The session with AEGIS could not be renewed. Try the call again."
+
+**`invoke_failed`.** An answer the server cannot read as one of AEGIS's refusals comes back with the code `invoke_failed` and the message `AEGIS invoke failed: <HTTP status>`. A session the server could not start comes back as `invoke_failed` with `AEGIS attestation failed: <HTTP status>`.
+
+**Not a tool result.** A call AEGIS does not answer at all, because it timed out or AEGIS could not be reached, still fails as a JSON-RPC error. When the server cannot read AEGIS's tool list, `tools/list` fails as a JSON-RPC error with the message `AEGIS tool discovery failed: <HTTP status>`.
+
+The errors of the tools the server handles itself (`zaru.chat`, `zaru.operator.escalate`, `zaru.operator.release`) are listed with each tool below.
+
+---
+
 ## Zaru Client Tools — All Modes
 
 These five tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.

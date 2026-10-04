@@ -343,8 +343,7 @@ message InvokeToolResponse {
 - `payload` is a standard MCP JSON-RPC `call_tool` request serialized to bytes.
 - `signature` must be the Ed25519 signature over `payload`, produced with the ephemeral private key registered during `AttestAgent`.
 - The orchestrator verifies the signature, checks the `security_token`, evaluates the SecurityContext policy, then routes the call to the appropriate tool server.
-- Available over REST at `POST /v1/seal/invoke` (spec-compliant path) and `POST /v1/invoke` (convenience alias).
-- Returns `PERMISSION_DENIED` if the SecurityContext denies the tool call.
+- In this version the orchestrator answers every `InvokeTool` call `UNIMPLEMENTED` ("SEAL InvokeTool via gRPC requires protocol and timestamp fields not present in this protobuf version; use the HTTP SEAL endpoint"). Call `POST /v1/seal/invoke` over REST instead; its refusals are listed in [Built-in Tools: Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors).
 
 ---
 

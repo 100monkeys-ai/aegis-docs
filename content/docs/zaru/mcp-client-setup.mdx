@@ -183,3 +183,4 @@ During a session, say "switch to workflow mode" and the assistant will call `zar
 | **"Tool not found"** | Ensure the MCP server is connected and your API key is valid. |
 | **"Unauthorized"** | Check your API key — generate a new one from **Settings → API Keys** in the Zaru client. |
 | **"Connection refused"** | Verify the URL is exactly `https://mcp.myzaru.com/mcp/v1`. |
+| **A tool result marked as an error, holding `{"error":{"code","message"},"request_id"}`** | AEGIS refused the call. The `code` and `message` say why; see [When AEGIS Refuses a Tool Call](/docs/zaru/mcp-tools#when-aegis-refuses-a-tool-call). Quote the `request_id` when you report it. |

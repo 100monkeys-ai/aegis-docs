@@ -10,8 +10,8 @@ The AEGIS Orchestrator provides a set of native, built-in tools out of the box. 
 <Callout type="info">
   For complete input and output schemas for all built-in tools, see the [MCP
   Tool Reference](/docs/reference/mcp-tool-reference). This page documents the
-  `skip_judge` policy, argument validation, and the per-tool compiled-in
-  defaults.
+  `skip_judge` policy, argument validation, the per-tool compiled-in
+  defaults, and how a refused tool call is answered.
 </Callout>
 
 Built-in tools are divided into two main categories:
@@ -22,12 +22,13 @@ Built-in tools are divided into two main categories:
 ## Inner-Loop Judge Optimization (`skip_judge`)
 
 <Callout type="info">
-  `skip_judge` applies **only to agents executing inside the 100monkeys inner
-  loop** (i.e. calls routed through `bootstrap.py` via the Dispatch Protocol).
-  External agents calling `/v1/seal/invoke` directly are subject to SEAL
-  authentication, policy, and argument validation (see [Argument
-  Validation](#argument-validation) below) but are **never** sent to the
-  semantic judge.
+  The semantic judge runs only for a call made under a deployed agent whose
+  manifest sets `spec.execution.tool_validation`. A caller of
+  `/v1/seal/invoke` whose session belongs to no deployed agent, such as an MCP
+  server calling tools for its user, is subject to SEAL authentication, policy
+  and argument validation (see [Argument Validation](#argument-validation)
+  below) but is never sent to the judge. A call the judge rejects is refused
+  `JUDGE_REJECTED` (see [Refusals and Errors](#refusals-and-errors)).
 </Callout>
 
 When an agent manifest enables `spec.execution.tool_validation`, the orchestrator may run a **semantic judge before the tool call is dispatched**. The judge evaluates the proposed tool use and arguments, not the output of a completed tool run. This adds latency, but it can stop unsafe or incorrect actions before they reach a side effect boundary.
@@ -131,28 +132,7 @@ These defaults can be overridden per-tool in the node configuration. `skip_judge
 
 Before any tool call is dispatched — on **both** the inner-loop path and the external SEAL path — the orchestrator validates that all required parameters are present and non-null. If validation fails the call is rejected immediately with an `InvalidArguments` error; no execution target is allocated and no judge is invoked.
 
-**External SEAL callers** (`POST /v1/seal/invoke`) receive a standard MCP JSON-RPC error response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "error": {
-    "code": -32602,
-    "message": "Invalid tool arguments: required field 'manifest_yaml' is missing or null for tool 'aegis.agent.create'",
-    "data": null
-  }
-}
-```
-
-The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
-
-| Condition                              | HTTP status                 | JSON-RPC code |
-| -------------------------------------- | --------------------------- | ------------- |
-| Missing / null required argument       | `422 Unprocessable Entity`  | `-32602`      |
-| Malformed envelope / missing tool name | `400 Bad Request`           | `-32600`      |
-| Session expired or bad signature       | `401 Unauthorized`          | `-32000`      |
-| Policy violation or inactive session   | `403 Forbidden`             | `-32000`      |
-| Judge timeout or internal error        | `500 Internal Server Error` | `-32603`      |
+A caller of `POST /v1/seal/invoke` whose arguments fail this check is refused `422` with the code `INVALID_ARGUMENTS` and a message such as `Invalid tool arguments: required field 'manifest_yaml' is missing or null for tool 'aegis.agent.create'`. Every refusal of that route has the same body; see [Refusals and Errors](#refusals-and-errors).
 
 **Required parameters by tool:**
 
@@ -197,6 +177,100 @@ The full HTTP status-to-error-code mapping for `/v1/seal/invoke` is:
 | `aegis.script.update`                                                                                | `id`, `name`, `code`                            |
 
 Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`, `aegis.volume.list`, `aegis.volume.quota`, `aegis.git.list`, `aegis.script.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string. `aegis.git.list` accepts optional `page` / `limit` integers. `aegis.script.list` accepts optional `tag` and `q` filter strings.
+
+---
+
+## Refusals and Errors
+
+This section is what the orchestrator's `POST /v1/seal/invoke` answers when it refuses a tool call or cannot complete it. That is the route an MCP server or an SDK's SEAL client calls. Two other surfaces answer differently:
+
+- An agent's tool call inside its own execution loop is not answered by this route. The agent sees the refusal's text in its next iteration.
+- The standalone SEAL Gateway answers its own invocation endpoints with numeric codes; see [SEAL Protocol: Error Codes](/docs/gateway/seal-protocol#error-codes).
+
+How Zaru's MCP server passes these answers on to an MCP client is described in [When AEGIS Refuses a Tool Call](/docs/zaru/mcp-tools#when-aegis-refuses-a-tool-call).
+
+### The Error Body
+
+A refused or failed call gets an HTTP status other than 2xx and this body:
+
+```json
+{
+  "protocol": "seal/v1",
+  "request_id": "3f9c2a71-5b8e-4d0a-9c1e-7a2b6d4e8f10",
+  "status": "error",
+  "error": {
+    "code": "INVALID_ARGUMENTS",
+    "message": "Invalid tool arguments: required field 'manifest_yaml' is missing or null for tool 'aegis.agent.create'",
+    "context": null,
+    "tool": "aegis.agent.create"
+  }
+}
+```
+
+| Field           | Meaning |
+| --------------- | ------- |
+| `protocol`      | Always `seal/v1`. |
+| `request_id`    | A UUID minted for this refused call. The orchestrator writes one log line for the refusal (log target `aegis::seal::invoke`) carrying the same `request_id`, the code and the tool. |
+| `status`        | `policy_violation` when the session's security policy or the semantic judge refused the call; `error` for every other answer. |
+| `error.code`    | A stable machine code from the table below. Branch on the code, never on the message. |
+| `error.message` | A refusal's message is about your own call only: what was refused and why. An internal failure's message is a fixed sentence. |
+| `error.context` | Always `null`. |
+| `error.tool`    | The tool name your call carried, or `null` when it carried none. |
+
+**What `request_id` is for.** It ties the answer you received to the orchestrator's log line for the same call. When you report a failure, quote the `request_id`: it lets an operator find the log line. For an internal failure, that log line is the only place the detail is kept.
+
+A request body that is not a JSON SEAL envelope at all (not JSON, or missing `security_token`, `signature` or `payload`) is rejected by the HTTP layer before the route runs. It gets a plain-text 4xx and not this body.
+
+### The Codes
+
+**Session and envelope.** Every session condition is answered `401`. A client that holds a session attests again on a `401` and sends the call once more. A `403` refuses the call itself, and attesting again does not change it.
+
+| Code                          | HTTP  | What it means | What to do |
+| ----------------------------- | ----- | ------------- | ---------- |
+| `MALFORMED_ENVELOPE`          | `400` | The envelope lacks `protocol` or `timestamp`, or its payload is malformed, for example it names no tool. The message says what is missing or malformed. | Fix the envelope. Sending it again unchanged gets the same answer. |
+| `SIGNATURE_INVALID`           | `401` | The envelope's signature or the security token did not verify. | Attest again and sign with the new session's key. |
+| `ENVELOPE_REPLAYED`           | `401` | Replay protection refused the envelope: its timestamp is too old, or its nonce was already seen. | Build a new envelope with a fresh timestamp. Never resend the same bytes. |
+| `SESSION_INACTIVE`            | `401` | The security token names no active session: it is unknown, revoked or expired. | Attest again. |
+| `SESSION_EXPIRED`             | `401` | The session has expired. | Attest again. |
+| `OPERATOR_ESCALATION_EXPIRED` | `401` | The session was attested under an operator escalation, and that escalation has ended. | The operator tools need a new escalation. |
+
+**The session's policy and the judge** (`status` is `policy_violation`):
+
+| Code                       | HTTP  | What it means | What to do |
+| -------------------------- | ----- | ------------- | ---------- |
+| `TOOL_NOT_ALLOWED`         | `403` | The session's security context does not permit the tool. The message lists the tool patterns it does permit. | Use a permitted tool, or a session whose context permits this one. |
+| `TOOL_DENIED`              | `403` | The security context explicitly denies the tool. | As above. |
+| `PATH_NOT_ALLOWED`         | `403` | The path is outside the boundaries the context allows. | Use a path inside them. |
+| `PATH_TRAVERSAL`           | `403` | The path attempts to traverse out of its boundary. | Use a path without traversal. |
+| `DOMAIN_NOT_ALLOWED`       | `403` | The domain is not on the context's allowed domains, which the message lists. | Use an allowed domain. |
+| `COMMAND_NOT_ALLOWED`      | `403` | The command is not allowed by the context. | Use an allowed command. |
+| `SUBCOMMAND_NOT_ALLOWED`   | `403` | The subcommand is not allowed for that command. | Use an allowed subcommand. |
+| `POLICY_ARGUMENT_REQUIRED` | `403` | The policy requires an argument the call did not carry. The message names it. | Add the argument. |
+| `LIMIT_EXCEEDED`           | `403` | The call exceeds one of the context's limits: a timeout, the concurrent execution limit, the output size limit or the execution timeout ceiling. | Stay within the limit the message names. |
+| `RATE_LIMIT_EXCEEDED`      | `429` | Your rate limit is reached. The message names the limit and the seconds to wait. The answer carries `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (a Unix time in seconds). | Wait `Retry-After` seconds, then call again. |
+| `JUDGE_REJECTED`           | `403` | The semantic judge configured for the agent rejected the call. The message gives its score, the minimum and its reasoning. | Change the call. The same call is likely to be rejected again. |
+
+A policy refusal is deterministic: the same call in the same session gets the same answer.
+
+**Your own resources and arguments** (`status` is `error`):
+
+| Code                | HTTP  | What it means | What to do |
+| ------------------- | ----- | ------------- | ---------- |
+| `TENANT_MISMATCH`   | `403` | The call names a tenant that is not yours. The message names your tenant and the one you named. | Name your own tenant, or none. |
+| `INVALID_ARGUMENTS` | `422` | The arguments are not valid. The message says how. | Correct the arguments. |
+| `QUOTA_EXCEEDED`    | `422` | You reached one of your own limits: the volume count, storage, your tier's limits, the git binding or script limits, or the file size limit. The message names it. | Free space or resources, or raise your tier. |
+| `NOT_FOUND`         | `404` | No resource of yours has that name or id: a volume, file, git binding, script, edge, edge group or tool. The message names it as you sent it. A resource of another user or tenant is answered the same way. | Check the name or id. |
+| `CONFLICT`          | `409` | The call conflicts with the state of your resources: a duplicate name, a volume still attached, nothing to commit, or a busy git binding. | Resolve the conflict the message names. |
+| `NOT_IMPLEMENTED`   | `501` | The operation is not built yet. The message names it. | Do not retry. |
+| `EDGE_UNAVAILABLE`  | `503` | Your edge host is offline, missed its dispatch deadline or disconnected. | Bring the edge host back online, then call again. |
+
+**Internal failures** (`status` is `error`). The message is the fixed sentence below. The body never carries the failure's detail: no backend path, configuration key, database or upstream error, another tenant's identifier, or the node's tool list. The detail is written only to the orchestrator's log under the answer's `request_id`.
+
+| Code                   | HTTP  | Message | What to do |
+| ---------------------- | ----- | ------- | ---------- |
+| `INTERNAL_ERROR`       | `500` | "The request could not be completed because of an internal error." | Report the failure with its `request_id`. |
+| `UPSTREAM_UNAVAILABLE` | `502` | "A service this tool depends on did not answer. Try again in a moment." | Call again in a moment. |
+| `SERVICE_UNAVAILABLE`  | `503` | "This tool is not available right now." The tool, or a service it needs, is not configured on this node. | Ask the operator of the deployment; calling again does not help until it is configured. |
 
 ---
 

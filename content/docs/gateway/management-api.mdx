@@ -53,13 +53,18 @@ Errors return a JSON body with at minimum an `error` field:
 { "error": "spec not found" }
 ```
 
-SEAL-specific errors (returned only from the invocation endpoints, but documented here for completeness) carry a structured payload:
+SEAL refusals (returned only from the invocation endpoints, but documented here for completeness) carry a structured `error` object with a numeric code; the codes are listed in [SEAL Protocol: Error Codes](/docs/gateway/seal-protocol#error-codes):
 
 ```json
 {
-  "code": 2001,
-  "error": "tool 'fs.delete' is denied by SecurityContext 'research-safe'",
-  "request_id": "9b3a1c2e-..."
+  "protocol": "seal/v1",
+  "status": "error",
+  "error": {
+    "code": 2001,
+    "message": "tool denied: fs.delete",
+    "timestamp": "2026-10-04T12:00:00+00:00",
+    "request_id": "c41d7e5a-2f63-4b9e-8a10-5d3e9f7b2c64"
+  }
 }
 ```
 
