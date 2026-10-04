@@ -7,7 +7,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
 
-Tool count: **89** total — 84 built-in orchestrator tools + 5 Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`).
+This page lists the AEGIS orchestrator's built-in tools and five Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`); `zaru.chat`, `zaru.operator.escalate` and `zaru.operator.release` are on [MCP Tools](/docs/zaru/mcp-tools). Which tools a caller is offered depends on its security context and, in Zaru, its mode.
 
 ---
 
@@ -65,8 +65,8 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 | Zaru Chat — execute mode  | `zaru.*` + execute pipeline tools                        | See mode table below                                          |
 | Zaru Chat — workflow mode | `zaru.*` + workflow/agent design subset                  | See mode table below                                          |
 | Zaru Chat — operator mode | All tools                                                | No filtering applied; only under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) |
-| AEGIS agent inner loop    | All 83 built-in tools                                    | Subject to agent `spec.tools` allowlist and `SecurityContext` |
-| External SEAL caller      | All 83 built-in tools                                    | Filtered by `SecurityContext` only; no mode concept           |
+| AEGIS agent inner loop    | Every built-in tool                                      | Subject to agent `spec.tools` allowlist and `SecurityContext` |
+| External SEAL caller      | Every built-in tool                                      | Filtered by `SecurityContext` only; no mode concept           |
 
 See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full routing pipeline.
 

@@ -17,10 +17,10 @@ Every Zaru conversation runs in one of five modes. Modes filter the tool surface
 
 | Mode          | Tools available                                   | Purpose                                          |
 | ------------- | ------------------------------------------------- | ------------------------------------------------ |
-| **chat**      | `zaru.*` only (5 tools)                           | Conversation and planning; no platform execution |
-| **agentic**   | `zaru.*` + agent/task tools (17 tools)            | Discover and run existing agents                 |
-| **execute**   | `zaru.*` + execute pipeline tools (10 tools)      | One-shot code execution from natural language    |
-| **architect** | `zaru.*` + workflow/agent design tools (18 tools) | Design and deploy agents and workflows           |
+| **chat**      | `zaru.*` only                                     | Conversation and planning; no platform execution |
+| **agentic**   | `zaru.*` + agent/task tools                       | Discover and run existing agents                 |
+| **execute**   | `zaru.*` + execute pipeline tools                 | One-shot code execution from natural language    |
+| **architect** | `zaru.*` + workflow/agent design tools            | Design and deploy agents and workflows           |
 | **operator**  | All tools                                         | Full platform access, no filtering; only under an [operator escalation](#operator-escalation) |
 
 To initialize in a specific mode:
@@ -34,7 +34,7 @@ To switch modes mid-session, tell the assistant to switch — it calls `zaru.mod
 <Callout type="info">
   Outside of Zaru — in agent inner loops and via direct API calls — tools are
   not mode-filtered. Mode filtering is a Zaru-client concern. Inside a running
-  agent container, all 83 built-in tools are available subject to the agent's
+  agent container, every built-in tool is available subject to the agent's
   security context and `spec.tools` allowlist.
 </Callout>
 
@@ -846,7 +846,7 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 
 ### Dispatch and Filesystem Tools
 
-`cmd.run`, `fs.*` (10 tools), and `web.*` (2 tools) are available in operator mode. `cmd.run` executes a shell command inside the agent container. `fs.*` tools operate on the mounted workspace volume directly. `web.search` and `web.fetch` make outbound network calls.
+`cmd.run`, `fs.*` (9 tools), and `web.*` (2 tools) are available in operator mode. `cmd.run` executes a shell command inside the agent container. `fs.*` tools operate on the mounted workspace volume directly. `web.search` and `web.fetch` make outbound network calls.
 
 ```json
 // cmd.run
@@ -920,7 +920,7 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.system.info`              |     |     |     |     |  ✓  |
 | `aegis.system.config`            |     |     |     |     |  ✓  |
 | `cmd.run`                        |     |     |     |     |  ✓  |
-| `fs.*` (10 tools)                |     |     |     |     |  ✓  |
+| `fs.*` (9 tools)                 |     |     |     |     |  ✓  |
 | `web.*` (2 tools)                |     |     |     |     |  ✓  |
 
 ---
