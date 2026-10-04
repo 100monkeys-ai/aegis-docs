@@ -21,7 +21,7 @@ Every Zaru conversation runs in one of five modes. Modes filter the tool surface
 | **agentic**   | `zaru.*` + agent/task tools (17 tools)            | Discover and run existing agents                 |
 | **execute**   | `zaru.*` + execute pipeline tools (10 tools)      | One-shot code execution from natural language    |
 | **architect** | `zaru.*` + workflow/agent design tools (18 tools) | Design and deploy agents and workflows           |
-| **operator**  | All tools                                         | Full platform access, no filtering               |
+| **operator**  | All tools                                         | Full platform access, no filtering; only under an [operator escalation](#operator-escalation) |
 
 To initialize in a specific mode:
 
@@ -85,7 +85,7 @@ Bootstraps the session. Returns the current mode, system prompt, available tools
 
 | Parameter | Required | Default | Description                                                             |
 | --------- | -------- | ------- | ----------------------------------------------------------------------- |
-| `mode`    | No       | `chat`  | Mode to activate: `chat`, `agentic`, `execute`, `architect`, `operator` |
+| `mode`    | No       | `chat`  | Mode to activate: `chat`, `agentic`, `execute`, `architect`, or `operator` while the connection holds an [operator escalation](#operator-escalation) |
 
 ```json
 // zaru.init
@@ -181,7 +181,7 @@ The turn runs as the user the MCP connection is authenticated as, by an `aegis_`
 | ----------------- | -------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `message`         | Yes      | —                                                         | Your message for this turn, 1 to 32,768 characters                     |
 | `conversation_id` | No       | a new conversation                                        | UUID of a conversation of yours to continue, begun on the page or here |
-| `mode`            | No       | the conversation's stored mode, or `chat` for a new one   | `chat`, `agentic`, `workflow` or `execute`; a different mode changes the conversation's mode |
+| `mode`            | No       | the conversation's stored mode, or `chat` for a new one   | `chat`, `agentic`, `workflow` or `execute`, or `operator` while the connection's key holds an [operator escalation](#operator-escalation); a different mode changes the conversation's mode |
 
 ```json
 // zaru.chat
@@ -214,9 +214,62 @@ The result is a JSON object, returned as text and as structured content:
 | `conversation_not_found`  | No conversation of yours has that id                                                         |
 | `conversation_archived`   | The conversation is archived                                                                 |
 | `active_execution_exists` | A turn is already running in that conversation                                               |
-| `mode_not_available`      | `mode` is `live`, `vibecode` or `operator`, which this tool cannot run a turn in, or the call was made from inside a Zaru turn |
+| `mode_not_available`      | `mode` is `live` or `vibecode`, or `operator` without an operator escalation, or the call was made from inside a Zaru turn |
 | `inference_unavailable`   | Zaru cannot reach its model; try again in a moment                                           |
 | `turn_failed`             | The turn could not be run, or failed after it started; a turn that failed after it started keeps what it did stored |
+
+---
+
+## Operator Escalation
+
+Through Zaru's MCP server, operator mode and the operator tools are reached only by an operator escalation: an operator generates a one-time code on Zaru Web, gives it to the AI agent, and the agent presents it. Until then a connection carries the ordinary tools of its user, whatever that user's platform role, and an `aegis-system` token presented to the server is refused `401`.
+
+**Who can escalate.** A person with the `aegis:admin` or `aegis:operator` role; `aegis:readonly` generates no code. The code is redeemed by an `aegis_` API key the same person created from their ordinary Zaru sign-in ([API Keys](/docs/zaru/api-keys)). A key created in an operator session, which carries the role itself, cannot hold an escalation, and a connection authenticated by a Zaru sign-in instead of an API key cannot escalate.
+
+**Steps.**
+
+1. In Zaru Web's admin area, open **MCP escalation** and click **Generate code**. The page shows six digits once, with the time left to use them; they are not shown again.
+2. Give the six digits to the agent. It calls `zaru.operator.escalate` with them.
+3. The agent lists its tools again: the connection now carries the operator tools and `operator` mode.
+
+The page also lists your active escalations by key, role, start and expiry, each with **End now**.
+
+### `zaru.operator.escalate`
+
+Listed to every client connected with an `aegis_` API key and handled by Zaru's MCP server, which presents the code to AEGIS with the connection's own key.
+
+| Parameter | Required | Description |
+| --------- | -------- | ----------- |
+| `code`    | Yes      | The six digits shown on the **MCP escalation** page, exactly as given |
+
+```json
+// zaru.operator.escalate — 123456 is an example, not a code
+{ "code": "123456" }
+```
+
+Returns `{ aegis_role, expires_at }`: the role, `aegis:admin` or `aegis:operator`, and when the escalation ends. A refusal is a tool error whose text is `{ "error", "message" }`:
+
+| `error`                       | When |
+| ----------------------------- | ---- |
+| `invalid_code`                | The code is not six digits, matches no live code of the key's user (already used, invalidated or wrong), or the key cannot hold an escalation |
+| `code_expired`                | The code matched after its validity ended |
+| `escalation_requires_api_key` | The connection is not authenticated by an `aegis_` API key |
+| `orchestrator_unavailable`    | Zaru's MCP server could not reach AEGIS or got no usable answer |
+
+A code that is not six digits is refused by the server and never sent. Any other wrong code counts against every live code of that person, and the fifth failure invalidates them: an agent asks the person for the code and never guesses one.
+
+### `zaru.operator.release`
+
+Listed only while the connection's key holds an escalation. No parameters. Ends the escalation now and returns `{ ended_at }`; refused `escalation_not_found` when the key holds none, and `orchestrator_unavailable` as above.
+
+### What an Escalation Lasts and Carries
+
+- A code is valid once, for 5 minutes after it is generated by default; an escalation lasts 30 minutes from its redemption by default. A deployment sets both, and the failure count, in `spec.iam.operator_escalation` ([Node Configuration](/docs/reference/node-config#speciam)).
+- The escalation is held by the one API key that redeemed it. It ends at its expiry, at **End now** on the page, at `zaru.operator.release`, when the key is revoked, or when an administrator ends every escalation of that operator.
+- While it lasts, the connection's tool list is the operator surface, and `zaru.init` and `zaru.mode` offer `operator` mode. `aegis.task.list` without `agent_id` lists the most recent executions of every tenant, each with its `tenant_id`, and `aegis.task.status`, `aegis.task.logs` and `aegis.workflow.logs` read an execution of any tenant by its id. Naming another tenant in a tool's `tenant_id` argument is admitted for `aegis:admin` only.
+- A tool call that arrives after the end is refused, and the ordinary tools return at the next tool listing.
+- Every tool call made under an escalation is recorded in the platform's admin audit log under the operator's identity, with the tenant it acted on.
+- Neither tool is offered to the companion inside a Zaru Web turn: only the person holding the code begins or ends an escalation.
 
 ---
 
@@ -532,7 +585,8 @@ Returns `{ "valid": true, "errors": null }` on success or `{ "valid": false, "er
 Operator mode exposes all tools with no filtering. It includes everything from the modes above plus the tool groups below.
 
 <Callout type="info">
-  Operator mode requires authentication through the platform admin realm. System
+  Through Zaru's MCP server, operator mode is reached only by an [operator
+  escalation](#operator-escalation); a platform admin realm token is refused. System
   tools (`aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.create`,
   `aegis.workflow.update`, `aegis.workflow.promote`, `aegis.workflow.demote`)
   require operator credentials. Destructive tools (`aegis.agent.delete`,

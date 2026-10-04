@@ -633,6 +633,23 @@ List invoices for the current user.
 
 ---
 
+## Operator Escalation
+
+The routes behind an [operator escalation](/docs/zaru/mcp-tools#operator-escalation). A refusal is `{ "error": <code>, "message": <text> }`; a node without the escalation service answers `503` `unavailable`.
+
+| Route | Caller | Answer |
+| ----- | ------ | ------ |
+| `POST /v1/admin/operator-escalation-codes` | Zaru Web's stepped-up operator session: an `aegis-system` operator token whose `azp` is `zaru-client-system` and whose role is `aegis:admin` or `aegis:operator` | `201` `{ "code", "expires_at" }` with `Cache-Control: no-store`; the code is never returned again |
+| `GET /v1/admin/operator-escalations` | the same session | `200` `{ "escalations": [{ "id", "api_key_id", "aegis_role", "started_at", "expires_at" }] }`, the caller's active escalations |
+| `DELETE /v1/admin/operator-escalations/{id}` | the same session | `200` `{ "ended_at" }`; `404` `escalation_not_found` when the id is not one of the caller's active escalations |
+| `POST /v1/admin/operator-escalations/end-for-operator` | the same session, role `aegis:admin` | body `{ "system_sub" }`: ends every active escalation of that operator; `200` `{ "ended": <count> }` |
+| `POST /v1/operator-escalations` | an `aegis_` API key | body `{ "code" }`; `200` `{ "aegis_role", "expires_at" }` |
+| `DELETE /v1/operator-escalations/current` | the escalated `aegis_` API key | `200` `{ "ended_at" }`; `404` `escalation_not_found` when the key holds none |
+
+On the session's routes an API key is refused `403` `forbidden`, a token that is not such a session `403`, `aegis:readonly` included, and no token `401`. On the two API-key routes any other bearer is refused `403` `escalation_requires_api_key`, and a missing or invalid key `401`. A redemption is refused `400` `invalid_code` when no live code of the key's user matches or the key was created with an operator role of its own, and `400` `code_expired` when the code matched after its validity ended. While a key holds an active escalation, `POST /v1/api-keys/validate` answers the escalation's role as `aegis_role`, with `operator_escalation: { "expires_at" }`.
+
+---
+
 ## Model Aliases
 
 ### `GET /v1/llm/aliases/{alias}`

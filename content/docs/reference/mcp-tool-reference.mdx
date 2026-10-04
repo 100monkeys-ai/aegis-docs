@@ -50,6 +50,8 @@ registered by platform operators:
 `aegis.agent.delete`, `aegis.workflow.delete`, `aegis.workflow.remove`, `aegis.task.remove`,
 `aegis.system.info`, `aegis.system.config`
 
+Through Zaru's MCP server, a connection reaches an operator SEAL session only while its API key holds an [operator escalation](/docs/zaru/mcp-tools#operator-escalation).
+
 ---
 
 ## Tool Availability by Context
@@ -62,7 +64,7 @@ AEGIS tools are available across three distinct execution contexts. The tool set
 | Zaru Chat — agentic mode  | `zaru.*` + agent/task management subset                  | See mode table below                                          |
 | Zaru Chat — execute mode  | `zaru.*` + execute pipeline tools                        | See mode table below                                          |
 | Zaru Chat — workflow mode | `zaru.*` + workflow/agent design subset                  | See mode table below                                          |
-| Zaru Chat — operator mode | All tools                                                | No filtering applied                                          |
+| Zaru Chat — operator mode | All tools                                                | No filtering applied; only under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) |
 | AEGIS agent inner loop    | All 83 built-in tools                                    | Subject to agent `spec.tools` allowlist and `SecurityContext` |
 | External SEAL caller      | All 83 built-in tools                                    | Filtered by `SecurityContext` only; no mode concept           |
 
@@ -139,7 +141,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.
 
 ### Operator Mode
 
-All tools are available — no filtering is applied.
+All tools are available — no filtering is applied. Through Zaru's MCP server, operator mode is available only under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation).
 
 ---
 
@@ -1037,6 +1039,8 @@ Generates a Workflow manifest from a natural-language objective.
 
 Returns paginated workflow execution events.
 
+Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation), an execution of any tenant.
+
 **Access:** User
 
 **`skip_judge`:** `true`
@@ -1426,6 +1430,8 @@ Use [`aegis.task.wait`](#aegistaskwait) to block until completion.
 
 Returns the current status and output of an execution by UUID.
 
+Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) the execution may belong to any tenant; without one, another tenant's execution is not found.
+
 **Access:** User
 
 **`skip_judge`:** `true`
@@ -1440,6 +1446,7 @@ Returns the current status and output of an execution by UUID.
 {
   "execution_id": "e1f2a3b4-...",
   "agent_id": "a1b2c3d4-...",
+  "tenant_id": "u-...",
   "status": "completed",
   "iteration_count": 2,
   "last_output": "...",
@@ -1454,6 +1461,8 @@ The `status` field is one of `pending`, `running`, `completed`, `failed`, or `ca
 ### `aegis.task.list`
 
 Lists recent executions, optionally filtered by agent.
+
+Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) and without `agent_id`, the list holds the most recent executions of every tenant; with `agent_id` it stays within the caller's tenant.
 
 **Access:** User
 
@@ -1472,6 +1481,7 @@ Lists recent executions, optionally filtered by agent.
     {
       "id": "e1f2a3b4-...",
       "agent_id": "a1b2c3d4-...",
+      "tenant_id": "u-...",
       "status": "completed",
       "started_at": "2026-04-05T12:00:00Z"
     }
@@ -1530,6 +1540,8 @@ Removes a completed or failed execution record by UUID.
 ### `aegis.task.logs`
 
 Returns paginated execution events for a task by UUID.
+
+Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation), an execution of any tenant.
 
 **Access:** User
 

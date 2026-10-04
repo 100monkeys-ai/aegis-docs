@@ -92,4 +92,4 @@ const client = new AegisClient({ apiKey: "your-api-key" });
 Open **Settings → API Keys**, find the key in the list, and click **Revoke**. The key stops
 working immediately. Revocation is permanent — if you need access again, create a new key.
 
-Active sessions authenticated with a revoked key are terminated.
+Active sessions authenticated with a revoked key are terminated. Revoking a key also ends any [operator escalation](/docs/zaru/mcp-tools#operator-escalation) it holds.

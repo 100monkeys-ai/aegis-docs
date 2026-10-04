@@ -117,7 +117,7 @@ All consumer users authenticate through the shared `zaru-consumer` Keycloak real
 
 `ZaruTier` is a subscription tier — it determines the consumer's resource allocation, rate limits, and storage quotas. `AegisRole` is a platform role — it determines what administrative operations an operator may perform.
 
-Operators authenticate via the `aegis-system` Keycloak realm and carry `aegis_role` claims in their JWT. Their sessions are mapped to the `aegis-system-operator` SecurityContext, which provides access to **all** safe commands (the same set available to enterprise consumers) plus destructive and orchestrator commands that are never exposed to any consumer tier.
+Operators authenticate via the `aegis-system` Keycloak realm and carry `aegis_role` claims in their JWT. Their sessions are mapped to the `aegis-system-operator` SecurityContext, which provides access to **all** safe commands (the same set available to enterprise consumers) plus destructive and orchestrator commands that are never exposed to any consumer tier. Through Zaru's MCP server the operator surface is reached only by an [operator escalation](/docs/zaru/mcp-tools#operator-escalation), with a one-time code generated on Zaru Web's **MCP escalation** page.
 
 The three operator roles provide graduated access:
 
