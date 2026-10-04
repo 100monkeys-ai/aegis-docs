@@ -72,6 +72,7 @@ The reaper identifies orphans by listing all containers with the `aegis.managed=
 - The execution record is missing
 - The execution status is not `Running`
 - The container is not running but the execution is still marked `Running`
+- The execution is still `Running` with a running container 600 s past the bound recorded when it started; the reaper first fails the execution ([Container Cleanup Guarantees](/docs/architecture/execution-engine#container-cleanup-guarantees))
 
 Containers with `aegis.keep_container_on_failure=true` are skipped by the reaper, allowing manual debugging via `docker exec`.
 
