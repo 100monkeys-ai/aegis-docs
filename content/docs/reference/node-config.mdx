@@ -503,6 +503,7 @@ Required array. At least one entry with at least one model is required.
 | `models[].context_window`     | u32      | ✅       | —       | Max context window in tokens                                                                                                                          |
 | `models[].max_output_tokens`  | u32      | ❌       | `8192`  | Max output tokens per request. Increase for thinking-mode models.                                                                                     |
 | `models[].temperature`        | f32      | ❌       | `0.4`   | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Can be overridden per-agent via `spec.runtime.temperature`. |
+| `models[].fallback_alias`     | string   | ❌       | —       | Another alias, tried once after the provider's time limit on this alias's model, with that alias's options. Must be mapped by an enabled provider, must not be this alias, and must not itself name a fallback. See [Fallback Alias](/docs/deployment/llm-providers#fallback-alias) |
 | `models[].cost_per_1k_tokens` | f64      | ❌       | `0.0`   | Cost per 1K tokens (0.0 for free/local)                                                                                                               |
 
 #### Provider Types
@@ -525,10 +526,10 @@ Optional. Controls runtime provider selection strategy.
 | ------------------- | ------ | -------------- | --------------------------------------------------------------------------- |
 | `strategy`          | enum   | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
 | `default_provider`  | string | null           | Must name a provider in `spec.llm_providers`, or the configuration is refused. It does not choose a provider: each alias is resolved by `strategy` |
-| `fallback_provider` | string | null           | Provider to use if the primary fails                                        |
+| `fallback_provider` | string | null           | Provider tried once, on its first model and with the caller's options, after an alias's last failed retry or after a provider's time limit (HTTP 408 with code 3046), for an alias whose model entry names no `fallback_alias`. Must name a provider in `spec.llm_providers`, or the configuration is refused |
 | `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt. |
 | `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
-| `llm_overall_timeout_secs` | u64 | `30` | Wall-clock budget in seconds for one model call on an alias, covering every retry and the one `fallback_provider` attempt; when it elapses the call fails with `upstream timeout after <n>s` |
+| `llm_overall_timeout_secs` | u64 | `30` | Wall-clock budget in seconds for one chat call on an alias, such as each model call of an agent's inner loop, covering every retry and the one fallback attempt, on the alias's `fallback_alias` or on `fallback_provider`; when it elapses the call fails with `upstream timeout after <n>s`. A single-prompt generation is not bounded by it, only each of its attempts by `llm_attempt_timeout_secs` |
 | `llm_attempt_timeout_secs` | u64 | absent (no bound) | Bound in seconds on one attempt of a model call. An attempt with no answer when it elapses is abandoned and retried like an HTTP 408, counted against `max_retries` and inside `llm_overall_timeout_secs`. Must be positive and not above `llm_overall_timeout_secs`. A provider's HTTP 400 is never retried: the call fails at once with the provider's message |
 
 ---

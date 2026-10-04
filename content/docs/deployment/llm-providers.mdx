@@ -196,7 +196,36 @@ spec:
 
 Otherwise the provider listed first keeps the alias. Each alias is resolved to one provider and model when the node starts.
 
-A model answer with no text and no tool call is not returned to the agent as its output: it counts as a failed attempt (`empty generation: model '<model>' on alias '<alias>' returned no text and no tool call`) and is retried within `max_retries`, then tried once on `fallback_provider` when one is set. When every attempt is spent, the error reaches the agent and fails the iteration.
+A model answer with no text and no tool call is not returned to the agent as its output: it counts as a failed attempt (`empty generation: model '<model>' on alias '<alias>' returned no text and no tool call`) and is retried within `max_retries`, then tried once on `fallback_provider` when one is set and the alias's model entry names no `fallback_alias`. When every attempt is spent, the error reaches the agent and fails the iteration.
+
+**A provider's time limit.** When an `openai` or `openai-compatible` provider answers HTTP 408 with an error of code 3046, the answer Cloudflare Workers AI gives for a generation it ended at its own time limit, the identical request is not sent to that model again and the alias's remaining retries are skipped. The request goes once to the alias's `fallback_alias` when its model entry names one ([Fallback Alias](#fallback-alias)), otherwise once to `fallback_provider` when one is set. With neither, the call fails at once with `provider timeout: alias '<alias>': model '<model>' was ended by the provider at its time limit after <n> s (HTTP 408, code 3046); the identical request is not sent again: …`. When the fallback's own attempt fails, the error adds `; the fallback model '<model>' was tried once and failed: <error>`. Every other 408 is retried within `max_retries` as before.
+
+### Fallback Alias
+
+A model entry can name another alias of the node as its `fallback_alias`:
+
+```yaml
+      models:
+        - alias: "smart"
+          model: "<larger-model>"
+          capabilities: ["chat", "code", "reasoning"]
+          context_window: 131072
+          fallback_alias: "fast"
+        - alias: "fast"
+          model: "<smaller-model>"
+          capabilities: ["chat", "code"]
+          context_window: 131072
+          max_output_tokens: 16384
+          temperature: 0.2
+```
+
+After a provider's time limit on the alias's own model, and only then, the request is sent once to the named alias's model, with the named alias's `max_output_tokens` and `temperature` where its entry sets them and the caller's otherwise. That attempt is not retried; it is bounded by `llm_attempt_timeout_secs` and, on a chat call, falls inside `llm_overall_timeout_secs`. Its answer is returned; an answer with no text and no tool call counts as its failure, and a failure is returned naming both models. Every other failure on the alias behaves as it does without the key. An alias that names a `fallback_alias` never reaches `fallback_provider`, after its time limit or after any other failure. The orchestrator logs `Trying fallback alias: alias='<alias>', fallback_alias='<fallback>', model='<model>'` when it sends one.
+
+A fallback is one level. The node refuses to start when a `fallback_alias`:
+
+- names an alias no enabled provider maps, an empty name included: `model alias '<alias>' names fallback_alias '<fallback>', which is not mapped by any enabled provider`;
+- names the entry's own alias: `model alias '<alias>' names itself as its fallback_alias`;
+- names an alias whose own entry names a `fallback_alias`: `model alias '<alias>' names fallback_alias '<fallback>', which itself names a fallback_alias: a fallback is one level only`.
 
 ---
 
@@ -291,6 +320,7 @@ Running executions continue using the provider that was active when they started
 | `context_window` | integer | Yes | Provider's context window size in tokens. |
 | `max_output_tokens` | integer | No | Maximum output tokens to request from the provider. Default `8192`. Important for thinking-mode models (e.g., Gemini 2.5 Pro) that use output budget for internal reasoning. |
 | `temperature` | number | No | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Default `0.4`. Agents can override per-execution via `spec.runtime.temperature` in their manifest. |
+| `fallback_alias` | string | No | Another alias of this node, tried once after this alias's model is ended at the provider's time limit, with that alias's own `max_output_tokens` and `temperature`. See [Fallback Alias](#fallback-alias). |
 
 ---
 
