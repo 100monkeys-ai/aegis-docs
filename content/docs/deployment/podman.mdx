@@ -99,6 +99,9 @@ make bootstrap-secrets
 | `make generate-keys` | Generate Ed25519 SEAL signing keypair |
 | `make redeploy POD=<name>` | Tear down and redeploy a single pod |
 | `make logs POD=<name>` | Stream logs for a specific pod |
+| `make operator-promote EMAIL=<email> [ROLE=admin]` | Give a registered Zaru user the `aegis:operator` role, or `aegis:admin` with `ROLE=admin`, in the `aegis-system` realm, creating and linking their record there on first promotion; idempotent |
+| `make operator-demote EMAIL=<email>` | Clear that user's operator role in the `aegis-system` realm and try to end their active sessions there; does nothing for a user who is not an operator |
+| `make operator-escalation-audit [SINCE=<time>] [UNTIL=<time>]` | Print the operator escalation's rows of the admin audit log, read-only: time, action, actor, the names of the state keys (never their values) and target, for the last 24 hours by default; times are UTC, written `YYYY-MM-DDTHH:MM:SSZ` |
 | `make clean` | Full teardown including volumes and networks |
 
 ### Environment Configuration
