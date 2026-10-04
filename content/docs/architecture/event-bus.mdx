@@ -107,6 +107,15 @@ Published by `AttestationService` and `SealMiddleware`:
 
 `SessionCreated`, `AttestationSucceeded`, `AttestationFailed`, `ToolCallAuthorized`, `PolicyViolationBlocked`, `SignatureVerificationFailed`, `SecurityTokenExpired`, `SecurityTokenRefreshed`, `SessionRevoked`, `SessionExpired`
 
+### Goal Events
+
+Published by the goal service:
+
+| Event | Fields | When |
+|---|---|---|
+| `GoalEvaluated` | `goal_id`, `tenant_id`, `round`, `score`, `confidence`, `outcome`, `continue`, `evaluated_at` | An evaluation of a goal reached a verdict, including one that waits on an approval |
+| `GoalClosed` | `goal_id`, `tenant_id`, `state`, `closed_at` | A goal closed `met`, `cannot_be_met`, `exhausted`, `expired` or `superseded` |
+
 ### Swarm Events
 
 Published by `StandardSwarmService`:

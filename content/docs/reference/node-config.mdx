@@ -258,6 +258,14 @@ spec:
       code_validity_seconds: 300
       code_max_failed_attempts: 5
 
+  # ─── Goals ───────────────────────────────────────────────────────────────────
+  goals:
+    max_continuations: 3
+    lifetime_seconds: 1800
+    met_min_score: 0.85
+    met_min_confidence: 0.75
+    cannot_be_met_max_feasibility: 0.2
+
   # ─── gRPC Auth ──────────────────────────────────────────────────────────────
   grpc_auth:
     enabled: true
@@ -783,6 +791,28 @@ Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT val
 | `operator_escalation.code_max_failed_attempts` | u32 | `5` | Failed redemptions by a user's keys that invalidate that user's live codes |
 
 Omit `operator_escalation` for these defaults. An unknown key inside it refuses the configuration.
+
+---
+
+### `spec.goals`
+
+Optional. The bounds of a goal and the thresholds its judge's verdict is read by (see [`aegis.goal.evaluate`](/docs/reference/mcp-tool-reference#aegisgoalevaluate)). Omit for these defaults.
+
+| Key                             | Type | Default | Description |
+| ------------------------------- | ---- | ------- | ----------- |
+| `max_continuations`             | u32  | `3`     | Continuation rounds granted at most per goal |
+| `lifetime_seconds`              | u64  | `1800`  | Seconds a goal stays open from its creation; must be above 0 |
+| `met_min_score`                 | f64  | `0.85`  | A verdict meets the goal at this score or above |
+| `met_min_confidence`            | f64  | `0.75`  | …and at this confidence or above |
+| `cannot_be_met_max_feasibility` | f64  | `0.2`   | A verdict that does not meet the goal and whose `feasibility` signal scores at or below this closes it as cannot be met |
+
+Each threshold must be between 0.0 and 1.0, and an unknown key inside the block refuses the configuration. A sweep every ten minutes closes goals open past `lifetime_seconds`. The judge is the built-in agent `goal-judge`, deployed with the built-in templates (`spec.deploy_builtins`) and run on the `judge` alias. Zaru Web sets goals only for callers whose security context admits the three goal tools; add them to each `zaru-*` context's `capabilities`:
+
+```yaml
+- tool_pattern: "aegis.goal.create"
+- tool_pattern: "aegis.goal.evaluate"
+- tool_pattern: "aegis.goal.status"
+```
 
 ---
 

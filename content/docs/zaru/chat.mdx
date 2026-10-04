@@ -1,6 +1,6 @@
 ---
 title: Chat
-description: The main conversational interface at ask.myzaru.com — conversation modes, model selection, and the Glass Laboratory context panel.
+description: The main conversational interface at ask.myzaru.com — conversation modes, goals in Agentic mode, model selection, and the Glass Laboratory context panel.
 ---
 
 # Chat
@@ -22,6 +22,18 @@ first message is sent.
 | **Agentic** | Zaru has access to AEGIS tools and can create, discover, and execute agents and workflows on your behalf. The full tool surface is available based on your tier. |
 | **Workflow** | Specialized mode for designing and running multi-step workflows. Zaru guides you through defining workflow states, transitions, and agent assignments. |
 | **Execute** | Single-shot code execution. Describe a computation in plain English, optionally provide typed inputs, and get back the result. See [Running Code with Execute Mode](/docs/zaru/execute-mode) for details. |
+
+---
+
+## Goals in Agentic Mode
+
+When a turn in Agentic, Workflow or Execute mode first starts creating an agent, running an agent, generating a workflow or running an intent, Zaru sets a **goal**: the message that began the turn, word for word. A **Goal set** card shows it in the conversation. Every execution the turn starts is bound to the goal, so a chain such as creating an agent and then running it stays one piece of work.
+
+In Agentic mode, after the turn has answered, the platform's judge reads the goal, the final state and output of every execution bound to it, and the answer you were shown, and decides whether the goal is met. A **Judge** card shows each verdict: the round it judged, counted from 0, the outcome (met, not met or cannot be met), the score and confidence, and what the judge found missing. When the goal is not met and rounds remain, Zaru continues by itself, without another message from you: a **Continuing** card shows the round and what it was told, and the round picks up from the executions already started instead of starting them again. By default a goal is granted at most three continuation rounds and stays open at most 30 minutes from when it was set; each round runs at most five model calls and 10 minutes.
+
+While the goal is open the page re-reads the conversation every 30 seconds and when you return to the tab, so new cards appear without a reload. A message you send while a continuation round runs is refused, as it is while any turn runs; a later message that starts a new creation or execution replaces the open goal with a new one. If your sign-in can no longer be refreshed, the goal pauses with a card saying so, and the next turn in the conversation carries it on while it is still open.
+
+In Workflow and Execute modes the goal is set and shown, but not judged or continued. No goal is set in Chat mode, in operator mode, or in a conversation on your own provider key. The cards are not part of the conversation history the model reads.
 
 ---
 

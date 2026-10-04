@@ -25,7 +25,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.status`,
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
-`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.tools.list`, `aegis.tools.search`,
+`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.goal.create`, `aegis.goal.evaluate`, `aegis.goal.status`, `aegis.tools.list`, `aegis.tools.search`,
 `aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`,
 `aegis.file.list`, `aegis.file.read`, `aegis.file.write`, `aegis.file.delete`, `aegis.file.mkdir`,
 `aegis.volume.create`, `aegis.volume.list`, `aegis.volume.delete`, `aegis.volume.quota`,
@@ -206,6 +206,9 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.execute.intent`           | execute    | false        | `intent`                                        | Ex, Op            |
 | `aegis.execute.status`           | execute    | true         | `pipeline_execution_id`                         | Ex, Op            |
 | `aegis.execute.wait`             | execute    | true         | `execution_id`                                  | Ex, Op            |
+| `aegis.goal.create`              | goal       | true         | `statement`, `client_ref`, `channel`            | none: called by Zaru Web's turn |
+| `aegis.goal.evaluate`            | goal       | true         | `goal_id`, `companion_answer`                   | none: called by Zaru Web's turn |
+| `aegis.goal.status`              | goal       | true         | `goal_id`                                       | none: called by Zaru Web's turn |
 | `aegis.tools.list`               | tools      | true         | —                                               | Ag, Op            |
 | `aegis.tools.search`             | tools      | true         | —                                               | Ag, Op            |
 | `aegis.system.info`              | system     | true         | —                                               | Op                |
@@ -1801,6 +1804,83 @@ Alias for aegis.workflow.wait. Blocks until pipeline execution completes.
 | `timeout_seconds`       | `integer` | No       | `300`   | Maximum wait time in seconds.                                                                                      |
 
 **Output:** Same shape as [`aegis.workflow.wait`](#aegisworkflowwait).
+
+---
+
+## Goal Tools (`aegis.goal.*`)
+
+A goal holds a user's request, stated once, and every execution started for it. Zaru Web's turn calls these tools itself; no Zaru mode offers them to the companion's model. A goal belongs to the user who created it, in that user's tenant: a call with no user identity is refused, `aegis.goal.status` answers another user's goal as not found, and the other two refuse it `goal_not_open`. A refusal is `{ "tool", "error", "message" }`.
+
+**Binding work to a goal.** `aegis.agent.generate`, `aegis.task.execute`, `aegis.workflow.generate` and `aegis.execute.intent` read an optional `goal_id` argument that their advertised schemas do not list. A `goal_id` that is not an open goal of the caller is refused `goal_not_open` before anything starts; otherwise the execution started is bound to the goal and appears in its `executions`.
+
+The bounds and thresholds below are the node's [`spec.goals`](/docs/reference/node-config#specgoals).
+
+### `aegis.goal.create`
+
+Creates a goal. An open goal of the same user under the same `client_ref` is first closed `superseded`.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property     | Type     | Required | Default | Description |
+| ------------ | -------- | -------- | ------- | ----------- |
+| `statement`  | `string` | Yes      | —       | The user's request, verbatim; not empty, at most 32,768 characters. |
+| `client_ref` | `string` | Yes      | —       | The caller's opaque reference, for Zaru Web the conversation id; not empty. |
+| `channel`    | `string` | Yes      | —       | `web` or `api`. |
+
+**Output:** `{ "goal_id": "..." }`. A statement that is empty or too long, or an empty `client_ref`, is refused `goal_invalid`.
+
+### `aegis.goal.evaluate`
+
+Judges the goal after a turn with the built-in judge agent `goal-judge` and answers whether a continuation round is granted. One call waits at most 45 seconds for the verdict; until it is in, the answer is `{ "state": "judging", "goal_id", "round" }`, and the caller calls again with the same `round`.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property           | Type      | Required | Default | Description |
+| ------------------ | --------- | -------- | ------- | ----------- |
+| `goal_id`          | `string`  | Yes      | —       | The goal. |
+| `companion_answer` | `string`  | Yes      | —       | The text the user was shown in the turn just ended; read to 8,192 characters. |
+| `round`            | `integer` | No       | `0`     | Absent on a goal's first evaluation; afterwards the `round` the last answer carried. |
+
+**Output:**
+
+```json
+{
+  "goal_id": "g1b2c3d4-...",
+  "state": "open",
+  "round": 1,
+  "rounds_left": 2,
+  "verdict": { "score": 0.4, "confidence": 0.8, "reasoning": "...", "signals": [] },
+  "outcome": "not_met",
+  "continue": true,
+  "executions": [{ "execution_id": "e1f2a3b4-...", "status": "completed", "agent_or_workflow": "..." }]
+}
+```
+
+`round` and `rounds_left` count the continuation rounds granted so far and those left; the caller passes `round` back on its next call. The judge receives the goal's statement, each bound execution's final state and output, and `companion_answer`; its verdict scores five signals, `delivered`, `evidence`, `chain`, `feasibility` and `alignment`. The outcome is `met` when the score and the confidence reach `met_min_score` and `met_min_confidence`; otherwise `cannot_be_met` when the `feasibility` signal scores at most `cannot_be_met_max_feasibility`; otherwise `not_met`. `met` and `cannot_be_met` close the goal in that state. `not_met` grants a round (`continue: true`) while fewer than `max_continuations` rounds have been granted, and otherwise closes the goal `exhausted`.
+
+- A `not_met` verdict while an execution started for the goal by `aegis.agent.generate` or `aegis.task.execute` waits on an approval answers `waiting_on: "approval"` with `approval_ids` and `continue: false`, and decides no round: the next evaluation judges it again.
+- Evaluating a round already decided answers that round's stored answer and grants nothing again; a round that is neither decided nor the current one is refused `goal_round_mismatch`.
+- A goal open past `lifetime_seconds` closes `expired`. A closed goal answers `{ goal_id, state, round, rounds_left, continue: false, executions }`.
+- A verdict that cannot be read, or a judge execution that fails or is cancelled, runs the judge once more; a second such end decides the round `not_met` with score and confidence 0 and the fault as its reasoning.
+- A judge that cannot be started, for example because `goal-judge` is not deployed, is refused `goal_judge_unavailable`.
+
+### `aegis.goal.status`
+
+Returns the goal, its bound executions and every verdict. Read-only.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+| Property  | Type     | Required | Default | Description |
+| --------- | -------- | -------- | ------- | ----------- |
+| `goal_id` | `string` | Yes      | —       | The goal. |
+
+**Output:** `{ goal_id, statement, client_ref, channel, state, rounds, created_at, closed_at, executions: [{ execution_id, kind, agent_or_workflow, status, started_at, ended_at }], verdicts: [{ round, attempt, score, confidence, outcome, reasoning, continue, waiting_on }] }`. Each verdict's `round` is the round it judged, counted from 0. `state` is `open`, `met`, `cannot_be_met`, `exhausted`, `expired` or `superseded`. A goal that is not the caller's is refused `goal_not_found`.
 
 ---
 

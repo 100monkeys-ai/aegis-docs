@@ -202,8 +202,11 @@ The result is a JSON object, returned as text and as structured content:
 | `model`, `mode`         | The model and the mode the turn ran on                                                                                            |
 | `mode_switch_requested` | Present when the companion asked to switch modes, as `{ mode, reason }`; the switch is not applied                                |
 | `usage`                 | Present when the model reported it: `{ prompt_tokens, completion_tokens, total_tokens }`                                          |
+| `goal`                  | Present when the turn holds a goal: `{ goal_id, statement, state, rounds, verdicts }`, each verdict `{ round, score, confidence, outcome, reasoning }` with `round` the round it judged, counted from 0. A goal handed on to be judged after the call reads `state` `open` |
 
-**Limits.** One call runs one turn of at most five model calls. No model call starts later than 40 seconds after the request arrives, and the turn ends at 50 seconds, so a call answers within the minute an MCP client waits. A turn that reaches the limit ends `incomplete` with what it did so far stored; to continue, send your next message in the same conversation. The companion sees the most recent 100 of the conversation's messages.
+**Limits.** One call runs one turn of at most five model calls. No model call starts later than 40 seconds after the request arrives, and the turn ends at 50 seconds, so a call answers within the minute an MCP client waits. A turn that reaches the limit ends `incomplete` with what it did so far stored. In `agentic` mode a turn that starts creating or running an agent sets a goal ([Goals in Agentic Mode](/docs/zaru/chat#goals-in-agentic-mode)): Zaru judges it after the call has answered and continues by itself, without your next message, until it is met, cannot be met or its bounds end it. Otherwise, to continue, send your next message in the same conversation. A connection authenticated by a Zaru sign-in instead of an `aegis_` API key gets no goal. The companion sees the most recent 100 of the conversation's messages.
+
+**Knowing the work is done.** `status` says only whether the turn reached its time limit: a turn that started work can be `complete` while that work goes on. Whether the request is done is the goal's `state`: `open` while it is judged or continued, then `met`, `cannot_be_met`, `exhausted` (no round left), `expired` (open past its lifetime) or `superseded` (a later message started new work). Read it with [`aegis.goal.status`](/docs/reference/mcp-tool-reference#aegisgoalstatus) and the answer's `goal_id` where the connection lists that tool; the conversation on the page shows the same verdicts as cards.
 
 **Errors.** A refusal is a tool error whose text is a JSON object `{ "error", "message" }`. The `error` is one of:
 
@@ -213,7 +216,7 @@ The result is a JSON object, returned as text and as structured content:
 | `invalid_request`         | The arguments are not valid: `message` empty or too long, `conversation_id` not a UUID, or `mode` not a Zaru mode |
 | `conversation_not_found`  | No conversation of yours has that id                                                         |
 | `conversation_archived`   | The conversation is archived                                                                 |
-| `active_execution_exists` | A turn is already running in that conversation                                               |
+| `active_execution_exists` | A turn, or a goal's continuation round, is already running in that conversation              |
 | `mode_not_available`      | `mode` is `live` or `vibecode`, or `operator` without an operator escalation, or the call was made from inside a Zaru turn |
 | `inference_unavailable`   | Zaru cannot reach its model; try again in a moment                                           |
 | `turn_failed`             | The turn could not be run, or failed after it started; a turn that failed after it started keeps what it did stored |
@@ -276,6 +279,8 @@ Listed only while the connection's key holds an escalation. No parameters. Ends 
 ## Agentic Mode Tools
 
 Agentic mode gives the assistant access to agent discovery, generation, task execution, and monitoring. Use it when you want to run existing agents or generate new ones from a description.
+
+In agentic mode the companion's prompt has it treat a system message headed **Goal check** as coming from Zaru, not from you: the message names the executions already started for your goal and what the judge found missing, and the companion continues from them, reading a completed execution's result with `aegis.task.wait` or `aegis.execution.file` instead of starting it again. Zaru Web sends this message at the start of a continuation round and of a turn that begins while the conversation's goal is open ([Goals in Agentic Mode](/docs/zaru/chat#goals-in-agentic-mode)).
 
 ### Agent Discovery and Generation
 

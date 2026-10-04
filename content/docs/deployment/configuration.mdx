@@ -584,6 +584,16 @@ iam:
     code_validity_seconds: 300 # Seconds a generated code stays redeemable
     code_max_failed_attempts: 5 # Failed redemptions that invalidate the user's live codes
 
+# ─── Goals ───────────────────────────────────────────────────────────────────
+# Optional. A goal's bounds and the thresholds its judge's verdict is read by.
+# Omit for these defaults.
+goals:
+  max_continuations: 3 # Continuation rounds granted at most per goal
+  lifetime_seconds: 1800 # Seconds a goal stays open from its creation
+  met_min_score: 0.85 # A verdict meets the goal at this score or above
+  met_min_confidence: 0.75 # ...and at this confidence or above
+  cannot_be_met_max_feasibility: 0.2 # Not met, feasibility at or below this: cannot be met
+
 # ─── gRPC Auth ────────────────────────────────────────────────────────────────
 # Optional. Controls IAM/OIDC JWT enforcement on the gRPC endpoint.
 # Requires spec.iam to be configured.
@@ -892,7 +902,7 @@ Optional. Default: `false`.
 
 | Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, and skill-import workflows. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function. |
+| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents (among them `goal-judge`, which judges goals), intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, and skill-import workflows. Required for `aegis.agent.generate`, `aegis.workflow.generate`, `aegis.execute.intent` and `aegis.goal.evaluate` to function. |
 
 ---
 
@@ -992,6 +1002,28 @@ Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT val
 | `operator_escalation.code_max_failed_attempts` | u32 | `5` | Failed redemptions by a user's keys that invalidate that user's live codes |
 
 Omit `operator_escalation` for these defaults. An unknown key inside it refuses the configuration.
+
+---
+
+### `spec.goals`
+
+Optional. The bounds of a goal and the thresholds its judge's verdict is read by (see [`aegis.goal.evaluate`](/docs/reference/mcp-tool-reference#aegisgoalevaluate)). Omit for these defaults.
+
+| Key                             | Type | Default | Description |
+| ------------------------------- | ---- | ------- | ----------- |
+| `max_continuations`             | u32  | `3`     | Continuation rounds granted at most per goal |
+| `lifetime_seconds`              | u64  | `1800`  | Seconds a goal stays open from its creation; must be above 0 |
+| `met_min_score`                 | f64  | `0.85`  | A verdict meets the goal at this score or above |
+| `met_min_confidence`            | f64  | `0.75`  | …and at this confidence or above |
+| `cannot_be_met_max_feasibility` | f64  | `0.2`   | A verdict that does not meet the goal and whose `feasibility` signal scores at or below this closes it as cannot be met |
+
+Each threshold must be between 0.0 and 1.0, and an unknown key inside the block refuses the configuration. A sweep every ten minutes closes goals open past `lifetime_seconds`. The judge is the built-in agent `goal-judge`, deployed with the built-in templates (`spec.deploy_builtins`) and run on the `judge` alias. Zaru Web sets goals only for callers whose security context admits the three goal tools; add them to each `zaru-*` context's `capabilities`:
+
+```yaml
+- tool_pattern: "aegis.goal.create"
+- tool_pattern: "aegis.goal.evaluate"
+- tool_pattern: "aegis.goal.status"
+```
 
 ---
 
