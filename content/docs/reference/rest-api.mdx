@@ -635,7 +635,7 @@ List invoices for the current user.
 
 ## Operator Escalation
 
-The routes behind an [operator escalation](/docs/zaru/mcp-tools#operator-escalation). A refusal is `{ "error": <code>, "message": <text> }`; a node without the escalation service answers `503` `unavailable`.
+The routes behind an [operator escalation](/docs/zaru/mcp-tools#operator-escalation). A refusal is `{ "error": <code>, "message": <text> }`; a node without the escalation service answers `503` `unavailable`, and so does a redemption on a node that cannot read operator roles, one without `spec.iam.keycloak_admin` or without a realm of `kind: system`, where every escalated call is refused as well.
 
 | Route | Caller | Answer |
 | ----- | ------ | ------ |
@@ -646,7 +646,7 @@ The routes behind an [operator escalation](/docs/zaru/mcp-tools#operator-escalat
 | `POST /v1/operator-escalations` | an `aegis_` API key | body `{ "code" }`; `200` `{ "aegis_role", "expires_at" }` |
 | `DELETE /v1/operator-escalations/current` | the escalated `aegis_` API key | `200` `{ "ended_at" }`; `404` `escalation_not_found` when the key holds none |
 
-On the session's routes an API key is refused `403` `forbidden`, a token that is not such a session `403`, `aegis:readonly` included, and no token `401`. On the two API-key routes any other bearer is refused `403` `escalation_requires_api_key`, and a missing or invalid key `401`. A redemption is refused `400` `invalid_code` when no live code of the key's user matches or the key was created with an operator role of its own, and `400` `code_expired` when the code matched after its validity ended. While a key holds an active escalation, `POST /v1/api-keys/validate` answers the escalation's role as `aegis_role`, with `operator_escalation: { "expires_at" }`.
+On the session's routes an API key is refused `403` `forbidden`, a token that is not such a session `403`, `aegis:readonly` included, and no token `401`. On the two API-key routes any other bearer is refused `403` `escalation_requires_api_key`, and a missing or invalid key `401`. A redemption is refused `400` `invalid_code` when no live code of the key's user matches or the key was created with an operator role of its own, and `400` `code_expired` when the code matched after its validity ended. A redemption is also refused `400` `invalid_code` when the operator's account in the system realm no longer holds the code's role, is disabled or is gone, and that code is invalidated; it answers `500` `internal_error` when the account cannot be read, the code neither used nor counted as a failure. While a key holds an active escalation, `POST /v1/api-keys/validate` answers the escalation's role as `aegis_role`, with `operator_escalation: { "expires_at" }`.
 
 ---
 

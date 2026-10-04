@@ -1000,8 +1000,11 @@ Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT val
 | `operator_escalation.ttl_seconds` | u64 | `1800` | Seconds an operator escalation lasts from its redemption. See [Operator Escalation](/docs/zaru/mcp-tools#operator-escalation) |
 | `operator_escalation.code_validity_seconds` | u64 | `300` | Seconds a generated escalation code stays redeemable |
 | `operator_escalation.code_max_failed_attempts` | u32 | `5` | Failed redemptions by a user's keys that invalidate that user's live codes |
+| `keycloak_admin.host` | string | — | Keycloak base URL for its Admin REST API; supports `env:VAR` |
+| `keycloak_admin.admin_username` | string | — | Admin user of the `master` realm; supports `env:VAR` |
+| `keycloak_admin.admin_password` | string | — | That user's password; supports `env:VAR` |
 
-Omit `operator_escalation` for these defaults. An unknown key inside it refuses the configuration.
+Omit `operator_escalation` for these defaults. An unknown key inside it refuses the configuration. `keycloak_admin` provisions a tenant for a newly signed-up user and lets the orchestrator read an escalated operator's role again; without it, or without a realm of `kind: system`, every escalation redemption answers `503` and every escalated call is refused.
 
 ---
 
