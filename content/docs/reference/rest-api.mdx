@@ -285,6 +285,8 @@ Attestation handshake — used by `bootstrap.py` at the start of each agent exec
 }
 ```
 
+A caller outside an agent container, such as an MCP server attesting for its user, authenticates the request with its own bearer, an `aegis_` API key or a Keycloak token. The session's user is always that credential's own subject: the key's owner, or the token's `sub`. The body cannot name the user: a `user_id` field is ignored.
+
 **Response `200`:**
 
 ```json

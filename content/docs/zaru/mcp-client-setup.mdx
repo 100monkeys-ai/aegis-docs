@@ -34,6 +34,8 @@ Authorization: Bearer <your-api-key>
 
 A token of the `aegis-system` realm is refused. Operator tools are reached by an [operator escalation](/docs/zaru/mcp-tools#operator-escalation).
 
+Every request acts as the user who owns the key: the executions it starts count against that user's own rate limits as well as the tenant's, and the storage it creates belongs to that user.
+
 ---
 
 ## Client-Specific Setup
