@@ -144,8 +144,8 @@ The table below covers the most common fields. For the complete field-by-field s
 |---|---|---|
 | `mode` | `one-shot` \| `iterative` | Execution strategy. `iterative` enables the 100monkeys refinement loop. Default: `one-shot`. |
 | `max_iterations` | integer | Maximum refinement loops (for iterative mode). Default: `5`. |
-| `iteration_timeout` | string | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Default: `"300s"` (5 minutes). Each iteration gets this much time for LLM calls + tool invocations. |
-| `llm_timeout_seconds` | integer | HTTP socket timeout for `bootstrap.py` LLM calls. Default: `300` seconds. |
+| `iteration_timeout` | string | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Default: `"600s"` (10 minutes). Each iteration gets this much time for LLM calls + tool invocations. |
+| `llm_timeout_seconds` | integer | Bound on one model call the orchestrator makes for the agent. Default: `300` seconds. |
 | `memory` | boolean | Enable Cortex memory system. Default: `false`. |
 
 ---

@@ -109,7 +109,7 @@ The protocol operates as a loop that continues until the orchestrator issues a `
 
 If a command cannot be started because its `cwd` does not exist or is not a directory, `bootstrap.py` reports `exit_code` 127 when the `cwd` is missing and 126 otherwise, with a `stderr` beginning `[AEGIS] cannot run command:`; the model receives that result like any other and the loop goes on.
 
-A generate request the orchestrator received but did not answer within the agent's `spec.execution.llm_timeout_seconds` is not re-sent; `bootstrap.py` exits 1 with `Error: no answer from <url> within <n> s (AEGIS_LLM_TIMEOUT_SECONDS)`.
+`bootstrap.py` holds no clock of its own: its requests to the dispatch gateway carry no timeout, because the orchestrator runs the whole inner tool loop, many model calls and tool rounds, inside one request. The orchestrator bounds the wait: each model call by the agent's `spec.execution.llm_timeout_seconds`, the iteration by `spec.execution.iteration_timeout` and the execution by `spec.security.resources.timeout`, the last two by terminating the container. An error answer from the orchestrator ends `bootstrap.py` with status 1 and `Error: Orchestrator returned HTTP <status>: <body>`.
 
 ---
 

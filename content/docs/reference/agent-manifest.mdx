@@ -115,7 +115,7 @@ spec:
   execution:
     mode: iterative              # one-shot | iterative
     max_iterations: 10           # range: 1–20; default: 10
-    iteration_timeout: "60s"     # per-iteration timeout (default: 300s); "30s", "60s", "5m"
+    iteration_timeout: "60s"     # per-iteration timeout (default: 600s); "30s", "60s", "5m"
     memory: false                # enable Cortex memory system
     validation:
       - type: exit_code
@@ -513,9 +513,9 @@ The agent's `spec.task.instruction` must reference `input.attachments` in prose.
 |---|---|---|---|---|
 | `mode` | `iterative` \| `one-shot` | | `one-shot` | Execution strategy. |
 | `max_iterations` | integer | | `10` | Maximum refinement loops. Range: 1–20. |
-| `iteration_timeout` | string | | `"300s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations. |
+| `iteration_timeout` | string | | `"600s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations; an iteration still running then is ended by terminating its container. |
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
-| `llm_timeout_seconds` | integer | | `300` | HTTP socket timeout for bootstrap.py LLM proxy calls in seconds. Applies to network requests from agent to orchestrator. |
+| `llm_timeout_seconds` | integer | | `300` | Bound in seconds on one model call the orchestrator makes for the agent. A call with no answer by then fails with an error naming `llm_timeout_seconds`, and the orchestrator answers the agent's request with an error. `bootstrap.py` holds no timeout of its own. |
 | `validation` | `ValidatorSpec[]` | | | Ordered outer-loop validators executed after each iteration. |
 | `tool_validation` | `ValidatorSpec[]` | | | Ordered inner-loop tool-call validators. Current runtime consumes `semantic` entries for pre-execution judging; see [Tool-Call Judging](/docs/agents/tool-call-judging). |
 
