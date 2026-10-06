@@ -314,6 +314,8 @@ Listed only while the connection's key holds an escalation. No parameters. Ends 
 
 Agentic mode gives the assistant access to agent discovery, generation, task execution, and monitoring. Use it when you want to run existing agents or generate new ones from a description.
 
+In agentic mode the companion's prompt sends every request for a result to an agent, however simple, starting with `aegis.agent.list`; it does not answer such a request itself, even with an answer it already knows. It answers directly only talk about the work in hand (what is running, what a result means, what it will do next), and offers Chat through `zaru.mode` for conversation alone.
+
 In agentic mode the companion's prompt has it treat a system message headed **Goal check** as coming from Zaru, not from you: the message names the executions already started for your goal and what the judge found missing, and the companion continues from them, reading a completed execution's result with `aegis.task.wait` or `aegis.execution.file` instead of starting it again. Zaru Web sends this message at the start of a continuation round and of a turn that begins while the conversation's goal is open ([Goals in Agentic Mode](/docs/zaru/chat#goals-in-agentic-mode)).
 
 ### Agent Discovery and Generation
@@ -393,7 +395,7 @@ Follow with `aegis.agent.wait` to block until generation completes.
 }
 ```
 
-**`aegis.task.wait`** — Blocks until an execution reaches a terminal state. Returns the final status, output, and error.
+**`aegis.task.wait`** — Blocks until an execution reaches a terminal state. Returns the final status, output and error, and `produced_files`: the files the execution's declared outputs found, each with `path`, `size_bytes` and `content_type`.
 
 | Parameter               | Required | Default | Description                  |
 | ----------------------- | -------- | ------- | ---------------------------- |

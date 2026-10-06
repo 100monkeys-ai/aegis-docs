@@ -19,7 +19,7 @@ first message is sent.
 | Mode | Purpose |
 |---|---|
 | **Chat** | General conversation with Zaru. No platform tools are invoked — this is a standard LLM chat with Zaru's persona and knowledge. |
-| **Agentic** | Zaru has access to AEGIS tools and can create, discover, and execute agents and workflows on your behalf. The full tool surface is available based on your tier. |
+| **Agentic** | Zaru has access to AEGIS tools and can create, discover, and execute agents and workflows on your behalf. Every request for a result, however simple (a sum, a unit conversion, a lookup), is dispatched to an agent, starting with `aegis.agent.list`; Zaru answers directly only about the work in hand, and offers Chat through a mode switch when you want conversation alone. The full tool surface is available based on your tier. |
 | **Workflow** | Specialized mode for designing and running multi-step workflows. Zaru guides you through defining workflow states, transitions, and agent assignments. |
 | **Execute** | Single-shot code execution. Describe a computation in plain English, optionally provide typed inputs, and get back the result. See [Running Code with Execute Mode](/docs/zaru/execute-mode) for details. |
 
@@ -29,11 +29,19 @@ first message is sent.
 
 When a turn in Agentic, Workflow or Execute mode first starts creating an agent, running an agent, generating a workflow or running an intent, Zaru sets a **goal**: the message that began the turn, word for word. A **Goal set** card shows it in the conversation. Every execution the turn starts is bound to the goal, so a chain such as creating an agent and then running it stays one piece of work.
 
-In Agentic mode, after the turn has answered, the platform's judge reads the goal, the final state and output of every execution bound to it, and the answer you were shown, and decides whether the goal is met. A **Judge** card shows each verdict: the round it judged, counted from 0, the outcome (met, not met or cannot be met), the score and confidence, and what the judge found missing. When the goal is not met and rounds remain, Zaru continues by itself, without another message from you: a **Continuing** card shows the round and what it was told, and the round picks up from the executions already started instead of starting them again. By default a goal is granted at most three continuation rounds and stays open at most 30 minutes from when it was set; each round runs at most five model calls and 10 minutes.
+In Agentic mode, after the turn has answered, the platform's judge reads the goal, the final state and output of every execution bound to it with what the run did (how many tool calls it executed, each tool call with its result status, and the files its declared outputs recorded), and the answer you were shown, and decides whether the goal is met. The judge counts a file or an action as done only when those facts show it. A **Judge** card shows each verdict: the round it judged, counted from 0, the outcome (met, not met or cannot be met), the score and confidence, and what the judge found missing. When the goal is not met and rounds remain, Zaru continues by itself, without another message from you: a **Continuing** card shows the round and what it was told, and the round picks up from the executions already started instead of starting them again. By default a goal is granted at most three continuation rounds and stays open at most 30 minutes from when it was set; each round runs at most five model calls and 10 minutes.
 
 While the goal is open the page re-reads the conversation every 30 seconds and when you return to the tab, so new cards appear without a reload. A message you send while a continuation round runs is refused, as it is while any turn runs; a later message that starts a new creation or execution replaces the open goal with a new one. If your sign-in can no longer be refreshed, the goal pauses with a card saying so, and the next turn in the conversation carries it on while it is still open.
 
 In Workflow and Execute modes the goal is set and shown, but not judged or continued. No goal is set in Chat mode, in operator mode, or in a conversation on your own provider key. The cards are not part of the conversation history the model reads.
+
+---
+
+## While Zaru Works
+
+From the moment you send a message until the turn ends, the conversation shows a working indicator with words: **Zaru is working on it…**, or **Thinking…** while the model thinks, with the minutes elapsed from the first minute on (**Thinking · 2 min…**). Where a goal's state names what Zaru is doing, those words are shown instead. The indicator keeps its words while the page's stream is open or the page knows the turn is still in flight.
+
+A wait tool's card (`aegis.agent.wait`, `aegis.task.wait`, `aegis.execute.wait`, `aegis.workflow.wait`, or any tool whose name ends in `.wait`) whose result says the execution has not ended (`pending` or `running`) is titled **Still running** in a neutral style. Opened, it reads "Zaru checked, and the work had not finished yet." It is never shown as done or as a failure. A wait returns before the end only at its own time limit (45 seconds on Zaru's MCP server, [Waiting on Long Executions](/docs/zaru/mcp-tools#waiting-on-long-executions)), and calling the wait again continues it.
 
 ---
 

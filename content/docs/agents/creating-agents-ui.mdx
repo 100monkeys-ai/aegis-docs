@@ -84,6 +84,14 @@ spec:
     instruction: |
       Write a Python solution to the given problem.
       Save the solution to /workspace/solution.py.
+  tools:
+    - fs.write
+  volumes:
+    - name: workspace
+      storage_class: ephemeral
+      mount_path: /workspace
+      access_mode: read-write
+      ttl_hours: 1
 ```
 
 See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the complete field specification.

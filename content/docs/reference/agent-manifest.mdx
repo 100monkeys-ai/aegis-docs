@@ -406,6 +406,8 @@ Every agent invocation accepts three optional fields on the execution request:
 
 These are complementary, not alternatives — `intent` steers the LLM with natural language; `input` supplies typed data; `attachments` carries file references the agent reads on demand via `aegis.attachment.read`.
 
+**`input.outputs`**: a caller may add declared outputs for one execution under the reserved key `outputs` of `input`, in the shape of [`spec.execution.outputs`](#outputs); they are checked with the manifest's. The key is removed before `input` is checked against `input_schema`. A malformed list is refused before the execution starts: `input.outputs must be a list of {path, min_bytes, magic}: <reason>`, or `input.outputs: declared output '<path>' must be a file under /workspace`.
+
 | `intent` | `input` | Rendered prompt |
 |---|---|---|
 | Present | Present (object) | `{{intent}}` available; `{{input.KEY}}` dot-notation available. |
@@ -518,6 +520,7 @@ The agent's `spec.task.instruction` must reference `input.attachments` in prose.
 | `llm_timeout_seconds` | integer | | `300` | Bound in seconds on one model call the orchestrator makes for the agent. A call with no answer by then fails with an error naming `llm_timeout_seconds`, and the orchestrator answers the agent's request with an error. `bootstrap.py` holds no timeout of its own. |
 | `validation` | `ValidatorSpec[]` | | | Ordered outer-loop validators executed after each iteration. |
 | `tool_validation` | `ValidatorSpec[]` | | | Ordered inner-loop tool-call validators. Current runtime consumes `semantic` entries for pre-execution judging; see [Tool-Call Judging](/docs/agents/tool-call-judging). |
+| `outputs` | `DeclaredOutput[]` | | `[]` | Files an execution must leave in its workspace, each `{path, min_bytes?, magic?}`; see [outputs](#outputs). |
 
 ### `spec.execution.validation`
 
@@ -656,6 +659,13 @@ tools:
 | `max_output_bytes` | integer | `524288` | Maximum captured stdout+stderr per subprocess in bytes. Truncated output is signaled to the LLM with a notice. |
 
 `builtin:cmd` is the only valid non-`mcp:` executor value. The `subcommand_allowlist` is the only required `config` field; all other fields inherit node-level defaults when omitted.
+
+**An agent whose declarations cannot do its work is refused when it is deployed or updated**, by every route:
+
+- An agent with an empty `spec.tools` that declares a read-write volume, declares `security.filesystem.write`, or names a file under `/workspace` in `task.instruction` or `task.prompt_template` is refused with: `Agent '<name>' is refused (AEGIS ADR-005 O4): its instruction requires writing files or running commands and it declares no tools; <reasons>. Declare the tools it needs in spec.tools (fs.write to write files, cmd.run to run commands).` Each reason is one of `it declares the read-write volume '<volume>' at <mount_path>`, `it declares security.filesystem.write <paths>` or `its instruction names the workspace file <path>`, joined by `; `.
+- An agent that declares `fs.write`, `fs.edit`, `fs.multi_edit`, `fs.create_dir` or `fs.delete` and no read-write volume is refused with: `Agent '<name>' is refused (AEGIS ADR-005 O5): it declares <tools> and no read-write volume, so those tools have nothing to write to in a run of its own. Declare a read-write volume with mount_path /workspace; inside a workflow it yields to the workflow's workspace.`
+
+Through `aegis.agent.create` the refusal is an ordinary result with `"deployed": false` and `Agent deployment failed: <sentence>` in `errors`; through `aegis.agent.update`, `"updated": false` and `Agent update failed: <sentence>`.
 
 ### `spec.env`
 
@@ -806,6 +816,29 @@ Common validator variants:
 
 For tool-call judging specifics, including the judge payload and bypass semantics, see [Tool-Call Judging](/docs/agents/tool-call-judging).
 
+#### `outputs`
+
+`outputs` lists files an execution must produce. Each entry has `path`, a file under `/workspace`; `min_bytes`, the fewest bytes it may hold; and `magic`, the text the file must start with (UTF-8, for example `%PDF`).
+
+```yaml
+spec:
+  execution:
+    outputs:
+      - path: /workspace/report.pdf
+        min_bytes: 1024
+        magic: "%PDF"
+```
+
+Before an iteration counts as completed, with or without `validation`, the orchestrator reads each declared output from the execution's volume and reports every failure, joined by `; `:
+
+- `declared output <path> does not exist`
+- `declared output <path> is <n> bytes, under min_bytes <m>`
+- `declared output <path> does not start with "<magic>"`
+- `declared output <path> cannot be checked: <reason>`
+- `declared output <path> cannot be checked: this node has no volume reader` (a node that cannot read volumes fails the check; it never passes it)
+
+A failed check fails the iteration, and the next iteration is told the sentence. When no iterations remain, the execution fails with `Max retries exceeded: <sentence>`. A completed execution records each output it found as `produced_files` (`path`, `size_bytes`, `content_type`), which `aegis.task.status`, `aegis.task.wait` and `aegis.agent.wait` return; that record, not the agent's text, shows a file was made. A manifest is refused when an output is not a file under `/workspace` (`spec.execution.outputs: declared output '<path>' must be a file under /workspace`) or has an empty `magic` (`spec.execution.outputs: declared output '<path>' has an empty magic; give the text the file starts with, or none`).
+
 ### `spec.tools[]`
 
 The orchestrator mediates all tool calls — agents never access MCP servers or credentials directly.
@@ -938,6 +971,10 @@ spec:
       Generate a Graphviz diagram from the user's description.
       Save the DOT file to /workspace/diagram.dot
       Render to SVG: dot -Tsvg diagram.dot -o diagram.svg
+
+  tools:
+    - fs.write
+    - cmd.run
 
   security:
     filesystem:

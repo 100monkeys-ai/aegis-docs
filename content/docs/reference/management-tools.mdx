@@ -177,7 +177,7 @@ Alias for `aegis.task.wait`. Blocks server-side until an agent execution reaches
 | `poll_interval_seconds` | integer | No | Seconds between internal polls (default: 10; minimum: 1) |
 | `timeout_seconds` | integer | No | Maximum wait time in seconds (default: 300; minimum: 1) |
 
-**Returns:** Same shape as `aegis.task.wait` — guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
+**Returns:** Same shape as `aegis.task.wait` — guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `produced_files`, `last_error`, `started_at`, and `ended_at`.
 
 ---
 
@@ -611,7 +611,7 @@ Checks the current status and progress of a running or completed execution.
 |-----------|------|----------|---------|-------------|
 | `execution_id` | `string` | ✅ | — | UUID of the execution to query. |
 
-**Returns:** A status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
+**Returns:** A status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `produced_files`, `last_error`, `started_at`, and `ended_at`.
 
 ### `aegis.task.wait`
 
@@ -623,7 +623,7 @@ Blocks until an execution reaches a terminal state (completed, failed, or cancel
 | `poll_interval_seconds` | `integer` | ❌ | `10` | Seconds between internal status polls. Minimum: 1. |
 | `timeout_seconds` | `integer` | ❌ | `300` | Maximum seconds to wait before returning a timeout. Minimum: 1. |
 
-**Returns:** Same shape as `aegis.task.status` but guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `last_error`, `started_at`, and `ended_at`.
+**Returns:** Same shape as `aegis.task.status` but guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `produced_files`, `last_error`, `started_at`, and `ended_at`.
 
 ### `aegis.task.list`
 

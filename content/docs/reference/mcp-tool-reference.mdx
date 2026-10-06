@@ -1453,6 +1453,7 @@ Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) the exe
   "status": "completed",
   "iteration_count": 2,
   "last_output": "...",
+  "produced_files": [{"path": "/workspace/report.pdf", "size_bytes": 48213, "content_type": "application/pdf"}],
   "last_error": null,
   "started_at": "2026-04-05T12:00:00Z",
   "ended_at": "2026-04-05T12:01:00Z"
@@ -1460,6 +1461,8 @@ Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) the exe
 ```
 
 The `status` field is one of `pending`, `running`, `completed`, `failed`, or `cancelled`.
+
+`produced_files` lists the files the execution's declared outputs ([`spec.execution.outputs`](/docs/reference/agent-manifest#outputs)) found once it completed, each with `path`, `size_bytes` and `content_type`; before completion, and for an execution with no declared outputs, it is empty.
 
 ### `aegis.task.list`
 
@@ -1599,6 +1602,7 @@ Polls an execution until it reaches a terminal state and returns the result.
   "status": "completed",
   "iteration_count": 3,
   "last_output": "...",
+  "produced_files": [{"path": "/workspace/report.pdf", "size_bytes": 48213, "content_type": "application/pdf"}],
   "last_error": null,
   "started_at": "2026-04-05T12:00:00Z",
   "ended_at": "2026-04-05T12:01:30Z"
@@ -1606,6 +1610,8 @@ Polls an execution until it reaches a terminal state and returns the result.
 ```
 
 The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`.
+
+A terminal answer carries `produced_files` as `aegis.task.status` does.
 
 ### `aegis.execution.file`
 

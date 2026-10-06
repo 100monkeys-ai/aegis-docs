@@ -45,8 +45,9 @@ The `ExecutionSupervisor` drives the 100monkeys iterative refinement strategy. W
 1. **Spawns a fresh, isolated container** from the agent's image using the configured container runtime (Docker or Podman). Each iteration gets a clean environment -- no shared process state from previous iterations. In rootless Podman deployments, workspace volumes are mounted via FUSE bind mounts from the host-side FUSE daemon rather than NFS; the agent code is identical in both cases.
 2. **Injects context** into the container: the task input, any prior iteration errors (on retries), and tool definitions filtered to the agent's declared capabilities.
 3. **Monitors execution** until the inner loop reports completion or timeout.
-4. **Runs validators** against the iteration output. Validators produce a `ValidationScore` (0.0–1.0) and `Confidence` (0.0–1.0).
-5. **Decides the next action**:
+4. **Checks declared outputs.** When the manifest or the caller declares outputs ([`spec.execution.outputs`](/docs/reference/agent-manifest#outputs)), each is read from the execution's volume before the iteration counts as completed; a missing, short or wrong-prefix file fails the iteration, and its sentence is the next iteration's feedback.
+5. **Runs validators** against the iteration output. Validators produce a `ValidationScore` (0.0–1.0) and `Confidence` (0.0–1.0).
+6. **Decides the next action**:
    - Score ≥ threshold → `IterationStatus::Success` → execution completes.
    - Score < threshold, iterations remaining → `IterationStatus::Refining` → error context injected, next container spawned.
    - Score < threshold, max iterations reached → `IterationStatus::Failed` → execution fails.
