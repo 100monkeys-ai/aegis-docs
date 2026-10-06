@@ -29,6 +29,8 @@ jobs:
         run: |
           nproc
           free -m
+      - name: Facing text check
+        run: npm run facing-text:check
       - run: npm ci
       - name: Build
         env:

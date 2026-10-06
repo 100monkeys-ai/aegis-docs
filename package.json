@@ -5,6 +5,7 @@
   "scripts": {
     "prebuild": "node scripts/node-version.mjs",
     "build": "next build",
+    "facing-text:check": "node scripts/facing-text-check.mjs",
     "dev": "next dev",
     "start": "next start",
     "test:browser": "playwright test",
