@@ -601,9 +601,21 @@ Blocks until the pipeline execution completes. Pass the `pipeline_execution_id` 
 { "execution_id": "p1b2c3d4-...", "timeout_seconds": 45 }
 ```
 
-### `aegis.workflow.wait`
+### `aegis.goal.cancel`
 
-Also available in execute mode for waiting on workflow executions started by the pipeline internally. Same parameters as `aegis.execute.wait`.
+Stops the person's goal: no further round, every execution still running for it cancelled, and the goal closed `cancelled` with the reason given. The companion calls it when the person asks to stop. Also available in agentic and architect modes.
+
+| Parameter | Required | Description                                                                   |
+| --------- | -------- | ----------------------------------------------------------------------------- |
+| `goal_id` | Yes      | The goal to stop                                                              |
+| `reason`  | No       | Why the person stopped it, in their words; kept with the goal, to 1,000 characters |
+
+In Zaru Web the call's schema has no `goal_id`: the conversation sends its own goal.
+
+```json
+// aegis.goal.cancel
+{ "goal_id": "g1b2c3d4-...", "reason": "Not needed any more" }
+```
 
 ---
 
@@ -995,7 +1007,8 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.execute.intent`           |     |     |  ✓  |     |  ✓  |
 | `aegis.execute.status`           |     |     |  ✓  |     |  ✓  |
 | `aegis.execute.wait`             |     |     |  ✓  |     |  ✓  |
-| `aegis.workflow.wait`            |     |  ✓  |  ✓  |  ✓  |  ✓  |
+| `aegis.goal.cancel`              |     |  ✓  |  ✓  |  ✓  |  ✓  |
+| `aegis.workflow.wait`            |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.workflow.generate`        |     |     |     |  ✓  |  ✓  |
 | `aegis.workflow.list`            |     |     |     |  ✓  |  ✓  |
 | `aegis.workflow.logs`            |     |     |     |  ✓  |  ✓  |

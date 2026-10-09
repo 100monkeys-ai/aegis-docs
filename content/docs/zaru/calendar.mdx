@@ -1,0 +1,114 @@
+---
+title: Calendar
+description: Connect a calendar account, by Google sign-in or a CalDAV server's address, and let Zaru read your events and, with your approval, change them.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+# Calendar
+
+A calendar account is a connection, like a mailbox: you connect it once in the Vault, choose it for a conversation, a run or a schedule, and the `calendar.*` tools work in it. Reading your calendars and events happens straight away; creating, changing, deleting or answering an event waits for your approval.
+
+The tools speak CalDAV to your calendar's server from inside the orchestrator. Your Google token or your password never reaches an agent or the model.
+
+---
+
+## Connecting a Calendar Account
+
+Both ways start on the Vault's **Connections** page.
+
+| Way | What you do | What is stored |
+| --- | ----------- | -------------- |
+| **Google Calendar** | Click **Connect Google Calendar** and allow access in Google's consent screen. | An OAuth connection, provider `google-calendar`, granted the full calendar scope and your email address. The calendar's server is `https://apidata.googleusercontent.com/caldav/v2/`, and the connection is named by your address. |
+| **CalDAV** | Click **Connect by CalDAV** and give the server address (`https://`), the account address you sign in with, the password and an optional label. | A connection of type `calendar`, provider `caldav`. The password is kept only in the secret store, never shown again. |
+
+Google Calendar is its own sign-in, separate from a Google mailbox: connecting one does not connect or change the other, and each grants only its own service.
+
+**The check before anything is stored.** Before the connection is kept, the orchestrator asks the server for the account's calendar home. A server that refuses, or answers without one, stores nothing: the route answers `422` `calendar_unreachable` with the server's status and reply, and the CalDAV form reads "The calendar server refused the connection (&lt;status&gt;): &lt;reply&gt;", or "The calendar server could not be reached". For CalDAV:
+
+- The address must be `https` on port 443, with no user name in it, and resolve only to public addresses; any other is refused `422` `calendar_host_not_allowed`, naming the field, before anything is dialled.
+- Redirects are not followed.
+- The account's address is read from the server; without one, the user name is used. The label is that address unless you give one.
+- Some services accept only an app password, not the password you sign in with.
+
+A refused form keeps what you typed and empties the password.
+
+---
+
+## Choosing a Calendar
+
+The context selector above the chat input lists your calendar accounts under **Calendar**, each with its server's host, for example "Calendar · ann@example.com (apidata.googleusercontent.com)". The same choice is made for a schedule, or once in a [profile](/docs/zaru/profiles), where the calendar tools are the `calendar.*` family.
+
+- **No calendar chosen:** the calendar tools are not offered.
+- **One chosen:** the tools are offered in every mode, and `account` is set to that calendar for every call; the model does not write it.
+- **Two or more chosen:** each call names one of them in `account`, from a list of their names.
+
+Each call shows in the conversation as "Worked in your Calendar · &lt;account&gt;".
+
+An agent that needs a calendar account on every run declares it with `spec.contexts`, service `caldav` ([Agent Manifest](/docs/reference/agent-manifest#speccontexts)).
+
+---
+
+## The Tools
+
+Every tool takes `account`: one of your calendar accounts, by id, or by its name when several are chosen. `calendar_id` is one of the ids `calendar.calendars` answers, or `primary` (or the account's own address) for the account's own calendar. Times are RFC 3339 with an offset; an all-day event's dates are `YYYY-MM-DD`.
+
+| Tool | Takes | Waits for approval | Does |
+| ---- | ----- | :----------------: | ---- |
+| `calendar.calendars` | `account` | No | Lists the account's calendars: each one's `calendar_id`, name, description, colour where given, and whether the account may write to it. |
+| `calendar.list` | `account`, `calendar_id`; optional `start`, `end`, `query`, `limit` | No | Lists events in a window of at most 92 days (by default now and the next seven days), by start, at most `limit` (1 to 100, default 50) with `truncated` said. A repeating event answers as its occurrences in UTC. `query` matches the title, location and description. Each event has its `event_id`, title, times, location, organiser, attendees and their answers, status and whether it repeats. |
+| `calendar.read` | `account`, `calendar_id`, `event_id` | No | Reads one event: everything `calendar.list` answers, its description (up to 32,000 characters), its start and end as written with their time zone, and its `etag`. |
+| `calendar.create` | `account`, `calendar_id`, `title`, `start`, `end`; optional `description`, `location`, `attendees` | Yes | Creates an event, its times written in UTC. With attendees (up to 50 addresses), the account is the organiser and each attendee is invited. |
+| `calendar.update` | `account`, `calendar_id`, `event_id`, and at least one of `title`, `start`, `end`, `description`, `location`, `attendees` | Yes | Changes only what is given in an event the account organises; `attendees` given replaces the list. |
+| `calendar.delete` | `account`, `calendar_id`, `event_id` | Yes | Deletes an event the account organises. |
+| `calendar.respond` | `account`, `calendar_id`, `event_id`, `response` (`accepted`, `declined` or `tentative`) | Yes | Answers an invitation as the account's attendee. |
+
+Attendees may be sent an invitation or an update by the calendar's server when an event with attendees is created, changed or deleted. The tools send no mail of their own.
+
+### Approval
+
+The four writes always wait for your approval, whatever the plan or a capability entry says. The approval card shows what you are agreeing to: for a new event, its calendar, title, times, attendees and location; for a change, the event's current title and start beside the new title, times and attendees; for a deletion, the event's title, times and attendees; for an answer, the event's title, start, organiser, whether it repeats, and your answer. For a change, a deletion and an answer, the event's own values are read from the calendar before the card is shown and replace anything the model wrote for them. **Always allow** names the tool and the calendar account.
+
+A run you approve reads the event again and writes only if it has not changed since.
+
+### Refusals
+
+Each of these is answered before anything changes:
+
+| Case | Answer |
+| ---- | ------ |
+| A repeating event to `calendar.update` or `calendar.delete` | "This event repeats; changing or deleting a repeating event is not supported yet; nothing was changed." |
+| An event another address organises, to `calendar.update` or `calendar.delete` | "You are not this event's organiser; answer it with calendar.respond instead; nothing was changed." |
+| `calendar.respond` on an event the account does not attend | "You are not an attendee of this event; nothing was answered." |
+| The event changed since it was read | "The event changed since it was read; read it again; nothing was changed." |
+| A window over 92 days | "'start' and 'end' must be at most 92 days apart." |
+| An `end` not after `start` | "'end' must be after 'start'." |
+| An unknown `calendar_id` | "'calendar_id' must be one of the ids calendar.calendars answers for this account, or primary." |
+| More than 50 attendees | "An event has at most 50 attendees." |
+| A title that is not one line of at most 1,000 characters | "'title' must be one line of at most 1000 characters." |
+| A description over 32,000 characters | "'description' must be plain text of at most 32000 characters." |
+
+A call for an account that is not yours, or not among those chosen for the run, is refused, for example "This tool needs your own calendar account, and none was chosen for this run.". An agent's run with no calendar chosen needs the calendar connection granted to that agent, its workflow or all agents.
+
+<Callout type="info">
+  The reference deployment admits the seven calendar tools in every Zaru
+  plan's security context and in `aegis-system-agent-runtime`, and in no
+  other, and marks the four writes `requires_approval: true` in
+  `spec.tool_capabilities`. The writes wait for approval with or without
+  that entry.
+</Callout>
+
+---
+
+## What Zaru Is Told
+
+With a calendar chosen, Zaru is told that the `calendar.` tools reach the calendars you chose: it may list your calendars, list events in a window and read one event; it creates, changes, deletes or answers an event only when your message asks, and says so when it does.
+
+---
+
+## See Also
+
+- [The Vault](/docs/zaru/vault)
+- [Profiles](/docs/zaru/profiles)
+- [Schedules](/docs/workflows/schedules)
+- [Agent Manifest](/docs/reference/agent-manifest#speccontexts)

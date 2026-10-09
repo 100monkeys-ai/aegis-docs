@@ -866,6 +866,44 @@ Additional resources attached to the agent at execution time.
 | `url` | string | Required for `url` | URL to fetch. |
 | `description` | string | | Human-readable description. |
 
+### `spec.contexts[]`
+
+The services whose connections a person chooses for this agent's runs: a mailbox, a calendar account, or a remote tool server such as Nuclear Notes. Not the prompt attachments of `spec.context`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `service` | string | ✓ | The service a chosen connection fills: `imap` (a mailbox), `caldav` (a calendar account), or a remote tool server's name, such as `nuclear-notes` or `github`. |
+| `required` | boolean | | `true`: a run with no connection chosen for the service is refused at start, before anything runs, with `agent '<name>' requires a <service> context and none was chosen`. Default: `false`. |
+
+A context the run fills with a connection adds `<service>.*` to the tools the run may call, so a remote tool server's tools (named `<service>.<tool>`, such as `nuclear-notes.pages.read`) are admitted without `spec.tools` naming them. The mail and calendar tools are not named by their service, so an agent that uses them lists them in `spec.tools`. A manifest is refused when a context names no service (`spec.contexts: a context names no service`) or names one twice (`spec.contexts: the service '<service>' is declared twice`).
+
+An agent that works in a person's mailbox and keeps its pages in their Nuclear Notes, needing both connections on every run (from the email examples' clerk agent):
+
+```yaml
+spec:
+  contexts:
+    - service: imap
+      required: true
+    - service: nuclear-notes
+      required: true
+
+  tools:
+    - mail.list
+    - mail.read
+    - mail.label
+    - mail.draft
+    - mail.send
+    - mail.reply
+    - aegis.approval.status
+    - fs.write
+    - cmd.run
+    - nuclear-notes.pages.list
+    - nuclear-notes.pages.read
+    - nuclear-notes.pages.create
+    - nuclear-notes.pages.patch_metadata
+    - nuclear-notes.pages.apply_patch
+```
+
 ### `spec.default_schedule`
 
 A timing offered, pre-filled, when someone makes a [schedule](/docs/workflows/schedules) for this agent. It creates, changes and pauses nothing by itself; any number of schedules may run the agent, each with its own timing.

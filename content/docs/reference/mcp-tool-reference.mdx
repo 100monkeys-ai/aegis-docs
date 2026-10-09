@@ -141,7 +141,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.execute.status`
 - `aegis.execute.wait`
 - `aegis.execution.file`
-- `aegis.workflow.wait`
+- `aegis.goal.cancel`
 
 ### Architect Mode
 
@@ -221,7 +221,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.workflow.run`             | workflow   | false        | `name`                                          | Ag, Op            |
 | `aegis.workflow.generate`        | workflow   | false        | `input`                                         | Ar, Op            |
 | `aegis.workflow.logs`            | workflow   | true         | `execution_id`                                  | Ar, Op            |
-| `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ag, Ex, Ar, Op    |
+| `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ag, Ar, Op        |
 | `aegis.workflow.cancel`          | workflow   | true         | `execution_id`                                  | Op                |
 | `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | Op                |
 | `aegis.workflow.remove`          | workflow   | true         | `execution_id`                                  | Op                |
@@ -246,6 +246,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.goal.create`              | goal       | true         | `statement`, `client_ref`, `channel`            | none: called by Zaru Web's turn |
 | `aegis.goal.evaluate`            | goal       | true         | `goal_id`, `companion_answer`                   | none: called by Zaru Web's turn |
 | `aegis.goal.status`              | goal       | true         | `goal_id`                                       | none: called by Zaru Web's turn |
+| `aegis.goal.cancel`              | goal       | true         | `goal_id`                                       | Ag, Ex, Ar, Op    |
 | `aegis.schedule.create`          | schedule   | false        | `name`, `target_kind`, `target`                 | Op                |
 | `aegis.schedule.list`            | schedule   | true         | —                                               | Ag, Ar, Op        |
 | `aegis.schedule.get`             | schedule   | true         | `schedule_id`                                   | Ag, Ar, Op        |

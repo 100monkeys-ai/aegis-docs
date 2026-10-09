@@ -11,13 +11,20 @@ The Vault is where you store credentials that your agents use at runtime. Agents
 
 ## Supported Providers and Credential Types
 
-| Provider        | Credential Types        | Example Value                   |
-| --------------- | ----------------------- | ------------------------------- |
-| OpenAI          | Secret                  | `sk-...`                        |
-| Anthropic       | Secret                  | `sk-ant-...`                    |
-| Google (Gemini) | Secret, Service Account | API key or service account JSON |
-| GitHub          | Secret                  | `ghp_...`                       |
-| Custom          | Secret, Variable        | Any value                       |
+| Provider                | Credential Types        | Example Value                   |
+| ----------------------- | ----------------------- | ------------------------------- |
+| OpenAI                  | Secret                  | `sk-...`                        |
+| Anthropic               | Secret                  | `sk-ant-...`                    |
+| Google (Gemini)         | Secret, Service Account | API key or service account JSON |
+| GitHub                  | Secret                  | `ghp_...`                       |
+| Nuclear Notes           | Secret                  | A Nuclear Notes MCP token, `nn_mcp_...` |
+| Custom                  | Secret, Variable        | Any value                       |
+| Google (mailbox)        | OAuth2                  | None: **Connect Google** on the Connections page signs you in to Google |
+| Google Calendar         | OAuth2                  | None: **Connect Google Calendar** on the Connections page signs you in to Google |
+| IMAP and SMTP (mailbox) | Mailbox                 | Your mail server settings, user name and password, from **Connect by IMAP and SMTP** |
+| CalDAV (calendar)       | Calendar                | Your calendar server's `https://` address, account address and password, from **Connect by CalDAV** |
+
+The last four are connections, made from the **Connections** page rather than **New Credential**: a mailbox for the `mail.*` tools, and a calendar account for the `calendar.*` tools ([Calendar](/docs/zaru/calendar)). Google's mailbox and Google Calendar are two separate sign-ins, each granting only its own service.
 
 ---
 
