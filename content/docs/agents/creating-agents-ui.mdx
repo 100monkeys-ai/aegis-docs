@@ -96,6 +96,8 @@ spec:
 
 See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the complete field specification.
 
+The form's **Recommended schedule** section (Cron, Time zone, Jitter (seconds)) writes `spec.default_schedule`: "A recommendation only: it is offered when someone makes a schedule for this agent and creates nothing by itself." See [Schedules](/docs/workflows/schedules). A manifest carrying the old `spec.schedule` is refused by the YAML mode's validation, and one loaded with it opens with that key left out and a line saying so.
+
 ### Step 5: Submit
 
 Click **Deploy Agent**, then choose the version in the **Save Changes** dialog. The dialog's current version is the manifest's `metadata.version`: from the YAML text while the YAML tab is the active tab, else from the form. The manifest is then sent to the orchestrator, which:

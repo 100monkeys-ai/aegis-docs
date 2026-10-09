@@ -1,0 +1,169 @@
+---
+title: Schedules
+description: Start an agent or a workflow later, once or on a recurrence, as the person who made the schedule.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+# Schedules
+
+A schedule starts one of your agents or workflows as you, either once at a time you choose or again and again on a recurrence. A schedule is your own object, never a field of the agent or workflow it runs: any number of schedules may name the same target, and a manifest can only recommend a timing (see [Recommended Schedules in a Manifest](#recommended-schedules-in-a-manifest)).
+
+Each schedule is kept by the orchestrator and fired by a Temporal Schedule of its own. At each fire the orchestrator starts the run exactly as `aegis.task.execute` or `aegis.workflow.run` would for you, with the schedule's intent, input and connections.
+
+---
+
+## What a Schedule Holds
+
+| Field         | Description |
+| ------------- | ----------- |
+| `name`        | 1 to 80 characters. |
+| `target_kind` | `agent` or `workflow`. |
+| `target`      | The agent's or workflow's name or id. |
+| `version`     | A version of the target to run. Absent: the latest at each run. |
+| `intent`      | What each run is for, in a sentence. |
+| `input`       | The run's input. An input that is not an object is passed as `{"input": <value>}`. |
+| `attachments` | Files the run receives, as the starting tools take them. |
+| `repositories`| The repositories the run works in, as the starting tools take them. |
+| `contexts`    | The connections the run uses, for each tool server a binding id, a list of binding ids, or `null` for none. |
+| `profile`     | One of your [profiles](/docs/zaru/profiles) to run on, in place of `contexts`. |
+| `at`          | For one run: an RFC 3339 time. |
+| `recurrence`  | For a repeating run: `cron`, `timezone` and `jitter_seconds`. |
+
+Give exactly one of `at` or `recurrence`. A schedule carries one profile or chosen connections, never both: "Choose one profile, or choose connections without a profile; not both."
+
+### Timing
+
+- **Once.** `at` must be at least one minute from now and at most 366 days ahead: "'at' must be a time at least one minute from now and at most a year ahead."
+- **Recurrence.** `cron` is five fields: minute, hour, day of month, month and day of week. Each field is `*`, a number, a range `a-b`, any of those with a step `/n`, or a comma-separated list of them; day of week 0 and 7 are Sunday. There is no seconds field and no `@daily`-style shorthand. When both the day of month and the day of week are restricted, a day matching either fires.
+- **Time zone.** `timezone` is an IANA time zone name such as `Europe/Berlin`. Default: `UTC`.
+- **At most once every 5 minutes.** A recurrence whose shortest gap between two runs is under 5 minutes is refused: "A schedule runs at most once every 5 minutes."
+- **Jitter.** `jitter_seconds` delays each run by a random amount up to that many seconds. Default: `0`. Maximum: `3600`.
+
+### Limits
+
+You may have at most **25** schedules that are not deleted: "You have 25 schedules; delete one to make another."
+
+A schedule always runs as a person. A service account, or an operator acting for no person, cannot make, change, pause, resume or delete one: "A schedule runs as the person who made it; this needs your own account."
+
+---
+
+## What Happens at Each Fire
+
+Every fire is recorded once per scheduled time, so a fire Temporal repeats answers the first fire's record instead of starting a second run. Its outcome is one of:
+
+| Outcome           | Meaning |
+| ----------------- | ------- |
+| `started`         | The run started. The fire records its execution id, and the run records the schedule. |
+| `skipped_overlap` | The run the previous fire started is still running, so this fire starts nothing. |
+| `skipped_paused`  | The schedule is paused. |
+| `refused`         | The run could not start. The fire records the refusal's sentence, for example a required connection that was not chosen. |
+
+- **No overlapping runs.** A schedule never starts a run while its previous run is still running; that fire is `skipped_overlap`. Zaru Web shows it as "Skipped: the last run was still running".
+- **Catch-up window.** A fire that could not be made at its time (the orchestrator restarting, for example) is still made up to 10 minutes late; later than that, the time is skipped.
+- **Paused after three refusals.** When the last three fires of a recurring schedule were all refused, the schedule pauses itself, with the reason "Paused after three runs could not start: &lt;the last refusal&gt;."
+- **Once, then completed.** A schedule with `at` becomes `completed` after its one fire. Giving it a new time makes it active again.
+
+A schedule's state is `active`, `paused` or `completed`. Pausing stops its fires until it is resumed; resuming, like any change, records you again from your current sign-in, and later runs act as that. Deleting a schedule removes its Temporal Schedule; the runs it started keep the schedule's id.
+
+### Approvals from a Scheduled Run
+
+A scheduled run acts as you, so every tool call that waits for your approval in a conversation waits for it in a scheduled run too, and a standing "Always allow" or "Always deny" choice of yours applies to it as written. In Zaru Web such a request is listed on the Approvals page with the line "From your schedule &lt;name&gt;" and a link to the schedule.
+
+### How a Fire Reaches the Orchestrator
+
+The Temporal Schedule starts the Temporal worker's `aegis_schedule_fire` workflow, which posts the scheduled time to the orchestrator's internal fire route, at most three attempts 30 and then 60 seconds apart, each bounded to 30 seconds. Only the Temporal worker's own service account may call that route. The run itself is an ordinary AEGIS execution.
+
+---
+
+## Recommended Schedules in a Manifest
+
+An agent or workflow manifest may carry `spec.default_schedule`: a timing offered, pre-filled, when someone makes a schedule for that agent or workflow. It creates nothing by itself.
+
+```yaml
+spec:
+  default_schedule:
+    cron: "*/30 * * * *"
+    timezone: UTC
+    jitter_seconds: 300
+```
+
+| Field            | Type    | Required | Description |
+| ---------------- | ------- | -------- | ----------- |
+| `cron`           | string  | ✓        | Five fields, as above. |
+| `timezone`       | string  |          | IANA time zone name. Default: `UTC`. |
+| `jitter_seconds` | integer |          | Up to this many seconds of random delay. Default: `0`. |
+
+It is checked by the same rules as a schedule's recurrence. A manifest that still carries `spec.schedule` is refused when it is registered: "'spec.schedule' is not read; make a schedule for this agent or workflow, and use 'spec.default_schedule' to suggest one."
+
+`GET /v1/schedules/defaults?target_kind=agent&target=<name or id>` answers `{"default_schedule": ...}`, or `null` when the manifest recommends none.
+
+---
+
+## Managing Schedules
+
+### REST Routes
+
+| Route | Who | Scope |
+| ----- | --- | ----- |
+| `POST /v1/schedules` | a person | `schedule:write` |
+| `GET /v1/schedules` | the owner (their own); an operator (the tenant's) | `schedule:read` |
+| `GET /v1/schedules/{id}` | the owner; an operator (the tenant's) | `schedule:read` |
+| `PATCH /v1/schedules/{id}` | the owner | `schedule:write` |
+| `POST /v1/schedules/{id}/pause` | the owner | `schedule:write` |
+| `POST /v1/schedules/{id}/resume` | the owner | `schedule:write` |
+| `DELETE /v1/schedules/{id}` | the owner | `schedule:write` |
+| `GET /v1/schedules/{id}/runs?limit=` | the owner; an operator (the tenant's) | `schedule:read` |
+| `GET /v1/schedules/defaults?target_kind=&target=` | a person; an operator | `schedule:read` |
+
+Another person's schedule is answered `404`, exactly as one that does not exist. An operator reads a tenant's schedules and never changes one. `PATCH` changes only the fields it is given; a new `at` or `recurrence` replaces the timing. `runs` answers the newest fires first, `limit` 1 to 100, default 20, each with its run's status. When the node cannot reach Temporal, nothing is saved: "Schedules are unavailable right now; nothing was saved."
+
+A schedule answers its timing, its state, `paused_reason`, `next_run_at` (none while paused or completed) and `last_run`:
+
+```json
+{
+  "schedule": {
+    "id": "5f6c…",
+    "name": "Morning inbox triage",
+    "target_kind": "workflow",
+    "target": "email-inbox-triage",
+    "intent": "Sort the new mail",
+    "input": { "mailbox": "ann@example.com" },
+    "contexts": null,
+    "profile_id": "0000daeb-…",
+    "at": null,
+    "recurrence": { "cron": "*/30 * * * *", "timezone": "UTC", "jitter_seconds": 300 },
+    "state": "active",
+    "paused_reason": null,
+    "next_run_at": "2026-10-09T17:30:00Z",
+    "last_run": { "time": "2026-10-09T17:00:00Z", "outcome": "skipped_overlap", "execution_id": null },
+    "created_at": "2026-10-09T04:27:00Z",
+    "updated_at": "2026-10-09T16:27:02Z"
+  }
+}
+```
+
+### MCP Tools
+
+The `aegis.schedule.*` tools do what the routes do and answer the same bodies: `aegis.schedule.create`, `.list`, `.get`, `.update`, `.pause`, `.resume`, `.delete` and `.runs`, each but `create` and `list` taking `schedule_id`. None of them waits for approval: each run's own calls do. A `create` that names neither `contexts` nor `profile` takes the calling conversation's chosen profile or connections. See [Management Tools](/docs/reference/management-tools#schedule-tools).
+
+### In Zaru
+
+The Schedules page of the dashboard lists your schedules with their state, next run and last run, and makes, edits, pauses, resumes and deletes them; every time it shows is in your device's time zone. Its form fills in the target's recommended schedule, and a run card's **Schedule this** opens it with that run's target, intent, input and connections.
+
+In a conversation, Zaru does not make a schedule itself. When you ask it to keep an eye on something or to do something again later, it proposes one with `zaru.schedule`, naming an agent or workflow of yours that exists, and the turn ends at a **Schedule this?** card that says what it runs ("Runs the agent &lt;name&gt;") and when. **Schedule** opens the schedule form filled in from the proposal; **Not now** closes it. See [`zaru.schedule`](/docs/zaru/mcp-tools#zaruschedule).
+
+<Callout type="info">
+  The agentic and workflow modes can list, read, pause, resume and delete your
+  schedules and read their runs; making or changing one is done from the card's
+  form or the Schedules page.
+</Callout>
+
+---
+
+## See Also
+
+- [Profiles](/docs/zaru/profiles): run a schedule on a profile
+- [Workflow Manifest Reference](/docs/reference/workflow-manifest)
+- [Agent Manifest Reference](/docs/reference/agent-manifest)
+- [Temporal](/docs/deployment/temporal): the worker that fires schedules

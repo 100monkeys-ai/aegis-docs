@@ -52,6 +52,12 @@ See [File Uploads in Chat](/docs/zaru/chat#file-uploads-in-chat) for the user-fa
 
 ---
 
+## Connections and Profiles
+
+A connection may send the `x-zaru-contexts` header to choose, for every request, which of the person's connections the tools use: for each tool server a binding id, a list of binding ids, or `null` for none; or, alone, `{"@profile": "<profile id>"}` to choose one of the person's [profiles](/docs/zaru/profiles). With a profile, the tools offered are the profile's, every forwarded call carries it, and `zaru.init` and `zaru.mode` teach the model the profile's name, its Nuclear Notes workspace and its instructions. A header of any other shape is answered `400`.
+
+---
+
 ## Waiting on Long Executions
 
 An MCP client gives up on a tool call after about a minute, so on Zaru's MCP server (`https://mcp.myzaru.com/mcp/v1`) one call to a wait tool (`aegis.agent.wait`, `aegis.task.wait`, `aegis.execute.wait`, `aegis.workflow.wait`) waits at most **45 seconds**. A `timeout_seconds` that is a whole number from 0 to 45 is used as given; a larger value, a fractional value or none waits 45 seconds. Each wait tool's description says so.
@@ -94,7 +100,7 @@ Zaru's MCP server forwards the `aegis.*` tools to AEGIS. When AEGIS refuses such
 | `error.code`          | AEGIS's code for the refusal, from [Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors), or `invoke_failed` (below). |
 | `error.message`       | For a refusal of your call, AEGIS's own message: what was refused and why. For `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE` and `SERVICE_UNAVAILABLE`, the fixed sentence of that table, never the failure's detail. |
 | `request_id`          | AEGIS's id for the refused call. Quote it when you report the failure: it lets an operator find what happened. |
-| `retry_after_seconds` | Present on `RATE_LIMIT_EXCEEDED` when AEGIS said how long to wait: the seconds to wait before calling again. |
+| `retry_after_seconds` | Present when AEGIS said how long to wait, on `RATE_LIMIT_EXCEEDED` and on `UPSTREAM_UNAVAILABLE`: the seconds to wait before calling again. |
 
 The server does not repeat a refused call, apart from the session renewal below. A policy refusal is deterministic: the same call gets the same answer, so change the call instead of repeating it.
 
@@ -110,7 +116,7 @@ The errors of the tools the server handles itself (`zaru.chat`, `zaru.operator.e
 
 ## Zaru Client Tools — All Modes
 
-These five tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.
+These tools are available in every mode, including chat. They are handled by the Zaru MCP server and never forwarded to the AEGIS orchestrator.
 
 ### `zaru.init`
 
@@ -197,6 +203,59 @@ Use this to record user preferences, work-style cues, recurring projects, frustr
 ```
 
 If `version` does not match the server's current version, the call returns a structured conflict error containing the server's current `{ content, version, updated_at }`. Merge the intended changes into that content and retry with the new version.
+
+### `zaru.schedule`
+
+Proposes a schedule to the person: one of their agents or workflows run later, once or again and again. It creates nothing. Zaru Web shows the proposal as a **Schedule this?** card that names what it runs and when, and the turn ends there; **Schedule** opens the schedule form filled in from the proposal, **Not now** closes it. See [Schedules](/docs/workflows/schedules).
+
+| Parameter     | Required | Description |
+| ------------- | -------- | ----------- |
+| `target_kind` | Yes      | `agent` or `workflow` |
+| `target`      | Yes      | The name or id of one of the person's agents or workflows. It must already exist. |
+| `intent`      | Yes      | What each run is for, in the person's words |
+| `input`       | Yes      | An object of the target's input values, or one string, carried as `{"prompt": <the string>}` |
+| `at`          | One of   | For one run: an RFC 3339 time at least one minute from now and at most a year ahead |
+| `recurrence`  | One of   | For a repeating run: `cron` (five fields, required), `timezone` (default `UTC`) and `jitter_seconds` (0 to 3600, default 0); at most once every 5 minutes |
+| `reason`      | Yes      | One plain sentence, shown to the person, saying what the schedule will do for them |
+
+Give exactly one of `at` or `recurrence`. After the shape is checked, the server reads the person's own agent or workflow list and accepts a `target` equal to an entry's name or id. Otherwise the proposal is refused, with no card:
+
+- an empty `target`: "'target' must name one of your agents or workflows. Find or make the one that does this, run it once, then propose the schedule naming it."
+- no such agent or workflow: "You have no agent named '&lt;target&gt;'. Find or make the one that does this, run it once, then propose the schedule naming it." (or "workflow")
+- the list could not be read: "Your agents and workflows could not be read just now, so nothing was proposed."
+
+In chat mode the companion proposes a schedule only for an agent or workflow the conversation has already named or run; otherwise it offers agentic mode with `zaru.mode`, where the one that does it is found or made and run once, and the proposal follows that run. In agentic and workflow modes it names as the target the agent or workflow it ran. In no mode does it make a schedule itself.
+
+```json
+// zaru.schedule
+{
+  "target_kind": "agent",
+  "target": "mail-reply-watcher-agent",
+  "intent": "Watch for a reply from Cloudflare about the startup program and tell me when it comes",
+  "input": "Look for a reply from Cloudflare about the startup program",
+  "recurrence": { "cron": "0 */6 * * *", "timezone": "America/Los_Angeles", "jitter_seconds": 300 },
+  "reason": "Checks your inbox every 6 hours and tells you the moment a reply arrives."
+}
+```
+
+### `zaru.conversations.list`, `zaru.conversations.read`, `zaru.conversations.search`
+
+Read the person's own Zaru conversations: the ones held on the Zaru Web chat page and the ones held through `zaru.chat`. They read nothing of anyone else's, whatever tenant was active, and wait for no approval.
+
+| Tool | Parameters | Returns |
+| ---- | ---------- | ------- |
+| `zaru.conversations.list` | `limit` (1 to 50, default 20) | `{ conversations: [{ id, title, mode, updated_at, message_count, archived, current }], more }`, newest first by the last message |
+| `zaru.conversations.read` | `conversation_id` (required), `cursor`, `page_size` (1 to 100, default 50) | `{ conversation: { id, title, mode, updated_at }, messages, next_cursor }`, oldest first |
+| `zaru.conversations.search` | `query` (3 to 200 characters, required), `limit` (1 to 50, default 20) | `{ hits: [{ conversation_id, title, message_id, role, created_at, snippet, current }], more }`, newest first |
+
+A message `read` returns is `{ id, role, text, created_at }` for something the person or Zaru said, with `channel: "api"` on a message the person sent through another app and `truncated: true` on a text cut at 4,000 characters; or `{ id, role: "tool_call", tool, outcome, created_at }` for a tool call, `outcome` being `ok`, `error` or `aborted`. Tool arguments and results are not returned. Pass `next_cursor` as `cursor` to read the next page; it is `null` at the end. `search` matches the whole query literally, without regard to case, in titles and in what the person and Zaru said; `message_id` is `null` for a match in a title, and `snippet` is up to 200 characters around the match.
+
+`current` marks the conversation the call is made in. Reading it is refused with `current_conversation`: "That is the conversation we are in; it is already in front of you." A refusal is a tool error whose text is `{ "error": <code>, "message": <sentence> }`, the code one of `unauthorized`, `conversation_not_found`, `current_conversation`, `invalid_request` or `unavailable`; another person's conversation is `conversation_not_found`, exactly as one that does not exist.
+
+```json
+// zaru.conversations.search
+{ "query": "Google credits", "limit": 5 }
+```
 
 ---
 
@@ -469,6 +528,16 @@ Text files return their content inline. Binary files (images, PDFs, archives) re
 ```json
 // aegis.tools.search
 { "query": "workflow" }
+```
+
+
+### Schedules
+
+Agentic mode, like architect mode, lists the person's [schedules](/docs/workflows/schedules) and reads, pauses, resumes and deletes them: `aegis.schedule.list`, `aegis.schedule.get`, `aegis.schedule.runs`, `aegis.schedule.pause`, `aegis.schedule.resume` and `aegis.schedule.delete`, each but `list` taking `schedule_id`. Neither mode lists `aegis.schedule.create` or `aegis.schedule.update`: after running an agent or workflow for a request that should run again later, the companion proposes a schedule with [`zaru.schedule`](#zaruschedule), naming what it ran, and the person makes it from the card.
+
+```json
+// aegis.schedule.pause
+{ "schedule_id": "951ead16-b7ac-4a40-a88c-cf0b6ad1b22d" }
 ```
 
 ---
@@ -901,6 +970,8 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `zaru.docs`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.memory.get`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.memory.set`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.schedule`                  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.conversations.*` (3 tools) |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `aegis.agent.generate`           |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.agent.wait`               |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.agent.list`               |     |  ✓  |     |  ✓  |  ✓  |
@@ -913,10 +984,18 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.execution.file`           |     |  ✓  |  ✓  |  ✓  |  ✓  |
 | `aegis.tools.list`               |     |  ✓  |     |     |  ✓  |
 | `aegis.tools.search`             |     |  ✓  |     |     |  ✓  |
+| `aegis.schedule.list`            |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.schedule.get`             |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.schedule.runs`            |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.schedule.pause`           |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.schedule.resume`          |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.schedule.delete`          |     |  ✓  |     |  ✓  |  ✓  |
+| `aegis.schedule.create`          |     |     |     |     |  ✓  |
+| `aegis.schedule.update`          |     |     |     |     |  ✓  |
 | `aegis.execute.intent`           |     |     |  ✓  |     |  ✓  |
 | `aegis.execute.status`           |     |     |  ✓  |     |  ✓  |
 | `aegis.execute.wait`             |     |     |  ✓  |     |  ✓  |
-| `aegis.workflow.wait`            |     |     |  ✓  |  ✓  |  ✓  |
+| `aegis.workflow.wait`            |     |  ✓  |  ✓  |  ✓  |  ✓  |
 | `aegis.workflow.generate`        |     |     |     |  ✓  |  ✓  |
 | `aegis.workflow.list`            |     |     |     |  ✓  |  ✓  |
 | `aegis.workflow.logs`            |     |     |     |  ✓  |  ✓  |
@@ -926,13 +1005,13 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.agent.update`             |     |     |     |     |  ✓  |
 | `aegis.agent.export`             |     |     |     |     |  ✓  |
 | `aegis.agent.delete`             |     |     |     |     |  ✓  |
-| `aegis.agent.search`             |     |     |     |     |  ✓  |
+| `aegis.agent.search`             |     |  ✓  |     |     |  ✓  |
 | `aegis.workflow.create`          |     |     |     |     |  ✓  |
 | `aegis.workflow.update`          |     |     |     |     |  ✓  |
 | `aegis.workflow.validate`        |     |     |     |     |  ✓  |
 | `aegis.workflow.export`          |     |     |     |     |  ✓  |
 | `aegis.workflow.delete`          |     |     |     |     |  ✓  |
-| `aegis.workflow.run`             |     |     |     |     |  ✓  |
+| `aegis.workflow.run`             |     |  ✓  |     |     |  ✓  |
 | `aegis.workflow.cancel`          |     |     |     |     |  ✓  |
 | `aegis.workflow.signal`          |     |     |     |     |  ✓  |
 | `aegis.workflow.status`          |     |     |     |     |  ✓  |
@@ -941,7 +1020,7 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.workflow.remove`          |     |     |     |     |  ✓  |
 | `aegis.workflow.promote`         |     |     |     |     |  ✓  |
 | `aegis.workflow.demote`          |     |     |     |     |  ✓  |
-| `aegis.workflow.search`          |     |     |     |     |  ✓  |
+| `aegis.workflow.search`          |     |  ✓  |     |     |  ✓  |
 | `aegis.task.status`              |     |     |     |     |  ✓  |
 | `aegis.task.remove`              |     |     |     |     |  ✓  |
 | `aegis.runtime.list`             |     |     |     |     |  ✓  |

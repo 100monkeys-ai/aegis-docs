@@ -702,6 +702,65 @@ Deletes an execution record from the registry. The execution must be in a termin
 
 ---
 
+## Schedule Tools
+
+Schedule tools make, read, change and remove your [schedules](/docs/workflows/schedules): an agent or workflow started as you, once or on a recurrence. Each tool answers what the matching `/v1/schedules` route answers, and a refusal comes back as `{"tool": <name>, "error": <sentence>}`. Each acts only for a person: a service account, or an operator acting for no person, is refused with "A schedule runs as the person who made it; this needs your own account." No schedule tool waits for approval; the calls each run makes do.
+
+### `aegis.schedule.create`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | ✅ | 1 to 80 characters. |
+| `target_kind` | `string` | ✅ | `agent` or `workflow`. |
+| `target` | `string` | ✅ | The agent's or workflow's name or id. |
+| `version` | `string` | ❌ | A version of the target to run; absent, the latest at each run. |
+| `intent` | `string` | ❌ | What each run is for. |
+| `input` | `object` | ❌ | The run's input. |
+| `attachments` | `array` | ❌ | Files the run receives. |
+| `at` | `string` | One of | For one run: an RFC 3339 time at least one minute from now and at most a year ahead. |
+| `recurrence` | `object` | One of | `cron` (five fields), `timezone` (default `UTC`), `jitter_seconds` (0 to 3600, default 0). At most once every 5 minutes. |
+
+Give exactly one of `at` or `recurrence`. `contexts`, `profile` and `repositories` are set by the client from the person's choices, never by the model; a `create` that names neither `contexts` nor `profile`, made outside a run, takes the call's chosen profile or connections.
+
+**Returns:** `{"schedule": {...}}`, the schedule with its `state`, `next_run_at` and `last_run`.
+
+### `aegis.schedule.list`
+
+Lists your schedules, newest first: for an operator, the tenant's. No parameters.
+
+**Returns:** `{"count": n, "schedules": [...]}`.
+
+### `aegis.schedule.get`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `schedule_id` | `string` | ✅ | The schedule's id. |
+
+**Returns:** `{"schedule": {...}}`. Another person's schedule is answered "Not found", as one that does not exist.
+
+### `aegis.schedule.update`
+
+Takes `schedule_id` and any field `create` takes; only the fields given change, and an `at` or `recurrence` given replaces the timing. A completed one-time schedule given a new time is active again.
+
+### `aegis.schedule.pause` and `aegis.schedule.resume`
+
+Each takes `schedule_id`. A paused schedule starts nothing until it is resumed; pausing a schedule that is not active, or resuming one that is not paused, changes nothing.
+
+### `aegis.schedule.delete`
+
+Takes `schedule_id`. The runs it started are kept. **Returns:** `{"deleted": "<id>"}`.
+
+### `aegis.schedule.runs`
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `schedule_id` | `string` | ✅ | — | The schedule's id. |
+| `limit` | `integer` | ❌ | `20` | 1 to 100. |
+
+**Returns:** `{"count": n, "runs": [...]}`, newest first, each with its `scheduled_time`, `fired_at`, `outcome` (`started`, `skipped_overlap`, `skipped_paused`, `refused`), `detail` and `execution` (its `id`, `kind` and `status`).
+
+---
+
 ## Tool Discovery
 
 Tool discovery tools allow agents and external clients to programmatically enumerate and search the available MCP tool surface on the current node. Results are filtered by the caller's `SecurityContext`, so different tiers see different tool sets.

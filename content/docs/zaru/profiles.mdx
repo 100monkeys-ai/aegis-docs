@@ -1,0 +1,121 @@
+---
+title: Profiles
+description: A named set of your connections and the tools they may use, chosen for a conversation, a run or a schedule in one step.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+# Profiles
+
+A profile is your own named set of connections (a mailbox, a calendar account, a Nuclear Notes token, a GitHub token and so on, any number of any kind) with a list of the tools they may use, and optional defaults. You choose a profile for a conversation, and every run started from it, or for a schedule, instead of choosing connections one by one.
+
+A run carries one profile or chosen connections, never both. Choosing both is refused: "Choose one profile, or choose connections without a profile; not both."
+
+---
+
+## What a Profile Holds
+
+| Field             | Description |
+| ----------------- | ----------- |
+| `name`            | 1 to 64 characters, unique among your profiles. |
+| `bindings`        | Your own active connections, by id, in order. A connection revoked or deleted later stays listed as `removed`. |
+| `tools`           | The tools the profile allows, each an exact name (`mail.reply`) or a family written `<family>.*` (`nuclear-notes.*`). Empty: every tool these connections allow. |
+| `repository`      | A default repository, one of your git repository bindings. |
+| `notes_workspace` | A default Nuclear Notes workspace, by id or slug (1 to 128 characters). |
+| `instructions`    | Your instructions for conversations on this profile, at most 4,000 characters. |
+
+A profile can only narrow what your plan allows. Each entry of `tools` must match a tool your security context admits for the profile's connections, or it is refused: "A profile can only narrow the tools your plan allows; &lt;pattern&gt; is not one of them."
+
+---
+
+## What a Profile Governs
+
+A profile governs the tools of its connections' families: `mail.*` for a mailbox, `calendar.*` for a calendar account, and the provider's own family for any other connection (for example `nuclear-notes.*` or `github.*`). For those tools:
+
+- **Listing.** A run or conversation on the profile is offered only the tools the profile allows.
+- **Calling.** Every call of a governed tool is checked against the profile as it stands at that moment, after the security context's own check and before the approval gate. A tool the profile does not allow is refused: "This tool is not in the profile chosen for this run."
+- **Starting.** When a run starts, the profile's active connections become the run's chosen connections. A profile that is not yours, or was deleted, refuses the start, and any later governed call: "The profile chosen for this run no longer exists."
+
+Tools of other families, such as `fs.*`, `cmd.run` or `web.*`, are not governed by a profile: the security context alone decides them.
+
+A run's profile is passed on to the agent states of a workflow and to child runs, as its connections are.
+
+### Standing Choices
+
+An "Always allow" or "Always deny" choice made on a profile's run applies to that profile only. Zaru Web shows it as "Always allow &lt;tool&gt; · &lt;connection&gt; · &lt;profile name&gt;", and the approval card's "Always allow" says "in this profile" when the call carried one. Deleting a profile revokes the standing choices made in it.
+
+---
+
+## In Zaru Web
+
+- **Vault, Profiles.** `/vault/profiles` lists your profiles with their connections and tool count. **New profile** and each profile's page share one form: a name; your connections grouped by type; the tools those connections allow, by family, with "Needs your approval" beside a tool that waits for your approval and "All tools these connections allow" for an empty list; a repository, a Nuclear Notes workspace and instructions. A profile with a removed connection says "A connection in this profile was removed."
+- **In a conversation.** The context selector above the chat input lists **None**, then **Profiles** (one at a time), then your connections by type; choosing a profile clears chosen connections and the other way round, and the selector reads "Profile: &lt;name&gt;". The profile is stored with the conversation, so its later turns, and the runs they start, use it. Zaru is told the profile's name, its Nuclear Notes workspace (used when a Nuclear Notes call names none) and your instructions for it.
+- **Schedules.** The schedule form saves a profile or chosen connections, never both; a profile's repository and Nuclear Notes workspace fill the form, and a **Schedule this?** card or a run's **Schedule this** opens it on the conversation's profile. See [Schedules](/docs/workflows/schedules).
+
+---
+
+## Over MCP
+
+An MCP client chooses a profile for every request of its connection with the `x-zaru-contexts` header, holding the reserved key `@profile` alone:
+
+```http
+x-zaru-contexts: {"@profile":"0000daeb-ae45-4d06-9712-9d498a653b24"}
+```
+
+Without `@profile`, the same header names connections instead: for each tool server, a binding id, a list of binding ids, or `null` for none. `@profile` beside any other key, a list under it, or any other key beginning with `@` is answered `400` with "Choose one profile, or choose connections without a profile; not both."; any other shape with "x-zaru-contexts must be a JSON object naming one profile as @profile, or, for each server, a binding id, a list of binding ids, or null".
+
+With a profile chosen, every call the server forwards carries it, the tools offered are the profile's, and a tool that starts a run starts it on the profile. `zaru.init` and `zaru.mode` teach the model the profile's name, its Nuclear Notes workspace and its instructions.
+
+A call of a tool that starts a run (`aegis.task.execute`, `aegis.agent.generate`, `aegis.execute.intent`, `aegis.workflow.generate`, `aegis.workflow.run`) may also carry `profile`, one profile id, which the client writes from the person's choice; a call that carries none takes the request's profile, and a call made inside a run takes the run's.
+
+---
+
+## REST Routes
+
+| Route | Who | Scope |
+| ----- | --- | ----- |
+| `POST /v1/profiles` | a person | `profile:write` |
+| `GET /v1/profiles` | a person (their own, by name) | `profile:read` |
+| `GET /v1/profiles/{id}` | the owner | `profile:read` |
+| `PATCH /v1/profiles/{id}` | the owner | `profile:write` |
+| `DELETE /v1/profiles/{id}` | the owner | `profile:write` |
+| `POST /v1/profiles/available-tools` | a person | `profile:read` |
+
+Another person's profile is answered `404`, exactly as one that does not exist. An operator reads none, and a service account is refused every route: "Profiles belong to the person who made them; only that person can read or change them."
+
+A profile answers as:
+
+```json
+{
+  "profile": {
+    "id": "0000daeb-ae45-4d06-9712-9d498a653b24",
+    "name": "Fundraising",
+    "bindings": [
+      { "binding_id": "44217ea5-…", "state": "active", "label": "ann@example.com" }
+    ],
+    "tools": ["nuclear-notes.*", "mail.draft", "mail.reply", "mail.list", "mail.read"],
+    "repository": null,
+    "notes_workspace": "fundraising",
+    "instructions": null,
+    "created_at": "2026-10-09T16:21:42Z",
+    "updated_at": "2026-10-09T16:21:42Z"
+  }
+}
+```
+
+The list answers `{count, profiles}`. `POST /v1/profiles/available-tools` with `{"bindings": [<ids>]}` answers `{count, tools}`, each tool with its `name`, `description`, `family` and `gated` (whether a call waits for approval); a remote tool server's family answers one `<family>.*` entry. `DELETE` answers `204`.
+
+<Callout type="info">
+  "Profile" here is this object. The deployment's named policies are security
+  contexts, and the command line's login profiles are another thing again;
+  neither is a profile.
+</Callout>
+
+---
+
+## See Also
+
+- [The Vault](/docs/zaru/vault)
+- [Schedules](/docs/workflows/schedules)
+- [MCP Tools](/docs/zaru/mcp-tools)
+- [Security Model](/docs/concepts/security-model)

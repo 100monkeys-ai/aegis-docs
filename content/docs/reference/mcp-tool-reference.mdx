@@ -33,7 +33,14 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.git.delete`, `aegis.git.commit`, `aegis.git.push`, `aegis.git.diff`,
 `aegis.script.save`, `aegis.script.list`, `aegis.script.get`, `aegis.script.update`,
 `aegis.script.delete`,
-`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
+`aegis.schedule.create`, `aegis.schedule.list`, `aegis.schedule.get`, `aegis.schedule.update`,
+`aegis.schedule.pause`, `aegis.schedule.resume`, `aegis.schedule.delete`, `aegis.schedule.runs`,
+`mail.list`, `mail.read`, `mail.attachment`, `mail.label`, `mail.draft`, `mail.send`, `mail.reply`,
+`mail.forward`, `mail.archive`, `mail.delete`,
+`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`, `zaru.schedule`,
+`zaru.conversations.list`, `zaru.conversations.read`, `zaru.conversations.search`
+
+A schedule tool acts only for a person: a service account, or an operator acting for no person, is refused. A mail tool acts only on a mailbox connection of the caller's own; see [Mail Tools](/docs/reference/builtin-tools#mail-tools).
 
 <Callout type="info">
   Volume, file, git, and script tools are available to every tier — Free, Pro,
@@ -83,7 +90,7 @@ See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full ro
 
 ### Chat Mode
 
-Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.set` are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
+Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`, `zaru.schedule` and the three `zaru.conversations.*` tools are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
 
 ### Agentic Mode
 
@@ -92,10 +99,24 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.
 - `zaru.docs`
 - `zaru.memory.get`
 - `zaru.memory.set`
+- `zaru.schedule`
+- `zaru.conversations.list`
+- `zaru.conversations.read`
+- `zaru.conversations.search`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
 - `aegis.agent.list`
+- `aegis.agent.search`
 - `aegis.agent.logs`
+- `aegis.workflow.search`
+- `aegis.workflow.run`
+- `aegis.workflow.wait`
+- `aegis.schedule.list`
+- `aegis.schedule.get`
+- `aegis.schedule.pause`
+- `aegis.schedule.resume`
+- `aegis.schedule.delete`
+- `aegis.schedule.runs`
 - `aegis.task.execute`
 - `aegis.task.wait`
 - `aegis.task.list`
@@ -112,6 +133,10 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.
 - `zaru.docs`
 - `zaru.memory.get`
 - `zaru.memory.set`
+- `zaru.schedule`
+- `zaru.conversations.list`
+- `zaru.conversations.read`
+- `zaru.conversations.search`
 - `aegis.execute.intent`
 - `aegis.execute.status`
 - `aegis.execute.wait`
@@ -125,6 +150,10 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.
 - `zaru.docs`
 - `zaru.memory.get`
 - `zaru.memory.set`
+- `zaru.schedule`
+- `zaru.conversations.list`
+- `zaru.conversations.read`
+- `zaru.conversations.search`
 - `aegis.workflow.generate`
 - `aegis.workflow.list`
 - `aegis.workflow.logs`
@@ -138,6 +167,14 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, and `zaru.memory.
 - `aegis.task.wait`
 - `aegis.execution.file`
 - `aegis.workflow.wait`
+- `aegis.schedule.list`
+- `aegis.schedule.get`
+- `aegis.schedule.pause`
+- `aegis.schedule.resume`
+- `aegis.schedule.delete`
+- `aegis.schedule.runs`
+
+Neither agentic nor architect mode lists `aegis.schedule.create` or `aegis.schedule.update`: the model proposes a schedule with `zaru.schedule`, and the person makes it.
 
 ### Operator Mode
 
@@ -173,7 +210,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.agent.delete`             | agent      | true         | `agent_id`                                      | Op                |
 | `aegis.agent.generate`           | agent      | false        | `input`                                         | Ag, Ar, Op        |
 | `aegis.agent.logs`               | agent      | true         | `agent_id`                                      | Ag, Ar, Op        |
-| `aegis.agent.search`             | agent      | true         | `query`                                         | Op                |
+| `aegis.agent.search`             | agent      | true         | `query`                                         | Ag, Op            |
 | `aegis.agent.wait`               | agent      | true         | `execution_id`                                  | Ag, Ar, Op        |
 | `aegis.workflow.create`          | workflow   | true         | `manifest_yaml`                                 | Op                |
 | `aegis.workflow.list`            | workflow   | true         | —                                               | Ar, Op            |
@@ -181,10 +218,10 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.workflow.update`          | workflow   | true         | `manifest_yaml`                                 | Op                |
 | `aegis.workflow.export`          | workflow   | true         | `name`                                          | Op                |
 | `aegis.workflow.delete`          | workflow   | false        | `name`                                          | Op                |
-| `aegis.workflow.run`             | workflow   | false        | `name`                                          | Op                |
+| `aegis.workflow.run`             | workflow   | false        | `name`                                          | Ag, Op            |
 | `aegis.workflow.generate`        | workflow   | false        | `input`                                         | Ar, Op            |
 | `aegis.workflow.logs`            | workflow   | true         | `execution_id`                                  | Ar, Op            |
-| `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ex, Ar, Op        |
+| `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ag, Ex, Ar, Op    |
 | `aegis.workflow.cancel`          | workflow   | true         | `execution_id`                                  | Op                |
 | `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | Op                |
 | `aegis.workflow.remove`          | workflow   | true         | `execution_id`                                  | Op                |
@@ -193,7 +230,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.workflow.executions.list` | workflow   | true         | —                                               | Op                |
 | `aegis.workflow.executions.get`  | workflow   | true         | `execution_id`                                  | Op                |
 | `aegis.workflow.status`          | workflow   | true         | `execution_id`                                  | Op                |
-| `aegis.workflow.search`          | workflow   | true         | `query`                                         | Op                |
+| `aegis.workflow.search`          | workflow   | true         | `query`                                         | Ag, Op            |
 | `aegis.task.execute`             | task       | false        | `agent_id`                                      | Ag, Ar, Op        |
 | `aegis.task.status`              | task       | true         | `execution_id`                                  | Op                |
 | `aegis.task.list`                | task       | true         | —                                               | Ag, Op            |
@@ -209,6 +246,14 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.goal.create`              | goal       | true         | `statement`, `client_ref`, `channel`            | none: called by Zaru Web's turn |
 | `aegis.goal.evaluate`            | goal       | true         | `goal_id`, `companion_answer`                   | none: called by Zaru Web's turn |
 | `aegis.goal.status`              | goal       | true         | `goal_id`                                       | none: called by Zaru Web's turn |
+| `aegis.schedule.create`          | schedule   | false        | `name`, `target_kind`, `target`                 | Op                |
+| `aegis.schedule.list`            | schedule   | true         | —                                               | Ag, Ar, Op        |
+| `aegis.schedule.get`             | schedule   | true         | `schedule_id`                                   | Ag, Ar, Op        |
+| `aegis.schedule.update`          | schedule   | false        | `schedule_id`                                   | Op                |
+| `aegis.schedule.pause`           | schedule   | false        | `schedule_id`                                   | Ag, Ar, Op        |
+| `aegis.schedule.resume`          | schedule   | false        | `schedule_id`                                   | Ag, Ar, Op        |
+| `aegis.schedule.delete`          | schedule   | false        | `schedule_id`                                   | Ag, Ar, Op        |
+| `aegis.schedule.runs`            | schedule   | true         | `schedule_id`                                   | Ag, Ar, Op        |
 | `aegis.tools.list`               | tools      | true         | —                                               | Ag, Op            |
 | `aegis.tools.search`             | tools      | true         | —                                               | Ag, Op            |
 | `aegis.system.info`              | system     | true         | —                                               | Op                |
@@ -241,6 +286,10 @@ Operator always has full access; only additional modes are listed per tool.
 | `zaru.docs`                      | zaru       | N/A          | `query`                                         | C, Ag, Ex, Ar, Op |
 | `zaru.memory.get`                | zaru       | N/A          | —                                               | C, Ag, Ex, Ar, Op |
 | `zaru.memory.set`                | zaru       | N/A          | `content`, `version`                            | C, Ag, Ex, Ar, Op |
+| `zaru.schedule`                  | zaru       | N/A          | `target_kind`, `target`, `intent`, `input`, `reason` | C, Ag, Ex, Ar, Op |
+| `zaru.conversations.list`        | zaru       | N/A          | —                                               | C, Ag, Ex, Ar, Op |
+| `zaru.conversations.read`        | zaru       | N/A          | `conversation_id`                               | C, Ag, Ex, Ar, Op |
+| `zaru.conversations.search`      | zaru       | N/A          | `query`                                         | C, Ag, Ex, Ar, Op |
 
 ---
 

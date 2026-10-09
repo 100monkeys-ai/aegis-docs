@@ -403,6 +403,7 @@ In this example, when the workflow completes, the engine renders each template v
 | `max_total_transitions` | integer | | Maximum total state transitions before the workflow terminates. Default: `50`. Ceiling: `100`. |
 | `context` | `map[string, any]` | | Global constants accessible via `{{workflow.context.KEY}}`. |
 | `storage` | object | | Workflow-level shared volume configuration. |
+| `default_schedule` | object | | A recommended timing for a [schedule](/docs/workflows/schedules) of this workflow: `cron` (five fields, required), `timezone` (default `UTC`) and `jitter_seconds` (default `0`, at most `3600`). It starts nothing by itself. A manifest that carries `spec.schedule` is refused at registration. |
 | `states` | `map[string, WorkflowState]` | ✓ | State machine definition. Must contain `initial_state`. |
 
 ### `spec.storage`
@@ -457,6 +458,8 @@ When the agent completes, the Blackboard is updated under the state name:
 
 Use `{{STATE.output}}`, `{{STATE.status}}`, or `{{STATE.score}}` in downstream states.
 
+An Agent state starts its agent's run once. The Temporal worker gives the run the agent's own time limit (`spec.security.resources.timeout`, else 1,800 seconds) plus 60 seconds, and keeps the step alive while the run streams. A retry after the run has begun starts no second run: the worker asks the orchestrator to cancel the earlier run and fails the step. A failure to reach the orchestrator before the run begins is retried, at most three attempts. When the step ends before its run does, by its time limit or by cancellation, the worker asks the orchestrator to cancel the run, so no run outlives its step.
+
 ### `kind: System`
 
 | Field | Type | Required | Description |
@@ -466,6 +469,20 @@ Use `{{STATE.output}}`, `{{STATE.status}}`, or `{{STATE.score}}` in downstream s
 | `workdir` | string | | Working directory. Default: `/workspace`. |
 
 Output is written to the Blackboard as `{state_name}.output.stdout`, `{state_name}.output.stderr`, and `{state_name}.output.exit_code`.
+
+**`command: update_blackboard`** runs no process. Each `env` value is rendered against the Blackboard and written to the Blackboard under its key, as a string, so later states read it as `{{blackboard.KEY}}`. The state answers `success` with exit code `0` and `updated`, the list of keys written. The keys `input`, `intent`, `tenant_id`, `attachments`, `workflow` and `blackboard`, and the name of any state, are reserved: writing one fails the state before any key is written, with "update_blackboard cannot write the reserved key '&lt;key&gt;'."
+
+```yaml
+SEED:
+  kind: System
+  command: update_blackboard
+  env:
+    mailbox: "{{input.mailbox}}"
+    page_prefix: "outreach"
+  transitions:
+    - condition: always
+      target: COLLECT
+```
 
 Use `condition: exit_code_zero`, `condition: exit_code_non_zero`, or `condition: exit_code` with a `value` to branch on exit status.
 
@@ -790,7 +807,7 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 | `{{STATE.agents.N.output.FIELD}}` | States after STATE | Field from a judge's JSON output (e.g. `{{AUDIT.agents.0.output.score}}`, `{{AUDIT.agents.1.output.reasoning}}`). |
 | `{{STATE.result}}` | States after STATE | Final output of a Subworkflow state (blocking mode). |
 | `{{STATE.child_execution_id}}` | States after STATE | Child workflow execution ID (Subworkflow states). |
-| `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state. |
+| `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state's `update_blackboard`. |
 | `{{state.feedback}}` | All states | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | After Human states | Additional feedback text from the `signal --feedback` argument. |
 | `{{execution.id}}` | All states | Workflow execution UUID. |

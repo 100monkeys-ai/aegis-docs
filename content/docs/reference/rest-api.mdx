@@ -268,6 +268,41 @@ Reject a pending request and transition the workflow to the rejection path.
 
 ---
 
+## Schedules
+
+A person's [schedules](/docs/workflows/schedules): an agent or workflow started as its owner, once (`at`) or on a recurrence (`cron`, `timezone`, `jitter_seconds`). The routes need the scopes `schedule:read` and `schedule:write`; every change is the owner's, and an operator only reads the tenant's.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `POST` | `/v1/schedules` | Make a schedule. `201` with `{"schedule": {...}}`. |
+| `GET` | `/v1/schedules` | Your schedules, `{count, schedules}`. |
+| `GET` | `/v1/schedules/{id}` | One schedule, with `state`, `next_run_at` and `last_run`. |
+| `PATCH` | `/v1/schedules/{id}` | Change the fields given; a new `at` or `recurrence` replaces the timing. |
+| `POST` | `/v1/schedules/{id}/pause` | Pause. |
+| `POST` | `/v1/schedules/{id}/resume` | Resume. |
+| `DELETE` | `/v1/schedules/{id}` | Delete; its runs are kept. `{"deleted": "<id>"}`. |
+| `GET` | `/v1/schedules/{id}/runs?limit=` | Its fires, newest first, `limit` 1 to 100 (default 20). |
+| `GET` | `/v1/schedules/defaults?target_kind=&target=` | The target manifest's `spec.default_schedule`, or `null`. |
+
+A refusal is `{"error": "<sentence>"}`: `400` for a request refused before anything was stored, `403` for a caller who may not do it, `404` for a schedule that is not yours, and `503` when nothing could be saved.
+
+---
+
+## Profiles
+
+A person's [profiles](/docs/zaru/profiles): a named set of their connections and the tools they may use. The routes need the scopes `profile:read` and `profile:write`, and serve only the profile's owner.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `POST` | `/v1/profiles` | Make a profile. |
+| `GET` | `/v1/profiles` | Your profiles, `{count, profiles}`. |
+| `GET` | `/v1/profiles/{id}` | One profile. |
+| `PATCH` | `/v1/profiles/{id}` | Change the fields given. |
+| `DELETE` | `/v1/profiles/{id}` | Delete it and revoke the standing choices made in it. `204`. |
+| `POST` | `/v1/profiles/available-tools` | The tools your security context admits for `{"bindings": [<ids>]}`, `{count, tools}`. |
+
+---
+
 ## SEAL Endpoints
 
 ### `POST /v1/seal/attest`

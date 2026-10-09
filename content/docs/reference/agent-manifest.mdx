@@ -201,7 +201,7 @@ spec:
 | `volumes` | `object[]` | | Volume mount declarations. |
 | `execution` | object | | Execution strategy and acceptance criteria. |
 | `context` | `object[]` | | Additional resources attached to the execution. |
-| `schedule` | object | | Automatic execution scheduling. |
+| `default_schedule` | object | | A recommended timing for a schedule of this agent; it starts nothing by itself. See [`spec.default_schedule`](#specdefault_schedule). |
 | `delivery` | object | | Output delivery destinations. |
 | `tools` | `object[]` or `string[]` | | MCP tools the agent may invoke. |
 | `env` | `map[string]string` | | Environment variables injected into the container. |
@@ -866,14 +866,17 @@ Additional resources attached to the agent at execution time.
 | `url` | string | Required for `url` | URL to fetch. |
 | `description` | string | | Human-readable description. |
 
-### `spec.schedule`
+### `spec.default_schedule`
 
-| Field | Type | Description |
-|---|---|---|
-| `type` | `cron` \| `interval` \| `manual` | Schedule type. |
-| `cron` | string | Standard cron expression (e.g., `"0 * * * *"` = hourly). |
-| `timezone` | string | IANA timezone (e.g., `"America/New_York"`). |
-| `enabled` | boolean | Whether the schedule is active. |
+A timing offered, pre-filled, when someone makes a [schedule](/docs/workflows/schedules) for this agent. It creates, changes and pauses nothing by itself; any number of schedules may run the agent, each with its own timing.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `cron` | string | ✓ | Five fields: minute, hour, day of month, month and day of week. A recurrence runs at most once every 5 minutes. |
+| `timezone` | string | | IANA time zone name such as `Europe/Berlin`. Default: `UTC`. |
+| `jitter_seconds` | integer | | Up to this many seconds of random delay before each run, at most `3600`. Default: `0`. |
+
+A manifest that carries `spec.schedule` is refused at registration: "'spec.schedule' is not read; make a schedule for this agent or workflow, and use 'spec.default_schedule' to suggest one."
 
 ### `spec.advanced`
 

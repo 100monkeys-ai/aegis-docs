@@ -96,6 +96,23 @@ The worker pings the orchestrator over its gRPC connection, drops a connection t
 | `AEGIS_RUNTIME_GRPC_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS` | Shortest time between two lookups of the orchestrator's name | `5000` |
 | `AEGIS_RUNTIME_GRPC_CONNECT_TIMEOUT_MS` | How long a call waits for a connection before it fails as `UNAVAILABLE`, which Temporal retries | `60000` |
 
+### How the Worker Runs an Agent State
+
+An Agent state's run is given the agent's own time limit (`spec.security.resources.timeout`, else 1,800 seconds) plus 60 seconds. The worker heartbeats the step every 30 seconds while the run streams, and the step is considered lost after 2 minutes without one. A run is started once per step: a retry after the run has begun cancels that run and fails the step instead of starting another, and a step that ends first, by its limit or by cancellation, asks the orchestrator to cancel its run (`POST /v1/executions/{id}/cancel`, naming the run's tenant). A refused cancel is logged and does not fail the step.
+
+When a run's event stream goes quiet, the worker falls back to polling the run's stored status. It polls until the run reaches a terminal state or until the run's deadline, the step's time limit plus 60 seconds; past the deadline it asks the orchestrator to cancel the run and fails the step with "Execution status polling exhausted at the run's deadline …". These optional variables tune the fallback; each takes a whole number:
+
+| Variable | Description | Default |
+|---|---|---|
+| `AEGIS_EXECUTION_FALLBACK_IDLE_MS` | How long the stream may stay quiet, in milliseconds, before the status is polled | `5000` |
+| `AEGIS_EXECUTION_FALLBACK_POLL_MS` | The first wait between two polls, in milliseconds; each later wait is twice the one before | `1000` |
+| `AEGIS_EXECUTION_FALLBACK_MAX_POLL_MS` | The longest wait between two polls, in milliseconds | `30000` |
+| `AEGIS_EXECUTION_FALLBACK_MAX_RETRIES` | Unset by default. When set, the most polls before the step fails; a step failed by this bound cancels nothing | — |
+
+### How the Worker Fires a Schedule
+
+Each [schedule](/docs/workflows/schedules) is a Temporal Schedule that starts the worker's `aegis_schedule_fire` workflow. Its one activity posts the scheduled time to the orchestrator, which decides the fire and starts the run; it makes at most three attempts, 30 and then 60 seconds apart, each bounded to 30 seconds. The worker's service account must be the orchestrator's `aegis-temporal-worker` client: the orchestrator refuses a fire from any other caller.
+
 ### Docker Compose
 
 ```yaml

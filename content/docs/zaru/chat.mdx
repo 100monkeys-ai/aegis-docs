@@ -43,6 +43,10 @@ From the moment you send a message until the turn ends, the conversation shows a
 
 A wait tool's card (`aegis.agent.wait`, `aegis.task.wait`, `aegis.execute.wait`, `aegis.workflow.wait`, or any tool whose name ends in `.wait`) whose result says the execution has not ended (`pending` or `running`) is titled **Still running** in a neutral style. Opened, it reads "Zaru checked, and the work had not finished yet." It is never shown as done or as a failure. A wait returns before the end only at its own time limit (45 seconds on Zaru's MCP server, [Waiting on Long Executions](/docs/zaru/mcp-tools#waiting-on-long-executions)), and calling the wait again continues it.
 
+By default a turn makes at most 12 model calls. When the last one still calls tools, the turn ends with a card, "I used all my steps for this turn before finishing.", and a **Keep going** button: pressing it continues the same turn from its stored steps with a fresh allowance, without a new message from you, and the card then reads "Kept going.". A goal's continuation rounds show no such card.
+
+**Stop** ends the waiting at once, even when the page is not streaming the turn, and unlocks the input. A turn that ended without an answer, for example because the page reloaded while it ran, ends with "This reply was cut off before Zaru finished. Send your message again to retry."
+
 ---
 
 ## Model Selector
