@@ -71,11 +71,11 @@ Without an active grant, no agent can read or use the credential, even if they r
 
 ## OAuth Connections
 
-GitHub and Google support OAuth connections, which let agents act on your behalf for those services — such as reading repositories, creating issues, or calling Google APIs — without you having to copy and paste tokens manually.
+**OAuth Connections**, in the Vault's navigation, opens the Connections page. Two providers connect by OAuth on the reference deployment: **Google**, a Google mailbox for the `mail.*` tools, and **Google Calendar**, a Google calendar for the `calendar.*` tools. Click **Connect Google** or **Connect Google Calendar** and sign in to Google in your browser; each is its own sign-in, and each grants only its own service. The page also connects a mailbox by its IMAP and SMTP settings and a calendar account by its CalDAV server, each with its account and password rather than a sign-in. Once connected, agents granted access to that connection can make authenticated requests on your behalf.
 
-OAuth connections are managed from the **Connections** tab, not the Vault. From there, click **Connect** next to the provider and complete the authorization flow in your browser. Once connected, agents granted access to that connection can make authenticated requests on your behalf.
+The providers offered are the ones the server's `oauth_providers` registers; a server that registers none shows "No OAuth provider is set up on this server yet." GitHub is not one of them: a GitHub token is stored as a credential.
 
-OAuth connections automatically refresh when tokens expire. You can disconnect a connection at any time from the Connections tab.
+An OAuth connection's access token is refreshed when it is within 60 seconds of expiry. A connection whose token can no longer be refreshed is marked expired. **Disconnect** on the provider's card removes the connection.
 
 ---
 

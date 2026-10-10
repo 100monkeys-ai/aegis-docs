@@ -446,40 +446,201 @@ security_contexts:
     deny_list: []
 
   - name: zaru-free
-    description: "Zaru Free tier: ephemeral volumes only, no outbound network"
+    description: "Public consumer tier. Curated safe tools including workspace volumes, git repositories, and saved scripts. Rate-limited, limited persistent storage. 1 git binding, 5 saved scripts."
     capabilities:
-      - tool_pattern: "fs.*"
-        path_allowlist:
-          - /workspace
-      - tool_pattern: "cmd.run"
-        subcommand_allowlist:
-          python: ["-m"]
-          npm: [install, run, test]
-    deny_list:
-      - "web.*"
+      - tool_pattern: "web.search"
+      - tool_pattern: "web.fetch"
+      - tool_pattern: "mail.list"
+      - tool_pattern: "mail.read"
+      - tool_pattern: "mail.attachment"
+      - tool_pattern: "mail.label"
+      - tool_pattern: "mail.draft"
+      - tool_pattern: "mail.send"
+      - tool_pattern: "mail.reply"
+      - tool_pattern: "mail.delete"
+      - tool_pattern: "mail.archive"
+      - tool_pattern: "mail.forward"
+      - tool_pattern: "calendar.calendars"
+      - tool_pattern: "calendar.list"
+      - tool_pattern: "calendar.read"
+      - tool_pattern: "calendar.create"
+      - tool_pattern: "calendar.update"
+      - tool_pattern: "calendar.delete"
+      - tool_pattern: "calendar.respond"
+      - tool_pattern: "aegis.schema.get"
+      - tool_pattern: "aegis.schema.validate"
+      - tool_pattern: "aegis.agent.list"
+      - tool_pattern: "aegis.agent.search"
+      - tool_pattern: "aegis.agent.export"
+      - tool_pattern: "aegis.agent.generate"
+      - tool_pattern: "aegis.workflow.list"
+      - tool_pattern: "aegis.workflow.search"
+      - tool_pattern: "aegis.workflow.export"
+      - tool_pattern: "aegis.workflow.run"
+      - tool_pattern: "aegis.workflow.generate"
+      - tool_pattern: "aegis.task.execute"
+      - tool_pattern: "aegis.task.status"
+      - tool_pattern: "aegis.task.list"
+      - tool_pattern: "aegis.task.wait"
+      - tool_pattern: "aegis.task.cancel"
+      - tool_pattern: "aegis.task.logs"
+      - tool_pattern: "aegis.approval.status"
+      - tool_pattern: "aegis.goal.create"
+      - tool_pattern: "aegis.goal.evaluate"
+      - tool_pattern: "aegis.goal.status"
+      - tool_pattern: "aegis.goal.cancel"
+      - tool_pattern: "aegis.document.render"
+      # The remote tool servers, one pattern each: listed to a person's agent
+      # only when they hold a connection granted to it, and only by the exact
+      # names the agent declares.
+      - tool_pattern: "nuclear-notes.*"
+      - tool_pattern: "github.*"
+      - tool_pattern: "aegis.execute.intent"
+      - tool_pattern: "aegis.execute.status"
+      - tool_pattern: "aegis.execute.wait"
+      - tool_pattern: "aegis.execution.file"
+      - tool_pattern: "aegis.file.list"
+      - tool_pattern: "aegis.file.read"
+      - tool_pattern: "aegis.file.write"
+      - tool_pattern: "aegis.file.delete"
+      - tool_pattern: "aegis.file.mkdir"
+      - tool_pattern: "aegis.volume.create"
+      - tool_pattern: "aegis.volume.list"
+      - tool_pattern: "aegis.volume.delete"
+      - tool_pattern: "aegis.volume.quota"
+      - tool_pattern: "aegis.git.clone"
+      - tool_pattern: "aegis.git.list"
+      - tool_pattern: "aegis.git.status"
+      - tool_pattern: "aegis.git.refresh"
+      - tool_pattern: "aegis.git.delete"
+      - tool_pattern: "aegis.git.commit"
+      - tool_pattern: "aegis.git.push"
+      - tool_pattern: "aegis.git.diff"
+      - tool_pattern: "aegis.workflow.logs"
+      - tool_pattern: "aegis.workflow.cancel"
+      - tool_pattern: "aegis.workflow.wait"
+      - tool_pattern: "aegis.agent.logs"
+      - tool_pattern: "aegis.agent.wait"
+      - tool_pattern: "aegis.tools.list"
+      - tool_pattern: "aegis.tools.search"
+      - tool_pattern: "aegis.script.save"
+      - tool_pattern: "aegis.script.list"
+      - tool_pattern: "aegis.script.get"
+      - tool_pattern: "aegis.script.update"
+      - tool_pattern: "aegis.script.delete"
+      - tool_pattern: "aegis.runtime.list"
+      # A person's schedules: runs started later or on a recurrence, as that
+      # person. Never admitted by aegis-system-agent-runtime, so a run cannot
+      # schedule runs.
+      - tool_pattern: "aegis.schedule.create"
+      - tool_pattern: "aegis.schedule.list"
+      - tool_pattern: "aegis.schedule.get"
+      - tool_pattern: "aegis.schedule.update"
+      - tool_pattern: "aegis.schedule.pause"
+      - tool_pattern: "aegis.schedule.resume"
+      - tool_pattern: "aegis.schedule.delete"
+      - tool_pattern: "aegis.schedule.runs"
+    deny_list: []
 
   - name: zaru-pro
-    description: "Zaru Pro tier: full coder-default capabilities"
+    description: "Individual paid tier. Full consumer tool surface including workflow signals, git repositories (auto-refresh, sparse checkout), canvas workspaces, and saved scripts."
     capabilities:
-      - tool_pattern: "fs.*"
-        path_allowlist:
-          - /workspace
-          - /agent
-      - tool_pattern: "cmd.run"
-        subcommand_allowlist:
-          git: [clone, add, commit, push, pull, status, diff]
-          cargo: [build, test, fmt, clippy, check, run]
-          npm: [install, run, test, build, ci]
-          python: ["-m"]
-      - tool_pattern: "web.*"
-        domain_allowlist:
-          - pypi.org
-          - crates.io
-          - npmjs.com
-          - api.github.com
-        rate_limit:
-          calls: 60
-          per_seconds: 60
+      - tool_pattern: "web.search"
+      - tool_pattern: "web.fetch"
+      - tool_pattern: "mail.list"
+      - tool_pattern: "mail.read"
+      - tool_pattern: "mail.attachment"
+      - tool_pattern: "mail.label"
+      - tool_pattern: "mail.draft"
+      - tool_pattern: "mail.send"
+      - tool_pattern: "mail.reply"
+      - tool_pattern: "mail.delete"
+      - tool_pattern: "mail.archive"
+      - tool_pattern: "mail.forward"
+      - tool_pattern: "calendar.calendars"
+      - tool_pattern: "calendar.list"
+      - tool_pattern: "calendar.read"
+      - tool_pattern: "calendar.create"
+      - tool_pattern: "calendar.update"
+      - tool_pattern: "calendar.delete"
+      - tool_pattern: "calendar.respond"
+      - tool_pattern: "aegis.schema.get"
+      - tool_pattern: "aegis.schema.validate"
+      - tool_pattern: "aegis.agent.list"
+      - tool_pattern: "aegis.agent.search"
+      - tool_pattern: "aegis.agent.export"
+      - tool_pattern: "aegis.agent.generate"
+      - tool_pattern: "aegis.workflow.list"
+      - tool_pattern: "aegis.workflow.search"
+      - tool_pattern: "aegis.workflow.export"
+      - tool_pattern: "aegis.workflow.run"
+      - tool_pattern: "aegis.workflow.generate"
+      - tool_pattern: "aegis.task.execute"
+      - tool_pattern: "aegis.task.status"
+      - tool_pattern: "aegis.task.list"
+      - tool_pattern: "aegis.task.wait"
+      - tool_pattern: "aegis.task.cancel"
+      - tool_pattern: "aegis.task.logs"
+      - tool_pattern: "aegis.approval.status"
+      - tool_pattern: "aegis.goal.create"
+      - tool_pattern: "aegis.goal.evaluate"
+      - tool_pattern: "aegis.goal.status"
+      - tool_pattern: "aegis.goal.cancel"
+      - tool_pattern: "aegis.document.render"
+      # The remote tool servers, one pattern each: listed to a person's agent
+      # only when they hold a connection granted to it, and only by the exact
+      # names the agent declares.
+      - tool_pattern: "nuclear-notes.*"
+      - tool_pattern: "github.*"
+      - tool_pattern: "aegis.execute.intent"
+      - tool_pattern: "aegis.execute.status"
+      - tool_pattern: "aegis.execute.wait"
+      - tool_pattern: "aegis.execution.file"
+      - tool_pattern: "aegis.file.list"
+      - tool_pattern: "aegis.file.read"
+      - tool_pattern: "aegis.file.write"
+      - tool_pattern: "aegis.file.delete"
+      - tool_pattern: "aegis.file.mkdir"
+      - tool_pattern: "aegis.volume.create"
+      - tool_pattern: "aegis.volume.list"
+      - tool_pattern: "aegis.volume.delete"
+      - tool_pattern: "aegis.volume.quota"
+      - tool_pattern: "aegis.git.clone"
+      - tool_pattern: "aegis.git.list"
+      - tool_pattern: "aegis.git.status"
+      - tool_pattern: "aegis.git.refresh"
+      - tool_pattern: "aegis.git.delete"
+      - tool_pattern: "aegis.git.commit"
+      - tool_pattern: "aegis.git.push"
+      - tool_pattern: "aegis.git.diff"
+      - tool_pattern: "aegis.workflow.logs"
+      - tool_pattern: "aegis.workflow.cancel"
+      - tool_pattern: "aegis.workflow.wait"
+      - tool_pattern: "aegis.workflow.signal"
+      - tool_pattern: "aegis.agent.logs"
+      - tool_pattern: "aegis.agent.wait"
+      - tool_pattern: "aegis.tools.list"
+      - tool_pattern: "aegis.tools.search"
+      - tool_pattern: "aegis.script.save"
+      - tool_pattern: "aegis.script.list"
+      - tool_pattern: "aegis.script.get"
+      - tool_pattern: "aegis.script.update"
+      - tool_pattern: "aegis.script.delete"
+      - tool_pattern: "aegis.runtime.list"
+      # A person's schedules: runs started later or on a recurrence, as that
+      # person. Never admitted by aegis-system-agent-runtime, so a run cannot
+      # schedule runs.
+      - tool_pattern: "aegis.schedule.create"
+      - tool_pattern: "aegis.schedule.list"
+      - tool_pattern: "aegis.schedule.get"
+      - tool_pattern: "aegis.schedule.update"
+      - tool_pattern: "aegis.schedule.pause"
+      - tool_pattern: "aegis.schedule.resume"
+      - tool_pattern: "aegis.schedule.delete"
+      - tool_pattern: "aegis.schedule.runs"
+    deny_list: []
+
+  # zaru-business and zaru-enterprise admit the same tools as zaru-pro.
 
   # aegis-system-agent-runtime runs the orchestrator's own sub-executions (agent and
   # workflow generation, aegis.task.execute, execute-mode pipelines) and scheduled runs.
@@ -1085,12 +1246,13 @@ Optional. The bounds of a goal and the thresholds its judge's verdict is read by
 | `met_min_confidence`            | f64  | `0.75`  | …and at this confidence or above |
 | `cannot_be_met_max_feasibility` | f64  | `0.2`   | A verdict that does not meet the goal and whose `feasibility` signal scores at or below this closes it as cannot be met |
 
-Each threshold must be between 0.0 and 1.0, and an unknown key inside the block refuses the configuration. A sweep every ten minutes closes goals open past `lifetime_seconds`. The judge is the built-in agent `goal-judge`, deployed with the built-in templates (`spec.deploy_builtins`) and run on the `judge` alias. Zaru Web sets goals only for callers whose security context admits the three goal tools; add them to each `zaru-*` context's `capabilities`:
+Each threshold must be between 0.0 and 1.0, and an unknown key inside the block refuses the configuration. A sweep every ten minutes closes goals open past `lifetime_seconds`. The judge is the built-in agent `goal-judge`, deployed with the built-in templates (`spec.deploy_builtins`) and run on the `judge` alias. Zaru Web sets goals only for callers whose security context admits the four goal tools; the reference deployment adds them to each `zaru-*` context's `capabilities`:
 
 ```yaml
 - tool_pattern: "aegis.goal.create"
 - tool_pattern: "aegis.goal.evaluate"
 - tool_pattern: "aegis.goal.status"
+- tool_pattern: "aegis.goal.cancel"
 ```
 
 ---

@@ -25,7 +25,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.status`,
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
-`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.goal.create`, `aegis.goal.evaluate`, `aegis.goal.status`, `aegis.tools.list`, `aegis.tools.search`,
+`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.goal.create`, `aegis.goal.evaluate`, `aegis.goal.status`, `aegis.goal.cancel`, `aegis.tools.list`, `aegis.tools.search`,
 `aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`,
 `aegis.file.list`, `aegis.file.read`, `aegis.file.write`, `aegis.file.delete`, `aegis.file.mkdir`,
 `aegis.volume.create`, `aegis.volume.list`, `aegis.volume.delete`, `aegis.volume.quota`,
@@ -125,6 +125,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.execution.file`
 - `aegis.tools.list`
 - `aegis.tools.search`
+- `aegis.goal.cancel`
 
 ### Execute Mode
 
@@ -173,6 +174,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.schedule.resume`
 - `aegis.schedule.delete`
 - `aegis.schedule.runs`
+- `aegis.goal.cancel`
 
 Neither agentic nor architect mode lists `aegis.schedule.create` or `aegis.schedule.update`: the model proposes a schedule with `zaru.schedule`, and the person makes it.
 
@@ -1865,7 +1867,7 @@ Alias for aegis.workflow.wait. Blocks until pipeline execution completes.
 
 ## Goal Tools (`aegis.goal.*`)
 
-A goal holds a user's request, stated once, and every execution started for it. Zaru Web's turn calls these tools itself; no Zaru mode offers them to the companion's model. A goal belongs to the user who created it, in that user's tenant: a call with no user identity is refused, `aegis.goal.status` answers another user's goal as not found, and the other two refuse it `goal_not_open`. A refusal is `{ "tool", "error", "message" }`.
+A goal holds a user's request, stated once, and every execution started for it. Zaru Web's turn calls `aegis.goal.create`, `aegis.goal.evaluate` and `aegis.goal.status` itself, and no Zaru mode offers those three to the companion's model; `aegis.goal.cancel` is offered in Agentic, Execute and Architect modes. A goal belongs to the user who created it, in that user's tenant: a call with no user identity is refused, `aegis.goal.status` and `aegis.goal.cancel` answer another user's goal as not found, and `aegis.goal.evaluate` refuses it `goal_not_open`. A refusal is `{ "tool", "error", "message" }`.
 
 **Binding work to a goal.** `aegis.agent.generate`, `aegis.task.execute`, `aegis.workflow.generate` and `aegis.execute.intent` read an optional `goal_id` argument that their advertised schemas do not list. A `goal_id` that is not an open goal of the caller is refused `goal_not_open` before anything starts; otherwise the execution started is bound to the goal and appears in its `executions`.
 
@@ -1936,7 +1938,41 @@ Returns the goal, its bound executions and every verdict. Read-only.
 | --------- | -------- | -------- | ------- | ----------- |
 | `goal_id` | `string` | Yes      | —       | The goal. |
 
-**Output:** `{ goal_id, statement, client_ref, channel, state, rounds, created_at, closed_at, executions: [{ execution_id, kind, agent_or_workflow, status, started_at, ended_at }], verdicts: [{ round, attempt, score, confidence, outcome, reasoning, continue, waiting_on }] }`. Each verdict's `round` is the round it judged, counted from 0. `state` is `open`, `met`, `cannot_be_met`, `exhausted`, `expired` or `superseded`. A goal that is not the caller's is refused `goal_not_found`.
+**Output:** `{ goal_id, statement, client_ref, channel, state, rounds, created_at, closed_at, closed_reason, executions: [{ execution_id, kind, agent_or_workflow, status, started_at, ended_at }], verdicts: [{ round, attempt, score, confidence, outcome, reasoning, continue, waiting_on }] }`. Each verdict's `round` is the round it judged, counted from 0. `state` is `open`, `met`, `cannot_be_met`, `exhausted`, `expired`, `superseded`, `stopped` or `cancelled`; `closed_reason` says why a `cancelled` goal closed: the reason given to `aegis.goal.cancel`, or `its execution <id> was cancelled` when a cancel of a bound execution ended it; it is `null` otherwise. A goal that is not the caller's is refused `goal_not_found`.
+
+### `aegis.goal.cancel`
+
+Stops the caller's goal when the person asks to stop. An open goal closes `cancelled` with the reason given, so no further round is granted and no judge starts after it; then the judge still running for the current round, and every execution bound to the goal that has not ended, is cancelled. Unlike the three tools above, the companion's model is offered this one, in Agentic, Execute and Architect modes, and Zaru Web calls it when the person stops a goal from the chat.
+
+**Access:** User
+
+**`skip_judge`:** `true`
+
+**Available in:** Agentic, Execute, Architect modes
+
+| Property  | Type     | Required | Default | Description |
+| --------- | -------- | -------- | ------- | ----------- |
+| `goal_id` | `string` | Yes      | —       | The goal. |
+| `reason`  | `string` | No       | `The person asked to stop.` | Why the person stopped the goal, in their words. Kept with the goal, trimmed, to 1,000 characters; an empty reason keeps the default. |
+
+**Output:**
+
+```json
+{
+  "goal_id": "g1b2c3d4-...",
+  "state": "cancelled",
+  "closed_reason": "The person asked to stop.",
+  "round": 1,
+  "rounds_left": 2,
+  "continue": false,
+  "executions": [{ "execution_id": "e1f2a3b4-...", "status": "cancelled", "agent_or_workflow": "..." }],
+  "cancelled": true,
+  "cancelled_executions": ["e1f2a3b4-..."],
+  "failed_executions": []
+}
+```
+
+`cancelled_executions` lists each execution and judge this call cancelled, and `failed_executions` each one whose cancel failed; a later call tries those again. `cancelled` is `true` only when the goal is closed `cancelled` and no cancel failed. A goal that had already closed keeps its state and its reason: the call still cancels what is still running for it, and answers `cancelled: false`. A goal that is not the caller's is refused `goal_not_found`, and a call with no user identity is refused.
 
 ---
 

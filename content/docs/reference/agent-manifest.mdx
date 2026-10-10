@@ -201,6 +201,7 @@ spec:
 | `volumes` | `object[]` | | Volume mount declarations. |
 | `execution` | object | | Execution strategy and acceptance criteria. |
 | `context` | `object[]` | | Additional resources attached to the execution. |
+| `contexts` | `object[]` | | The services whose connections a person chooses for this agent's runs: a mailbox, a calendar account, or a remote tool server. See [`spec.contexts[]`](#speccontexts). |
 | `default_schedule` | object | | A recommended timing for a schedule of this agent; it starts nothing by itself. See [`spec.default_schedule`](#specdefault_schedule). |
 | `delivery` | object | | Output delivery destinations. |
 | `tools` | `object[]` or `string[]` | | MCP tools the agent may invoke. |
