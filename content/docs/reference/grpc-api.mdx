@@ -39,6 +39,8 @@ service AegisRuntime {
   rpc AttestAgent(AttestAgentRequest) returns (AttestAgentResponse);
   rpc InvokeTool(InvokeToolRequest) returns (InvokeToolResponse);
   rpc IngestStimulus(IngestStimulusRequest) returns (IngestStimulusResponse);
+  rpc ExecuteContainerRun(ExecuteContainerRunRequest) returns (ExecuteContainerRunResponse);
+  rpc RunRepositoryAction(RunRepositoryActionRequest) returns (RunRepositoryActionResponse);
 }
 ```
 
@@ -376,6 +378,55 @@ message IngestStimulusResponse {
 | `INVALID_ARGUMENT`  | Low confidence classification or no router configured. |
 | `INTERNAL`          | RouterAgent or workflow execution failure.             |
 | `PERMISSION_DENIED` | OIDC identity not authorized.                          |
+
+---
+
+## `ExecuteContainerRun`
+
+Runs one workflow `ContainerRun` step: the image with its command, with no model loop, answering the exit code, stdout and stderr once the container exits. Called by the Temporal worker. Among its request's fields, `volumes` passes a volume named `repository` or `repository:<label>` as the manifest wrote it, which the orchestrator mounts as the run's repository's working tree, and `network_mode` carries the step's network mode:
+
+```protobuf
+message ExecuteContainerRunRequest {
+  // ... fields 1 to 15: the step's execution, name, image, command, env,
+  // workdir, volumes, resources, registry credentials, shell, state name,
+  // attempts, tenant and workflow execution
+  string network_mode = 16;  // "egress": the node's step network; empty: the default
+}
+```
+
+A step with `network_mode` `egress` on a node with no step network, or naming a repository its run does not hold, is refused before any container, in the sentences of the [workflow manifest reference](/docs/reference/workflow-manifest#kind-containerrun).
+
+---
+
+## `RunRepositoryAction`
+
+Runs one of a workflow's own repository steps on the repository the workflow run holds. The Temporal worker calls it for a `System` state whose rendered command is `repository_diff`, `repository_commit` or `repository_land`, and never `ExecuteSystemCommand` for one.
+
+```protobuf
+rpc RunRepositoryAction(RunRepositoryActionRequest) returns (RunRepositoryActionResponse);
+
+message RunRepositoryActionRequest {
+  string workflow_execution_id = 1;  // the run whose repository the step acts on
+  string action                = 2;  // "diff", "commit" or "land"; any other value is refused
+  optional string message      = 3;  // the commit message, for "commit" only
+}
+
+message RunRepositoryActionResponse {
+  optional string commit_sha = 1;  // the commit made ("commit") or landed ("land")
+  string branch              = 2;  // the run's work branch
+  string ref                 = 3;  // the binding's ref, the branch a landing moves
+  optional string diff       = 4;  // the unified diff, for "diff" only
+  optional string sentence   = 5;  // the refusal, when the step did not act
+}
+```
+
+| Action | What it does |
+|---|---|
+| `diff` | The run's change against the commit its work branch started from, as a unified diff. A diff over 1 MiB is refused with a sentence, never answered cut off. |
+| `commit` | Commits every change on the work branch, as the run's person, with `message`. |
+| `land` | Pushes the work branch, then fast-forwards the binding's ref to it, after the person's approval of `aegis.git.land`. |
+
+When the step does not act, `sentence` carries the orchestrator's words, such as "this run holds no repository", "nothing to commit: working tree is clean", or a landing's refusal, and the worker fails the state with it. An unknown action is refused `INVALID_ARGUMENT` with "unknown repository action '&lt;action&gt;': expected diff, commit or land", a commit with no message `INVALID_ARGUMENT` with "a repository commit needs a message", and an unknown workflow execution `NOT_FOUND`.
 
 ---
 

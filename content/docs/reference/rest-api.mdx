@@ -280,11 +280,59 @@ A person's [schedules](/docs/workflows/schedules): an agent or workflow started 
 | `PATCH` | `/v1/schedules/{id}` | Change the fields given; a new `at` or `recurrence` replaces the timing. |
 | `POST` | `/v1/schedules/{id}/pause` | Pause. |
 | `POST` | `/v1/schedules/{id}/resume` | Resume. |
+| `POST` | `/v1/schedules/{id}/run` | Start one run now, active or paused, as a fire starts it; `{"run": {...}}`, the run as `runs` lists it, with `scheduled_time` `null`. |
 | `DELETE` | `/v1/schedules/{id}` | Delete; its runs are kept. `{"deleted": "<id>"}`. |
 | `GET` | `/v1/schedules/{id}/runs?limit=` | Its fires, newest first, `limit` 1 to 100 (default 20). |
 | `GET` | `/v1/schedules/defaults?target_kind=&target=` | The target manifest's `spec.default_schedule`, or `null`. |
 
-A refusal is `{"error": "<sentence>"}`: `400` for a request refused before anything was stored, `403` for a caller who may not do it, `404` for a schedule that is not yours, and `503` when nothing could be saved.
+A refusal is `{"error": "<sentence>"}`: `400` for a request refused before anything was stored, or a run that could not start, `403` for a caller who may not do it, `404` for a schedule that is not yours, `409` with "Skipped: the last run was still running" for a run asked for now while the last run is still running, and `503` when nothing could be saved.
+
+---
+
+## Rate Limits
+
+The orchestrator limits agent executions, workflow executions, model calls and model tokens over several windows at once: hourly, daily, weekly and monthly windows kept in its database, and a per-minute window counted in memory where the work runs. A window's limit bounds the sum of the charges made inside it, so a charge that would take any window's sum past its limit is refused and stored in no window. A charge is counted in a window until it is older than the window, in the monthly window as in the others.
+
+The limits a caller is held to are, in order: an override set for the person, an override set for their tenant, then their plan's defaults. For a Zaru consumer the plan is the effective tier their own subscription and active team memberships give them, read from the orchestrator's store each time a limit is checked, so a scheduled or dispatched run is held to its person's plan; the `zaru_tier` claim of the token stands only when the store holds no subscription and no active membership for the person, or cannot be read. A run on the person's own model key is not limited on model calls or tokens.
+
+### Your Usage
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/v1/user/rate-limits/usage` | Your usage of every resource and stored window your limits name: `{"usage": [...], "count": n}`. |
+| `POST` | `/v1/user/rate-limits/usage` | Record model usage a client made for you, then answer your usage. |
+
+Both take the caller's own access token and count under the key every writer charges: the caller's own tenant and subject. Each item of `usage` is one resource in one window:
+
+| Field | Description |
+| ----- | ----------- |
+| `resource_type` | `agent_execution`, `workflow_execution`, `llm_call`, `llm_token`, or `seal_tool:<pattern>` for a tool limit. |
+| `bucket` | `hourly`, `daily`, `weekly` or `monthly`. The per-minute window is counted only in memory and has no item. |
+| `current_count` | The sum of the charges inside the window. |
+| `limit_value` | The window's limit. |
+| `window_seconds` | The window's length. |
+| `resets_at` | When the oldest charge it counts leaves the window; with none counted, one window from now. |
+
+`POST` takes `{"llm_calls": <n>, "llm_tokens": <m>}`, each a non-negative integer, at most 1,000 calls and 50,000,000 tokens per request, and no other field. It charges the calls as `llm_call` and the tokens as `llm_token`, in the stored windows only, under the limits the writers resolve for you; a zero is not charged. A charge that a window refuses is stored in no window of its resource and is named in `refused` as `{"resource_type", "bucket"}`, the window that refused it; the answer is still `200`, `{"usage": [...], "count": n, "refused": [...]}`, the usage read after the write.
+
+| Status | When |
+| ------ | ---- |
+| `400` `{"error": "usage over the request bound"}` | More than 1,000 calls or 50,000,000 tokens in one request. |
+| `401` `{"error": "Authentication required"}` | No identity, or one with an empty subject. |
+| `503` | The node has no database for rate limits. |
+
+A body that is not that object is refused before anything is charged.
+
+### Administration
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/v1/admin/rate-limits/overrides?tenant_id=&user_id=` | The overrides, `{"overrides": [...], "count": n}`. |
+| `POST` | `/v1/admin/rate-limits/overrides` | Set an override: `tenant_id` or `user_id` (exactly one), `resource_type`, `bucket`, `limit_value` and, optionally, `burst_value`. |
+| `DELETE` | `/v1/admin/rate-limits/overrides/{id}` | Remove an override; `404` `{"error": "Override not found"}` when there is none. |
+| `GET` | `/v1/admin/rate-limits/usage?scope_type=&scope_id=` | The counter rows stored for one scope, `{"usage": [...], "count": n}`. |
+
+These routes reach every tenant and user, so they serve operators only. Any operator role (`aegis:admin`, `aegis:operator`, `aegis:readonly`) may read; only `aegis:admin` and `aegis:operator` may set or remove an override, and `aegis:readonly` is refused `403` `{"error": "Operator or Admin role required"}`. Every other identity is refused `403` with `{"error": "operator_required", ...}`, and a request with no identity `401`, before anything is read or written. An override naming both or neither of `tenant_id` and `user_id` is refused `400` with "Exactly one of tenant_id or user_id must be provided".
 
 ---
 

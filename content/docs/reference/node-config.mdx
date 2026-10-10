@@ -152,7 +152,8 @@ spec:
   # Deploy vendored built-in agent and workflow templates on startup.
   # Includes agent-creator-agent, workflow-generator-planner-agent, judge agents,
   # intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator,
-  # and the builtin-workflow-generator, builtin-intent-to-execution, and skill-import workflows.
+  # and the builtin-workflow-generator, builtin-intent-to-execution, skill-import and the-forge
+  # workflows, with the Forge's seven agents.
   # Required for aegis.agent.generate, aegis.workflow.generate, and aegis.execute.intent to function.
   deploy_builtins: false
 
@@ -625,6 +626,7 @@ Optional. Defaults to the `local_host` backend.
 | `local_host.mount_point`          | string | `/var/lib/aegis/local-host-volumes` | Host filesystem mount point for local volumes                       |
 | `opendal.provider`                | string | `memory`                            | OpenDAL scheme provider                                             |
 | `opendal.options`                 | map    | `{}`                                | OpenDAL provider options                                            |
+| `git.step_network`                | string | null                                | Container network every git step of a repository binding runs on (clone, fetch, commit, push, a diff or a landing on a volume), never the agents' network; also the network of a workflow `ContainerRun` step with `network_mode: egress`. Supports `env:VAR_NAME`. Absent or empty: git steps run on the step runner's default network, and an `egress` step is refused with "this node has no egress network for steps". |
 
 ---
 
@@ -634,7 +636,7 @@ Optional. Default: `false`.
 
 | Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, and skill-import workflows. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function. |
+| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, skill-import and the-forge workflows, with the Forge's seven agents (`requirements-analyst`, `architect-agent`, `tester-agent`, `coder-agent`, `code-reviewer-agent`, `critic-agent`, `security-auditor-agent`). Each is registered under `aegis-system` with global scope. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function, and for [the Forge](/docs/workflows/overview#the-forge). |
 
 ---
 

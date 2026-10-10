@@ -44,13 +44,13 @@ Give exactly one of `at` or `recurrence`. A schedule carries one profile or chos
 
 You may have at most **25** schedules that are not deleted: "You have 25 schedules; delete one to make another."
 
-A schedule always runs as a person. A service account, or an operator acting for no person, cannot make, change, pause, resume or delete one: "A schedule runs as the person who made it; this needs your own account."
+A schedule always runs as a person. A service account, or an operator acting for no person, cannot make, change, pause, resume, run or delete one: "A schedule runs as the person who made it; this needs your own account."
 
 ---
 
 ## What Happens at Each Fire
 
-Every fire is recorded once per scheduled time, so a fire Temporal repeats answers the first fire's record instead of starting a second run. Its outcome is one of:
+Every fire is recorded once per scheduled time, so a fire Temporal repeats answers the first fire's record instead of starting a second run. A run its owner starts now (see [Run Now](#run-now)) is recorded among the same fires with no scheduled time, one record per press. Its outcome is one of:
 
 | Outcome           | Meaning |
 | ----------------- | ------- |
@@ -63,6 +63,14 @@ Every fire is recorded once per scheduled time, so a fire Temporal repeats answe
 - **Catch-up window.** A fire that could not be made at its time (the orchestrator restarting, for example) is still made up to 10 minutes late; later than that, the time is skipped.
 - **Paused after three refusals.** When the last three fires of a recurring schedule were all refused, the schedule pauses itself, with the reason "Paused after three runs could not start: &lt;the last refusal&gt;."
 - **Once, then completed.** A schedule with `at` becomes `completed` after its one fire. Giving it a new time makes it active again.
+
+### Run Now
+
+The owner may start one run of a schedule now, whether it is active or paused, with `POST /v1/schedules/{id}/run` or the tool `aegis.schedule.run_now`. The run is started exactly as a fire starts it: as the owner, with the schedule's target, input, connections or profile, and attachments. It is recorded among the schedule's runs with outcome `started`, `fired_at` the time of the request and `scheduled_time` `null`, and the answer is that run as `runs` lists it: `{"run": {...}}`.
+
+- **No overlap.** While the schedule's last run is still running, the request is refused `409` with "Skipped: the last run was still running", recorded as a `skipped_overlap` run, and nothing is started.
+- **A refused start** is recorded as `refused` with its sentence, and answered with that sentence.
+- **Nothing else changes.** The schedule keeps its state and its timing: a run started now never pauses the schedule, even after refusals, and never completes a one-time schedule.
 
 A schedule's state is `active`, `paused` or `completed`. Pausing stops its fires until it is resumed; resuming, like any change, records you again from your current sign-in, and later runs act as that. Deleting a schedule removes its Temporal Schedule; the runs it started keep the schedule's id.
 
@@ -112,11 +120,12 @@ It is checked by the same rules as a schedule's recurrence. A manifest that stil
 | `PATCH /v1/schedules/{id}` | the owner | `schedule:write` |
 | `POST /v1/schedules/{id}/pause` | the owner | `schedule:write` |
 | `POST /v1/schedules/{id}/resume` | the owner | `schedule:write` |
+| `POST /v1/schedules/{id}/run` | the owner | `schedule:write` |
 | `DELETE /v1/schedules/{id}` | the owner | `schedule:write` |
 | `GET /v1/schedules/{id}/runs?limit=` | the owner; an operator (the tenant's) | `schedule:read` |
 | `GET /v1/schedules/defaults?target_kind=&target=` | a person; an operator | `schedule:read` |
 
-Another person's schedule is answered `404`, exactly as one that does not exist. An operator reads a tenant's schedules and never changes one. `PATCH` changes only the fields it is given; a new `at` or `recurrence` replaces the timing. `runs` answers the newest fires first, `limit` 1 to 100, default 20, each with its run's status. When the node cannot reach Temporal, nothing is saved: "Schedules are unavailable right now; nothing was saved."
+Another person's schedule is answered `404`, exactly as one that does not exist. An operator reads a tenant's schedules and never changes one. `PATCH` changes only the fields it is given; a new `at` or `recurrence` replaces the timing. `runs` answers the newest fires first, by scheduled time, or by `fired_at` for a run started now, `limit` 1 to 100, default 20, each with its run's status. A schedule's `last_run.time` is its scheduled time, or `fired_at` for a run started now. When the node cannot reach Temporal, nothing is saved: "Schedules are unavailable right now; nothing was saved."
 
 A schedule answers its timing, its state, `paused_reason`, `next_run_at` (none while paused or completed) and `last_run`:
 
@@ -145,7 +154,7 @@ A schedule answers its timing, its state, `paused_reason`, `next_run_at` (none w
 
 ### MCP Tools
 
-The `aegis.schedule.*` tools do what the routes do and answer the same bodies: `aegis.schedule.create`, `.list`, `.get`, `.update`, `.pause`, `.resume`, `.delete` and `.runs`, each but `create` and `list` taking `schedule_id`. None of them waits for approval: each run's own calls do. A `create` that names neither `contexts` nor `profile` takes the calling conversation's chosen profile or connections. See [Management Tools](/docs/reference/management-tools#schedule-tools).
+The `aegis.schedule.*` tools do what the routes do and answer the same bodies: `aegis.schedule.create`, `.list`, `.get`, `.update`, `.pause`, `.resume`, `.run_now`, `.delete` and `.runs`, each but `create` and `list` taking `schedule_id`. None of them waits for approval: each run's own calls do. A `create` that names neither `contexts` nor `profile` takes the calling conversation's chosen profile or connections. See [Management Tools](/docs/reference/management-tools#schedule-tools).
 
 ### In Zaru
 

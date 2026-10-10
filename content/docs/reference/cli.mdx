@@ -281,6 +281,8 @@ aegis restart --profile temporal
 
 Refreshes the stack: pull images, restart services, run database migrations, and optionally re-deploy built-in agents and workflows.
 
+The built-in refresh, which `aegis agent generate` and `aegis workflow generate` also run first, deploys every built-in agent and workflow template, [the Forge](/docs/workflows/overview#the-forge) among them. Each template is parsed before it is sent; a built-in workflow that loops by design is deployed, its loops bounded by `max_state_visits` and `max_total_transitions`.
+
 ```bash
 aegis update
 aegis update --dry-run

@@ -30,11 +30,11 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.file.list`, `aegis.file.read`, `aegis.file.write`, `aegis.file.delete`, `aegis.file.mkdir`,
 `aegis.volume.create`, `aegis.volume.list`, `aegis.volume.delete`, `aegis.volume.quota`,
 `aegis.git.clone`, `aegis.git.list`, `aegis.git.status`, `aegis.git.refresh`,
-`aegis.git.delete`, `aegis.git.commit`, `aegis.git.push`, `aegis.git.diff`,
+`aegis.git.delete`, `aegis.git.commit`, `aegis.git.push`, `aegis.git.diff`, `aegis.git.land` (answered only for a workflow's own landing step),
 `aegis.script.save`, `aegis.script.list`, `aegis.script.get`, `aegis.script.update`,
 `aegis.script.delete`,
 `aegis.schedule.create`, `aegis.schedule.list`, `aegis.schedule.get`, `aegis.schedule.update`,
-`aegis.schedule.pause`, `aegis.schedule.resume`, `aegis.schedule.delete`, `aegis.schedule.runs`,
+`aegis.schedule.pause`, `aegis.schedule.resume`, `aegis.schedule.run_now`, `aegis.schedule.delete`, `aegis.schedule.runs`,
 `mail.list`, `mail.read`, `mail.attachment`, `mail.label`, `mail.draft`, `mail.send`, `mail.reply`,
 `mail.forward`, `mail.archive`, `mail.delete`,
 `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`, `zaru.schedule`,
@@ -158,6 +158,8 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.workflow.generate`
 - `aegis.workflow.list`
 - `aegis.workflow.logs`
+- `aegis.workflow.run`
+- `aegis.workflow.signal`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
 - `aegis.agent.list`
@@ -220,12 +222,12 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.workflow.update`          | workflow   | true         | `manifest_yaml`                                 | Op                |
 | `aegis.workflow.export`          | workflow   | true         | `name`                                          | Op                |
 | `aegis.workflow.delete`          | workflow   | false        | `name`                                          | Op                |
-| `aegis.workflow.run`             | workflow   | false        | `name`                                          | Ag, Op            |
+| `aegis.workflow.run`             | workflow   | false        | `name`                                          | Ag, Ar, Op        |
 | `aegis.workflow.generate`        | workflow   | false        | `input`                                         | Ar, Op            |
 | `aegis.workflow.logs`            | workflow   | true         | `execution_id`                                  | Ar, Op            |
 | `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ag, Ar, Op        |
 | `aegis.workflow.cancel`          | workflow   | true         | `execution_id`                                  | Op                |
-| `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | Op                |
+| `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | Ar, Op            |
 | `aegis.workflow.remove`          | workflow   | true         | `execution_id`                                  | Op                |
 | `aegis.workflow.promote`         | workflow   | false        | `name`                                          | Op                |
 | `aegis.workflow.demote`          | workflow   | false        | `name`                                          | Op                |
@@ -255,6 +257,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.schedule.update`          | schedule   | false        | `schedule_id`                                   | Op                |
 | `aegis.schedule.pause`           | schedule   | false        | `schedule_id`                                   | Ag, Ar, Op        |
 | `aegis.schedule.resume`          | schedule   | false        | `schedule_id`                                   | Ag, Ar, Op        |
+| `aegis.schedule.run_now`         | schedule   | false        | `schedule_id`                                   | none until a security context names it |
 | `aegis.schedule.delete`          | schedule   | false        | `schedule_id`                                   | Ag, Ar, Op        |
 | `aegis.schedule.runs`            | schedule   | true         | `schedule_id`                                   | Ag, Ar, Op        |
 | `aegis.tools.list`               | tools      | true         | —                                               | Ag, Op            |
@@ -279,6 +282,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.git.commit`               | git        | false        | `binding_id`, `message`                         | Op                |
 | `aegis.git.push`                 | git        | false        | `binding_id`                                    | Op                |
 | `aegis.git.diff`                 | git        | true         | `binding_id`                                    | Op                |
+| `aegis.git.land`                 | git        | false        | —                                               | none: answered only for a workflow's landing step |
 | `aegis.script.save`              | script     | false        | `name`, `code`                                  | Op                |
 | `aegis.script.list`              | script     | true         | —                                               | Op                |
 | `aegis.script.get`               | script     | true         | `id`                                            | Op                |
@@ -2432,6 +2436,26 @@ Return the unified diff of the bound volume's working tree (or index, if `staged
 | `staged`     | `boolean` | No       | `false` | If `true`, return the diff of the index against `HEAD`. |
 
 **Output:** Unified-diff text.
+
+### `aegis.git.land`
+
+Lands a workflow run's work branch on its repository's branch as a fast-forward. It is the call a workflow's `repository_land` step makes (see [The Forge](/docs/workflows/overview#the-forge)), answered only for that step: any other caller, an agent's tool call among them, is refused with "aegis.git.land is answered only for a workflow's own landing step". No agent lists it.
+
+**Access:** the workflow interpreter only
+
+**`skip_judge`:** `false`
+
+**Approval:** always asked of the run's person, as for any approval-gated tool; a declined request answers "approval request &lt;status&gt;; nothing was landed" and pushes nothing.
+
+Takes no argument of the caller's: the run's repository is the one the workflow execution holds. Approved, the orchestrator, in one git step with the person's binding, pushes the work branch to `origin`, then the work branch's HEAD to `refs/heads/<the binding's ref>`, neither with force.
+
+| Refusal | When |
+| ------- | ---- |
+| `the remote branch '<ref>' has commits this run does not have; nothing was landed` | The binding's branch moved on the remote. The work branch may have been pushed; the branch is unchanged. |
+| `a run lands only on a branch; '<ref>' is not one` | The binding's ref is a tag or a commit. Refused before any push. |
+| `this run holds no repository` | The workflow execution holds no repository. |
+
+**Output:** `commit_sha` (the work branch's HEAD, now the branch's), `branch` (the work branch), `ref` and `branch_url` (the host's page of the branch). The run's narrative records `RepositoryLanded` with the line "Landed &lt;commit_sha&gt; of repository &lt;label&gt; on &lt;ref&gt;"; it carries no credential.
 
 ---
 

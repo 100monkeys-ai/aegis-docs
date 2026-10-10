@@ -404,7 +404,24 @@ In this example, when the workflow completes, the engine renders each template v
 | `context` | `map[string, any]` | | Global constants accessible via `{{workflow.context.KEY}}`. |
 | `storage` | object | | Workflow-level shared volume configuration. |
 | `default_schedule` | object | | A recommended timing for a [schedule](/docs/workflows/schedules) of this workflow: `cron` (five fields, required), `timezone` (default `UTC`) and `jitter_seconds` (default `0`, at most `3600`). It starts nothing by itself. A manifest that carries `spec.schedule` is refused at registration. |
+| `repositories` | integer | | The number of repositories every run of this workflow must name with the starting call's `repositories` (see [Repositories of a Run](#repositories-of-a-run)). A start naming another number is refused before anything is held: `workflow '<name>' works on exactly <n> repository; this run names <m>` (`repositories` when `<n>` is not 1). Absent: any number. |
 | `states` | `map[string, WorkflowState]` | ✓ | State machine definition. Must contain `initial_state`. |
+
+### Repositories of a Run
+
+A run works in a person's git repositories when its starting call (`aegis.workflow.run`, the other starting tools, a schedule) names them under the reserved top-level key `repositories`, which the model-facing schemas do not list: `[{"binding_id": "<id of one of your git repository bindings>", "branch": "<work branch>"}]`, `branch` optional. Any other shape, or an entry that names `label`, `ref`, `started_from` or `author`, is refused with `'repositories' must be a list of objects naming a binding_id and, optionally, a branch`: those are the platform's to fill.
+
+When the run starts, each repository is prepared on its own work branch, and its entry is filled with the binding's `label`, its `ref` (the binding's git ref) and `started_from`, the commit the work branch started from. The run's first repository is written onto the Blackboard as `repository`:
+
+| Variable | Description |
+|---|---|
+| `{{repository.label}}` | The binding's label. |
+| `{{repository.path}}` | `/workspace/<label>`, where an agent state sees the working tree. |
+| `{{repository.branch}}` | The run's work branch. |
+| `{{repository.ref}}` | The binding's ref: the branch a landing moves. |
+| `{{repository.started_from}}` | The commit the work branch started from. |
+
+A field the entry does not carry is `null`. No credential and no URL is on the Blackboard.
 
 ### `spec.storage`
 
@@ -482,6 +499,29 @@ SEED:
   transitions:
     - condition: always
       target: COLLECT
+```
+
+**Repository steps.** A `System` state whose `command` is `repository_diff`, `repository_commit` or `repository_land` runs no process either: it is one of the workflow's own steps on the repository the run holds, run by the orchestrator.
+
+| Command | What it does | Output |
+|---|---|---|
+| `repository_diff` | The run's change against `started_from`, as a unified diff. A diff over 1 MiB is refused, never cut off. | `diff`, `branch`, `ref` |
+| `repository_commit` | Stages every change and commits it on the work branch, as the run's person, with the message `env.message`. | `commit_sha`, `branch`, `ref` |
+| `repository_land` | Lands the work branch on the binding's ref as a fast-forward, after the person's approval (see [`aegis.git.land`](/docs/reference/mcp-tool-reference#aegisgitland)). | `commit_sha`, `branch`, `ref` |
+
+A step that does not act fails the state with the orchestrator's sentence, also written as `{state_name}.output.sentence`, so its `on_failure` transition takes it: "this run holds no repository" for a run that holds none, "nothing to commit: working tree is clean" for a commit with no change, and a landing's refusals. A run that changed nothing lands nothing.
+
+```yaml
+COMMIT:
+  kind: System
+  command: "repository_commit"
+  env:
+    message: "the-forge: {{{first_line input.task}}}"
+  transitions:
+    - condition: on_failure
+      target: FAILED
+    - condition: on_success
+      target: LAND
 ```
 
 Use `condition: exit_code_zero`, `condition: exit_code_non_zero`, or `condition: exit_code` with a `value` to branch on exit status.
@@ -582,9 +622,10 @@ Executes a single command in an isolated container without an LLM or iteration l
 | `env` | `map[string]string` | | | Environment variables. Values support Handlebars. |
 | `workdir` | string | | `/workspace` | Working directory inside the container. |
 | `volumes` | `object[]` | | | Volume mounts. Same volumes declared at workflow level or per-state. |
-| `volumes[].name` | string | ✓ | | Volume name that matches a workflow-level volume. |
+| `volumes[].name` | string | ✓ | | Volume name that matches a workflow-level volume, or `repository` for the run's repository's working tree (`repository:<label>` for one of several), mounted read-write. |
 | `volumes[].mount_path` | string | ✓ | | Absolute path inside the container. |
 | `volumes[].read_only` | boolean | | `false` | Mount as read-only. |
+| `network_mode` | string | | | `egress`: run the step on the node's step network (`spec.storage.git.step_network` in the [node configuration](/docs/reference/node-config#specstorage)), so it reaches package registries. A node with none refuses the step with "this node has no egress network for steps". Absent: the default network. |
 | `resources` | object | | | CPU, memory, and timeout limits. |
 | `resources.cpu` | integer | | | CPU millicores (e.g. `2000` = 2 vCPU). |
 | `resources.memory` | string | | | Memory limit (e.g. `"2Gi"`, `"512Mi"`). |
@@ -608,6 +649,34 @@ After the container exits, the Blackboard is updated under the state name:
 Use `{{STATE.output.exit_code}}`, `{{STATE.output.stdout}}`, and `{{STATE.output.stderr}}` in downstream states.
 
 Transitions on `ContainerRun` states use `exit_code_zero`, `exit_code_non_zero`, `exit_code`, `on_success`, `on_failure`, and `custom`. See [Condition Types](#condition-types) below.
+
+**A step on the run's repository.** A volume named `repository` mounts the working tree of the run's first repository at its `mount_path`, through the same storage gateway agent states use, for the step's length; `repository:<label>` names the one of that label. A step naming a repository its run does not hold is refused before any container: "this step names the run's repository and the run holds none", or "this step names the run's repository and the run holds no repository '&lt;label&gt;'". No credential reaches the step's container. The Forge's test step:
+
+```yaml
+EXECUTE_TESTS:
+  kind: ContainerRun
+  name: "the-forge-tests"
+  image: "{{input.test_image}}"
+  shell: true
+  command:
+    - "eval \"$FORGE_TEST_COMMAND\""
+  env:
+    FORGE_TEST_COMMAND: "{{{input.test_command}}}"
+  workdir: "/workspace/repository"
+  volumes:
+    - name: repository
+      mount_path: "/workspace/repository"
+  network_mode: egress
+  resources:
+    cpu: 2000
+    memory: "4Gi"
+    timeout: 1800s
+  transitions:
+    - condition: exit_code_zero
+      target: DIFF
+    - condition: exit_code_non_zero
+      target: CODE
+```
 
 ### `kind: ParallelContainerRun`
 
@@ -1027,161 +1096,115 @@ spec:
 
 ### The Forge
 
-Constitutional Development Lifecycle with human approval gates and adversarial multi-judge audit.
+The Forge is a built-in workflow, `the-forge` 2.0.0 (labels `builtin: "true"`, `category: development`): it develops one change in one repository of its person's, with requirements and a design each approved by the person, tests written first, the person's test suite run in a container on the clone, a review by three judges, and a commit on the run's work branch. Its manifest uses the repository features above; the states, the agents and how to start it are on [The Forge](/docs/workflows/overview#the-forge). The parts that carry the shape:
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
 kind: Workflow
 
 metadata:
-  name: the-forge
-  version: "1.0.0"
-  description: "Constitutional Development Lifecycle with adversarial testing"
+  name: "the-forge"
+  version: "2.0.0"
   labels:
-    category: development
-    pattern: constitutional-lifecycle
+    builtin: "true"
+    category: "development"
+  input_schema:
+    type: object
+    properties:
+      task:
+        type: string
+        description: "What to change. Its first line names the commit."
+      test_command:
+        type: string
+        description: "The test suite, run by /bin/sh -c in the repository's root."
+      test_image:
+        type: string
+        description: "The image the test suite runs in, a reference with a tag."
+      context:
+        type: string
+        description: "Anything else the analyst should know."
+      draft_only:
+        type: boolean
+        default: true
+    required:
+      - task
+      - test_command
+      - test_image
 
 spec:
+  # The run names exactly one repository by the dispatch key `repositories`.
+  repositories: 1
+
   context:
     max_code_iterations: 5
-    constitution_path: constitution.md
 
   initial_state: ANALYZE
 
   states:
-    ANALYZE:
-      kind: Agent
-      agent: requirements-ai-v1
-      input: |
-        User request: {{input.user_request}}
-        Codebase: {{input.codebase}}
-        Generate requirements (functional, non-functional, acceptance criteria).
-      transitions:
-        - condition: always
-          target: AWAIT_REQUIREMENTS_APPROVAL
+    # ANALYZE, AWAIT_REQUIREMENTS_APPROVAL, ARCHITECT, AWAIT_ARCH_APPROVAL,
+    # TEST, CODE (max_state_visits: 5) and EXECUTE_TESTS (above) come first.
 
-    AWAIT_REQUIREMENTS_APPROVAL:
-      kind: Human
-      prompt: |
-        Requirements:
-        {{ANALYZE.output}}
-
-        Approve? (yes/no)
-      timeout: 3600s
-      transitions:
-        - condition: input_equals_yes
-          target: ARCHITECT
-        - condition: input_equals_no
-          target: ANALYZE
-          feedback: "{{human.feedback}}"
-
-    ARCHITECT:
-      kind: Agent
-      agent: architect-ai-v1
-      input: |
-        Requirements: {{ANALYZE.output}}
-        Constitution: {{workflow.context.constitution_path}}
-        Design system architecture.
-      transitions:
-        - condition: always
-          target: AWAIT_ARCH_APPROVAL
-
-    AWAIT_ARCH_APPROVAL:
-      kind: Human
-      prompt: |
-        Architecture:
-        {{ARCHITECT.output}}
-
-        Approve? (yes/no)
-      timeout: 3600s
-      transitions:
-        - condition: input_equals_yes
-          target: TEST
-        - condition: input_equals_no
-          target: ARCHITECT
-          feedback: "{{human.feedback}}"
-
-    TEST:
-      kind: Agent
-      agent: tester-ai-v1
-      input: |
-        Requirements: {{ANALYZE.output}}
-        Architecture: {{ARCHITECT.output}}
-        Write TDD tests (pytest).
-      transitions:
-        - condition: always
-          target: CODE
-
-    CODE:
-      kind: Agent
-      agent: coder-ai-v1
-      input: |
-        Tests: {{TEST.output}}
-        Architecture: {{ARCHITECT.output}}
-        Constitution: {{workflow.context.constitution_path}}
-        Implement code to pass tests.
-      transitions:
-        - condition: always
-          target: EXECUTE_TESTS
-
-    EXECUTE_TESTS:
+    DIFF:
       kind: System
-      command: pytest tests/ -v
-      env:
-        PYTHONPATH: /workspace
+      command: "repository_diff"
       transitions:
-        - condition: exit_code_zero
+        - condition: on_success
           target: AUDIT
-        - condition: exit_code_non_zero
-          target: CODE
-          feedback: "Tests failed: {{EXECUTE_TESTS.output.stderr}}"
+        - condition: on_failure
+          target: FAILED
 
     AUDIT:
       kind: ParallelAgents
       agents:
-        - agent: reviewer-ai-v1
-          input: "Review code quality: {{CODE.output}}"
+        - agent: "code-reviewer-agent"
           weight: 1.0
-          timeout_seconds: 120
-        - agent: critic-ai-v1
-          input: "Adversarial review — try to break this code: {{CODE.output}}"
+        - agent: "critic-agent"
           weight: 1.5
-          timeout_seconds: 90
-        - agent: security-ai-v1
-          input: "Security audit: {{CODE.output}}"
+        - agent: "security-auditor-agent"
           weight: 2.0
-          timeout_seconds: 180
       consensus:
         strategy: weighted_average
         threshold: 0.95
-        min_agreement_confidence: 0.8
-        min_judges_required: 2
-        confidence_weighting:
-          agreement_factor: 0.8
-          self_confidence_factor: 0.2
+        agreement: 0.8
       transitions:
         - condition: consensus
           threshold: 0.95
           agreement: 0.8
-          target: COMPLETE
+          target: COMMIT
         - condition: score_below
           threshold: 0.95
           target: CODE
-          feedback: |
-            Audit failed (score: {{AUDIT.consensus.score}}, confidence: {{AUDIT.consensus.confidence}}):
-            Reviewer: {{AUDIT.agents.0.output}}
-            Critic:   {{AUDIT.agents.1.output}}
-            Security: {{AUDIT.agents.2.output}}
+        - condition: always
+          target: CODE
 
-    COMPLETE:
+    COMMIT:
       kind: System
-      command: finalize
+      command: "repository_commit"
       env:
-        CODE: "{{CODE.output}}"
-        TESTS: "{{TEST.output}}"
-        AUDIT_SCORE: "{{AUDIT.consensus.score}}"
-      transitions: []
+        message: "the-forge: {{{first_line input.task}}}"
+      transitions:
+        - condition: on_failure
+          target: FAILED
+        - condition: custom
+          expression: "(default input.draft_only true)"
+          target: COMPLETE
+        - condition: on_success
+          target: LAND
+
+    LAND:
+      kind: System
+      command: "repository_land"
+      transitions:
+        - condition: on_success
+          target: COMPLETE
+        - condition: on_failure
+          target: LAND_REFUSED
+
+    # COMPLETE, FAILED and LAND_REFUSED are update_blackboard steps that write
+    # outcome, commit_sha, branch and the refusal's sentence.
 ```
+
+Each judge of AUDIT is also given the requirements, the design, `{{{DIFF.output.diff}}}` and the passing suite's output, and answers `{score, confidence, reasoning, suggestions}`. No state of the Forge runs a shell command in the core process.
 
 ### Agent-Augmented CI/CD Pipeline
 

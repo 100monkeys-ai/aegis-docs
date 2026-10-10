@@ -642,6 +642,8 @@ All agentic mode tools (`aegis.agent.*`, `aegis.task.*`, `aegis.execution.file`)
 
 Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.workflow.wait`.
 
+**`aegis.workflow.run`** and **`aegis.workflow.signal`** are listed in architect mode too, as described under [Operator Mode Tools](#operator-mode-tools): a client in architect mode can start a workflow, such as the built-in [Forge](/docs/workflows/overview#the-forge), and answer its approval gates.
+
 **`aegis.workflow.wait`** — Blocks until a workflow execution or generation completes.
 
 | Parameter               | Required | Default | Description             |
@@ -1024,9 +1026,9 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.workflow.validate`        |     |     |     |     |  ✓  |
 | `aegis.workflow.export`          |     |     |     |     |  ✓  |
 | `aegis.workflow.delete`          |     |     |     |     |  ✓  |
-| `aegis.workflow.run`             |     |  ✓  |     |     |  ✓  |
+| `aegis.workflow.run`             |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.workflow.cancel`          |     |     |     |     |  ✓  |
-| `aegis.workflow.signal`          |     |     |     |     |  ✓  |
+| `aegis.workflow.signal`          |     |     |     |  ✓  |  ✓  |
 | `aegis.workflow.status`          |     |     |     |     |  ✓  |
 | `aegis.workflow.executions.list` |     |     |     |     |  ✓  |
 | `aegis.workflow.executions.get`  |     |     |     |     |  ✓  |

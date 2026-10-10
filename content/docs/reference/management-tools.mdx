@@ -746,6 +746,16 @@ Takes `schedule_id` and any field `create` takes; only the fields given change, 
 
 Each takes `schedule_id`. A paused schedule starts nothing until it is resumed; pausing a schedule that is not active, or resuming one that is not paused, changes nothing.
 
+### `aegis.schedule.run_now`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `schedule_id` | `string` | ✅ | The schedule's id. |
+
+Starts one run of your schedule now, whether it is active or paused, as its timed runs start: as you, with the schedule's target, input, connections or profile, and attachments. The schedule's state and timing do not change. While its last run is still running it is refused with "Skipped: the last run was still running", and nothing is started. A caller is offered it only where its security context names it.
+
+**Returns:** `{"run": {...}}`, the run as `aegis.schedule.runs` lists it, with outcome `started`, `fired_at` the time of the call and `scheduled_time` `null`.
+
 ### `aegis.schedule.delete`
 
 Takes `schedule_id`. The runs it started are kept. **Returns:** `{"deleted": "<id>"}`.
@@ -757,7 +767,7 @@ Takes `schedule_id`. The runs it started are kept. **Returns:** `{"deleted": "<i
 | `schedule_id` | `string` | ✅ | — | The schedule's id. |
 | `limit` | `integer` | ❌ | `20` | 1 to 100. |
 
-**Returns:** `{"count": n, "runs": [...]}`, newest first, each with its `scheduled_time`, `fired_at`, `outcome` (`started`, `skipped_overlap`, `skipped_paused`, `refused`), `detail` and `execution` (its `id`, `kind` and `status`).
+**Returns:** `{"count": n, "runs": [...]}`, newest first, each with its `scheduled_time` (`null` for a run started now), `fired_at`, `outcome` (`started`, `skipped_overlap`, `skipped_paused`, `refused`), `detail` and `execution` (its `id`, `kind` and `status`).
 
 ---
 

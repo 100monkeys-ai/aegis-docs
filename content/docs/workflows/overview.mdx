@@ -525,33 +525,65 @@ A transition with no `condition` (or `condition: always`) is an unconditional fa
 
 ---
 
-## The Forge Reference Workflow
+## The Forge
 
-The **Forge** is the canonical multi-agent development workflow. It implements a 7-state sequential pipeline with a human approval gate:
+The **Forge** is a built-in workflow, `the-forge`, that develops one change in one of your repositories: requirements and a design, each approved by you, then tests written first, the implementation, your test suite run in a container on the clone, a review by three judges, and a commit on the run's work branch. With `draft_only` false, the commit then lands on the repository's branch as a fast-forward after your approval. A node deploys it, with its seven agents, when [`spec.deploy_builtins`](/docs/reference/node-config#specdeploy_builtins) is on; it is registered under `aegis-system` with global scope.
 
 ```text
-RequirementsAI → [Human Approval] → ArchitectureAI → TesterAI → CoderAI → ReviewerAI → CriticAI → SecurityAI
+ANALYZE → AWAIT_REQUIREMENTS_APPROVAL → ARCHITECT → AWAIT_ARCH_APPROVAL → TEST → CODE
+  → EXECUTE_TESTS → DIFF → AUDIT → COMMIT → COMPLETE (draft_only, the default)
+                                          → LAND → COMPLETE, or LAND_REFUSED
 ```
 
-| State | Kind | Agent | Description |
+| State | Kind | What it does | Transitions |
 |---|---|---|---|
-| `requirements` | Agent | `requirements-agent` | Analyzes the input task and writes a structured requirements document. |
-| `approve_requirements` | Human | — | Operator reviews and approves requirements before proceeding. |
-| `architecture` | Agent | `architect-agent` | Designs system architecture based on approved requirements. |
-| `tests` | Agent | `tester-agent` | Writes test cases and test harness before any implementation. |
-| `code` | Agent | `coder-agent` | Implements the solution, running tests iteratively via the execution loop. |
-| `review` | Agent | `reviewer-agent` | Reviews code for correctness, style, and adherence to requirements. |
-| `critic` | Agent | `critic-agent` | Adversarial review — attempts to find failure cases and security issues. |
-| `security` | Agent | `security-agent` | Static analysis and security-specific validation. |
+| `ANALYZE` | Agent `requirements-analyst` | Reads the repository at `{{repository.path}}` and the task; answers numbered functional and non-functional requirements and acceptance criteria. | success: `AWAIT_REQUIREMENTS_APPROVAL`; failure: `FAILED` |
+| `AWAIT_REQUIREMENTS_APPROVAL` | Human, 3600 s | Asks you to approve the requirements. | yes: `ARCHITECT`; no: back to `ANALYZE` |
+| `ARCHITECT` | Agent `architect-agent` | Designs the change in the repository's own conventions and names every file to change. | success: `AWAIT_ARCH_APPROVAL`; failure: `FAILED` |
+| `AWAIT_ARCH_APPROVAL` | Human, 3600 s | Asks you to approve the design. | yes: `TEST`; no: back to `ARCHITECT` |
+| `TEST` | Agent `tester-agent` | Writes the tests in the repository's own test layout, failing against the unchanged tree. | success: `CODE`; failure: `FAILED` |
+| `CODE` | Agent `coder-agent`, at most 5 visits | Changes the implementation, never the tests; entered again, it reads the suite's output or the review's reports. | success: `EXECUTE_TESTS`; failure: `FAILED` |
+| `EXECUTE_TESTS` | ContainerRun | Runs `test_command` in `test_image` on the clone, the repository mounted, on the node's egress network. | exit 0: `DIFF`; otherwise: `CODE`, with stderr and stdout |
+| `DIFF` | System `repository_diff` | The change against the commit the work branch started from, as a unified diff. | success: `AUDIT`; failure: `FAILED` |
+| `AUDIT` | ParallelAgents | `code-reviewer-agent` (weight 1.0), `critic-agent` (1.5) and `security-auditor-agent` (2.0) score the change against the requirements, the design, the diff and the test output; weighted average, threshold 0.95. | 0.95 with agreement 0.8: `COMMIT`; below 0.95, or agreement under 0.8: `CODE`, with the three reports |
+| `COMMIT` | System `repository_commit` | Commits every change on the work branch, as you, with the message `the-forge: <the task's first line>`. | `draft_only` true or absent: `COMPLETE`; false: `LAND`; failure: `FAILED` |
+| `LAND` | System `repository_land` | Lands the work branch on the repository's branch as a fast-forward, after your approval. | success: `COMPLETE`; failure: `LAND_REFUSED` |
+| `COMPLETE`, `FAILED`, `LAND_REFUSED` | System `update_blackboard` | Write `outcome`, `commit_sha`, `branch` and the refusal's `sentence`, where there is one. | none |
 
-### Deploy and run the Forge workflow
+A sixth entry into `CODE` ends the run at its visit limit. No state of the Forge runs a shell command in the core process: the suite runs in a container on the clone, and `DIFF`, `COMMIT` and `LAND` are the workflow's own [repository steps](/docs/reference/workflow-manifest#kind-system). A run that changed nothing ends `FAILED` at `COMMIT` with "nothing to commit: working tree is clean".
 
-Prerequite: Clone the [aegis-examples](https://github.com/100monkeys-ai/aegis-examples) repository to access `the-forge` example workflow below.
+**Its inputs.**
 
-```bash
-aegis workflow deploy ./agents/workflows/the-forge.yaml --force
-aegis workflow run the-forge --input '{"task": "Build a REST API for user authentication", "repo_url": "https://github.com/org/repo"}'
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `task` | string | ✓ | What to change. Its first line names the commit. |
+| `test_command` | string | ✓ | The test suite, run by `/bin/sh -c` in the repository's root. |
+| `test_image` | string | ✓ | The image the suite runs in, a reference with a tag. |
+| `context` | string | | Anything else the analyst should know. |
+| `draft_only` | boolean | | Default `true`: the run ends with the commit on the work branch in your volume and nothing pushed. `false` lands it after your approval. |
+
+**Its agents.** The five that only read (`requirements-analyst`, `architect-agent` and the three judges) list the reading `fs.*` tools, `aegis.git.status` and `aegis.git.diff`; `tester-agent` and `coder-agent` add the writing `fs.*` tools and `cmd.run`. None lists `aegis.git.commit`, `aegis.git.push` or `aegis.git.land`: committing and landing are the workflow's. Each judge answers `{score, confidence, reasoning, suggestions}`, each agent's answer is validated by the built-in `code-quality-judge`, and all seven run on the model alias `smart`.
+
+**Landing.** `LAND` asks for your approval of `aegis.git.land` as any approval-gated tool does. Approved, the orchestrator pushes the work branch to `origin`, then the work branch's HEAD to the repository's branch, never with force, and the run's log gains the line "Landed &lt;commit&gt; of repository &lt;label&gt; on &lt;branch&gt;". When the branch has moved on the remote, nothing is landed: "the remote branch '&lt;ref&gt;' has commits this run does not have; nothing was landed", with the work branch pushed and the branch unchanged. A repository bound to a tag or a commit is refused before any push: "a run lands only on a branch; '&lt;ref&gt;' is not one". A declined approval pushes nothing. A landing is never a merge, a rebase or a squash.
+
+### Starting the Forge
+
+Start it as any workflow, naming exactly one of your git repository bindings under the starting call's top-level `repositories` (a key the model-facing schemas do not list: a client sets it from your choice); a run naming another number is refused before anything is held with "workflow 'the-forge' works on exactly 1 repository; this run names &lt;n&gt;".
+
+```json
+// aegis.workflow.run
+{
+  "name": "the-forge",
+  "input": {
+    "task": "Add a --json flag to the export command",
+    "test_command": "cargo test --locked",
+    "test_image": "rust:1.92"
+  },
+  "repositories": [{ "binding_id": "4f6b1c1e-2d3a-4b5c-8d7e-9f0a1b2c3d4e" }]
+}
 ```
+
+Answer its two approval gates with `aegis.workflow.signal` (`yes` or `no`), and follow it with `aegis.workflow.logs` or `aegis.workflow.wait`. In Zaru, architect mode lists `aegis.workflow.run` and `aegis.workflow.signal`. The run's repository needs the node's step network for its test step (`spec.storage.git.step_network`, see [Node Configuration](/docs/reference/node-config#specstorage)).
 
 ---
 
