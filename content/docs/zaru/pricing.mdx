@@ -60,6 +60,30 @@ limits are fully customizable per tenant and per user.
 
 ---
 
+## Usage
+
+**Settings → Plan & Usage** shows a **Rate Limits** card with one meter for each resource and
+window your plan limits: **Agent Executions**, **Workflow Executions**, **LLM Calls** and
+**LLM Bananas** (the card's name for the model's tokens), each per hour, day, week and month,
+and the hourly agent and workflow searches as **Tool: aegis.agent.search** and
+**Tool: aegis.workflow.search**. Each meter reads the sum of what your account used inside
+that window against its limit, with the time after **Resets** when the oldest use it counts
+leaves the window. A use that would take a window's sum past its limit is refused. Per-minute
+limits are counted in memory and have no meter. The model calls of a Zaru chat turn itself
+are not counted on these meters.
+
+The Free plan's limits on these resources:
+
+| Resource | Per minute | Per hour | Per day | Per week | Per month |
+|---|---|---|---|---|---|
+| Agent executions | 3 | 5 | 20 | 80 | 100 |
+| Workflow executions | 2 | 3 | 10 | 40 | 50 |
+| LLM calls | 20 | 100 | 500 | 2,500 | 5,000 |
+| LLM tokens | 20,000 | 100,000 | 500,000 | 2,500,000 | 5,000,000 |
+| `aegis.agent.search`, `aegis.workflow.search` | — | 30 each | — | — | — |
+
+---
+
 ## Billing
 
 ### Monthly vs Annual

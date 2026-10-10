@@ -184,7 +184,7 @@ Each entry in `capabilities` is one permission grant:
 | Pattern | Matches |
 |---------|---------|
 | `"fs.read"` | Exactly the `fs.read` tool |
-| `"fs.*"` | Any tool whose name starts with `"fs."` — e.g., `fs.read`, `fs.write`, `fs.list` |
+| `"fs.*"` | Any tool whose name is `fs`, a dot, then at least one more character — e.g., `fs.read`, `fs.write`, `fs.list`. A name that only begins with the same letters (`fsx.read`) does not match, nor does `fs.` alone. |
 | `"*"` | Any tool (use with care; usually combined with an explicit `deny_list`) |
 
 ---

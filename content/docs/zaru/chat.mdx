@@ -45,7 +45,7 @@ A wait tool's card (`aegis.agent.wait`, `aegis.task.wait`, `aegis.execute.wait`,
 
 By default a turn makes at most 12 model calls. When the last one still calls tools, the turn ends with a card, "I used all my steps for this turn before finishing.", and a **Keep going** button: pressing it continues the same turn from its stored steps with a fresh allowance, without a new message from you, and the card then reads "Kept going.". A goal's continuation rounds show no such card.
 
-**Stop** ends the waiting at once, even when the page is not streaming the turn, and unlocks the input. A turn that ended without an answer, for example because the page reloaded while it ran, ends with "This reply was cut off before Zaru finished. Send your message again to retry."
+**Stop** ends the waiting at once, even when the page is not streaming the turn, and unlocks the input. A turn that ended without an answer, for example because the page reloaded while it ran, ends with "This reply was cut off before Zaru finished. Send your message again to retry." A turn whose model call failed before it answered keeps its failure instead: the page shows the failure banner with the failure's code, as it does while the turn runs, also after a reload, until you dismiss it or run the turn again.
 
 ---
 

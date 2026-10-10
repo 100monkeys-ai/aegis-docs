@@ -36,6 +36,8 @@ A profile governs the tools of its connections' families: `mail.*` for a mailbox
 - **Calling.** Every call of a governed tool is checked against the profile as it stands at that moment, after the security context's own check and before the approval gate. A tool the profile does not allow is refused: "This tool is not in the profile chosen for this run."
 - **Starting.** When a run starts, the profile's active connections become the run's chosen connections. A profile that is not yours, or was deleted, refuses the start, and any later governed call: "The profile chosen for this run no longer exists."
 
+A tool the profile allows still meets the approval gate. `mail.send`, `mail.reply`, `mail.forward`, `mail.delete` and `mail.archive` are marked in the tool catalogue as waiting for your approval, and neither a profile, an agent nor the deployment's configuration clears that mark: each call waits for your answer unless a standing choice answers it. So a profile that allows `mail.reply` and not `mail.send` lets a run reply in a thread, each reply waiting for your approval, and refuses a new message at once, before any approval is asked.
+
 Tools of other families, such as `fs.*`, `cmd.run` or `web.*`, are not governed by a profile: the security context alone decides them.
 
 A run's profile is passed on to the agent states of a workflow and to child runs, as its connections are.
@@ -49,7 +51,7 @@ An "Always allow" or "Always deny" choice made on a profile's run applies to tha
 ## In Zaru Web
 
 - **Vault, Profiles.** `/vault/profiles` lists your profiles with their connections and tool count. **New profile** and each profile's page share one form: a name; your connections grouped by type; the tools those connections allow, by family, with "Needs your approval" beside a tool that waits for your approval and "All tools these connections allow" for an empty list; a repository, a Nuclear Notes workspace and instructions. A profile with a removed connection says "A connection in this profile was removed."
-- **In a conversation.** The context selector above the chat input lists **None**, then **Profiles** (one at a time), then your connections by type; choosing a profile clears chosen connections and the other way round, and the selector reads "Profile: &lt;name&gt;". The profile is stored with the conversation, so its later turns, and the runs they start, use it. Zaru is told the profile's name, its Nuclear Notes workspace (used when a Nuclear Notes call names none) and your instructions for it.
+- **In a conversation.** The context selector above the chat input opens its list upward over the conversation, at most half the window's height, scrolling when the list is longer. It lists **None**, then **Profiles** (one at a time), then your connections by type; choosing a profile clears chosen connections and the other way round, and the selector reads "Profile: &lt;name&gt;". The profile is stored with the conversation, so its later turns, and the runs they start, use it. Zaru is told the profile's name, its Nuclear Notes workspace (used when a Nuclear Notes call names none) and your instructions for it.
 - **Schedules.** The schedule form saves a profile or chosen connections, never both; a profile's repository and Nuclear Notes workspace fill the form, and a **Schedule this?** card or a run's **Schedule this** opens it on the conversation's profile. See [Schedules](/docs/workflows/schedules).
 
 ---
