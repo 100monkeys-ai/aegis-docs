@@ -400,7 +400,7 @@ A step with `network_mode` `egress` on a node with no step network, or naming a 
 
 ## `RunRepositoryAction`
 
-Runs one of a workflow's own repository steps on the repository the workflow run holds. The Temporal worker calls it for a `System` state whose rendered command is `repository_diff`, `repository_commit` or `repository_land`, and never `ExecuteSystemCommand` for one.
+Runs one of a workflow's own repository steps on the repository the workflow run holds. The Temporal worker calls it for an `Action` state whose action is `repository_diff`, `repository_commit` or `repository_land`, and never `ExecuteSystemCommand` for one.
 
 ```protobuf
 rpc RunRepositoryAction(RunRepositoryActionRequest) returns (RunRepositoryActionResponse);

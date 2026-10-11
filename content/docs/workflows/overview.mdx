@@ -544,13 +544,13 @@ ANALYZE → AWAIT_REQUIREMENTS_APPROVAL → ARCHITECT → AWAIT_ARCH_APPROVAL �
 | `TEST` | Agent `tester-agent` | Writes the tests in the repository's own test layout, failing against the unchanged tree. | success: `CODE`; failure: `FAILED` |
 | `CODE` | Agent `coder-agent`, at most 5 visits | Changes the implementation, never the tests; entered again, it reads the suite's output or the review's reports. | success: `EXECUTE_TESTS`; failure: `FAILED` |
 | `EXECUTE_TESTS` | ContainerRun | Runs `test_command` in `test_image` on the clone, the repository mounted, on the node's egress network. | exit 0: `DIFF`; otherwise: `CODE`, with stderr and stdout |
-| `DIFF` | System `repository_diff` | The change against the commit the work branch started from, as a unified diff. | success: `AUDIT`; failure: `FAILED` |
+| `DIFF` | Action `repository_diff` | The change against the commit the work branch started from, as a unified diff. | success: `AUDIT`; failure: `FAILED` |
 | `AUDIT` | ParallelAgents | `code-reviewer-agent` (weight 1.0), `critic-agent` (1.5) and `security-auditor-agent` (2.0) score the change against the requirements, the design, the diff and the test output; weighted average, threshold 0.95. | 0.95 with agreement 0.8: `COMMIT`; below 0.95, or agreement under 0.8: `CODE`, with the three reports |
-| `COMMIT` | System `repository_commit` | Commits every change on the work branch, as you, with the message `the-forge: <the task's first line>`. | `draft_only` true or absent: `COMPLETE`; false: `LAND`; failure: `FAILED` |
-| `LAND` | System `repository_land` | Lands the work branch on the repository's branch as a fast-forward, after your approval. | success: `COMPLETE`; failure: `LAND_REFUSED` |
-| `COMPLETE`, `FAILED`, `LAND_REFUSED` | System `update_blackboard` | Write `outcome`, `commit_sha`, `branch` and the refusal's `sentence`, where there is one. | none |
+| `COMMIT` | Action `repository_commit` | Commits every change on the work branch, as you, with the message `the-forge: <the task's first line>`. | `draft_only` true or absent: `COMPLETE`; false: `LAND`; failure: `FAILED` |
+| `LAND` | Action `repository_land` | Lands the work branch on the repository's branch as a fast-forward, after your approval. | success: `COMPLETE`; failure: `LAND_REFUSED` |
+| `COMPLETE`, `FAILED`, `LAND_REFUSED` | Action `update_blackboard` | Write `outcome`, `commit_sha`, `branch` and the refusal's `sentence`, where there is one. | none |
 
-A sixth entry into `CODE` ends the run at its visit limit. No state of the Forge runs a shell command in the core process: the suite runs in a container on the clone, and `DIFF`, `COMMIT` and `LAND` are the workflow's own [repository steps](/docs/reference/workflow-manifest#kind-system). A run that changed nothing ends `FAILED` at `COMMIT` with "nothing to commit: working tree is clean".
+A sixth entry into `CODE` ends the run at its visit limit. No state of the Forge runs a shell command in the core process: the suite runs in a container on the clone, and `DIFF`, `COMMIT` and `LAND` are the workflow's own [repository actions](/docs/reference/workflow-manifest#kind-action). A run that changed nothing ends `FAILED` at `COMMIT` with "nothing to commit: working tree is clean".
 
 **Its inputs.**
 

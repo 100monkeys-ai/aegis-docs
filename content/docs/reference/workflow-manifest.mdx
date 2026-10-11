@@ -67,7 +67,7 @@ spec:
   states:
 
     GENERATE:
-      kind: Agent                  # StateKind: Agent | System | Human | ParallelAgents | ContainerRun | ParallelContainerRun | Subworkflow
+      kind: Agent                  # StateKind: Agent | System | Action | Human | ParallelAgents | ContainerRun | ParallelContainerRun | Subworkflow
       agent: coder-v1              # required for Agent kind; deployed agent name or UUID
       input: |                     # Handlebars template rendered as the agent's task input
         {{#if blackboard.iteration_number}}
@@ -458,7 +458,7 @@ A field the entry does not carry is `null`. No credential and no URL is on the B
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `kind` | string | ✓ | | `Agent` \| `System` \| `Human` \| `ParallelAgents` \| `ContainerRun` \| `ParallelContainerRun` \| `Subworkflow` |
+| `kind` | string | ✓ | | `Agent` \| `System` \| `Action` \| `Human` \| `ParallelAgents` \| `ContainerRun` \| `ParallelContainerRun` \| `Subworkflow` |
 | `max_state_visits` | integer | | `5` | Maximum times this state can be entered before the workflow terminates. Ceiling: `20`. |
 | `timeout` | string | | `300s` | Maximum time in this state. Human-readable: `"300s"`, `"5m"`, `"1h"`. |
 | `volumes` | `object[]` | | | Volume mounts for this state (`Agent` kind). |
@@ -503,35 +503,22 @@ An Agent state starts its agent's run once. The Temporal worker gives the run th
 
 Output is written to the Blackboard as `{state_name}.output.stdout`, `{state_name}.output.stderr`, and `{state_name}.output.exit_code`.
 
-**`command: update_blackboard`** runs no process. Each `env` value is rendered against the Blackboard and written to the Blackboard under its key, as a string, so later states read it as `{{blackboard.KEY}}`. The state answers `success` with exit code `0` and `updated`, the list of keys written. The keys `input`, `intent`, `tenant_id`, `attachments`, `workflow` and `blackboard`, and the name of any state, are reserved: writing one fails the state before any key is written, with "update_blackboard cannot write the reserved key '&lt;key&gt;'."
+Use `condition: exit_code_zero`, `condition: exit_code_non_zero`, or `condition: exit_code` with a `value` to branch on exit status.
 
-```yaml
-SEED:
-  kind: System
-  command: update_blackboard
-  env:
-    mailbox: "{{input.mailbox}}"
-    page_prefix: "outreach"
-  transitions:
-    - condition: always
-      target: COLLECT
-```
+### `kind: Action`
 
-**Repository steps.** A `System` state whose `command` is `repository_diff`, `repository_commit` or `repository_land` runs no process either: it is one of the workflow's own steps on the repository the run holds, run by the orchestrator.
+An `Action` state is one of the workflow's own operations. The state machine runs it itself: no agent chooses or calls it, and no shell runs. A `System` state runs a shell command; an `Action` state names its operation.
 
-| Command | What it does | Output |
-|---|---|---|
-| `repository_diff` | The run's change against `started_from`, as a unified diff. A diff over 1 MiB is refused, never cut off. | `diff`, `branch`, `ref` |
-| `repository_commit` | Stages every change and commits it on the work branch, as the run's person, with the message `env.message`. | `commit_sha`, `branch`, `ref` |
-| `repository_land` | Lands the work branch on the binding's ref as a fast-forward, after the person's approval (see [`aegis.git.land`](/docs/reference/mcp-tool-reference#aegisgitland)). | `commit_sha`, `branch`, `ref` |
-
-A step that does not act fails the state with the orchestrator's sentence, also written as `{state_name}.output.sentence`, so its `on_failure` transition takes it: "this run holds no repository" for a run that holds none, "nothing to commit: working tree is clean" for a commit with no change, and a landing's refusals. A run that changed nothing lands nothing.
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `action` | string | ✓ | The operation, one of the four below. A literal, never a template: it is fixed when the manifest is parsed, so the manifest alone says what the state does. |
+| `args` | `map[string]string` | | The operation's arguments. Values support Handlebars and are rendered against the Blackboard when the state runs. |
 
 ```yaml
 COMMIT:
-  kind: System
-  command: "repository_commit"
-  env:
+  kind: Action
+  action: repository_commit
+  args:
     message: "the-forge: {{{first_line input.task}}}"
   transitions:
     - condition: on_failure
@@ -540,7 +527,38 @@ COMMIT:
       target: LAND
 ```
 
-Use `condition: exit_code_zero`, `condition: exit_code_non_zero`, or `condition: exit_code` with a `value` to branch on exit status.
+| `action` | `args` | Needs | Touches the world | How it runs |
+|---|---|---|---|---|
+| `update_blackboard` | Any keys: each rendered value is written to the Blackboard under its key. | Nothing | No | In the Temporal worker; no process runs. |
+| `repository_diff` | None | The run's repository | No | By the orchestrator, on the repository the run holds. |
+| `repository_commit` | `message`, required | The run's repository | No: the commit stays on the work branch in the person's volume. | By the orchestrator, on the repository the run holds. |
+| `repository_land` | None | The run's repository | Yes | By the orchestrator, as the call [`aegis.git.land`](/docs/reference/mcp-tool-reference#aegisgitland), after the person's approval. |
+
+A manifest is checked against its actions when it is parsed. An unknown action is refused with "unknown action '&lt;name&gt;'; the actions are update_blackboard, repository_diff, repository_commit, repository_land". An argument the action does not take is refused with "action 'repository_commit' takes message; '&lt;key&gt;' is not one" (for `repository_diff` and `repository_land`, "takes no arguments"), and a missing `message` with "action 'repository_commit' needs the argument 'message'". A repository action in a workflow whose `spec.repositories` is absent or `0` is refused with "action '&lt;name&gt;' works on the run's repository; this workflow declares none".
+
+**`update_blackboard`** runs no process. Each `args` value is rendered against the Blackboard and written to the Blackboard under its key, as a string, so later states read it as `{{blackboard.KEY}}`. The state answers `success` with exit code `0` and `updated`, the list of keys written. The keys `input`, `intent`, `tenant_id`, `attachments`, `workflow` and `blackboard`, and the name of any state, are reserved: writing one fails the state before any key is written, with "update_blackboard cannot write the reserved key '&lt;key&gt;'."
+
+```yaml
+SEED:
+  kind: Action
+  action: update_blackboard
+  args:
+    mailbox: "{{input.mailbox}}"
+    page_prefix: "outreach"
+  transitions:
+    - condition: always
+      target: COLLECT
+```
+
+**Repository actions.** `repository_diff`, `repository_commit` and `repository_land` are the workflow's own steps on the repository the run holds, run by the orchestrator.
+
+| Action | What it does | Output |
+|---|---|---|
+| `repository_diff` | The run's change against `started_from`, as a unified diff. A diff over 1 MiB is refused, never cut off. | `diff`, `branch`, `ref` |
+| `repository_commit` | Stages every change and commits it on the work branch, as the run's person, with the message `args.message`. | `commit_sha`, `branch`, `ref` |
+| `repository_land` | Lands the work branch on the binding's ref as a fast-forward, after the person's approval (see [`aegis.git.land`](/docs/reference/mcp-tool-reference#aegisgitland)). | `commit_sha`, `branch`, `ref` |
+
+A step that does not act fails the state with the orchestrator's sentence, also written as `{state_name}.output.sentence`, so its `on_failure` transition takes it: "this run holds no repository" for a run that holds none, "nothing to commit: working tree is clean" for a commit with no change, and a landing's refusals. A run that changed nothing lands nothing.
 
 ### `kind: Human`
 
@@ -866,8 +884,8 @@ Use `{{STATE.result}}` in downstream states to reference the child's output (blo
 |---|---|---|
 | *(absent)* | All | Unconditional fallback. Always matches. Place last. |
 | `always` | All | Explicit unconditional. Equivalent to absent condition. |
-| `on_success` | Agent, System, ContainerRun, ParallelContainerRun, Subworkflow | State succeeded (exit code 0, agent returned success, or child workflow completed). |
-| `on_failure` | Agent, System, ContainerRun, ParallelContainerRun, Subworkflow | State failed. |
+| `on_success` | Agent, System, Action, ContainerRun, ParallelContainerRun, Subworkflow | State succeeded (exit code 0, agent returned success, or child workflow completed). |
+| `on_failure` | Agent, System, Action, ContainerRun, ParallelContainerRun, Subworkflow | State failed. |
 | `exit_code_zero` | System, ContainerRun | Exit code was 0. |
 | `exit_code_non_zero` | System, ContainerRun | Exit code was non-zero. |
 | `exit_code` | System, ContainerRun | Exit code equals `value`. |
@@ -935,7 +953,7 @@ All `input`, `command`, `env`, `prompt`, `expression`, and `feedback` fields sup
 | `{{STATE.agents.N.output.FIELD}}` | States after STATE | Field from a judge's JSON output (e.g. `{{AUDIT.agents.0.output.score}}`, `{{AUDIT.agents.1.output.reasoning}}`). |
 | `{{STATE.result}}` | States after STATE | Final output of a Subworkflow state (blocking mode). |
 | `{{STATE.child_execution_id}}` | States after STATE | Child workflow execution ID (Subworkflow states). |
-| `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `System` state's `update_blackboard`. |
+| `{{blackboard.KEY}}` | All states | Any key set in `spec.context` or by a prior `update_blackboard` action. |
 | `{{state.feedback}}` | All states | `feedback` string from the incoming transition. |
 | `{{human.feedback}}` | After Human states | Additional feedback text from the `signal --feedback` argument. |
 | `{{execution.id}}` | All states | Workflow execution UUID. |
@@ -947,7 +965,7 @@ The Blackboard is a live `string → JSON value` map shared across all states in
 **Lifecycle:**
 
 1. **Seed:** Before the first state runs, the Blackboard is seeded with all `spec.context` constants. Callers may additionally supply `--blackboard` key-value pairs at invocation time; these merge in at the same moment.
-2. **Mutation:** As each state completes, its output is written to the Blackboard under the state name key. `System` states, `ContainerRun` states, and the `update_context` built-in all write structured JSON into the Blackboard.
+2. **Mutation:** As each state completes, its output is written to the Blackboard under the state name key. `System` states, `Action` states, `ContainerRun` states, and the `update_context` built-in all write structured JSON into the Blackboard.
 3. **Snapshot:** When the workflow completes, the final Blackboard state is captured and stored in PostgreSQL for audit and debugging.
 
 **Template access:**
@@ -1124,9 +1142,9 @@ spec:
           feedback: "{{VALIDATE.output.reasoning}}"
 
     REFINE:
-      kind: System
-      command: update_blackboard
-      env:
+      kind: Action
+      action: update_blackboard
+      args:
         ITERATION: "{{blackboard.iteration_number + 1}}"
         CODE: "{{GENERATE.output}}"
         ERRORS: "{{state.feedback}}"
@@ -1204,8 +1222,8 @@ spec:
     # TEST, CODE (max_state_visits: 5) and EXECUTE_TESTS (above) come first.
 
     DIFF:
-      kind: System
-      command: "repository_diff"
+      kind: Action
+      action: repository_diff
       transitions:
         - condition: on_success
           target: AUDIT
@@ -1237,9 +1255,9 @@ spec:
           target: CODE
 
     COMMIT:
-      kind: System
-      command: "repository_commit"
-      env:
+      kind: Action
+      action: repository_commit
+      args:
         message: "the-forge: {{{first_line input.task}}}"
       transitions:
         - condition: on_failure
@@ -1251,15 +1269,15 @@ spec:
           target: LAND
 
     LAND:
-      kind: System
-      command: "repository_land"
+      kind: Action
+      action: repository_land
       transitions:
         - condition: on_success
           target: COMPLETE
         - condition: on_failure
           target: LAND_REFUSED
 
-    # COMPLETE, FAILED and LAND_REFUSED are update_blackboard steps that write
+    # COMPLETE, FAILED and LAND_REFUSED are update_blackboard actions that write
     # outcome, commit_sha, branch and the refusal's sentence.
 ```
 

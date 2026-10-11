@@ -2476,7 +2476,7 @@ Return the unified diff of the bound volume's working tree (or index, if `staged
 
 ### `aegis.git.land`
 
-Lands a workflow run's work branch on its repository's branch as a fast-forward. It is the call a workflow's `repository_land` step makes (see [The Forge](/docs/workflows/overview#the-forge)), answered only for that step: any other caller, an agent's tool call among them, is refused with "aegis.git.land is answered only for a workflow's own landing step". No agent lists it.
+Lands a workflow run's work branch on its repository's branch as a fast-forward. It is the call a workflow's `Action` state with `action: repository_land` makes (see [The Forge](/docs/workflows/overview#the-forge)), answered only for that step: any other caller, an agent's tool call among them, is refused with "aegis.git.land is answered only for a workflow's own landing step". No agent lists it.
 
 **Access:** the workflow interpreter only
 
