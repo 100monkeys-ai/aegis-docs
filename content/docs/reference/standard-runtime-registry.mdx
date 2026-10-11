@@ -60,6 +60,35 @@ spec:
 
 ---
 
+## Model Images
+
+The registry also holds model images under `spec.models`: a model class, then a model name, then its entry. A workflow's `ContainerRun` state runs one by naming `image: "model:<class>/<name>"` (see [A model step](/docs/reference/workflow-manifest#a-model-step)).
+
+```yaml
+spec:
+  models:
+    speech-to-text:
+      whisper-base:
+        image: "ghcr.io/example/model-whisper:1.0.0@sha256:<64 hexadecimal digits>"
+        description: "Speech to text on the CPU"
+        command: ["transcribe"]
+        resources:
+          cpu: 2000
+          memory: "1Gi"
+          timeout: "15m"
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `image` | ✓ | The image by a tag and an `@sha256:` digest of 64 hexadecimal characters. Pulling by digest is what verifies the weights that run. |
+| `description` | | What the model does. |
+| `command` | | The command a model step runs when its state sets none. A step that sets none, of a model with none, is refused with "model '&lt;class&gt;/&lt;name&gt;' names no command; set command on the step". |
+| `resources` | | The CPU, memory and timeout a model step gets when its state sets none. |
+
+A model entry whose image is not named by digest is refused when the registry loads, with "model '&lt;class&gt;/&lt;name&gt;' must name its image by digest"; with several, the first in sorted order is named.
+
+---
+
 ## Programmatic Runtime Discovery
 
 Agents that create or update other agent manifests can enumerate the registry at execution time by calling the built-in `aegis.runtime.list` tool. This prevents hallucinated language-version combinations from being written into manifests.

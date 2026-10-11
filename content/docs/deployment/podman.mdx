@@ -102,6 +102,7 @@ make bootstrap-secrets
 | `make operator-promote EMAIL=<email> [ROLE=admin]` | Give a registered Zaru user the `aegis:operator` role, or `aegis:admin` with `ROLE=admin`, in the `aegis-system` realm, creating and linking their record there on first promotion; idempotent |
 | `make operator-demote EMAIL=<email>` | Clear that user's operator role in the `aegis-system` realm and try to end their active sessions there; does nothing for a user who is not an operator |
 | `make operator-escalation-audit [SINCE=<time>] [UNTIL=<time>]` | Print the operator escalation's rows of the admin audit log, read-only: time, action, actor, the names of the state keys (never their values) and target, for the last 24 hours by default; times are UTC, written `YYYY-MM-DDTHH:MM:SSZ` |
+| `make prune-images [PRUNE_DRY_RUN=1]` | Remove every image no container of the calling user uses, running or stopped, and print `podman system df` before and after with the space reclaimed. An image a container uses is kept, including one whose container starts while the target runs: its removal is refused and printed as kept, not a failure. Touches no volume, network, container or pod. `PRUNE_DRY_RUN=1` lists what it would remove and removes nothing. |
 | `make clean` | Full teardown including volumes and networks |
 
 ### Environment Configuration

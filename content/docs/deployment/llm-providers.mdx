@@ -267,6 +267,20 @@ Any caller holding a JWT or an `aegis_*` API key can read which model an alias r
 
 ---
 
+### Image Generation Models
+
+An alias whose `capabilities` carry `image_generation` is an image generation model. When the provider registry is built, it is bound to the provider's image generation endpoint, never to a language model; only the `openai` and `openai-compatible` types have one, and an alias of another type is not built, and the log's warning ends "provider type '&lt;type&gt;' has no image generation adapter". The tool [`aegis.image.generate`](/docs/reference/mcp-tool-reference#aegisimagegenerate) names one by its alias, and takes the first such alias in the configuration when it names none; a node with none answers it "this node has no image generation model".
+
+```yaml
+models:
+  - alias: image
+    model: gpt-image-1
+    capabilities: [image_generation]
+    context_window: 0
+```
+
+An image generation alias is never an agent's model. An agent whose `spec.runtime.model` names one is refused by `aegis.agent.create`, `aegis.agent.update`, `POST /v1/agents` and `PATCH /v1/agents/{id}` with "'&lt;alias&gt;' generates images; an agent's model must be a language model".
+
 ## Hot-Swapping Models
 
 To change which model backs a given alias:
@@ -316,7 +330,7 @@ Running executions continue using the provider that was active when they started
 |---|---|---|---|
 | `alias` | string | Yes | Agent-facing name (e.g., `default`, `fast`, `smart`). |
 | `model` | string | Yes | Model identifier as accepted by the provider's API. |
-| `capabilities` | string[] | Yes | Tags like `code`, `reasoning`, `vision`. |
+| `capabilities` | string[] | Yes | Tags like `code`, `reasoning`, `vision`. `image_generation` makes the alias an [image generation model](#image-generation-models). |
 | `context_window` | integer | Yes | Provider's context window size in tokens. |
 | `max_output_tokens` | integer | No | Maximum output tokens to request from the provider. Default `8192`. Important for thinking-mode models (e.g., Gemini 2.5 Pro) that use output budget for internal reasoning. |
 | `temperature` | number | No | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Default `0.4`. Agents can override per-execution via `spec.runtime.temperature` in their manifest. |

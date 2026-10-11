@@ -409,7 +409,23 @@ In this example, when the workflow completes, the engine renders each template v
 
 ### Repositories of a Run
 
-A run works in a person's git repositories when its starting call (`aegis.workflow.run`, the other starting tools, a schedule) names them under the reserved top-level key `repositories`, which the model-facing schemas do not list: `[{"binding_id": "<id of one of your git repository bindings>", "branch": "<work branch>"}]`, `branch` optional. Any other shape, or an entry that names `label`, `ref`, `started_from` or `author`, is refused with `'repositories' must be a list of objects naming a binding_id and, optionally, a branch`: those are the platform's to fill.
+A run works in a person's git repositories when its starting call (`aegis.workflow.run`, the other starting tools, a schedule) names them under the reserved top-level key `repositories`. The five starting tools (`aegis.workflow.run`, `aegis.workflow.generate`, `aegis.agent.generate`, `aegis.task.execute` and `aegis.execute.intent`) list it in their schemas and take each entry in one of two forms:
+
+| Form | Entry |
+|---|---|
+| A binding by its id | `{"binding_id": "<id of one of your git repository bindings>", "branch": "<work branch>"}`, `branch` optional. [`aegis.git.list`](/docs/reference/mcp-tool-reference#aegisgitlist) lists your bindings. |
+| A repository by its URL | `{"url": "<https:// or git@host:path URL, with no credential in it>", "ref": "<branch>", "branch": "<work branch>"}`, `ref` (default `main`) and `branch` optional. |
+
+For an entry naming a URL, the platform finds your binding of that URL and ref and uses it; when you have none, it makes one before the run starts, with your one active GitHub credential, labelled with the repository's name, and waits for its clone. A URL entry is refused before the run starts:
+
+| Refusal | When |
+|---|---|
+| "no active GitHub credential of yours" | You have no binding of that URL and ref, and no active GitHub credential to make one with. |
+| "you have &lt;n&gt; active GitHub credentials, so which one reaches this repository is not known; link the repository with the one to use, then name its binding_id" | You have no binding of that URL and ref, and several active GitHub credentials. |
+| The clone's own sentence | The clone of the new binding failed, for example a repository the credential does not reach; the binding is removed. |
+| "this node cannot find a repository by its URL; name its binding_id" | The node cannot find or make a binding by URL. |
+
+Any other shape (an entry naming both `binding_id` and `url`, a URL with user info in it, an unknown field) or a binding entry that names `label`, `ref`, `started_from` or `author` is refused with `'repositories' must be a list of objects naming a binding_id or a url and, optionally, a ref and a branch`: a binding's label, ref, start and author are the platform's to fill.
 
 When the run starts, each repository is prepared on its own work branch, and its entry is filled with the binding's `label`, its `ref` (the binding's git ref) and `started_from`, the commit the work branch started from. The run's first repository is written onto the Blackboard as `repository`:
 
@@ -615,17 +631,17 @@ Executes a single command in an isolated container without an LLM or iteration l
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | | | Human-readable label displayed in the Synapse UI and event log. |
-| `image` | string | ✓ | | Container image reference. Accepts any Docker image (e.g. `"rust:1.75-alpine"`, `"docker:24-cli"`) or a private registry image (e.g. `"ghcr.io/myorg/builder:v2"`). |
+| `image` | string | ✓ | | Container image reference. Accepts any Docker image (e.g. `"rust:1.75-alpine"`, `"docker:24-cli"`) or a private registry image (e.g. `"ghcr.io/myorg/builder:v2"`), or `model:<class>/<name>`, a model image of the [runtime registry](/docs/reference/standard-runtime-registry#model-images) (see [A model step](#a-model-step) below). |
 | `image_pull_policy` | string | | `IfNotPresent` | `Always` \| `IfNotPresent` \| `Never`. |
 | `command` | `string[]` | ✓ | | Command and arguments to execute (entrypoint override). Handlebars templates supported in each element. |
 | `shell` | boolean | | `false` | If `true`, join all `command` elements and pass them to `sh -c`. Use for multi-line scripts. |
 | `env` | `map[string]string` | | | Environment variables. Values support Handlebars. |
 | `workdir` | string | | `/workspace` | Working directory inside the container. |
 | `volumes` | `object[]` | | | Volume mounts. Same volumes declared at workflow level or per-state. |
-| `volumes[].name` | string | ✓ | | Volume name that matches a workflow-level volume, or `repository` for the run's repository's working tree (`repository:<label>` for one of several), mounted read-write. |
+| `volumes[].name` | string | ✓ | | Volume name that matches a workflow-level volume, or `repository` for the run's repository's working tree (`repository:<label>` for one of several), mounted read-write, or `attachments` for the files attached to the run, mounted read-only. |
 | `volumes[].mount_path` | string | ✓ | | Absolute path inside the container. |
 | `volumes[].read_only` | boolean | | `false` | Mount as read-only. |
-| `network_mode` | string | | | `egress`: run the step on the node's step network (`spec.storage.git.step_network` in the [node configuration](/docs/reference/node-config#specstorage)), so it reaches package registries. A node with none refuses the step with "this node has no egress network for steps". Absent: the default network. |
+| `network_mode` | string | | | `egress`: run the step on the node's step network (`spec.storage.git.step_network` in the [node configuration](/docs/reference/node-config#specstorage)), so it reaches package registries. A node with none refuses the step with "this node has no egress network for steps". Absent: the default network, or `none` for a model step, which takes no other value. |
 | `resources` | object | | | CPU, memory, and timeout limits. |
 | `resources.cpu` | integer | | | CPU millicores (e.g. `2000` = 2 vCPU). |
 | `resources.memory` | string | | | Memory limit (e.g. `"2Gi"`, `"512Mi"`). |
@@ -677,6 +693,49 @@ EXECUTE_TESTS:
     - condition: exit_code_non_zero
       target: CODE
 ```
+
+#### A model step
+
+A `ContainerRun` state whose `image` is `model:<class>/<name>` runs a model of the node's [runtime registry](/docs/reference/standard-runtime-registry#model-images): no language model chooses what it does, and its weights are in its image. When the workflow is registered, the reference is resolved to the registry's image, pinned by its digest, before anything is stored or sent to the worker, so the step's container and its `ContainerRunStarted` event name the digest that runs. The step takes the registry entry's `command` and `resources` where the state sets none, and runs with no network.
+
+A model step is refused when the workflow is registered:
+
+| Refusal | When |
+|---|---|
+| "unknown model '&lt;class&gt;/&lt;name&gt;'; the models are &lt;list&gt;" | The registry has no such model; the list is every model it has, or `none`. |
+| "a model step runs with no network; remove network_mode or set it to none" | `network_mode` is set to anything but `none`. |
+| "a model image is named model:&lt;class&gt;/&lt;name&gt;, not '&lt;image&gt;'" | The `model:` image is not of that form. |
+| "model '&lt;class&gt;/&lt;name&gt;' names no command; set command on the step" | Neither the state nor the registry entry gives a command. |
+
+Each is answered inside "Invalid container state configuration in state '&lt;state&gt;': &lt;refusal&gt;".
+
+```yaml
+TRANSCRIBE:
+  kind: ContainerRun
+  name: "Transcribe"
+  image: "model:speech-to-text/whisper-base"
+  command: ["transcribe", "/input/{{input.audio_path}}", "--out", "/output/transcript.txt"]
+  volumes:
+    - name: attachments
+      mount_path: /input
+    - name: output
+      mount_path: /output
+  transitions:
+    - condition: exit_code_zero
+      target: DONE
+    - condition: exit_code_non_zero
+      target: FAILED
+```
+
+#### A step on the run's attachments
+
+A run started by [`aegis.workflow.run`](/docs/reference/mcp-tool-reference#aegisworkflowrun) with `attachments` carries them in its input as `input.attachments`. A volume named `attachments` mounts a copy of those files, each at its `name`, at the volume's `mount_path`, read-only whatever `read_only` says: only read-only is allowed. The copy is made for the step in a volume the workflow run owns, and is removed after the step. A step is refused before any container:
+
+| Refusal | When |
+|---|---|
+| "this attachment is not yours" | An attachment's volume is not the run's person's, or the run has no person. |
+| "this step reads the run's attachments and the run has none" | The run carries no attachments. |
+| "this node does not give steps their run's attachments" | The node is not set up to give steps their run's attachments. |
 
 ### `kind: ParallelContainerRun`
 

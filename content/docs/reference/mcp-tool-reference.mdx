@@ -25,7 +25,7 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `aegis.workflow.executions.list`, `aegis.workflow.executions.get`, `aegis.workflow.status`,
 `aegis.workflow.search`, `aegis.task.execute`, `aegis.task.status`, `aegis.task.list`,
 `aegis.task.cancel`, `aegis.task.logs`, `aegis.task.wait`, `aegis.execute.intent`,
-`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.goal.create`, `aegis.goal.evaluate`, `aegis.goal.status`, `aegis.goal.cancel`, `aegis.tools.list`, `aegis.tools.search`,
+`aegis.execute.status`, `aegis.execution.file`, `aegis.execute.wait`, `aegis.image.generate`, `aegis.goal.create`, `aegis.goal.evaluate`, `aegis.goal.status`, `aegis.goal.cancel`, `aegis.tools.list`, `aegis.tools.search`,
 `aegis.schema.get`, `aegis.schema.validate`, `aegis.runtime.list`,
 `aegis.file.list`, `aegis.file.read`, `aegis.file.write`, `aegis.file.delete`, `aegis.file.mkdir`,
 `aegis.volume.create`, `aegis.volume.list`, `aegis.volume.delete`, `aegis.volume.quota`,
@@ -110,6 +110,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.agent.logs`
 - `aegis.workflow.search`
 - `aegis.workflow.run`
+- `aegis.git.list`
 - `aegis.workflow.wait`
 - `aegis.schedule.list`
 - `aegis.schedule.get`
@@ -159,6 +160,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.workflow.list`
 - `aegis.workflow.logs`
 - `aegis.workflow.run`
+- `aegis.git.list`
 - `aegis.workflow.signal`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
@@ -244,6 +246,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.task.wait`                | task       | true         | `execution_id`                                  | Ag, Ar, Op        |
 | `aegis.execution.file`           | execution  | true         | `execution_id`, `path`                          | Ag, Ex, Ar, Op    |
 | `aegis.attachment.read`          | attachment | true         | `volume_id`, `path`                             | System-tier only  |
+| `aegis.image.generate`           | image      | false        | `prompt`                                        | Op                |
 | `aegis.execute.intent`           | execute    | false        | `intent`                                        | Ex, Op            |
 | `aegis.execute.status`           | execute    | true         | `pipeline_execution_id`                         | Ex, Op            |
 | `aegis.execute.wait`             | execute    | true         | `execution_id`                                  | Ex, Op            |
@@ -275,7 +278,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.volume.delete`            | volume     | false        | `volume_id`                                     | Op                |
 | `aegis.volume.quota`             | volume     | true         | —                                               | Op                |
 | `aegis.git.clone`                | git        | false        | `repo_url`, `label`                             | Op                |
-| `aegis.git.list`                 | git        | true         | —                                               | Op                |
+| `aegis.git.list`                 | git        | true         | —                                               | Ag, Ar, Op        |
 | `aegis.git.status`               | git        | true         | `binding_id`                                    | Op                |
 | `aegis.git.refresh`              | git        | false        | `binding_id`                                    | Op                |
 | `aegis.git.delete`               | git        | false        | `binding_id`                                    | Op                |
@@ -750,6 +753,7 @@ Generates an Agent manifest from a natural-language intent.
 | ------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `input`       | `string` | Yes      | —       | Natural-language intent for the agent to create.                                                                                                                                                                                                                                                    |
 | `attachments` | `array`  | No       | —       | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the generated agent should be wired to read. When present, the generation pipeline declares `attachments` in the new agent's `input_schema` and grants it `aegis.attachment.read`. |
+| `repositories` | `array` | No | — | Your git repositories for the run, each mounted at `/workspace/<label>` on a work branch of its own: `{binding_id, branch?}` for one of your bindings ([`aegis.git.list`](#aegisgitlist) lists them), or `{url, ref?, branch?}` for a repository by its URL, whose binding is found or made with your GitHub credential before the run starts. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run). |
 
 <Callout type="info">
   This tool returns an `execution_id` immediately and starts an async authoring
@@ -1055,6 +1059,8 @@ Executes a registered workflow by name with optional input parameters.
 | `blackboard` | `object` | No       | —            | Optional blackboard overrides merged into the execution before startup.                                                                  |
 | `version`    | `string` | No       | latest       | Semantic version of the workflow to execute. When omitted, the latest deployed version is used.                                          |
 | `tenant_id`  | `string` | No       | local tenant | Optional tenant identifier.                                                                                                              |
+| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`): files the run carries in its input as `input.attachments`. A `ContainerRun` step reads them by mounting the volume `attachments`, read-only (see [A step on the run's attachments](/docs/reference/workflow-manifest#a-step-on-the-runs-attachments)). |
+| `repositories` | `array` | No | — | Your git repositories for the run, each mounted at `/workspace/<label>` on a work branch of its own: `{binding_id, branch?}` for one of your bindings ([`aegis.git.list`](#aegisgitlist) lists them), or `{url, ref?, branch?}` for a repository by its URL, whose binding is found or made with your GitHub credential before the run starts. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run). |
 
 **Output:**
 
@@ -1078,6 +1084,7 @@ Generates a Workflow manifest from a natural-language objective.
 | Property | Type     | Required | Default | Description                          |
 | -------- | -------- | -------- | ------- | ------------------------------------ |
 | `input`  | `string` | Yes      | —       | Natural-language workflow objective. |
+| `repositories` | `array` | No | — | Your git repositories for the run, each mounted at `/workspace/<label>` on a work branch of its own: `{binding_id, branch?}` for one of your bindings ([`aegis.git.list`](#aegisgitlist) lists them), or `{url, ref?, branch?}` for a repository by its URL, whose binding is found or made with your GitHub credential before the run starts. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run). |
 
 <Callout type="info">
   Returns an `execution_id` immediately and starts an async authoring loop. Use
@@ -1468,6 +1475,7 @@ Starts a new agent execution (task) by agent UUID or name.
 | `input`       | `object` | No       | —       | Structured data for the agent, validated against `spec.input_schema` when declared. The well-known sub-field `input.prompt` (string) holds the full task instructions or user request.                                                                                   |
 | `attachments` | `array`  | No       | —       | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`) describing files the agent should read. The agent must declare `attachments` in `spec.input_schema` and include `aegis.attachment.read` in `spec.tools` to consume them. |
 | `version`     | `string` | No       | latest  | Semantic version of the agent to execute. When omitted, the latest deployed version is used.                                                                                                                                                                             |
+| `repositories` | `array` | No | — | Your git repositories for the run, each mounted at `/workspace/<label>` on a work branch of its own: `{binding_id, branch?}` for one of your bindings ([`aegis.git.list`](#aegisgitlist) lists them), or `{url, ref?, branch?}` for a repository by its URL, whose binding is found or made with your GitHub credential before the run starts. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run). |
 
 <Callout type="info">
   Use `intent` for natural-language steering and `input.prompt` for structured
@@ -1767,6 +1775,37 @@ This is the read path for files dispatched via the `attachments` field on `aegis
 
 ---
 
+## Image Generation Tool (`aegis.image.generate`)
+
+### `aegis.image.generate`
+
+Generates images from a text prompt with one of the node's [image generation models](/docs/deployment/llm-providers#image-generation-models) and saves each as a PNG file.
+
+**Access:** User
+
+**`skip_judge`:** `false`
+
+| Property | Type      | Required | Default                              | Description                                                                 |
+| -------- | --------- | -------- | ------------------------------------ | --------------------------------------------------------------------------- |
+| `prompt` | `string`  | Yes      | —                                    | What the image shows.                                                       |
+| `alias`  | `string`  | No       | the node's first image generation alias | Which of the node's image generation models.                             |
+| `size`   | `string`  | No       | the model's default                  | The image's size as the model takes it, such as `1024x1024`.                |
+| `count`  | `integer` | No       | `1`                                  | How many images, 1 to 4.                                                    |
+
+Inside a run, each image is written to the run's workspace volume as `/workspace/generated/<n>.png` and recorded as a file the run produced in that iteration. Called from a person's conversation, outside any run, each is written to the person's chat attachments under `generated/`, where a next turn can attach it.
+
+**Output:**
+
+```json
+{
+  "files": [
+    { "volume_id": "…", "path": "/workspace/generated/1.png", "content_type": "image/png", "size_bytes": 482113 }
+  ]
+}
+```
+
+The answer names no URL. Every refusal comes before the model is called: a node with no image generation alias answers "this node has no image generation model"; an `alias` that is not one answers "'&lt;alias&gt;' is not an image generation model; the image generation models are &lt;list&gt;"; a missing or empty `prompt` answers "'prompt' is required: what the image shows"; a `count` outside 1 to 4 answers "'count' is 1 to 4".
+
 ## Execute Pipeline Tools (`aegis.execute.*`)
 
 These tools power Execute mode in Zaru and the intent-to-execution API. They run a multi-step
@@ -1790,6 +1829,7 @@ Starts the intent-to-execution pipeline: discovers or generates an agent, writes
 | `language`        | `string`  | No       | `python`     | Execution language. One of: `python`, `javascript`, `bash`.                                                                                                                                                                                                        |
 | `timeout_seconds` | `integer` | No       | —            | Optional execution timeout in seconds.                                                                                                                                                                                                                             |
 | `tenant_id`       | `string`  | No       | local tenant | Optional tenant identifier.                                                                                                                                                                                                                                        |
+| `repositories` | `array` | No | — | Your git repositories for the run, each mounted at `/workspace/<label>` on a work branch of its own: `{binding_id, branch?}` for one of your bindings ([`aegis.git.list`](#aegisgitlist) lists them), or `{url, ref?, branch?}` for a repository by its URL, whose binding is found or made with your GitHub credential before the run starts. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run). |
 
 **Output:**
 
@@ -2327,18 +2367,15 @@ Create a git repo binding and trigger an asynchronous clone into a workspace vol
 
 ### `aegis.git.list`
 
-List the caller's git repo bindings.
+Lists the caller's git repository bindings, redacted: each binding's id, repository URL, ref, state and label. A run on a repository names a binding by its id in `repositories` (see [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run)); a binding the platform made for a repository named by its URL is listed with the others.
 
 **Access:** User
 
 **`skip_judge`:** `true`
 
-| Property | Type      | Required | Default | Description               |
-| -------- | --------- | -------- | ------- | ------------------------- |
-| `page`   | `integer` | No       | —       | Pagination page number.   |
-| `limit`  | `integer` | No       | —       | Maximum results per page. |
+**Available in:** Agentic, Architect modes
 
-**Output:** Paginated list of binding DTOs.
+Takes no arguments: the caller is the person whose bindings are listed.
 
 ### `aegis.git.status`
 
