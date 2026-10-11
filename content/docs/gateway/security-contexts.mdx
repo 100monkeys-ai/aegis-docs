@@ -43,7 +43,7 @@ A `SecurityContext` is a flat object made up of capabilities, an explicit deny l
 |-------|------|---------|
 | `name` | string | Stable identifier referenced from the SEAL token's `scp` claim. Must be non-empty. |
 | `description` | string | Human-readable purpose. Surfaced in audit logs and the management API. |
-| `deny_list` | string[] | Tool name patterns explicitly denied. Evaluated **before** capabilities. |
+| `deny_list` | string[] | Tool name patterns explicitly denied, in the same forms as `tool_pattern`. Evaluated **before** capabilities. |
 | `capabilities` | Capability[] | Ordered list of permissive rules. First match wins. |
 | `tenant_id` | string \| null | Tenant slug derived from the operator JWT at registration. Not user-settable on the request. |
 
@@ -51,7 +51,7 @@ A `SecurityContext` is a flat object made up of capabilities, an explicit deny l
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `tool_pattern` | string | `"*"`, prefix glob (`"fs.*"`), or exact tool name. |
+| `tool_pattern` | string | `"*"` (every tool), a family pattern `"<prefix>.*"`, or an exact tool name. A family pattern matches a name that is the prefix, a dot, then at least one more character: `"fs.*"` matches `fs.read` and does not match `fs`, `fs.` or `fsx.read`. |
 | `path_allowlist` | string[] \| null | Required prefixes for the `path` argument when the tool is in the `fs.*` / `filesystem.*` namespace. |
 | `command_allowlist` | string[] \| null | Allowed base commands for `cmd.run` (e.g. `["git", "gh"]`). |
 | `subcommand_allowlist` | object \| null | Per-base-command map of allowed subcommands (e.g. `{"gh": ["pr", "issue"]}`). |
@@ -132,12 +132,15 @@ The request body schema in full, with every field commented:
 
   // Tool name patterns explicitly denied. Evaluated first; deny wins.
   // Patterns: "*", "prefix.*", or exact tool name.
+  // "prefix.*" matches the prefix, a dot, then at least one more character:
+  // "fs.*" matches "fs.read", never "fs", "fs." or "fsx.read".
   "deny_list": ["string"],
 
   // Ordered capability list. First match decides.
   "capabilities": [
     {
       // "*" | "prefix.*" | "exact.tool.name"
+      // "prefix.*" = the prefix, a dot, then at least one more character.
       "tool_pattern": "string",
 
       // For fs.* / filesystem.* tools — required prefixes for `path` arg.
@@ -272,7 +275,7 @@ SEAL JWT claims
 
 When you mint the token, set `scp` to the exact `name` of a registered context. Re-mint a new token to change the policy in flight; you cannot mutate `scp` on an existing token. Operators rotate policy by issuing a new context (or updating an existing one in place) and re-issuing tokens with the new `scp`.
 
-The `allowed_tool_patterns` list on the SEAL session is a separate, narrower gate that runs *before* the `SecurityContext` evaluation. A tool that the named context would otherwise allow is still rejected if the session's pattern list excludes it. Use session patterns for short-lived per-execution narrowing, and `SecurityContext` for the durable, named policy.
+The `allowed_tool_patterns` list on the SEAL session is a separate, narrower gate that runs *before* the `SecurityContext` evaluation. A tool that the named context would otherwise allow is still rejected if the session's pattern list excludes it. A session pattern ending in `.*` matches as a capability's does: `fs.*` admits `fs.read` and refuses `fs`, `fs.` and `fsx.read`. Use session patterns for short-lived per-execution narrowing, and `SecurityContext` for the durable, named policy.
 
 ---
 

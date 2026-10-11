@@ -203,8 +203,10 @@ The eight `PolicyViolation` variants:
 | `ConcurrentExecLimitExceeded` | The capability's per-call concurrency limit was already hit |
 | `OutputSizeLimitExceeded` | The response body exceeded `max_response_size` |
 
-Tool patterns support exact match (`fs.read`), prefix wildcard (`fs.*`), and
-catch-all (`*`).
+Tool patterns support exact match (`fs.read`), a family pattern (`fs.*`), and
+catch-all (`*`). A family pattern matches the prefix, a dot, then at least one
+more character: `fs.*` matches `fs.read` and does not match `fs`, `fs.` or
+`fsx.read`. Capabilities and deny-list entries match alike.
 
 **Related:** [Security Contexts](/docs/gateway/security-contexts).
 
@@ -325,7 +327,7 @@ constraints that only apply when the matching tool is invoked:
 
 | Field | Applies to | Effect |
 |---|---|---|
-| `tool_pattern` | All tools | Exact match, prefix wildcard (`fs.*`), or catch-all (`*`) |
+| `tool_pattern` | All tools | Exact match, a family pattern (`fs.*`: the prefix, a dot, then at least one more character, so not `fs`, `fs.` or `fsx.read`), or catch-all (`*`) |
 | `path_allowlist` | `fs.*` and `filesystem.*` | The `path` argument must be under one of these prefixes |
 | `command_allowlist` | `cmd.run` | The base executable name must be in this list |
 | `subcommand_allowlist` | `cmd.run` | Map of `base_command -> [allowed subcommands]`. If empty, any subcommand is allowed for that base. |
