@@ -101,3 +101,9 @@ the detail view. Logs include:
 - Final output or error details
 
 Click any execution in the history list to open its full log.
+
+The **Execution Logs** page (`/dashboard/executions`) has two tabs. **Agents** lists your agent
+executions from `GET /v1/executions`. **Workflows** lists your workflow runs from
+`GET /v1/workflows/executions`: each row shows the run's workflow name, or the first eight
+characters of its workflow id, and its duration ends at the run's last transition once the run
+has completed, failed or been cancelled. Click a row to open that run's page.
