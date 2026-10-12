@@ -134,6 +134,33 @@ Start an agent execution. Returns immediately with the `execution_id`; use the S
 
 ---
 
+### `GET /v1/executions/{id}`
+
+The status of an agent execution. Requires the scope `execution:read`. A caller reads only executions of the tenant its request resolves to (a service account the tenant it names in `X-Tenant-Id`); an operator reads any tenant's.
+
+**Response `200`:**
+
+```json
+{
+  "id": "exec-uuid",
+  "agent_id": "agt-uuid",
+  "status": "Completed",
+  "tenant_id": "tenant-id",
+  "final_output": "def is_prime(n): ...",
+  "error": null
+}
+```
+
+`status` is `Pending`, `Running`, `Completed`, `Failed` or `Cancelled`. Once the execution has ended (`Completed`, `Failed` or `Cancelled`) the answer also carries `final_output`, the output of the last iteration that has one, and `error`, the execution's error, each `null` when there is none, so a caller that finds the run already over reads what it produced. A `Pending` or `Running` execution carries neither key.
+
+**Errors:**
+
+| HTTP  | Body                                | Cause                                                  |
+| ----- | ----------------------------------- | ------------------------------------------------------ |
+| `404` | `{"error": "Execution not found"}` | No execution of that id in the caller's tenant         |
+
+---
+
 ### `GET /v1/executions/{id}/stream`
 
 Stream execution events as [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events). Returns `Content-Type: text/event-stream`.

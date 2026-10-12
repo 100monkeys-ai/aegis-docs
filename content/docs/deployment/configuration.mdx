@@ -359,8 +359,8 @@ storage:
 # Deploy vendored built-in agent and workflow templates on startup.
 # Includes agent-creator-agent, workflow-generator-planner-agent, judge agents,
 # intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator,
-# and the builtin-workflow-generator, builtin-intent-to-execution, skill-import and the-forge
-# workflows, with the Forge's seven agents.
+# and the builtin-workflow-generator, builtin-intent-to-execution, skill-import, the-forge and
+# transcribe-audio workflows, with the Forge's seven agents.
 # Required for aegis.agent.generate, aegis.workflow.generate, and aegis.execute.intent to function.
 # Default: false
 deploy_builtins: false
@@ -520,6 +520,9 @@ security_contexts:
       - tool_pattern: "aegis.workflow.logs"
       - tool_pattern: "aegis.workflow.cancel"
       - tool_pattern: "aegis.workflow.wait"
+      - tool_pattern: "aegis.workflow.signal"
+      - tool_pattern: "aegis.workflow.create"
+      - tool_pattern: "aegis.workflow.update"
       - tool_pattern: "aegis.agent.logs"
       - tool_pattern: "aegis.agent.wait"
       - tool_pattern: "aegis.tools.list"
@@ -618,6 +621,8 @@ security_contexts:
       - tool_pattern: "aegis.workflow.cancel"
       - tool_pattern: "aegis.workflow.wait"
       - tool_pattern: "aegis.workflow.signal"
+      - tool_pattern: "aegis.workflow.create"
+      - tool_pattern: "aegis.workflow.update"
       - tool_pattern: "aegis.agent.logs"
       - tool_pattern: "aegis.agent.wait"
       - tool_pattern: "aegis.tools.list"
@@ -1129,7 +1134,7 @@ Optional. Default: `false`.
 
 | Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents (among them `goal-judge`, which judges goals), intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, skill-import and the-forge workflows, with the Forge's seven agents (`requirements-analyst`, `architect-agent`, `tester-agent`, `coder-agent`, `code-reviewer-agent`, `critic-agent`, `security-auditor-agent`). Each is registered under `aegis-system` with global scope. Required for `aegis.agent.generate`, `aegis.workflow.generate`, `aegis.execute.intent` and `aegis.goal.evaluate` to function, and for [the Forge](/docs/workflows/overview#the-forge). |
+| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents (among them `goal-judge`, which judges goals), intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, skill-import, the-forge and transcribe-audio workflows, with the Forge's seven agents (`requirements-analyst`, `architect-agent`, `tester-agent`, `coder-agent`, `code-reviewer-agent`, `critic-agent`, `security-auditor-agent`). Each is registered under `aegis-system` with global scope. Required for `aegis.agent.generate`, `aegis.workflow.generate`, `aegis.execute.intent` and `aegis.goal.evaluate` to function, and for [the Forge](/docs/workflows/overview#the-forge). |
 
 ---
 

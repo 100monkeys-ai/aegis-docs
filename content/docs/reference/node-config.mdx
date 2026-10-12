@@ -152,8 +152,8 @@ spec:
   # Deploy vendored built-in agent and workflow templates on startup.
   # Includes agent-creator-agent, workflow-generator-planner-agent, judge agents,
   # intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator,
-  # and the builtin-workflow-generator, builtin-intent-to-execution, skill-import and the-forge
-  # workflows, with the Forge's seven agents.
+  # and the builtin-workflow-generator, builtin-intent-to-execution, skill-import, the-forge and
+  # transcribe-audio workflows, with the Forge's seven agents.
   # Required for aegis.agent.generate, aegis.workflow.generate, and aegis.execute.intent to function.
   deploy_builtins: false
 
@@ -636,7 +636,7 @@ Optional. Default: `false`.
 
 | Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, skill-import and the-forge workflows, with the Forge's seven agents (`requirements-analyst`, `architect-agent`, `tester-agent`, `coder-agent`, `code-reviewer-agent`, `critic-agent`, `security-auditor-agent`). Each is registered under `aegis-system` with global scope. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function, and for [the Forge](/docs/workflows/overview#the-forge). |
+| `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, skill-import, the-forge and transcribe-audio workflows, with the Forge's seven agents (`requirements-analyst`, `architect-agent`, `tester-agent`, `coder-agent`, `code-reviewer-agent`, `critic-agent`, `security-auditor-agent`). Each is registered under `aegis-system` with global scope. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function, and for [the Forge](/docs/workflows/overview#the-forge). |
 
 ---
 

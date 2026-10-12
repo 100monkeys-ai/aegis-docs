@@ -439,6 +439,18 @@ When the run starts, each repository is prepared on its own work branch, and its
 
 A field the entry does not carry is `null`. No credential and no URL is on the Blackboard.
 
+A repository's work branch is the entry's `branch`, else `aegis/` and the first eight characters of the run's execution id; it is checked out from the remote's copy when the remote has it, else created from the binding's ref. Each repository is mounted read-write at `/workspace/<label>` in every container of the run and held by the run until it ends, however it ends. An entry is refused when the run starts, before any container:
+
+| Refusal | When |
+|---|---|
+| "repository '&lt;id&gt;' is not one of yours" | The binding is not yours; it is named by the first eight characters of its id. |
+| "repository '&lt;label&gt;' is not ready (it is &lt;status&gt;); start the run when its clone has finished" | The binding's clone has not finished. |
+| "repository '&lt;label&gt;' is in use by another run" | Another run holds it. |
+| "repository '&lt;label&gt;' is named twice" | Two entries name the same repository. |
+| "a run works on its own branch, not on '&lt;ref&gt;'" | `branch` is the binding's ref. |
+
+A run that has ended has released its repositories: a later state or child of it that would mount them is refused with "this run has ended, so its repositories are released", and takes no hold.
+
 ### `spec.storage`
 
 | Field | Type | Description |
@@ -511,7 +523,7 @@ An `Action` state is one of the workflow's own operations. The state machine run
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `action` | string | ✓ | The operation, one of the four below. A literal, never a template: it is fixed when the manifest is parsed, so the manifest alone says what the state does. |
+| `action` | string | ✓ | The operation, one of the five below. A literal, never a template: it is fixed when the manifest is parsed, so the manifest alone says what the state does. |
 | `args` | `map[string]string` | | The operation's arguments. Values support Handlebars and are rendered against the Blackboard when the state runs. |
 
 ```yaml
@@ -533,8 +545,9 @@ COMMIT:
 | `repository_diff` | None | The run's repository | No | By the orchestrator, on the repository the run holds. |
 | `repository_commit` | `message`, required | The run's repository | No: the commit stays on the work branch in the person's volume. | By the orchestrator, on the repository the run holds. |
 | `repository_land` | None | The run's repository | Yes | By the orchestrator, as the call [`aegis.git.land`](/docs/reference/mcp-tool-reference#aegisgitland), after the person's approval. |
+| `image_generate` | `prompt`, required; `alias`, `size`, `count` (1 to 4), `path` (default `generated/`) | An [image generation model](/docs/deployment/llm-providers#image-generation-models) on the node | No | By the orchestrator, as the call [`aegis.image.generate`](/docs/reference/mcp-tool-reference#aegisimagegenerate) makes it, writing into the run's volume. |
 
-A manifest is checked against its actions when it is parsed. An unknown action is refused with "unknown action '&lt;name&gt;'; the actions are update_blackboard, repository_diff, repository_commit, repository_land". An argument the action does not take is refused with "action 'repository_commit' takes message; '&lt;key&gt;' is not one" (for `repository_diff` and `repository_land`, "takes no arguments"), and a missing `message` with "action 'repository_commit' needs the argument 'message'". A repository action in a workflow whose `spec.repositories` is absent or `0` is refused with "action '&lt;name&gt;' works on the run's repository; this workflow declares none".
+A manifest is checked against its actions when it is parsed. An unknown action is refused with "unknown action '&lt;name&gt;'; the actions are update_blackboard, repository_diff, repository_commit, repository_land, image_generate". An argument the action does not take is refused with "action 'repository_commit' takes message; '&lt;key&gt;' is not one" (for `repository_diff` and `repository_land`, "takes no arguments"), and a missing `message` with "action 'repository_commit' needs the argument 'message'". A repository action in a workflow whose `spec.repositories` is absent or `0` is refused with "action '&lt;name&gt;' works on the run's repository; this workflow declares none". `image_generate` takes `prompt`, `alias`, `size`, `count` and `path`, and a missing `prompt` is refused with "action 'image_generate' needs the argument 'prompt'". A workflow with an `image_generate` state is refused at registration, not at parse, on a node with no image generation model: "this node has no image generation model".
 
 **`update_blackboard`** runs no process. Each `args` value is rendered against the Blackboard and written to the Blackboard under its key, as a string, so later states read it as `{{blackboard.KEY}}`. The state answers `success` with exit code `0` and `updated`, the list of keys written. The keys `input`, `intent`, `tenant_id`, `attachments`, `workflow` and `blackboard`, and the name of any state, are reserved: writing one fails the state before any key is written, with "update_blackboard cannot write the reserved key '&lt;key&gt;'."
 
@@ -559,6 +572,22 @@ SEED:
 | `repository_land` | Lands the work branch on the binding's ref as a fast-forward, after the person's approval (see [`aegis.git.land`](/docs/reference/mcp-tool-reference#aegisgitland)). | `commit_sha`, `branch`, `ref` |
 
 A step that does not act fails the state with the orchestrator's sentence, also written as `{state_name}.output.sentence`, so its `on_failure` transition takes it: "this run holds no repository" for a run that holds none, "nothing to commit: working tree is clean" for a commit with no change, and a landing's refusals. A run that changed nothing lands nothing.
+
+**`image_generate`** generates `count` images (default 1) from the rendered `prompt` with the image generation model `alias` names, or the node's first, and writes each into the run's volume under `path` (default `generated/`), numbered on from the files already there, its extension following its type (`.jpg`, `.png`, `.webp`). In a run with an agent state before it, the volume is the one its latest agent execution mounted, and each image is recorded as a file that execution produced; in a run with none, it is a volume the workflow execution owns, found or made for it. The state's output is `{files: [{volume_id, path, content_type, size_bytes}]}`. An empty `prompt` fails the state with "'prompt' is required: what the image shows" and a `count` outside 1 to 4 with "'count' is 1 to 4", before the model is called. A refusal (one of [`aegis.image.generate`](/docs/reference/mcp-tool-reference#aegisimagegenerate)'s, "'path' must name a directory inside the run's volume" for a `path` with `.` or `..` in it, "this run has ended", "this run has no volume to write into") fails the state with its sentence as `{state_name}.output.sentence`, so its `on_failure` transition takes it.
+
+```yaml
+DRAW:
+  kind: Action
+  action: image_generate
+  args:
+    prompt: "{{input.description}}"
+    count: "2"
+  transitions:
+    - condition: on_failure
+      target: FAILED
+    - condition: on_success
+      target: DONE
+```
 
 ### `kind: Human`
 
@@ -727,22 +756,25 @@ A model step is refused when the workflow is registered:
 
 Each is answered inside "Invalid container state configuration in state '&lt;state&gt;': &lt;refusal&gt;".
 
+The built-in workflow `transcribe-audio` (labels `builtin: "true"`, `type: builtin-model`) is one model step, deployed when [`spec.deploy_builtins`](/docs/reference/node-config#specdeploy_builtins) is on. Its one input, `audio_path`, is the name of a file attached to the run: letters, digits and `- . _`, never `..`, in any container ffmpeg decodes (wav, mp3, m4a, ogg, flac, webm). The step mounts the run's attachments read-only at `/input`, transcribes `/input/{{input.audio_path}}` with `speech-to-text/whisper-base` on the CPU, with no network and no language model, and prints the transcript: the step's stdout is the run's `transcript`. Start it with [`aegis.workflow.run`](/docs/reference/mcp-tool-reference#aegisworkflowrun), `name` `transcribe-audio`, `input.audio_path` the file's name and the file in `attachments`; a person's chat in Zaru Web carries the files attached to the turn into the run. Its step:
+
 ```yaml
 TRANSCRIBE:
   kind: ContainerRun
   name: "Transcribe"
   image: "model:speech-to-text/whisper-base"
-  command: ["transcribe", "/input/{{input.audio_path}}", "--out", "/output/transcript.txt"]
+  command: ["transcribe", "/input/{{input.audio_path}}", "--out", "/tmp/transcript.txt"]
   volumes:
     - name: attachments
       mount_path: /input
-    - name: output
-      mount_path: /output
+      read_only: true
+  shell: false
   transitions:
     - condition: exit_code_zero
       target: DONE
     - condition: exit_code_non_zero
       target: FAILED
+      feedback: "The recording could not be transcribed: {{{TRANSCRIBE.stderr}}}"
 ```
 
 #### A step on the run's attachments

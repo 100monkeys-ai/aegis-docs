@@ -531,6 +531,16 @@ Text files return their content inline. Binary files (images, PDFs, archives) re
 ```
 
 
+### Workflows
+
+Agentic mode runs a deployed workflow with `aegis.workflow.run` and waits on it with `aegis.workflow.wait`, after finding it with `aegis.workflow.search`.
+
+A recording attached to the turn becomes text through the built-in workflow [`transcribe-audio`](/docs/reference/workflow-manifest#a-model-step): `aegis.workflow.run` with `name` `transcribe-audio` and `input.audio_path` the attached file's name. Zaru Web carries the turn's attachments into the run, and its file picker accepts audio; the transcript is the step's stdout in `aegis.workflow.wait`'s answer.
+
+### Images
+
+Agentic and execute modes offer [`aegis.image.generate`](/docs/reference/mcp-tool-reference#aegisimagegenerate): a request for an image is that one call, with the person's words as `prompt` and a size they name as `size`. Each image is saved in the person's chat attachments under `generated/`, and the chat shows each of the answer's `files` as an image card.
+
 ### Schedules
 
 Agentic mode, like architect mode, lists the person's [schedules](/docs/workflows/schedules) and reads, pauses, resumes and deletes them: `aegis.schedule.list`, `aegis.schedule.get`, `aegis.schedule.runs`, `aegis.schedule.pause`, `aegis.schedule.resume` and `aegis.schedule.delete`, each but `list` taking `schedule_id`. Neither mode lists `aegis.schedule.create` or `aegis.schedule.update`: after running an agent or workflow for a request that should run again later, the companion proposes a schedule with [`zaru.schedule`](#zaruschedule), naming what it ran, and the person makes it from the card.
@@ -642,6 +652,14 @@ All agentic mode tools (`aegis.agent.*`, `aegis.task.*`, `aegis.execution.file`)
 
 Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.workflow.wait`.
 
+The workflow mode also offers three tools a person uses through the companion:
+
+- **`aegis.workflow.signal`** answers a run's Human gate with the person's own answer: `execution_id`, the person's `response` and, optionally, their `feedback`. The companion calls it only after the person has answered the gate they were shown; the answer's `signalled` is `true` when the run received it.
+- **`aegis.workflow.create`** deploys a workflow manifest the person gives, `manifest_yaml`, registered in the person's tenant; the answer's `deployed` is `true` when it was deployed.
+- **`aegis.workflow.update`** replaces a deployed workflow of the same name with a manifest the person gives, `manifest_yaml` and, optionally, `force` to overwrite the same version; the answer's `updated` is `true` when it was replaced.
+
+Each refusal is answered in the tool's own words, and the companion never says a gate was answered or a workflow deployed or updated without the tool's answer.
+
 **`aegis.workflow.run`** and **`aegis.workflow.signal`** are listed in architect mode too, as described under [Operator Mode Tools](#operator-mode-tools): a client in architect mode can start a workflow, such as the built-in [Forge](/docs/workflows/overview#the-forge), and answer its approval gates.
 
 **`aegis.workflow.wait`** — Blocks until a workflow execution or generation completes.
@@ -711,9 +729,9 @@ Operator mode exposes all tools with no filtering. It includes everything from t
 <Callout type="info">
   Through Zaru's MCP server, operator mode is reached only by an [operator
   escalation](#operator-escalation); a platform admin realm token is refused. System
-  tools (`aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.create`,
-  `aegis.workflow.update`, `aegis.workflow.promote`, `aegis.workflow.demote`)
-  require operator credentials. Destructive tools (`aegis.agent.delete`,
+  tools (`aegis.agent.create`, `aegis.agent.update`, `aegis.workflow.promote`,
+  `aegis.workflow.demote`) require operator credentials; `aegis.workflow.create` and
+  `aegis.workflow.update` are also offered in workflow mode. Destructive tools (`aegis.agent.delete`,
   `aegis.workflow.delete`, `aegis.task.remove`, `aegis.workflow.remove`,
   `aegis.system.*`) are similarly restricted to operator sessions.
 </Callout>
@@ -819,11 +837,11 @@ These tools manage the registry directly. They take a manifest YAML and register
 { "execution_id": "e1f2a3b4-..." }
 ```
 
-**`aegis.workflow.signal`** — Sends human input to a workflow paused at a `human_input` state.
+**`aegis.workflow.signal`** — Sends human input to a workflow paused at a `Human` state: `execution_id`, `response` and, optionally, `feedback`, which the workflow reads as `{{human.feedback}}`.
 
 ```json
 // aegis.workflow.signal
-{ "execution_id": "e1f2a3b4-...", "response": "approved" }
+{ "execution_id": "e1f2a3b4-...", "response": "approved", "feedback": "Ship it." }
 ```
 
 **`aegis.workflow.status`** — Lightweight status snapshot for a workflow execution.
@@ -1021,14 +1039,15 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.agent.export`             |     |     |     |     |  ✓  |
 | `aegis.agent.delete`             |     |     |     |     |  ✓  |
 | `aegis.agent.search`             |     |  ✓  |     |     |  ✓  |
-| `aegis.workflow.create`          |     |     |     |     |  ✓  |
-| `aegis.workflow.update`          |     |     |     |     |  ✓  |
+| `aegis.workflow.create`          |     |     |     |  ✓  |  ✓  |
+| `aegis.workflow.update`          |     |     |     |  ✓  |  ✓  |
 | `aegis.workflow.validate`        |     |     |     |     |  ✓  |
 | `aegis.workflow.export`          |     |     |     |     |  ✓  |
 | `aegis.workflow.delete`          |     |     |     |     |  ✓  |
 | `aegis.workflow.run`             |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.workflow.cancel`          |     |     |     |     |  ✓  |
 | `aegis.workflow.signal`          |     |     |     |  ✓  |  ✓  |
+| `aegis.image.generate`           |     |  ✓  |  ✓  |     |     |
 | `aegis.workflow.status`          |     |     |     |     |  ✓  |
 | `aegis.workflow.executions.list` |     |     |     |     |  ✓  |
 | `aegis.workflow.executions.get`  |     |     |     |     |  ✓  |

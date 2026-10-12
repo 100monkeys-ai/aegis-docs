@@ -279,6 +279,23 @@ models:
     context_window: 0
 ```
 
+**On Cloudflare Workers AI.** An `openai-compatible` image generation alias whose `endpoint` is a Workers AI `/ai/v1` base (`https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1`) runs its model at `<account>/ai/run/<model>` and reads the image Workers AI answers in `result.image`. The request is a JSON body `{prompt, width?, height?}` for every model but `@cf/black-forest-labs/flux-2-dev`, which takes a multipart form; `@cf/black-forest-labs/flux-1-schnell` takes no size, so a size asked of it is accepted and not sent, and the image comes at the model's own size. The provider's `headers` are sent but for the AI Gateway's `cf-aig-` headers. A capacity refusal (HTTP 429) answers that the model is unavailable, as any other provider failure does.
+
+```yaml
+spec:
+  llm_providers:
+    - name: "workers-ai"
+      type: "openai-compatible"
+      endpoint: "https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1"
+      api_key: "env:CLOUDFLARE_AI_API_TOKEN"
+      enabled: true
+      models:
+        - alias: "image"
+          model: "@cf/black-forest-labs/flux-1-schnell"
+          capabilities: ["image_generation"]
+          context_window: 0
+```
+
 An image generation alias is never an agent's model. An agent whose `spec.runtime.model` names one is refused by `aegis.agent.create`, `aegis.agent.update`, `POST /v1/agents` and `PATCH /v1/agents/{id}` with "'&lt;alias&gt;' generates images; an agent's model must be a language model".
 
 ## Hot-Swapping Models

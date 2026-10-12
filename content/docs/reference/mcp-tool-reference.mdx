@@ -126,6 +126,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.execution.file`
 - `aegis.tools.list`
 - `aegis.tools.search`
+- `aegis.image.generate`
 - `aegis.goal.cancel`
 
 ### Execute Mode
@@ -143,6 +144,7 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.execute.status`
 - `aegis.execute.wait`
 - `aegis.execution.file`
+- `aegis.image.generate`
 - `aegis.goal.cancel`
 
 ### Architect Mode
@@ -162,6 +164,8 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.workflow.run`
 - `aegis.git.list`
 - `aegis.workflow.signal`
+- `aegis.workflow.create`
+- `aegis.workflow.update`
 - `aegis.agent.generate`
 - `aegis.agent.wait`
 - `aegis.agent.list`
@@ -218,10 +222,10 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.agent.logs`               | agent      | true         | `agent_id`                                      | Ag, Ar, Op        |
 | `aegis.agent.search`             | agent      | true         | `query`                                         | Ag, Op            |
 | `aegis.agent.wait`               | agent      | true         | `execution_id`                                  | Ag, Ar, Op        |
-| `aegis.workflow.create`          | workflow   | true         | `manifest_yaml`                                 | Op                |
+| `aegis.workflow.create`          | workflow   | true         | `manifest_yaml`                                 | Ar, Op            |
 | `aegis.workflow.list`            | workflow   | true         | —                                               | Ar, Op            |
 | `aegis.workflow.validate`        | workflow   | true         | `manifest_yaml`                                 | Op                |
-| `aegis.workflow.update`          | workflow   | true         | `manifest_yaml`                                 | Op                |
+| `aegis.workflow.update`          | workflow   | true         | `manifest_yaml`                                 | Ar, Op            |
 | `aegis.workflow.export`          | workflow   | true         | `name`                                          | Op                |
 | `aegis.workflow.delete`          | workflow   | false        | `name`                                          | Op                |
 | `aegis.workflow.run`             | workflow   | false        | `name`                                          | Ag, Ar, Op        |
@@ -246,7 +250,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.task.wait`                | task       | true         | `execution_id`                                  | Ag, Ar, Op        |
 | `aegis.execution.file`           | execution  | true         | `execution_id`, `path`                          | Ag, Ex, Ar, Op    |
 | `aegis.attachment.read`          | attachment | true         | `volume_id`, `path`                             | System-tier only  |
-| `aegis.image.generate`           | image      | false        | `prompt`                                        | Op                |
+| `aegis.image.generate`           | image      | false        | `prompt`                                        | Ag, Ex            |
 | `aegis.execute.intent`           | execute    | false        | `intent`                                        | Ex, Op            |
 | `aegis.execute.status`           | execute    | true         | `pipeline_execution_id`                         | Ex, Op            |
 | `aegis.execute.wait`             | execute    | true         | `execution_id`                                  | Ex, Op            |
@@ -891,7 +895,7 @@ authoring and schema, see the [Workflow Manifest Reference](/docs/reference/work
 
 ### `aegis.workflow.create`
 
-Performs strict deterministic and semantic workflow validation, then registers on pass.
+Performs strict deterministic and semantic workflow validation, then registers on pass, in the caller's tenant at tenant scope. A version already registered answers "Workflow '&lt;name&gt;' version '&lt;version&gt;' is already registered. Increment the version (e.g. to '&lt;version&gt;.1') in the manifest and retry."
 
 **Access:** System
 
@@ -986,12 +990,15 @@ Updates an existing Workflow manifest in the registry.
 
 ```json
 {
-  "workflow_id": "w1b2c3d4-...",
-  "deployed": true,
+  "tool": "aegis.workflow.update",
+  "updated": true,
+  "deterministic_validation": { "passed": true },
   "name": "my-workflow",
-  "version": "1.0.1"
+  "workflow_id": "w1b2c3d4-..."
 }
 ```
+
+It replaces the workflow of the manifest's name in the caller's tenant. On failure `updated` is `false` with an `error`, such as "Workflow not found" or "Workflow update failed: …".
 
 ### `aegis.workflow.export`
 
@@ -1217,6 +1224,7 @@ Send human input response to a paused workflow execution.
 | -------------- | -------- | -------- | ------- | --------------------------------------------------------- |
 | `execution_id` | `string` | Yes      | —       | UUID of the workflow execution to signal.                 |
 | `response`     | `string` | Yes      | —       | Human input response text to send to the paused workflow. |
+| `feedback`     | `string` | No       | —       | The person's feedback with the response, read by the workflow as `{{human.feedback}}`. |
 
 **Output:**
 
@@ -1228,7 +1236,7 @@ Send human input response to a paused workflow execution.
 }
 ```
 
-On failure: `{ "signalled": false, "error": "execution is not in a waiting state" }`
+On failure: `{ "signalled": false, "error": "…" }`, such as "Workflow execution '&lt;id&gt;' not found" for an execution that is not in the caller's tenant, or "Failed to signal workflow execution: …".
 
 ### `aegis.workflow.remove`
 
@@ -1779,7 +1787,7 @@ This is the read path for files dispatched via the `attachments` field on `aegis
 
 ### `aegis.image.generate`
 
-Generates images from a text prompt with one of the node's [image generation models](/docs/deployment/llm-providers#image-generation-models) and saves each as a PNG file.
+Generates images from a text prompt with one of the node's [image generation models](/docs/deployment/llm-providers#image-generation-models) and saves each as a file named by its type: `.jpg`, `.png` or `.webp`.
 
 **Access:** User
 
@@ -1789,22 +1797,22 @@ Generates images from a text prompt with one of the node's [image generation mod
 | -------- | --------- | -------- | ------------------------------------ | --------------------------------------------------------------------------- |
 | `prompt` | `string`  | Yes      | —                                    | What the image shows.                                                       |
 | `alias`  | `string`  | No       | the node's first image generation alias | Which of the node's image generation models.                             |
-| `size`   | `string`  | No       | the model's default                  | The image's size as the model takes it, such as `1024x1024`.                |
+| `size`   | `string`  | No       | the model's default                  | The image's size as `<width>x<height>`, such as `1024x1024`. A model that takes no size is sent none, and the size asked is accepted. |
 | `count`  | `integer` | No       | `1`                                  | How many images, 1 to 4.                                                    |
 
-Inside a run, each image is written to the run's workspace volume as `/workspace/generated/<n>.png` and recorded as a file the run produced in that iteration. Called from a person's conversation, outside any run, each is written to the person's chat attachments under `generated/`, where a next turn can attach it.
+Inside a run, each image is written to the run's workspace volume as `/workspace/generated/<n>.<ext>`, numbered on from the files already there, and recorded as a file the run produced in that iteration. Called from a person's conversation, outside any run, each is written to the person's chat attachments as `generated/<batch>/<n>.<ext>`, where a next turn can attach it. `<ext>` is `jpg` for `image/jpeg`, `webp` for `image/webp` and `png` otherwise. A workflow generates images with its own step, the action [`image_generate`](/docs/reference/workflow-manifest#kind-action).
 
 **Output:**
 
 ```json
 {
   "files": [
-    { "volume_id": "…", "path": "/workspace/generated/1.png", "content_type": "image/png", "size_bytes": 482113 }
+    { "volume_id": "…", "path": "/workspace/generated/1.jpg", "content_type": "image/jpeg", "size_bytes": 696043 }
   ]
 }
 ```
 
-The answer names no URL. Every refusal comes before the model is called: a node with no image generation alias answers "this node has no image generation model"; an `alias` that is not one answers "'&lt;alias&gt;' is not an image generation model; the image generation models are &lt;list&gt;"; a missing or empty `prompt` answers "'prompt' is required: what the image shows"; a `count` outside 1 to 4 answers "'count' is 1 to 4".
+The answer names no URL. Every refusal comes before the model is called: a node with no image generation alias answers "this node has no image generation model"; an `alias` that is not one answers "'&lt;alias&gt;' is not an image generation model; the image generation models are &lt;list&gt;"; a missing or empty `prompt` answers "'prompt' is required: what the image shows"; a `count` outside 1 to 4 answers "'count' is 1 to 4"; a `size` not of the form `<width>x<height>` answers "the image generation model refused the request: invalid image request: size '&lt;size&gt;' is not &lt;width&gt;x&lt;height&gt;, for example 1024x1024". A request the model refuses answers "the image generation model refused the request: …" in the model's words. Any other failure of the model, its capacity refusal (HTTP 429) among them, answers that the model is unavailable: "the image generation model '&lt;alias&gt;' failed: …", for a 429 "… failed: image provider rate limit exceeded".
 
 ## Execute Pipeline Tools (`aegis.execute.*`)
 
