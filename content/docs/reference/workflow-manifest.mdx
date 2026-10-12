@@ -505,6 +505,8 @@ Use `{{STATE.output}}`, `{{STATE.status}}`, or `{{STATE.score}}` in downstream s
 
 An Agent state starts its agent's run once. The Temporal worker gives the run the agent's own time limit (`spec.security.resources.timeout`, else 1,800 seconds) plus 60 seconds, and keeps the step alive while the run streams. A retry after the run has begun starts no second run: the worker asks the orchestrator to cancel the earlier run and fails the step. A failure to reach the orchestrator before the run begins is retried, at most three attempts. When the step ends before its run does, by its time limit or by cancellation, the worker asks the orchestrator to cancel the run, so no run outlives its step.
 
+When the state's agent run fails, or judging its output ends in an error, the worker records the iteration's failure (`WorkflowIterationFailed`). A state that declares an `on_failure` transition then takes it, and its Blackboard entry is `{"status": "failed", "error": "<the failure's message>"}`; a state that declares none fails the run.
+
 ### `kind: System`
 
 | Field | Type | Required | Description |
