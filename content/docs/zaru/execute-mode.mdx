@@ -71,8 +71,9 @@ The Glass Lab panel shows a four-stage progress view as the pipeline runs:
 Execute mode runs a built-in four-state pipeline behind the scenes. The Zaru client uses
 `aegis.workflow.wait` (aliased as `aegis.execute.wait`) to wait server-side for the pipeline,
 rather than polling `aegis.execute.status` in a loop. One call waits at most 45 seconds; if
-the pipeline is still running then, the result says so (`still_running: true`) and repeating
-the same call continues the wait until the pipeline reaches a terminal state.
+the pipeline is still running then, the result says so (`still_running: true`): the pipeline
+goes on by itself, Zaru says it is still running and ends its turn, and it calls the wait again
+only when you ask, never in a loop.
 
 | Stage | What happens |
 |---|---|

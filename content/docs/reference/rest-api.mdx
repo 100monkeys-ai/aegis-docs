@@ -136,7 +136,7 @@ Start an agent execution. Returns immediately with the `execution_id`; use the S
 
 ### `GET /v1/executions/{id}`
 
-The status of an agent execution. Requires the scope `execution:read`. A caller reads only executions of the tenant its request resolves to (a service account the tenant it names in `X-Tenant-Id`); an operator reads any tenant's.
+The status of an agent execution, or of a workflow run. Requires the scope `execution:read`. A caller reads only executions of the tenant its request resolves to (a service account the tenant it names in `X-Tenant-Id`); an operator reads any tenant's.
 
 **Response `200`:**
 
@@ -151,13 +151,36 @@ The status of an agent execution. Requires the scope `execution:read`. A caller 
 }
 ```
 
-`status` is `Pending`, `Running`, `Completed`, `Failed` or `Cancelled`. Once the execution has ended (`Completed`, `Failed` or `Cancelled`) the answer also carries `final_output`, the output of the last iteration that has one, and `error`, the execution's error, each `null` when there is none, so a caller that finds the run already over reads what it produced. A `Pending` or `Running` execution carries neither key.
+An agent execution answers with `"kind": "agent"` beside these fields. `status` is `Pending`, `Running`, `Completed`, `Failed` or `Cancelled`. Once the execution has ended (`Completed`, `Failed` or `Cancelled`) the answer also carries `final_output`, the output of the last iteration that has one, and `error`, the execution's error, each `null` when there is none, so a caller that finds the run already over reads what it produced. A `Pending` or `Running` execution carries neither key.
+
+When no agent execution has the id, a workflow run of the same tenant answers with `"kind": "workflow"` and the fields `GET /v1/workflows/executions/{id}` gives: `id` and `execution_id` (both the run's id), `workflow_id`, `workflow_name`, `status` in lower case (`running`, `completed`, `failed`, `cancelled`), `current_state`, `started_at`, `last_transition_at` and `tenant_id`; once the run has ended it also carries `final_output`, `null` when the run produced none.
+
+```json
+{
+  "kind": "workflow",
+  "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "workflow_id": "wf-uuid",
+  "workflow_name": "the-forge",
+  "status": "running",
+  "current_state": "AWAIT_REQUIREMENTS_APPROVAL",
+  "started_at": "2026-10-13T07:25:09Z",
+  "last_transition_at": "2026-10-13T07:31:40Z",
+  "tenant_id": "tenant-id"
+}
+```
 
 **Errors:**
 
 | HTTP  | Body                                | Cause                                                  |
 | ----- | ----------------------------------- | ------------------------------------------------------ |
-| `404` | `{"error": "Execution not found"}` | No execution of that id in the caller's tenant         |
+| `404` | `{"error": "Execution not found"}` | No agent execution and no workflow run of that id in the caller's tenant |
+
+### `GET /v1/executions/{id}/files/{path}`
+
+The bytes of one file of a completed execution's workspace volume, with its `Content-Type` and `Content-Length`. Requires the scope `execution:read`. A leading `/workspace/` of the path is stripped. This is the route an `aegis.execution.file` answer's `download_url` names.
+
+With `?volume_id=<id>` the file is read from that volume of the caller's tenant instead, and the execution id in the path is not read: the volume and path an `aegis.image.generate` answer names, for example `/v1/executions/<volume_id>/files/generated/<batch>/1.jpg?volume_id=<volume_id>`. A volume that does not exist, another tenant's volume and a missing file answer alike, `404` with `{"error": "not found: no file <path> in volume <id>"}`, so the answer never tells that another tenant's volume exists. An invalid path answers `422`.
 
 ---
 
@@ -603,7 +626,15 @@ Answers the `Human` gate a workflow execution waits at. Scope `workflow:signal`;
 
 ### `GET /v1/workflow-gates`
 
-Lists the `Human` gates your own running workflow executions wait at: `?status=pending`, the only status listed (omitting it lists the same; any other answers `400` "Unknown status '&lt;status&gt;': only pending gates are listed"). Scope `workflow:read`. Within the caller's tenant only executions the caller started are listed, so in a tenant several people share another member's run is not listed; a service account is refused `403`. An execution is listed while its latest workflow event is the gate's `HumanInputRequested`, once, with that event's `sequence`; a run past its gate, or ended, is not listed. Gates are listed newest first.
+Lists the `Human` gates of your own workflow executions. Scope `workflow:read`. Within the caller's tenant only executions the caller started are listed, so in a tenant several people share another member's run is not listed; a service account is refused `403`. `status` is one of:
+
+| `status` | Lists |
+|---|---|
+| `pending` (the default) | The gates your running executions wait at. An execution is listed while its latest workflow event is the gate's `HumanInputRequested`, once, with that event's `sequence`; a run past its gate, or ended, is not listed. |
+| `answered` | The gates of your executions, running or ended, that closed: answered, or closed on the gate's timeout. A gate the run left with no answer recorded (it was cancelled with the gate open, for example) is not listed. |
+| `any` | Both, each in its own listing's shape. |
+
+Any other status answers `400` "Unknown status '&lt;status&gt;': the status is pending, answered or any". Gates are listed newest first: a pending gate by its post, an answered gate by its answer. The `answered` and `any` listings are paged by `limit` (default 50, from 1 to 200; any other answers `400` "limit must be from 1 to 200") and `offset` (default 0); the pending listing is not paged.
 
 ```json
 {
@@ -625,6 +656,96 @@ Lists the `Human` gates your own running workflow executions wait at: `?status=p
 ```
 
 `responses` are the words the gate takes, `[]` for a gate that takes any answer; `expires_at` is when the gate stops waiting. Answer a gate with [`POST /v1/workflows/executions/{id}/signal`](#post-v1workflowsexecutionsidsignal).
+
+An answered gate carries `execution_id`, `workflow_name`, `state_name`, `prompt` (its latest post's), `responses` and `sequence` as a pending one does, with `requested_at`, and in place of the deadline:
+
+```json
+{
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "workflow_name": "the-forge",
+  "state_name": "AWAIT_REQUIREMENTS_APPROVAL",
+  "prompt": "Approve these requirements? …",
+  "responses": ["yes", "no"],
+  "response": "yes",
+  "feedback": "Keep the flag name short.",
+  "answered_at": "2026-10-13T04:52:10+00:00",
+  "answered_by": null,
+  "sequence": 7,
+  "requested_at": "2026-10-13T04:38:34+00:00",
+  "outcome": "went_on"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `response` | The word chosen; `null` for a gate that closed on its timeout. |
+| `feedback` | The feedback sent with the answer, or `null`. |
+| `answered_at` | When the gate closed. |
+| `answered_by` | Always `null`: the run's events do not record who answered. |
+| `outcome` | `went_on` when the run entered another state after the answer, `ended` when the run ended on it, `timed_out` when the gate closed on its timeout. |
+
+### `GET /v1/workflows/executions/{id}/logs`
+
+A page of a workflow run's events, in sequence order. Scope `workflow:read`; the run must be in the caller's tenant, else `404` with `{"error": "workflow execution not found"}`. `limit` is the most events answered (default 50, at most 200; a larger value answers 200) and `offset` the number of events skipped from the run's first (default 0).
+
+```json
+{
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "events": [ … ],
+  "count": 50,
+  "total": 73,
+  "limit": 50,
+  "offset": 0,
+  "has_more": true
+}
+```
+
+`count` is the page's length, `total` the run's number of events, and `has_more` whether events follow the page; `limit` and `offset` are the values applied.
+
+An answered gate carries `execution_id`, `workflow_name`, `state_name`, `prompt` (its latest post's), `responses` and `sequence` as a pending one does, with `requested_at`, and in place of the deadline:
+
+```json
+{
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "workflow_name": "the-forge",
+  "state_name": "AWAIT_REQUIREMENTS_APPROVAL",
+  "prompt": "Approve these requirements? …",
+  "responses": ["yes", "no"],
+  "response": "yes",
+  "feedback": "Keep the flag name short.",
+  "answered_at": "2026-10-13T04:52:10+00:00",
+  "answered_by": null,
+  "sequence": 7,
+  "requested_at": "2026-10-13T04:38:34+00:00",
+  "outcome": "went_on"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `response` | The word chosen; `null` for a gate that closed on its timeout. |
+| `feedback` | The feedback sent with the answer, or `null`. |
+| `answered_at` | When the gate closed. |
+| `answered_by` | Always `null`: the run's events do not record who answered. |
+| `outcome` | `went_on` when the run entered another state after the answer, `ended` when the run ended on it, `timed_out` when the gate closed on its timeout. |
+
+### `GET /v1/workflows/executions/{id}/logs`
+
+A page of a workflow run's events, in sequence order. Scope `workflow:read`; the run must be in the caller's tenant, else `404` with `{"error": "workflow execution not found"}`. `limit` is the most events answered (default 50, at most 200; a larger value answers 200) and `offset` the number of events skipped from the run's first (default 0).
+
+```json
+{
+  "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "events": [ … ],
+  "count": 50,
+  "total": 73,
+  "limit": 50,
+  "offset": 0,
+  "has_more": true
+}
+```
+
+`count` is the page's length, `total` the run's number of events, and `has_more` whether events follow the page; `limit` and `offset` are the values applied.
 
 ---
 

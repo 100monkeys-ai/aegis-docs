@@ -299,9 +299,11 @@ Retrieves the execution event log for a workflow run, returning state transition
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `execution_id` | `string` | ✅ | — | UUID of the workflow execution to retrieve logs for. |
+| `execution_id` | `string` | ✅ | — | The id `aegis.workflow.run` answered for the run. |
 | `limit` | `number` | ❌ | `50` | Maximum number of events to return (max 200). |
 | `offset` | `number` | ❌ | `0` | Number of events to skip — use for pagination. |
+
+A call without `execution_id` is refused: "required field 'execution_id' is missing or null for tool 'aegis.workflow.logs'".
 
 **Returns:**
 
@@ -330,9 +332,12 @@ Retrieves the execution event log for a workflow run, returning state transition
   ],
   "total": 2,
   "limit": 50,
-  "offset": 0
+  "offset": 0,
+  "has_more": false
 }
 ```
+
+`total` is the run's number of events, `has_more` whether events follow the page, and `limit` and `offset` the values applied; the answer also carries the run's `workflow_id`.
 
 **Related CLI command:**
 

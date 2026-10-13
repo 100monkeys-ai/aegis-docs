@@ -249,7 +249,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.task.remove`              | task       | false        | `execution_id`                                  | Op                |
 | `aegis.task.logs`                | task       | true         | `execution_id`                                  | Ag, Op            |
 | `aegis.task.wait`                | task       | true         | `execution_id`                                  | Ag, Ar, Op        |
-| `aegis.execution.file`           | execution  | true         | `execution_id`, `path`                          | Ag, Ex, Ar, Op    |
+| `aegis.execution.file`           | execution  | true         | `path`; `execution_id` unless `volume_id`       | Ag, Ex, Ar, Op    |
 | `aegis.attachment.read`          | attachment | true         | `volume_id`, `path`                             | System-tier only  |
 | `aegis.image.generate`           | image      | false        | `prompt`                                        | Ag, Ex            |
 | `aegis.execute.intent`           | execute    | false        | `intent`                                        | Ex, Op            |
@@ -614,6 +614,22 @@ Executes a shell command inside the agent's ephemeral container environment. Use
 | Property  | Type     | Required | Default | Description                                                                            |
 | --------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------- |
 | `command` | `string` | Yes      | —       | Command to execute. The first token must appear in the agent's `subcommand_allowlist`. |
+| `args`    | `array`  | No       | —       | Arguments passed to the command, as an array of strings, such as `["-c", "env"]`.      |
+| `env_additions` | `object` | No | — | Environment variables added for this command, as an object of string values.          |
+| `stdin`   | `string` | No       | —       | Text written to the command's standard input, which is then closed; at most `max_output_bytes` bytes. |
+| `cwd`     | `string` | No       | `/workspace` | The directory the command runs in, such as `/workspace/app`.                      |
+| `timeout_secs` | `integer` | No | `600` | Seconds the command may run before it is stopped.                                       |
+| `max_output_bytes` | `integer` | No | `1048576` | The most bytes of output kept from the command, and the most bytes `stdin` may hold. |
+
+A call naming an argument `cmd.run` does not take is refused, each such argument named: "cmd.run: 'path' is not an argument of cmd.run; its arguments are command, args, cwd, env_additions, stdin, timeout_secs and max_output_bytes, and the directory a command runs in is cwd (/workspace when absent)". The model is told the refusal and the try goes on.
+| `args`    | `array`  | No       | —       | Arguments passed to the command, as an array of strings, such as `["-c", "env"]`.      |
+| `env_additions` | `object` | No | — | Environment variables added for this command, as an object of string values.          |
+| `stdin`   | `string` | No       | —       | Text written to the command's standard input, which is then closed; at most `max_output_bytes` bytes. |
+| `cwd`     | `string` | No       | `/workspace` | The directory the command runs in, such as `/workspace/app`.                      |
+| `timeout_secs` | `integer` | No | `600` | Seconds the command may run before it is stopped.                                       |
+| `max_output_bytes` | `integer` | No | `1048576` | The most bytes of output kept from the command, and the most bytes `stdin` may hold. |
+
+A call naming an argument `cmd.run` does not take is refused, each such argument named: "cmd.run: 'path' is not an argument of cmd.run; its arguments are command, args, cwd, env_additions, stdin, timeout_secs and max_output_bytes, and the directory a command runs in is cwd (/workspace when absent)". The model is told the refusal and the try goes on.
 
 **Output:**
 
@@ -1141,9 +1157,11 @@ Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation), an exe
 
 | Property       | Type      | Required | Default | Description                                                         |
 | -------------- | --------- | -------- | ------- | ------------------------------------------------------------------- |
-| `execution_id` | `string`  | Yes      | —       | UUID of the workflow execution whose event log should be retrieved. |
-| `limit`        | `integer` | No       | `50`    | Maximum number of events to return (max 200).                       |
-| `offset`       | `integer` | No       | `0`     | Number of events to skip for pagination.                            |
+| `execution_id` | `string`  | Yes      | —       | The id `aegis.workflow.run` answered for the run.                   |
+| `limit`        | `integer` | No       | `50`    | Maximum number of events to return, in sequence order (max 200; a larger value returns 200). |
+| `offset`       | `integer` | No       | `0`     | Number of events to skip from the run's first event.                |
+
+A call without `execution_id` is refused: "required field 'execution_id' is missing or null for tool 'aegis.workflow.logs'".
 
 **Output:**
 
@@ -1164,9 +1182,12 @@ Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation), an exe
   ],
   "total": 12,
   "limit": 50,
-  "offset": 0
+  "offset": 0,
+  "has_more": false
 }
 ```
+
+The answer also carries the run's `workflow_id`. `total` is the run's number of events, not the page's; `has_more` is `true` when events follow the page; `limit` and `offset` are the values applied.
 
 ### `aegis.workflow.wait`
 
@@ -1710,7 +1731,7 @@ A terminal answer carries `produced_files` as `aegis.task.status` does.
 
 ### `aegis.execution.file`
 
-Read a file from a completed execution's workspace volume. Use this to retrieve output files after an agent or task execution finishes. Supports both text and binary files.
+Read a file from a completed execution's workspace volume. Use this to retrieve output files after an agent or task execution finishes. Given `volume_id`, it reads the file from that volume of yours instead, such as an image `aegis.image.generate` saved. Supports both text and binary files.
 
 **Access:** User
 
@@ -1718,8 +1739,11 @@ Read a file from a completed execution's workspace volume. Use this to retrieve 
 
 | Property       | Type     | Required | Default | Description                                                                    |
 | -------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------ |
-| `execution_id` | `string` | Yes      | —       | The execution ID to retrieve a file from.                                      |
-| `path`         | `string` | Yes      | —       | File path relative to /workspace (e.g. `output.md` or `/workspace/output.md`). |
+| `execution_id` | `string` | Unless `volume_id` is given | — | The execution ID to retrieve a file from.                          |
+| `volume_id`    | `string` | No       | —       | Read the file from this volume of your tenant instead of the execution's workspace: the `volume_id` an `aegis.image.generate` answer names for each file. |
+| `path`         | `string` | Yes      | —       | File path relative to /workspace (e.g. `output.md` or `/workspace/output.md`); with `volume_id`, the path inside that volume (e.g. `generated/<batch>/1.jpg`). |
+
+A call naming neither `execution_id` nor `volume_id` is refused: "aegis.execution.file: missing required field 'execution_id' (string), or 'volume_id' (string) for a file in a volume".
 
 **Available in:** Agentic, Execute, Workflow modes
 
@@ -1733,26 +1757,30 @@ Read a file from a completed execution's workspace volume. Use this to retrieve 
 
 | Field          | Type      | Description                                                                  |
 | -------------- | --------- | ---------------------------------------------------------------------------- |
-| `execution_id` | `string`  | The execution ID the file was retrieved from.                                |
-| `path`         | `string`  | Normalized file path relative to `/workspace`.                               |
+| `status`       | `string`  | `success`.                                                                   |
+| `path`         | `string`  | The path as the call gave it.                                                |
 | `content`      | `string`  | File contents as text. **Present only for text files.**                      |
 | `content_type` | `string`  | MIME type of the file (e.g. `text/plain`, `image/png`, `application/pdf`).   |
 | `is_binary`    | `boolean` | `true` if the file is binary, `false` for text files.                        |
-| `download_url` | `string`  | Signed URL for out-of-band file download. **Present only for binary files.** |
+| `download_url` | `string`  | The path of [`GET /v1/executions/{id}/files/{path}`](/docs/reference/rest-api#get-v1executionsidfilespath) for this file, with `?volume_id=<id>` when the call named a volume. |
+| `volume_id`    | `string`  | The volume read. **Present only when the call named one.**                   |
 | `size_bytes`   | `number`  | Size of the file in bytes.                                                   |
 
-Text files include their content inline in the `content` field so LLMs can consume it directly. Binary files (images, PDFs, archives, etc.) omit `content` and instead provide a `download_url` for out-of-band retrieval by the client application.
+Text files include their content inline in the `content` field so LLMs can consume it directly. Binary files (images, PDFs, archives, etc.) omit `content`: their bytes are read from the route `download_url` names, by the client application.
+
+A file that cannot be read answers `{"status": "error", "error": "not_found", "message": "…"}`. A volume that does not exist, another tenant's volume and a missing file answer alike, "no file &lt;path&gt; in volume &lt;id&gt;", and another tenant's execution answers as one with no workspace, "no workspace volume for execution &lt;id&gt;", so the answer never tells that it exists.
 
 **Text file example:**
 
 ```json
 {
-  "execution_id": "e1f2a3b4-...",
+  "status": "success",
   "path": "output.md",
   "content": "# Report\n\nAnalysis complete. Found 3 issues...",
   "content_type": "text/markdown",
   "is_binary": false,
-  "size_bytes": 1847
+  "size_bytes": 1847,
+  "download_url": "/v1/executions/e1f2a3b4-.../files/output.md"
 }
 ```
 
@@ -1760,20 +1788,21 @@ Text files include their content inline in the `content` field so LLMs can consu
 
 ```json
 {
-  "execution_id": "e1f2a3b4-...",
-  "path": "chart.png",
-  "content_type": "image/png",
+  "status": "success",
+  "path": "generated/54a33efd/1.jpg",
+  "content_type": "image/jpeg",
   "is_binary": true,
-  "download_url": "https://api.100monkeys.ai/v1/executions/e1f2a3b4-.../files/chart.png?token=...",
-  "size_bytes": 245120
+  "size_bytes": 242323,
+  "download_url": "/v1/executions/9f0b2e1f-.../files/generated/54a33efd/1.jpg?volume_id=9f0b2e1f-...",
+  "volume_id": "9f0b2e1f-..."
 }
 ```
 
 <Callout type="info">
-  The download URL points to the REST endpoint `GET
-  /v1/executions/:id/files/*path`, which streams the file directly from the
-  storage backend. The URL includes a short-lived authentication token and
-  expires after the volume's TTL.
+  The download URL is the path of the REST endpoint `GET
+  /v1/executions/{id}/files/{path}`, which answers the file's bytes from the
+  storage backend to a caller with the scope `execution:read`. With no
+  execution named, its id segment carries the volume's id and is not read.
 </Callout>
 
 ---
@@ -1830,12 +1859,13 @@ Inside a run, each image is written to the run's workspace volume as `/workspace
 ```json
 {
   "files": [
-    { "volume_id": "…", "path": "/workspace/generated/1.jpg", "content_type": "image/jpeg", "size_bytes": 696043 }
-  ]
+    { "volume_id": "9f0b2e1f-…", "path": "generated/54a33efd/1.jpg", "content_type": "image/jpeg", "size_bytes": 696043 }
+  ],
+  "fetch": "Fetch it with aegis.execution.file, volume_id 9f0b2e1f-…, path generated/54a33efd/1.jpg."
 }
 ```
 
-The answer names no URL. Every refusal comes before the model is called: a node with no image generation alias answers "this node has no image generation model"; an `alias` that is not one answers "'&lt;alias&gt;' is not an image generation model; the image generation models are &lt;list&gt;"; a missing or empty `prompt` answers "'prompt' is required: what the image shows"; a `count` outside 1 to 4 answers "'count' is 1 to 4"; a `size` not of the form `<width>x<height>` answers "the image generation model refused the request: invalid image request: size '&lt;size&gt;' is not &lt;width&gt;x&lt;height&gt;, for example 1024x1024". A request the model refuses answers "the image generation model refused the request: …" in the model's words. Any other failure of the model, its capacity refusal (HTTP 429) among them, answers that the model is unavailable: "the image generation model '&lt;alias&gt;' failed: …", for a 429 "… failed: image provider rate limit exceeded".
+The answer names no URL. `fetch` says how to read each file back: [`aegis.execution.file`](#aegisexecutionfile) with the file's `volume_id` and `path`; for several files it reads "Fetch each with aegis.execution.file: volume_id &lt;id&gt;, path &lt;path&gt;; volume_id &lt;id&gt;, path &lt;path&gt;.". Every refusal comes before the model is called: a node with no image generation alias answers "this node has no image generation model"; an `alias` that is not one answers "'&lt;alias&gt;' is not an image generation model; the image generation models are &lt;list&gt;"; a missing or empty `prompt` answers "'prompt' is required: what the image shows"; a `count` outside 1 to 4 answers "'count' is 1 to 4"; a `size` not of the form `<width>x<height>` answers "the image generation model refused the request: invalid image request: size '&lt;size&gt;' is not &lt;width&gt;x&lt;height&gt;, for example 1024x1024". A request the model refuses answers "the image generation model refused the request: …" in the model's words. Any other failure of the model, its capacity refusal (HTTP 429) among them, answers that the model is unavailable: "the image generation model '&lt;alias&gt;' failed: …", for a 429 "… failed: image provider rate limit exceeded".
 
 ## Execute Pipeline Tools (`aegis.execute.*`)
 

@@ -73,11 +73,11 @@ When the execution finishes within the wait, the result is the execution's final
   "still_running": true,
   "timed_out": true,
   "waited_seconds": 45,
-  "message": "Execution e1f2a3b4-... is still running after 45s, iteration count 2. Repeat this same aegis.task.wait call to continue waiting."
+  "message": "Execution e1f2a3b4-... is still running after 45s, iteration count 2. The run keeps going on its own; read it again only when the person asks."
 }
 ```
 
-A workflow's result carries `current_state` in place of `iteration_count`. To keep waiting, repeat the same call.
+A workflow's result carries `current_state` in place of `iteration_count`. The execution goes on whether or not anything waits on it, and a later call of the same wait tool reads it again. In Zaru's modes the companion reads a run at most once in a turn and never in a loop: when the answer reads running, it says so in one sentence with the `execution_id` and ends its turn, and it reads the run again only when you ask.
 
 ---
 
@@ -499,8 +499,9 @@ Follow with `aegis.agent.wait` to block until generation completes.
 
 | Parameter      | Required | Description                                                                     |
 | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `execution_id` | Yes      | UUID of the completed execution                                                 |
-| `path`         | Yes      | File path relative to `/workspace` (e.g. `report.md` or `/workspace/report.md`) |
+| `execution_id` | Yes, unless `volume_id` is given | UUID of the completed execution                                                 |
+| `volume_id`    | No       | A volume of yours to read the file from instead of the execution's workspace, such as the one an `aegis.image.generate` answer names |
+| `path`         | Yes      | File path relative to `/workspace` (e.g. `report.md` or `/workspace/report.md`); with `volume_id`, the path inside that volume (e.g. `generated/<batch>/1.jpg`) |
 
 ```json
 // aegis.execution.file
@@ -533,13 +534,13 @@ Text files return their content inline. Binary files (images, PDFs, archives) re
 
 ### Workflows
 
-Agentic mode runs a deployed workflow with `aegis.workflow.run` and waits on it with `aegis.workflow.wait`, after finding it with `aegis.workflow.search`.
+Agentic mode runs a deployed workflow with `aegis.workflow.run`, after finding it with `aegis.workflow.search`; once the run has started the companion ends its turn, and it reads the run with `aegis.workflow.wait` only when you ask, as described under [Workflow Generation and Management](#workflow-generation-and-management).
 
 A recording attached to the turn becomes text through the built-in workflow [`transcribe-audio`](/docs/reference/workflow-manifest#a-model-step): `aegis.workflow.run` with `name` `transcribe-audio` and `input.audio_path` the attached file's name. Zaru Web carries the turn's attachments into the run, and its file picker accepts audio; the transcript is the step's stdout in `aegis.workflow.wait`'s answer.
 
 ### Images
 
-Agentic and execute modes offer [`aegis.image.generate`](/docs/reference/mcp-tool-reference#aegisimagegenerate): a request for an image is that one call, with the person's words as `prompt` and a size they name as `size`. Each image is saved in the person's chat attachments under `generated/`, and the chat shows each of the answer's `files` as an image card.
+Agentic and execute modes offer [`aegis.image.generate`](/docs/reference/mcp-tool-reference#aegisimagegenerate): a request for an image is that one call, with the person's words as `prompt` and a size they name as `size`. Each image is saved in the person's chat attachments under `generated/`, and the chat shows each of the answer's `files` as an image card. The answer's `fetch` names how to read a file back, such as "Fetch it with aegis.execution.file, volume_id &lt;id&gt;, path generated/&lt;batch&gt;/1.jpg.".
 
 ### Schedules
 
@@ -659,7 +660,7 @@ The workflow mode also offers two tools a person uses through the companion:
 
 Each refusal is answered in the tool's own words, and the companion never says a workflow was deployed or updated without the tool's answer.
 
-**`aegis.workflow.run`** is listed in architect mode too, as described under [Operator Mode Tools](#operator-mode-tools): a client in architect mode can start a workflow, such as the built-in [Forge](/docs/workflows/overview#the-forge). No mode offers the companion `aegis.workflow.signal`: a run's Human gate is the person's to answer, in Zaru Web on the gate card under the run, on the Approvals page or on the run's execution page ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)). When a run waits at a gate, the companion shows the gate's prompt as a tool answered it, says where the person answers it, and never asks for the answer in the chat. The Zaru MCP server still lists `aegis.workflow.signal` to an external MCP client such as Claude Code, whose `tools/list` is the orchestrator's tool list for the person, not a mode's list; there the person's own client calls it. Zaru Web's workflow mode offers `aegis.workflow.run` as its agentic mode does, and a run started from it carries the conversation's chosen connections, or its profile, as in agentic mode.
+**`aegis.workflow.run`** is listed in architect mode too, as described under [Operator Mode Tools](#operator-mode-tools): a client in architect mode can start a workflow, such as the built-in [Forge](/docs/workflows/overview#the-forge). No mode offers the companion `aegis.workflow.signal`: a run's Human gate is the person's to answer, in Zaru Web on the gate card under the run, on the Approvals page or on the run's execution page ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)). In the workflow and agentic modes the companion reads a workflow's inputs before a run and asks for each required one the request does not give, and sends `task` as the person's request in their own words, as they wrote it, never a paraphrase or a task it composed. When `aegis.workflow.run` answers `started`, the companion says the run has started, with its `execution_id`, that the card below shows its state, and that each Human gate appears on that card and in Approvals for the person to answer there, never in the chat; then it ends its turn without waiting. Nothing of the companion watches the run after its turn, and it promises nothing for after it: not to bring a gate or its prompt into the chat later, nor to watch the run. When the person asks about the run later, it reads the run once with `aegis.workflow.wait` and answers from that read; when the run waits at a gate, it shows the gate's prompt as a tool answered it, says where the person answers it, and never asks for the answer in the chat. The Zaru MCP server still lists `aegis.workflow.signal` to an external MCP client such as Claude Code, whose `tools/list` is the orchestrator's tool list for the person, not a mode's list; there the person's own client calls it. Zaru Web's workflow mode offers `aegis.workflow.run` as its agentic mode does, and a run started from it carries the conversation's chosen connections, or its profile, as in agentic mode.
 
 **`aegis.workflow.wait`** — Blocks until a workflow execution or generation completes.
 

@@ -109,7 +109,7 @@ This means judge executions are:
 - **Isolated** — the judge runs in its own container with its own security policy. It cannot read or write to the parent execution's workspace unless the judge execution is explicitly granted access to the same mounted volume set.
 - **Audited** — every judge invocation generates the full set of execution events (`ExecutionStarted`, `IterationCompleted`, etc.), making the validation decision fully inspectable.
 
-Use execution APIs and logs to inspect judge executions spawned by a parent.
+Use execution APIs and logs to inspect judge executions spawned by a parent. A judge execution that ends failed is reported as "Judge '&lt;name&gt;' failed: &lt;its error&gt; (judge execution &lt;id&gt;)", and one cancelled as "Judge '&lt;name&gt;' was cancelled (judge execution &lt;id&gt;)", with the judge's error after a colon when it has one, so the judged execution's error names the judge's own cause and the judge execution to read.
 
 ---
 
