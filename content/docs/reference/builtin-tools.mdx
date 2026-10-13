@@ -152,7 +152,7 @@ A caller of `POST /v1/seal/invoke` whose arguments fail this check is refused `4
 | `aegis.workflow.logs`, `aegis.task.logs`                                                             | `execution_id`                                  |
 | `aegis.workflow.status`, `aegis.workflow.executions.get`                                             | `execution_id`                                  |
 | `aegis.task.status`, `aegis.task.wait`, `aegis.agent.wait`, `aegis.task.cancel`, `aegis.task.remove` | `execution_id`                                  |
-| `aegis.execution.file`                                                                               | `execution_id`, `path`                          |
+| `aegis.execution.file`                                                                               | `path`; `execution_id` unless `volume_id`       |
 | `aegis.workflow.cancel`, `aegis.workflow.wait`, `aegis.execute.wait`, `aegis.workflow.remove`        | `execution_id`                                  |
 | `aegis.workflow.signal`                                                                              | `execution_id`, `response`                      |
 | `aegis.agent.logs`                                                                                   | `agent_id`                                      |
@@ -483,6 +483,20 @@ Executes a shell command within the agent's containerized workspace. Subject to 
 
 - `command` (string, required): The base shell command to execute (e.g., `"cargo"`, `"git"`, `"npm"`).
 - `args` (array of strings, optional): Positional arguments passed to the command (e.g., `["build"]`, `["status"]`).
+- `env_additions` (object of strings, optional): Environment variables added for this command.
+- `stdin` (string, optional): Text written to the command's standard input, which is then closed; at most `max_output_bytes` bytes.
+- `cwd` (string, optional): The directory the command runs in, such as `/workspace/app`; `/workspace` when absent.
+- `timeout_secs` (integer, optional): Seconds the command may run before it is stopped; 600 when absent.
+- `max_output_bytes` (integer, optional): The most bytes of output kept from the command; 1048576 when absent.
+
+The tool's schema declares each of these. A call naming any other argument is refused, each such argument named, with "its arguments are command, args, cwd, env_additions, stdin, timeout_secs and max_output_bytes, and the directory a command runs in is cwd (/workspace when absent)"; nothing runs.
+- `env_additions` (object of strings, optional): Environment variables added for this command.
+- `stdin` (string, optional): Text written to the command's standard input, which is then closed; at most `max_output_bytes` bytes.
+- `cwd` (string, optional): The directory the command runs in, such as `/workspace/app`; `/workspace` when absent.
+- `timeout_secs` (integer, optional): Seconds the command may run before it is stopped; 600 when absent.
+- `max_output_bytes` (integer, optional): The most bytes of output kept from the command; 1048576 when absent.
+
+The tool's schema declares each of these. A call naming any other argument is refused, each such argument named, with "its arguments are command, args, cwd, env_additions, stdin, timeout_secs and max_output_bytes, and the directory a command runs in is cwd (/workspace when absent)"; nothing runs.
 
 **Returns:** An object containing `stdout` (string), `stderr` (string), and `exit_code` (integer). A non-zero `exit_code` is returned as a successful tool result — the agent's LLM receives all three fields and can interpret the failure.
 

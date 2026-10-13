@@ -439,7 +439,7 @@ When the run starts, each repository is prepared on its own work branch, and its
 
 A field the entry does not carry is `null`. No credential and no URL is on the Blackboard.
 
-A repository's work branch is the entry's `branch`, else `aegis/` and the first eight characters of the run's execution id; it is checked out from the remote's copy when the remote has it, else created from the binding's ref. Each repository is mounted read-write at `/workspace/<label>` in every container of the run and held by the run until it ends, however it ends. An entry is refused when the run starts, before any container:
+A repository's work branch is the entry's `branch`, else `aegis/` and the first eight characters of the run's execution id; it is checked out from the remote's copy when the remote has it, else created from the binding's ref. Each repository is mounted read-write at `/workspace/<label>` in every container of the run and held by the run until it ends, however it ends. The mount shows the clone's working tree at its root: `/workspace/<label>/README.md` is the repository's `README.md`. An entry is refused when the run starts, before any container:
 
 | Refusal | When |
 |---|---|
@@ -715,7 +715,7 @@ Use `{{STATE.output.exit_code}}`, `{{STATE.output.stdout}}`, and `{{STATE.output
 
 Transitions on `ContainerRun` states use `exit_code_zero`, `exit_code_non_zero`, `exit_code`, `on_success`, `on_failure`, and `custom`. See [Condition Types](#condition-types) below.
 
-**A step on the run's repository.** A volume named `repository` mounts the working tree of the run's first repository at its `mount_path`, through the same storage gateway agent states use, for the step's length; `repository:<label>` names the one of that label. A step naming a repository its run does not hold is refused before any container: "this step names the run's repository and the run holds none", or "this step names the run's repository and the run holds no repository '&lt;label&gt;'". No credential reaches the step's container. The Forge's test step:
+**A step on the run's repository.** A volume named `repository` mounts the working tree of the run's first repository at its `mount_path`, the working tree at the mount's root, through the same storage gateway agent states use, for the step's length; `repository:<label>` names the one of that label. A step naming a repository its run does not hold is refused before any container: "this step names the run's repository and the run holds none", or "this step names the run's repository and the run holds no repository '&lt;label&gt;'". No credential reaches the step's container. The Forge's test step:
 
 ```yaml
 EXECUTE_TESTS:

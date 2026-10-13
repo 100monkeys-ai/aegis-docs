@@ -104,6 +104,8 @@ ExecutionSupervisor
 └── 8. Stop container, detach volumes, release locks
 ```
 
+A try whose process exited non-zero names its exit code after its error, `<error> (exited with code <n>)`, in the execution's error and in the supervisor's line when the tries run out, for example "Max retries exceeded after 2 attempts; the last attempt failed: ValueError: the input is not a route (exited with code 2)".
+
 ### Container Cleanup Guarantees
 
 The supervisor provides defense-in-depth container cleanup to prevent orphaned containers:
@@ -199,6 +201,13 @@ bootstrap.py  ──► POST /v1/dispatch-gateway {type:"generate", messages:[..
             │       InnerLoopService marks iteration status              │
             └────────────────────────────────────────────────────────────┘
 ```
+
+Before a tool call is run, two guards apply:
+
+- **A repeated call.** When the same tool with the same arguments has already run in this try and its latest two runs answered alike, the call is not run. The model is answered "This call was already run &lt;n&gt; times in this try with the same answer; it is not run again. Change the call, or answer with what you have." in its place, and the try goes on. A call whose latest two answers differ is not a repeat, and the count starts again with each try.
+- **The deadline.** Once the try's or the execution's time is up, no tool call is run, and the try ends with "[AEGIS] &lt;tool&gt; was not run: this try's time is up. The try ends here."
+
+Each shows as a `ToolDispatched` event with status `refused` and `refused_by` `repeated_call` or `deadline`, with its sentence.
 
 ---
 

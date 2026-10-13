@@ -147,7 +147,9 @@ When a run reaches a `kind: Human` state, the worker posts a `HumanInputRequeste
 
 **In Zaru Web**, a gate of a run you started is one of your pending approvals: a card under the run in the conversation, an entry on the Approvals page and a card on the run's execution page, each with one button per word in `responses` ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)). Zaru's companion is offered no tool that answers a gate, in any mode.
 
-**From your own client**, list the gates your runs wait at with [`GET /v1/workflow-gates?status=pending`](/docs/reference/rest-api#get-v1workflow-gates) and answer one with [`POST /v1/workflows/executions/{id}/signal`](/docs/reference/rest-api#post-v1workflowsexecutionsidsignal), or with `aegis.workflow.signal`, which Zaru's MCP server lists to external MCP clients such as Claude Code.
+Once a gate is answered, or closes on its timeout, it stays listed: in Zaru Web under **Recent** on the Approvals page, with "You answered &lt;word&gt;." (or, for a gate that closed on its timeout, "Nobody answered; the run timed out.") and a link to the run, and the card under the run reads the same line.
+
+**From your own client**, list the gates your runs wait at with [`GET /v1/workflow-gates?status=pending`](/docs/reference/rest-api#get-v1workflow-gates), the ones that closed with `?status=answered` (each with the word chosen, the feedback, when it closed and what the run did then), or both with `?status=any`, and answer one with [`POST /v1/workflows/executions/{id}/signal`](/docs/reference/rest-api#post-v1workflowsexecutionsidsignal), or with `aegis.workflow.signal`, which Zaru's MCP server lists to external MCP clients such as Claude Code.
 
 ```bash
 curl https://your-aegis-node/v1/workflow-gates?status=pending \
