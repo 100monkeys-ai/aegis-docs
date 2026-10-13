@@ -141,6 +141,26 @@ When `timeout_seconds` expires without a response:
 
 ---
 
+## Answering a Gate
+
+When a run reaches a `kind: Human` state, the worker posts a `HumanInputRequested` workflow event for the gate. Besides the rendered `prompt` and the state's `default_response`, the event carries `state_name`, `responses` (the words the state's `input_equals`, `input_equals_yes` and `input_equals_no` transitions take, in their order: `["yes", "no"]` for a yes-or-no gate, `[]` for a gate with no such transition, which takes any answer) and `expires_at` (one timeout after the gate's first post). A gate posted again after an answer it does not take carries the same three.
+
+**In Zaru Web**, a gate of a run you started is one of your pending approvals: a card under the run in the conversation, an entry on the Approvals page and a card on the run's execution page, each with one button per word in `responses` ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)). Zaru's companion is offered no tool that answers a gate, in any mode.
+
+**From your own client**, list the gates your runs wait at with [`GET /v1/workflow-gates?status=pending`](/docs/reference/rest-api#get-v1workflow-gates) and answer one with [`POST /v1/workflows/executions/{id}/signal`](/docs/reference/rest-api#post-v1workflowsexecutionsidsignal), or with `aegis.workflow.signal`, which Zaru's MCP server lists to external MCP clients such as Claude Code.
+
+```bash
+curl https://your-aegis-node/v1/workflow-gates?status=pending \
+  -H "Authorization: Bearer $KEYCLOAK_JWT"
+
+curl -X POST https://your-aegis-node/v1/workflows/executions/exec-uuid/signal \
+  -H "Authorization: Bearer $KEYCLOAK_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{ "response": "yes", "feedback": "Keep the flag name short." }'
+```
+
+---
+
 ## Building an Approval UI
 
 A minimal polling loop for a custom approval interface:

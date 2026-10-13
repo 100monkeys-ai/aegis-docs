@@ -583,7 +583,7 @@ Start it as any workflow, naming exactly one of your git repository bindings und
 }
 ```
 
-Answer its two approval gates with `aegis.workflow.signal` (`yes` or `no`), and follow it with `aegis.workflow.logs` or `aegis.workflow.wait`. In Zaru, architect mode lists `aegis.workflow.run` and `aegis.workflow.signal`. The run's repository needs the node's step network for its test step (`spec.storage.git.step_network`, see [Node Configuration](/docs/reference/node-config#specstorage)).
+Answer its two approval gates yourself, `yes` or `no`: in Zaru Web on the gate card under the run, on the Approvals page or on the run's execution page ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)); from your own client with `aegis.workflow.signal` or `POST /v1/workflows/executions/{id}/signal` ([Answering a Gate](/docs/workflows/human-approvals#answering-a-gate)). Follow the run with `aegis.workflow.logs` or `aegis.workflow.wait`. In Zaru, architect mode lists `aegis.workflow.run`; no mode offers Zaru's companion `aegis.workflow.signal`, so Zaru shows each gate and says where to answer it, and never answers it. The run's repository needs the node's step network for its test step (`spec.storage.git.step_network`, see [Node Configuration](/docs/reference/node-config#specstorage)).
 
 ---
 

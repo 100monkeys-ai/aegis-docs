@@ -286,15 +286,17 @@ The `fs.*` tools interact directly with the `AegisFSAL` (File System Abstraction
 
 ### `fs.read`
 
-Reads the contents of a file.
+Reads the contents of a file, whole or a range of its lines.
 
 **Parameters:**
 
 - `path` (string, required): Absolute or relative POSIX path of the file to read.
+- `line_start` (integer, optional, at least 1): First line to return, counted from 1.
+- `line_end` (integer, optional, at least 1): Last line to return, included.
 
-**Returns:** The file contents as a string.
+**Returns:** Without `line_start` and `line_end`, the whole file. With either, the lines from `line_start` (default 1) to `line_end` (default the file's last line), followed by a line naming the range and the file's line count, such as "Lines 5 to 8 of 20 in /workspace/notes.txt.", with `line_start`, `line_end` and `line_count` beside the content. A range that runs past the file's end stops at its last line; one that starts after it answers "No lines: the range starts at line &lt;n&gt; and &lt;path&gt; has &lt;count&gt; lines."
 
-**Errors:** `PathOutsideBoundary` if path is outside the `path_allowlist`; `NOT_FOUND` if the file does not exist; `PERMISSION_DENIED` if the SecurityContext denies access.
+**Errors:** `PathOutsideBoundary` if path is outside the `path_allowlist`; `NOT_FOUND` if the file does not exist; `PERMISSION_DENIED` if the SecurityContext denies access; invalid arguments for a line number that is not a whole number of 1 or more, or a `line_end` before `line_start`.
 
 ### `fs.write`
 
