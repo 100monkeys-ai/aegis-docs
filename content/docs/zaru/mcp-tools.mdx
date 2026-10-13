@@ -652,15 +652,14 @@ All agentic mode tools (`aegis.agent.*`, `aegis.task.*`, `aegis.execution.file`)
 
 Returns `{ "execution_id": "...", "status": "started" }`. Follow with `aegis.workflow.wait`.
 
-The workflow mode also offers three tools a person uses through the companion:
+The workflow mode also offers two tools a person uses through the companion:
 
-- **`aegis.workflow.signal`** answers a run's Human gate with the person's own answer: `execution_id`, the person's `response` and, optionally, their `feedback`. The companion calls it only after the person has answered the gate they were shown; the answer's `signalled` is `true` when the run received it.
 - **`aegis.workflow.create`** deploys a workflow manifest the person gives, `manifest_yaml`, registered in the person's tenant; the answer's `deployed` is `true` when it was deployed.
 - **`aegis.workflow.update`** replaces a deployed workflow of the same name with a manifest the person gives, `manifest_yaml` and, optionally, `force` to overwrite the same version; the answer's `updated` is `true` when it was replaced.
 
-Each refusal is answered in the tool's own words, and the companion never says a gate was answered or a workflow deployed or updated without the tool's answer.
+Each refusal is answered in the tool's own words, and the companion never says a workflow was deployed or updated without the tool's answer.
 
-**`aegis.workflow.run`** and **`aegis.workflow.signal`** are listed in architect mode too, as described under [Operator Mode Tools](#operator-mode-tools): a client in architect mode can start a workflow, such as the built-in [Forge](/docs/workflows/overview#the-forge), and answer its approval gates. Zaru Web's workflow mode offers `aegis.workflow.run` as its agentic mode does, and a run started from it carries the conversation's chosen connections, or its profile, as in agentic mode.
+**`aegis.workflow.run`** is listed in architect mode too, as described under [Operator Mode Tools](#operator-mode-tools): a client in architect mode can start a workflow, such as the built-in [Forge](/docs/workflows/overview#the-forge). No mode offers the companion `aegis.workflow.signal`: a run's Human gate is the person's to answer, in Zaru Web on the gate card under the run, on the Approvals page or on the run's execution page ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)). When a run waits at a gate, the companion shows the gate's prompt as a tool answered it, says where the person answers it, and never asks for the answer in the chat. The Zaru MCP server still lists `aegis.workflow.signal` to an external MCP client such as Claude Code, whose `tools/list` is the orchestrator's tool list for the person, not a mode's list; there the person's own client calls it. Zaru Web's workflow mode offers `aegis.workflow.run` as its agentic mode does, and a run started from it carries the conversation's chosen connections, or its profile, as in agentic mode.
 
 **`aegis.workflow.wait`** — Blocks until a workflow execution or generation completes.
 
@@ -837,7 +836,7 @@ These tools manage the registry directly. They take a manifest YAML and register
 { "execution_id": "e1f2a3b4-..." }
 ```
 
-**`aegis.workflow.signal`** — Sends human input to a workflow paused at a `Human` state: `execution_id`, `response` and, optionally, `feedback`, which the workflow reads as `{{human.feedback}}`.
+**`aegis.workflow.signal`** — Sends human input to a workflow paused at a `Human` state: `execution_id`, `response` and, optionally, `feedback`, which the workflow reads as `{{human.feedback}}`. No mode of Zaru's companion offers it, operator mode included; the Zaru MCP server lists it to external MCP clients such as Claude Code, where the person's own client calls it.
 
 ```json
 // aegis.workflow.signal
@@ -1046,7 +1045,7 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `aegis.workflow.delete`          |     |     |     |     |  ✓  |
 | `aegis.workflow.run`             |     |  ✓  |     |  ✓  |  ✓  |
 | `aegis.workflow.cancel`          |     |     |     |     |  ✓  |
-| `aegis.workflow.signal`          |     |     |     |  ✓  |  ✓  |
+| `aegis.workflow.signal`          |     |     |     |     |     |
 | `aegis.image.generate`           |     |  ✓  |  ✓  |     |     |
 | `aegis.workflow.status`          |     |     |     |     |  ✓  |
 | `aegis.workflow.executions.list` |     |     |     |     |  ✓  |
@@ -1071,6 +1070,8 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `cmd.run`                        |     |     |     |     |  ✓  |
 | `fs.*` (9 tools)                 |     |     |     |     |  ✓  |
 | `web.*` (2 tools)                |     |     |     |     |  ✓  |
+
+`aegis.workflow.signal` is in no mode's list: the companion never answers a workflow run's Human gate. An external MCP client still lists it on Zaru's MCP server.
 
 ---
 

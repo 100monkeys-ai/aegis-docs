@@ -490,6 +490,7 @@ The workflow engine publishes to the event bus:
 | `WorkflowStateEntered` | Temporal activity begins |
 | `WorkflowStateCompleted` | Temporal activity succeeds |
 | `WorkflowStateFailed` | Temporal activity fails or times out |
+| `WorkflowHumanInputRequested` | A Human state posts its gate (the worker's `HumanInputRequested`), carrying `state_name`, the rendered `prompt`, `default_response`, `responses` (the words the gate takes, `[]` for any answer), `expires_at` (one timeout after the gate's first post) and `requested_at`; posted again with the same fields after an answer the gate does not take |
 | `WorkflowSignalReceived` | Human state receives signal |
 | `WorkflowCompleted` | Reaches a terminal state with no transitions |
 | `WorkflowChildStarted` | Subworkflow state starts a child workflow execution |

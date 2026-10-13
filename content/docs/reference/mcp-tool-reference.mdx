@@ -163,7 +163,6 @@ Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`
 - `aegis.workflow.logs`
 - `aegis.workflow.run`
 - `aegis.git.list`
-- `aegis.workflow.signal`
 - `aegis.workflow.create`
 - `aegis.workflow.update`
 - `aegis.agent.generate`
@@ -235,7 +234,7 @@ Operator always has full access; only additional modes are listed per tool.
 | `aegis.workflow.logs`            | workflow   | true         | `execution_id`                                  | Ar, Op            |
 | `aegis.workflow.wait`            | workflow   | true         | `execution_id`                                  | Ag, Ar, Op        |
 | `aegis.workflow.cancel`          | workflow   | true         | `execution_id`                                  | Op                |
-| `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | Ar, Op            |
+| `aegis.workflow.signal`          | workflow   | true         | `execution_id`, `response`                      | none: external MCP clients |
 | `aegis.workflow.remove`          | workflow   | true         | `execution_id`                                  | Op                |
 | `aegis.workflow.promote`         | workflow   | false        | `name`                                          | Op                |
 | `aegis.workflow.demote`          | workflow   | false        | `name`                                          | Op                |
@@ -322,9 +321,11 @@ Read the contents of a file at the given POSIX path from the mounted Workspace v
 
 **`skip_judge`:** `true`
 
-| Property | Type     | Required | Default | Description                                          |
-| -------- | -------- | -------- | ------- | ---------------------------------------------------- |
-| `path`   | `string` | Yes      | —       | Absolute or relative POSIX path of the file to read. |
+| Property     | Type      | Required | Default | Description                                          |
+| ------------ | --------- | -------- | ------- | ---------------------------------------------------- |
+| `path`       | `string`  | Yes      | —       | Absolute or relative POSIX path of the file to read. |
+| `line_start` | `integer` | No       | 1       | First line to return, counted from 1, at least 1. Give `line_start`, `line_end` or both to read only those lines. |
+| `line_end`   | `integer` | No       | the last line | Last line to return, included, at least 1. Omit both to read the whole file. |
 
 **Output:**
 
@@ -336,6 +337,22 @@ Read the contents of a file at the given POSIX path from the mounted Workspace v
   "size_bytes": 1024
 }
 ```
+
+With a range, `content` holds those lines followed by a line naming the range and the file's line count, and the answer adds `line_start`, `line_end` and `line_count`:
+
+```json
+{
+  "status": "success",
+  "path": "/workspace/notes.txt",
+  "content": "line 5\nline 6\nline 7\nline 8\nLines 5 to 8 of 20 in /workspace/notes.txt.",
+  "line_start": 5,
+  "line_end": 8,
+  "line_count": 20,
+  "size_bytes": 151
+}
+```
+
+A range past the file's end stops at its last line; one that starts after it answers "No lines: the range starts at line &lt;n&gt; and &lt;path&gt; has &lt;count&gt; lines." A line number that is not a whole number of 1 or more, or a `line_end` before `line_start`, is refused as invalid arguments.
 
 ### `fs.write`
 
@@ -1221,6 +1238,8 @@ On failure: `{ "cancelled": false, "error": "execution already in terminal state
 Send human input response to a paused workflow execution.
 
 **Access:** User
+
+**Available in:** no Zaru mode, operator mode included: Zaru's companion never answers a workflow run's Human gate, which the person answers on their own control ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)). Zaru's MCP server still lists it to external MCP clients such as Claude Code, where the person's own client calls it.
 
 **`skip_judge`:** `true`
 

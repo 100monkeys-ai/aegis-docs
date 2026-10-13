@@ -591,6 +591,41 @@ When retrieving a workflow execution (e.g. `GET /v1/workflows/executions/{id}`),
 
 The `final_output` value is the rendered and type-coerced result of evaluating the workflow's `output_template` against the final Blackboard. It is also returned as `last_output` in `aegis.workflow.wait` tool responses.
 
+### `POST /v1/workflows/executions/{id}/signal`
+
+Answers the `Human` gate a workflow execution waits at. Scope `workflow:signal`; the execution must be in the caller's tenant.
+
+```json
+{ "response": "yes", "feedback": "Keep the flag name short." }
+```
+
+`response` is required; `feedback`, optional, is read by the workflow as `{{human.feedback}}`. Answers `202` with `{"status": "signal_sent", "execution_id": "<id>"}`; `404` with `{"error": "workflow execution not found"}` for an id that is not a workflow execution of the caller's tenant; `503` while the orchestrator has no Temporal connection.
+
+### `GET /v1/workflow-gates`
+
+Lists the `Human` gates your own running workflow executions wait at: `?status=pending`, the only status listed (omitting it lists the same; any other answers `400` "Unknown status '&lt;status&gt;': only pending gates are listed"). Scope `workflow:read`. Within the caller's tenant only executions the caller started are listed, so in a tenant several people share another member's run is not listed; a service account is refused `403`. An execution is listed while its latest workflow event is the gate's `HumanInputRequested`, once, with that event's `sequence`; a run past its gate, or ended, is not listed. Gates are listed newest first.
+
+```json
+{
+  "count": 1,
+  "gates": [
+    {
+      "execution_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      "workflow_name": "the-forge",
+      "state_name": "AWAIT_REQUIREMENTS_APPROVAL",
+      "prompt": "Approve these requirements? …",
+      "responses": ["yes", "no"],
+      "default_response": null,
+      "expires_at": "2026-10-13T05:38:34+00:00",
+      "sequence": 7,
+      "requested_at": "2026-10-13T04:38:34+00:00"
+    }
+  ]
+}
+```
+
+`responses` are the words the gate takes, `[]` for a gate that takes any answer; `expires_at` is when the gate stops waiting. Answer a gate with [`POST /v1/workflows/executions/{id}/signal`](#post-v1workflowsexecutionsidsignal).
+
 ---
 
 ## Billing
