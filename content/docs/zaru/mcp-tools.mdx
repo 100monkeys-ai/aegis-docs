@@ -54,6 +54,12 @@ See [File Uploads in Chat](/docs/zaru/chat#file-uploads-in-chat) for the user-fa
 
 ## Connections and Profiles
 
+**What a key reaches.** A client connected with a person's `aegis_` API key is listed, and may call, the tools of every family the person has connected to Zaru on the Connections page, with no `x-zaru-contexts` header: the mail tools once they hold a mailbox, the calendar tools once they hold a calendar, and a remote server's tools (GitHub, Nuclear Notes or a server of their own) once they hold a connection to it. The tools of no connection family are always listed. The set is read at each call and each listing, so connecting or removing a connection changes it with no change to the key; a listing shows a new connection within a few seconds. A call for a family the person has not connected, from a stale list or by name, is refused `CREDENTIAL_BINDING_REQUIRED` before anything runs: "You have not connected &lt;a mailbox | a calendar | GitHub | Nuclear Notes | &lt;server&gt;&gt; to Zaru. Connect it on the Connections page in Zaru Web (ask.myzaru.com/vault/connections), then try again."
+
+**Which connection answers.** With no choice made, a mail or calendar call with no `mailbox` or `account` uses the person's own: the only one, else the newest. The answer names it in `mailbox_name` or `account_name`. A remote server's call uses the person's newest active connection to that server.
+
+**Changes wait for the person.** Every tool that asks for approval waits at the person's approval gate, as a call from the chat does, and their standing choices apply as in the chat. A pending call answers `{"status": "approval_pending", "approval_id", "summary", "message"}`, whose `message` is "This waits for your answer in Zaru Web, under Approvals."; the request appears on Zaru Web's Approvals page, and `aegis.approval.status` reads the answer.
+
 A connection may send the `x-zaru-contexts` header to choose, for every request, which of the person's connections the tools use: for each tool server a binding id, a list of binding ids, or `null` for none; or, alone, `{"@profile": "<profile id>"}` to choose one of the person's [profiles](/docs/zaru/profiles). With a profile, the tools offered are the profile's, every forwarded call carries it, and `zaru.init` and `zaru.mode` teach the model the profile's name, its Nuclear Notes workspace and its instructions. A header of any other shape is answered `400`.
 
 ---
@@ -99,6 +105,7 @@ Zaru's MCP server forwards the `aegis.*` tools to AEGIS. When AEGIS refuses such
 | --------------------- | ------- |
 | `error.code`          | AEGIS's code for the refusal, from [Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors), or `invoke_failed` (below). |
 | `error.message`       | For a refusal of your call, AEGIS's own message: what was refused and why. For `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE` and `SERVICE_UNAVAILABLE`, the fixed sentence of that table, never the failure's detail. |
+| `error.needs`         | Present when the refusal is for a connection or a profile the person lacks: `{"family", "page"}`, the family (`mailbox`, `calendar`, `github`, `nuclear-notes`, a server's own name, or `profile`) and the Zaru Web page that resolves it, `/vault/connections` for a connection, `/vault/profiles/<profile id>` for a profile that does not admit the tool and `/vault/profiles` for a profile that no longer exists. Any other `needs` is dropped. |
 | `request_id`          | AEGIS's id for the refused call. Quote it when you report the failure: it lets an operator find what happened. |
 | `retry_after_seconds` | Present when AEGIS said how long to wait, on `RATE_LIMIT_EXCEEDED` and on `UPSTREAM_UNAVAILABLE`: the seconds to wait before calling again. |
 
@@ -160,6 +167,30 @@ Searches AEGIS and Zaru documentation at `docs.100monkeys.ai`. Results are cache
 // zaru.docs
 { "query": "how to configure a persistent volume for execute mode" }
 ```
+
+### `zaru.connection.needed`
+
+Says what the person must connect or choose before a family of tools can be used, when no tool of that family is listed. It reads the person's listing, the request's `x-zaru-contexts` choice and its profile, and changes nothing.
+
+| Parameter | Required | Default | Description |
+| --------- | -------- | ------- | ----------- |
+| `family`  | Yes      | —       | `mailbox`, `calendar`, `github`, `nuclear-notes`, or another connection's own name |
+
+```json
+// zaru.connection.needed
+{ "family": "mailbox" }
+```
+
+Returns `{ needs, sentence }`:
+
+| State | `needs` | `sentence` |
+| ----- | ------- | ---------- |
+| Not connected | `{"family": "mailbox", "page": "/vault/connections"}` | "A mailbox is not connected to Zaru. Connect it on the Connections page in Zaru Web." |
+| Connected, not chosen (a Zaru Web turn) | `{"family": "mailbox", "page": "/vault/connections"}` | "Your mailbox is connected but not chosen for this conversation. Choose it under Context above the chat input." |
+| Not in the chosen profile | `{"family": "profile", "page": "/vault/profiles/<profile id>"}` | "The profile chosen for this conversation does not allow this. Change it on the profile's page in Zaru Web." |
+| Nothing missing | `null` | "Your mailbox is connected and chosen for this conversation.", or, outside a Zaru Web turn, "Your mailbox is connected to Zaru." |
+
+A `family` that names no connection is refused "family must name one connection: mailbox, calendar, github, nuclear-notes, or another connection's own name." Every mode's instructions tell the companion to call it when a message needs a connection none of whose tools is listed, to tell the person in one sentence what to connect or choose and that the card above takes them there, and to end its turn; after a call refused for something not connected, not chosen or not in the chosen profile, to say what is missing in one sentence and end its turn; and never to say a connection is or is not made unless a tool's answer says so.
 
 ### `zaru.memory.get`
 
@@ -361,7 +392,7 @@ Listed only while the connection's key holds an escalation. No parameters. Ends 
 
 - A code is valid once, for 5 minutes after it is generated by default; an escalation lasts 30 minutes from its redemption by default. A deployment sets both, and the failure count, in `spec.iam.operator_escalation` ([Node Configuration](/docs/reference/node-config#speciam)).
 - The escalation is held by the one API key that redeemed it. It ends at its expiry, at **End now** on the page, at `zaru.operator.release`, when the key is revoked, when an administrator ends every escalation of that operator, or when the operator's role is withdrawn.
-- While it lasts, the connection's tool list is the operator surface, and `zaru.init` and `zaru.mode` offer `operator` mode. `aegis.task.list` without `agent_id` lists the most recent executions of every tenant, each with its `tenant_id`, and `aegis.task.status`, `aegis.task.logs` and `aegis.workflow.logs` read an execution of any tenant by its id. Naming another tenant in a tool's `tenant_id` argument is admitted for `aegis:admin` only.
+- While it lasts, the connection's tool list is the operator surface together with the tools of what the person has connected, a call the operator context does not admit is checked against the person's own plan, and `zaru.init` and `zaru.mode` offer `operator` mode. `aegis.task.list` without `agent_id` lists the most recent executions of every tenant, each with its `tenant_id`, and `aegis.task.status`, `aegis.task.logs` and `aegis.workflow.logs` read an execution of any tenant by its id. Naming another tenant in a tool's `tenant_id` argument is admitted for `aegis:admin` only.
 - A tool call that arrives after the end is refused, and the ordinary tools return at the next tool listing.
 - AEGIS reads the operator's role again from the identity provider at every escalated tool call and at every redemption. Once the role is withdrawn or changed, or the account is disabled or removed, the next escalated call is refused and every escalation of that operator ends; an escalation that makes no call ends within a minute. A code redeemed after that is refused `invalid_code`. While the identity provider cannot be read, escalated calls and redemptions are refused and the escalation stays active until the role can be read again or the escalation expires.
 - Every tool call made under an escalation is recorded in the platform's admin audit log under the operator's identity, with the tenant it acted on. On the Podman deployment, `make operator-escalation-audit` prints these rows ([Makefile Targets](/docs/deployment/podman#makefile-targets)).
@@ -536,7 +567,7 @@ Text files return their content inline. Binary files (images, PDFs, archives) re
 
 Agentic mode runs a deployed workflow with `aegis.workflow.run`, after finding it with `aegis.workflow.search`; once the run has started the companion ends its turn, and it reads the run with `aegis.workflow.wait` only when you ask, as described under [Workflow Generation and Management](#workflow-generation-and-management).
 
-A recording attached to the turn becomes text through the built-in workflow [`transcribe-audio`](/docs/reference/workflow-manifest#a-model-step): `aegis.workflow.run` with `name` `transcribe-audio` and `input.audio_path` the attached file's name. Zaru Web carries the turn's attachments into the run, and its file picker accepts audio; the transcript is the step's stdout in `aegis.workflow.wait`'s answer.
+A recording attached to the turn becomes text through the built-in workflow [`transcribe-audio`](/docs/reference/workflow-manifest#a-model-step): `aegis.workflow.run` with `name` `transcribe-audio`; `input.audio_path` may be left out when one file is attached, and is otherwise the file's name exactly as the chat's attachment marker gives it. Zaru Web carries the turn's attachments into the run, and its file picker accepts audio. The transcript is the run's answer, shown on the run's card; the companion says the run has started and ends its turn, promising nothing for after it.
 
 ### Images
 
@@ -1000,6 +1031,7 @@ See the [Standard Runtime Registry](/docs/reference/standard-runtime-registry) f
 | `zaru.init`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.mode`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.docs`                      |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| `zaru.connection.needed`         |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.memory.get`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.memory.set`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | `zaru.schedule`                  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |

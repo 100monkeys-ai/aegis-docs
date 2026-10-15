@@ -51,7 +51,7 @@ An agent that needs a calendar account on every run declares it with `spec.conte
 
 ## The Tools
 
-Every tool takes `account`: one of your calendar accounts, by id, or by its name when several are chosen. `calendar_id` is one of the ids `calendar.calendars` answers, or `primary` (or the account's own address) for the account's own calendar. Times are RFC 3339 with an offset; an all-day event's dates are `YYYY-MM-DD`.
+Every tool takes `account`: one of your calendar accounts, by id, or by its name when several are chosen. It may be left out when you have one calendar account connected: a call from a conversation or an MCP client acting as you then uses your own, and the answer names it in `account_name`; inside a run a call without it is refused. `calendar_id` is one of the ids `calendar.calendars` answers, or `primary` (or the account's own address) for the account's own calendar. Times are RFC 3339 with an offset; an all-day event's dates are `YYYY-MM-DD`.
 
 | Tool | Takes | Waits for approval | Does |
 | ---- | ----- | :----------------: | ---- |

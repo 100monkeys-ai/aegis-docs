@@ -115,6 +115,8 @@ Alongside the consumer tiers above, AEGIS supports a separate **operator** tier 
 
 All consumer users authenticate through the shared `zaru-consumer` Keycloak realm, but each user is assigned a dedicated per-user tenant at signup (slug format `u-{uuid}`). This provides full data isolation between consumer users — agents, workflows, executions, and secrets are scoped to the individual's tenant rather than a shared pool. The `tenant_id` is injected into the JWT via a protocol mapper on the `zaru-consumer` realm, and each per-user tenant is provisioned with tier-appropriate quotas (Free, Pro, Business, or Enterprise).
 
+Zaru Web's login page offers the password sign-in and **Continue with Google**, which takes the person straight to Google's sign-in on the `zaru-consumer` realm. A Google sign-in returns through the same callback and meets the same invitation and beta checks, and an invitation's link resumes after it.
+
 `ZaruTier` is a subscription tier — it determines the consumer's resource allocation, rate limits, and storage quotas. `AegisRole` is a platform role — it determines what administrative operations an operator may perform.
 
 Operators authenticate via the `aegis-system` Keycloak realm and carry `aegis_role` claims in their JWT. Their sessions are mapped to the `aegis-system-operator` SecurityContext, which provides access to **all** safe commands (the same set available to enterprise consumers) plus destructive and orchestrator commands that are never exposed to any consumer tier. Through Zaru's MCP server the operator surface is reached only by an [operator escalation](/docs/zaru/mcp-tools#operator-escalation), with a one-time code generated on Zaru Web's **MCP escalation** page.

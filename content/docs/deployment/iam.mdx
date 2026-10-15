@@ -176,6 +176,24 @@ This is distinct from consumer identity resolution. Consumer users authenticate 
 
 ---
 
+## Google Sign-in on the zaru-consumer Realm
+
+On the Podman deployment, `scripts/bootstrap-keycloak.sh` gives the `zaru-consumer` realm the identity provider `google`, Keycloak's built-in Google provider, so a person can sign in to Zaru with Google beside the password. It takes the Google client from `GOOGLE_LOGIN_OAUTH_CLIENT_ID` and `GOOGLE_LOGIN_OAUTH_CLIENT_SECRET` in `.env` when both are set, and otherwise from `GOOGLE_MAIL_OAUTH_CLIENT_ID` and `GOOGLE_MAIL_OAUTH_CLIENT_SECRET`, the mail connection's client, and prints which pair it used by the keys' names, never their values:
+
+```text
+Google sign-in: the google identity provider on zaru-consumer takes its client from GOOGLE_MAIL_OAUTH_CLIENT_ID and GOOGLE_MAIL_OAUTH_CLIENT_SECRET
+```
+
+The provider asks Google for `openid profile email` only, trusts the address Google gives, and uses its own first-login flow, `google-first-broker-login`, which links a Google sign-in for an address that already has an account to that account with no page. The bootstrap creates the provider when it is absent and updates it when present, and never deletes it, since a person's Google link is stored under the provider and would go with it. It reads the provider back and stops with a `FATAL` line when the flow, `trustEmail` or `enabled` differ from what it sent. Its last line names the redirect URI the Google client must hold:
+
+```text
+Google sign-in: the google identity provider on zaru-consumer was created; its Google client must hold the redirect URI https://auth.myzaru.com/realms/zaru-consumer/broker/google/endpoint
+```
+
+The URI is `KEYCLOAK_PUBLIC_URL` followed by `/realms/zaru-consumer/broker/google/endpoint`, and it is added to the client's authorized redirect URIs in the Google console. With neither pair set, the bootstrap prints that the provider is left as it is and changes nothing.
+
+---
+
 ## Authentication Flow (HTTP API)
 
 ```text

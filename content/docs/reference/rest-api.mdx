@@ -223,6 +223,19 @@ es.onmessage = (e) => {
 
 ---
 
+## Volumes
+
+Your volumes and your storage quota; both routes need the scope `volume:read`. A volume's used bytes are summed from the sizes of the files storage lists under it, read again at each request, so a file written a moment ago is counted.
+
+| Route | What it answers |
+|---|---|
+| `GET /v1/volumes` | Your volumes, each `{"id", "name", "status", "size_limit_bytes", "used_bytes", "usage_incomplete", "created_at"}`. |
+| `GET /v1/volumes/quota` | `{"volume_count", "total_bytes_used", "usage_incomplete", "max_volumes", "total_storage_bytes", "max_file_size_bytes"}`. |
+
+**When usage cannot be read.** When storage cannot be listed for a volume, or the volume holds more than 100,000 entries or folders nested deeper than 64, its usage is reported as unread, never as a smaller number: on `GET /v1/volumes` that volume has `used_bytes: null` and `usage_incomplete: true`, and `GET /v1/volumes/quota` answers `total_bytes_used` for the volumes it could read with `usage_incomplete: true`. A new volume reads `0`.
+
+---
+
 ## Volume Files
 
 The files of one of your volumes, as the dashboard's file browser reads and changes them. Each route takes the volume's id in the path and the file or folder's path in the volume as `?path=`; the reading routes need the scope `volume:read`, the others `volume:write`.
@@ -246,6 +259,7 @@ The files of one of your volumes, as the dashboard's file browser reads and chan
 | `422` | `{"error": "is a directory: <path>"}` | A folder was given where a file is needed, for example a download of a folder. |
 | `422` | `{"error": "invalid path: …"}` or `{"error": "file size exceeds limit"}` | The path is not valid in a volume, or the file is over your size limit. |
 | `403` | `{"error": "unauthorized"}` | The volume belongs to another tenant, or storage refused the access. |
+| `503` | `{"error": "The volume's usage could not be read; try again."}` | A write held to your quota was refused because the volume's usage could not be read ([Volumes](#volumes)). |
 | `500` | `{"error": "[AEGIS] the file operation failed; the server logged the cause."}` | Storage failed; the cause is written only to the orchestrator's log, with the route and the volume's id. |
 
 ---
@@ -469,7 +483,7 @@ SEAL-wrapped tool invocation. Called by `bootstrap.py` to invoke a tool through 
 
 The orchestrator registers this path only; it has no `/v1/invoke` alias. (The standalone SEAL Gateway serves both `/v1/invoke` and `/v1/seal/invoke` on its own port.)
 
-A refused or failed call is answered with a status other than 2xx and a body `{"protocol":"seal/v1","request_id":"<uuid>","status":"policy_violation|error","error":{"code","message","context","tool"}}`. Every code, its HTTP status, what it means and what to do about it are listed in [Built-in Tools: Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors). A `429` also carries `Retry-After` and the `X-RateLimit-*` headers.
+A refused or failed call is answered with a status other than 2xx and a body `{"protocol":"seal/v1","request_id":"<uuid>","status":"policy_violation|error","error":{"code","message","context","tool"}}`; a refusal for a connection you lack or a tool your chosen profile does not admit also carries `error.needs`, `{"family", "page"}`, the Zaru Web page that resolves it. Every code, its HTTP status, what it means and what to do about it are listed in [Built-in Tools: Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors). A `429` also carries `Retry-After` and the `X-RateLimit-*` headers.
 
 See [Tool Routing](/docs/architecture/tool-routing) for the three routing paths and wire format.
 

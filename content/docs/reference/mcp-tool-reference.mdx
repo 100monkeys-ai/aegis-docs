@@ -7,7 +7,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 This page is the authoritative schema reference for all AEGIS MCP tools. For the `skip_judge` policy and inner-loop judge optimization, see [Built-in Tools](/docs/reference/builtin-tools). For usage patterns and examples, see [Management Tools](/docs/reference/management-tools).
 
-This page lists the AEGIS orchestrator's built-in tools and five Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`); `zaru.chat`, `zaru.operator.escalate` and `zaru.operator.release` are on [MCP Tools](/docs/zaru/mcp-tools). Which tools a caller is offered depends on its security context and, in Zaru, its mode.
+This page lists the AEGIS orchestrator's built-in tools and five Zaru client tools (`zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`); `zaru.chat`, `zaru.connection.needed`, `zaru.operator.escalate` and `zaru.operator.release` are on [MCP Tools](/docs/zaru/mcp-tools). Which tools a caller is offered depends on its security context and, in Zaru, its mode.
 
 ---
 
@@ -41,6 +41,8 @@ AEGIS tools are divided into three access tiers. The tier determines which calle
 `zaru.conversations.list`, `zaru.conversations.read`, `zaru.conversations.search`
 
 A schedule tool acts only for a person: a service account, or an operator acting for no person, is refused. A mail tool acts only on a mailbox connection of the caller's own; see [Mail Tools](/docs/reference/builtin-tools#mail-tools).
+
+A call refused because the caller has not connected the tool's family, or because the profile chosen does not admit the tool, carries `error.needs` `{"family", "page"}` beside `code` and `message`, naming the Zaru Web page that resolves it. A tool the chosen profile does not admit is answered `403` `TOOL_NOT_IN_PROFILE`: "This tool is not in the profile chosen for this conversation." ([Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors)).
 
 <Callout type="info">
   Volume, file, git, and script tools are available to every tier — Free, Pro,
@@ -90,7 +92,7 @@ See [Tool Routing Architecture](/docs/architecture/tool-routing) for the full ro
 
 ### Chat Mode
 
-Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.memory.get`, `zaru.memory.set`, `zaru.schedule` and the three `zaru.conversations.*` tools are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
+Only `zaru.init`, `zaru.mode`, `zaru.docs`, `zaru.connection.needed`, `zaru.memory.get`, `zaru.memory.set`, `zaru.schedule` and the three `zaru.conversations.*` tools are exposed. The model cannot invoke any orchestrator tools directly from chat mode.
 
 ### Agentic Mode
 
@@ -859,7 +861,7 @@ Semantic search over deployed agents by natural-language query.
 | `min_score`                  | `number`  | No       | `0.3`          | Minimum relevance score threshold (0.0–1.0).                   |
 | `labels`                     | `object`  | No       | —              | Label key-value pairs to filter by. All must match.            |
 | `status`                     | `string`  | No       | —              | Filter by agent status. One of: `active`, `paused`, `failed`.  |
-| `include_platform_templates` | `boolean` | No       | `true`         | Include platform-provided template agents.                     |
+| `include_platform_templates` | `boolean` | No       | `true`         | Include platform-provided template agents: every global agent, the built-ins among them, found from your own tenant. |
 
 <Callout type="info">
   `aegis.agent.search` requires a Cortex connection. Results are returned sorted
@@ -1101,7 +1103,7 @@ Executes a registered workflow by name with optional input parameters.
 | `blackboard` | `object` | No       | —            | Optional blackboard overrides merged into the execution before startup.                                                                  |
 | `version`    | `string` | No       | latest       | Semantic version of the workflow to execute. When omitted, the latest deployed version is used.                                          |
 | `tenant_id`  | `string` | No       | local tenant | Optional tenant identifier.                                                                                                              |
-| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`): files the run carries in its input as `input.attachments`. A `ContainerRun` step reads them by mounting the volume `attachments`, read-only (see [A step on the run's attachments](/docs/reference/workflow-manifest#a-step-on-the-runs-attachments)). |
+| `attachments` | `array` | No | — | Optional array of `AttachmentRef` objects (`{volume_id, path, name, mime_type, size, sha256?}`): files the run carries in its input as `input.attachments`. A `ContainerRun` step reads them by mounting the volume `attachments`, read-only (see [A step on the run's attachments](/docs/reference/workflow-manifest#a-step-on-the-runs-attachments)). An input that names an attached file is filled from the only attachment when left out, and a run naming no attached file is answered `{"error": "<sentence>"}` before it starts ([A model step](/docs/reference/workflow-manifest#a-model-step)). |
 | `repositories` | `array` | No | — | Your git repositories for the run, each mounted at `/workspace/<label>` on a work branch of its own: `{binding_id, branch?}` for one of your bindings ([`aegis.git.list`](#aegisgitlist) lists them), or `{url, ref?, branch?}` for a repository by its URL, whose binding is found or made with your GitHub credential before the run starts. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run). |
 
 **Output:**
@@ -1477,7 +1479,7 @@ Semantic search over registered workflows.
 | `limit`                      | `integer` | No       | `10`           | Maximum results (1–100, tier-dependent cap).                      |
 | `min_score`                  | `number`  | No       | `0.3`          | Minimum relevance score threshold (0.0–1.0).                      |
 | `labels`                     | `object`  | No       | —              | Label key-value pairs to filter by. All must match.               |
-| `include_platform_templates` | `boolean` | No       | `true`         | Include platform-provided template workflows.                     |
+| `include_platform_templates` | `boolean` | No       | `true`         | Include platform-provided template workflows: every global workflow, the built-ins such as `transcribe-audio` and `the-forge` among them, found from your own tenant. |
 
 <Callout type="info">
   `aegis.workflow.search` requires a Cortex connection. Results are returned
@@ -1974,7 +1976,7 @@ Alias for aegis.workflow.wait. Blocks until pipeline execution completes.
 
 A goal holds a user's request, stated once, and every execution started for it. Zaru Web's turn calls `aegis.goal.create`, `aegis.goal.evaluate` and `aegis.goal.status` itself, and no Zaru mode offers those three to the companion's model; `aegis.goal.cancel` is offered in Agentic, Execute and Architect modes. A goal belongs to the user who created it, in that user's tenant: a call with no user identity is refused, `aegis.goal.status` and `aegis.goal.cancel` answer another user's goal as not found, and `aegis.goal.evaluate` refuses it `goal_not_open`. A refusal is `{ "tool", "error", "message" }`.
 
-**Binding work to a goal.** `aegis.agent.generate`, `aegis.task.execute`, `aegis.workflow.generate` and `aegis.execute.intent` read an optional `goal_id` argument that their advertised schemas do not list. A `goal_id` that is not an open goal of the caller is refused `goal_not_open` before anything starts; otherwise the execution started is bound to the goal and appears in its `executions`.
+**Binding work to a goal.** `aegis.agent.generate`, `aegis.task.execute`, `aegis.workflow.generate`, `aegis.workflow.run` and `aegis.execute.intent` read an optional `goal_id` argument that their advertised schemas do not list. A `goal_id` that is not an open goal of the caller is refused `goal_not_open` before anything starts; otherwise the execution started is bound to the goal and appears in its `executions`.
 
 The bounds and thresholds below are the node's [`spec.goals`](/docs/reference/node-config#specgoals).
 

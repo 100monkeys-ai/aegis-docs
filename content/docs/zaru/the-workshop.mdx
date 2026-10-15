@@ -13,7 +13,10 @@ Volumes provide persistent storage that agents can read from and write to during
 ## Storage Quota
 
 The top of the Workshop page displays your storage quota: how much space you have used and
-how much is available under your current tier.
+how much is available under your current tier. A volume's used space is the total size of its
+files, read from storage each time the page loads. When storage cannot be read for a volume,
+its card shows `0 B` and a write held to your quota is refused with "The volume's usage could
+not be read; try again.".
 
 | Tier | Storage Quota |
 |---|---|
