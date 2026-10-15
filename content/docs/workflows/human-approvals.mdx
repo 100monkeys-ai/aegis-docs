@@ -151,6 +151,8 @@ Once a gate is answered, or closes on its timeout, it stays listed: in Zaru Web 
 
 **From your own client**, list the gates your runs wait at with [`GET /v1/workflow-gates?status=pending`](/docs/reference/rest-api#get-v1workflow-gates), the ones that closed with `?status=answered` (each with the word chosen, the feedback, when it closed and what the run did then), or both with `?status=any`, and answer one with [`POST /v1/workflows/executions/{id}/signal`](/docs/reference/rest-api#post-v1workflowsexecutionsidsignal), or with `aegis.workflow.signal`, which Zaru's MCP server lists to external MCP clients such as Claude Code.
 
+A gate is listed as pending while it is the latest event the workflow's worker posted for the run. Rows the orchestrator records for the run itself, such as its `repository_prepared` row, stay in the run's history and its logs route and never hide a pending gate, even when they follow it.
+
 ```bash
 curl https://your-aegis-node/v1/workflow-gates?status=pending \
   -H "Authorization: Bearer $KEYCLOAK_JWT"

@@ -439,7 +439,7 @@ When the run starts, each repository is prepared on its own work branch, and its
 
 A field the entry does not carry is `null`. No credential and no URL is on the Blackboard.
 
-A repository's work branch is the entry's `branch`, else `aegis/` and the first eight characters of the run's execution id; it is checked out from the remote's copy when the remote has it, else created from the binding's ref. Each repository is mounted read-write at `/workspace/<label>` in every container of the run and held by the run until it ends, however it ends. The mount shows the clone's working tree at its root: `/workspace/<label>/README.md` is the repository's `README.md`. An entry is refused when the run starts, before any container:
+A repository's work branch is the entry's `branch`, else `aegis/` and the first eight characters of the run's execution id; it is checked out from the remote's copy when the remote has it, else created from the binding's ref. Each repository is mounted read-write at `/workspace/<label>` in every container of the run and held by the run until it ends, however it ends. The mount shows the clone's working tree at its root: `/workspace/<label>/README.md` is the repository's `README.md`. An agent state of the run writes only inside the run's repositories: `fs.write`, `fs.edit`, `fs.multi_edit`, `fs.create_dir` and `fs.delete` refuse a path outside them, before anything is written, with "'&lt;path&gt;' is outside this run's repository; this step writes only under &lt;mount&gt;"; reads anywhere in the agent's volumes are unchanged ([FSAL Tools](/docs/reference/builtin-tools#filesystem-abstraction-layer-fsal-tools)). An entry is refused when the run starts, before any container:
 
 | Refusal | When |
 |---|---|

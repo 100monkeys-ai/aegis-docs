@@ -2406,6 +2406,8 @@ persistent volume mounted at `/workspace/{label}`. The clone is performed asynch
 `aegis.git.status` to poll until ready. `aegis.git.commit`, `aegis.git.push`, and `aegis.git.diff`
 enable canvas-style write-back against the bound volume.
 
+**Inside a run.** `aegis.git.status`, `aegis.git.diff`, `aegis.git.commit` and `aegis.git.push` name one of the run's repositories by its label in `repository`, and never read a `binding_id`. A call that names no repository (absent or empty) takes the run's repository when the run holds exactly one, as if its label had been named; in a run holding two or more it is refused with "name one of this run's repositories by its label: &lt;labels&gt;", the run's labels in its order, and a label the run did not mount is refused with "repository '&lt;label&gt;' is not one of this run's repositories".
+
 ### `aegis.git.clone`
 
 Create a git repo binding and trigger an asynchronous clone into a workspace volume.
@@ -2449,7 +2451,8 @@ last commit SHA, and `last_cloned_at` timestamp.
 
 | Property     | Type     | Required | Default | Description                   |
 | ------------ | -------- | -------- | ------- | ----------------------------- |
-| `binding_id` | `string` | Yes      | —       | UUID of the git repo binding. |
+| `repository` | `string` | No       | —       | Inside a run: the label of one of the run's repositories, mounted at `/workspace/<label>`. In a run that holds one repository it may be left out. |
+| `binding_id` | `string` | No       | —       | Outside a run: the id of one of your git repository bindings. Never read inside a run. |
 
 **Output:** Binding DTO with status and most recent commit information.
 
@@ -2498,7 +2501,8 @@ SHA. Fails if there are no changes to commit.
 
 | Property     | Type     | Required | Default | Description                   |
 | ------------ | -------- | -------- | ------- | ----------------------------- |
-| `binding_id` | `string` | Yes      | —       | UUID of the git repo binding. |
+| `repository` | `string` | No       | —       | Inside a run: the label of one of the run's repositories, mounted at `/workspace/<label>`. In a run that holds one repository it may be left out. |
+| `binding_id` | `string` | No       | —       | Outside a run: the id of one of your git repository bindings. Never read inside a run. |
 | `message`    | `string` | Yes      | —       | Commit message.               |
 
 **Output:** Object containing the new commit SHA.
@@ -2514,7 +2518,8 @@ authenticated remotes.
 
 | Property     | Type     | Required | Default        | Description                   |
 | ------------ | -------- | -------- | -------------- | ----------------------------- |
-| `binding_id` | `string` | Yes      | —              | UUID of the git repo binding. |
+| `repository` | `string` | No       | —              | Inside a run: the label of one of the run's repositories. In a run that holds one repository it may be left out. |
+| `binding_id` | `string` | No       | —              | Outside a run: the id of one of your git repository bindings. Never read inside a run. |
 | `remote`     | `string` | No       | `origin`       | Remote name.                  |
 | `ref`        | `string` | No       | current branch | Ref to push.                  |
 
@@ -2530,7 +2535,8 @@ Return the unified diff of the bound volume's working tree (or index, if `staged
 
 | Property     | Type      | Required | Default | Description                                             |
 | ------------ | --------- | -------- | ------- | ------------------------------------------------------- |
-| `binding_id` | `string`  | Yes      | —       | UUID of the git repo binding.                           |
+| `repository` | `string`  | No       | —       | Inside a run: the label of one of the run's repositories. In a run that holds one repository it may be left out. |
+| `binding_id` | `string`  | No       | —       | Outside a run: the id of one of your git repository bindings. Never read inside a run. |
 | `staged`     | `boolean` | No       | `false` | If `true`, return the diff of the index against `HEAD`. |
 
 **Output:** Unified-diff text.

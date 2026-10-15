@@ -47,6 +47,7 @@ The canonical explanation of this control is in [Tool-Call Judging](/docs/agents
 | `fs.read`                        | `true`               | Read-only                                                                                                                                                                                                                             |
 | `fs.write`                       | `false`              | State-mutating                                                                                                                                                                                                                        |
 | `fs.list`                        | `true`               | Read-only                                                                                                                                                                                                                             |
+| `fs.search`                      | `true`               | Read-only                                                                                                                                                                                                                             |
 | `fs.grep`                        | `true`               | Read-only                                                                                                                                                                                                                             |
 | `fs.glob`                        | `true`               | Read-only                                                                                                                                                                                                                             |
 | `fs.edit`                        | `false`              | State-mutating                                                                                                                                                                                                                        |
@@ -163,6 +164,7 @@ A caller of `POST /v1/seal/invoke` whose arguments fail this check is refused `4
 | `fs.write`                                                                                           | `path`, `content`                               |
 | `fs.edit`                                                                                            | `path`, `target_content`, `replacement_content` |
 | `fs.multi_edit`                                                                                      | `path`, `edits`                                 |
+| `fs.search`                                                                                          | `needle`                                        |
 | `fs.grep`, `fs.glob`                                                                                 | `pattern`, `path`                               |
 | `web.search`                                                                                         | `query`                                         |
 | `web.fetch`                                                                                          | `url`                                           |
@@ -171,13 +173,13 @@ A caller of `POST /v1/seal/invoke` whose arguments fail this check is refused `4
 | `aegis.volume.create`                                                                                | `label`, `size_limit_bytes`                     |
 | `aegis.volume.delete`                                                                                | `volume_id`                                     |
 | `aegis.git.clone`                                                                                    | `repo_url`, `label`                             |
-| `aegis.git.status`, `aegis.git.refresh`, `aegis.git.delete`, `aegis.git.push`, `aegis.git.diff`      | `binding_id`                                    |
-| `aegis.git.commit`                                                                                   | `binding_id`, `message`                         |
+| `aegis.git.refresh`, `aegis.git.delete`                                                              | `binding_id`                                    |
+| `aegis.git.commit`                                                                                   | `message`                                       |
 | `aegis.script.save`                                                                                  | `name`, `code`                                  |
 | `aegis.script.get`, `aegis.script.delete`                                                            | `id`                                            |
 | `aegis.script.update`                                                                                | `id`, `name`, `code`                            |
 
-Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`, `aegis.volume.list`, `aegis.volume.quota`, `aegis.git.list`, `aegis.script.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string. `aegis.git.list` accepts optional `page` / `limit` integers. `aegis.script.list` accepts optional `tag` and `q` filter strings.
+Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, `aegis.system.info`, `aegis.runtime.list`, `aegis.volume.list`, `aegis.volume.quota`, `aegis.git.list`, `aegis.script.list`) accept any object including `{}`. `aegis.runtime.list` accepts an optional `language` string to filter results by language name (e.g. `"python"`, `"go"`). `aegis.tools.search` accepts an optional `query` string but has no required fields. `aegis.agent.search` and `aegis.workflow.search` require a `query` string. `aegis.git.list` accepts optional `page` / `limit` integers. `aegis.git.status`, `aegis.git.diff` and `aegis.git.push` have no required field: inside a run they take `repository`, a label of the run's, which a run holding one repository may leave out, and outside a run `binding_id` ([Git Repository Tools](/docs/reference/mcp-tool-reference#git-repository-tools-aegisgit)). `aegis.script.list` accepts optional `tag` and `q` filter strings.
 
 ---
 
@@ -185,7 +187,7 @@ Tools with no required parameters (e.g. `aegis.agent.list`, `aegis.tools.list`, 
 
 This section is what the orchestrator's `POST /v1/seal/invoke` answers when it refuses a tool call or cannot complete it. That is the route an MCP server or an SDK's SEAL client calls. Two other surfaces answer differently:
 
-- An agent's tool call inside its own execution loop is not answered by this route. The agent sees the refusal's text in its next iteration.
+- An agent's tool call inside its own execution loop is not answered by this route. The model is told the refusal's own sentence in the form "Tool '&lt;name&gt;' was not run: &lt;the refusal&gt;", for example "Tool 'fs_run' was not run: Policy violation: tool 'fs_run' is not allowed; permitted tools: [fs.*, cmd.run]", and reads it in its next step.
 - The standalone SEAL Gateway answers its own invocation endpoints with numeric codes; see [SEAL Protocol: Error Codes](/docs/gateway/seal-protocol#error-codes).
 
 How Zaru's MCP server passes these answers on to an MCP client is described in [When AEGIS Refuses a Tool Call](/docs/zaru/mcp-tools#when-aegis-refuses-a-tool-call).
@@ -284,6 +286,14 @@ A policy refusal is deterministic: the same call in the same session gets the sa
 
 The `fs.*` tools interact directly with the `AegisFSAL` (File System Abstraction Layer), meaning they work transparently across SeaweedFS, Local Host storage, and OpenDAL backends. They automatically respect the agent's volume ownership and `FilesystemPolicy`.
 
+Every `fs.*` tool answers in the paths the agent sent, never a storage path:
+
+- A path that does not exist: "[AEGIS] '&lt;path&gt;' does not exist; fs.list of its parent lists what does." A caller of `POST /v1/seal/invoke` gets it as `NOT_FOUND` (`404`).
+- A directory given to `fs.read`, `fs.edit`, `fs.multi_edit` or `fs.write`: the tool is not run, "[AEGIS] &lt;tool&gt; was not run: &lt;path&gt; is a directory, not a file; fs.list lists a directory." `fs.write` creates nothing.
+- Any other storage failure: "[AEGIS] &lt;tool&gt; of '&lt;path&gt;' failed; the server logged the cause.", answered as an internal failure; the cause is written only to the orchestrator's log.
+
+**Writes inside a run's repositories.** A workflow's agent state whose run holds repositories writes only inside them: `fs.write`, `fs.edit`, `fs.multi_edit`, `fs.create_dir` and `fs.delete` refuse a path outside every repository mount before anything is written, with "'&lt;path&gt;' is outside this run's repository; this step writes only under &lt;mount&gt;" (each mount, `/workspace/<label>`, named, separated by commas). Reads are not confined, and `cmd.run` is not covered. An execution whose run holds no repository writes its workspace as before. See [Repositories of a Run](/docs/reference/workflow-manifest#repositories-of-a-run).
+
 ### `fs.read`
 
 Reads the contents of a file, whole or a range of its lines.
@@ -294,9 +304,9 @@ Reads the contents of a file, whole or a range of its lines.
 - `line_start` (integer, optional, at least 1): First line to return, counted from 1.
 - `line_end` (integer, optional, at least 1): Last line to return, included.
 
-**Returns:** Without `line_start` and `line_end`, the whole file. With either, the lines from `line_start` (default 1) to `line_end` (default the file's last line), followed by a line naming the range and the file's line count, such as "Lines 5 to 8 of 20 in /workspace/notes.txt.", with `line_start`, `line_end` and `line_count` beside the content. A range that runs past the file's end stops at its last line; one that starts after it answers "No lines: the range starts at line &lt;n&gt; and &lt;path&gt; has &lt;count&gt; lines."
+**Returns:** Without `line_start` and `line_end`, the whole file. With either, the lines from `line_start` (default 1) to `line_end` (default the file's last line), followed by a line naming the range and the file's line count, such as "Lines 5 to 8 of 20 in /workspace/notes.txt.", with `line_start`, `line_end` and `line_count` beside the content. A range that runs past the file's end stops at its last line; one that starts after it answers "No lines: the range starts at line &lt;n&gt; and &lt;path&gt; has &lt;count&gt; lines." An empty file reads as its empty content.
 
-**Errors:** `PathOutsideBoundary` if path is outside the `path_allowlist`; `NOT_FOUND` if the file does not exist; `PERMISSION_DENIED` if the SecurityContext denies access; invalid arguments for a line number that is not a whole number of 1 or more, or a `line_end` before `line_start`.
+**Errors:** `PathOutsideBoundary` if path is outside the `path_allowlist`; the not-found sentence above if the file does not exist; the directory refusal above if the path is a directory; `PERMISSION_DENIED` if the SecurityContext denies access; invalid arguments for a line number that is not a whole number of 1 or more, or a `line_end` before `line_start`.
 
 ### `fs.write`
 
@@ -356,11 +366,11 @@ Performs an exact string replacement in a file. The target content must match ex
 
 - `path` (string, required): Absolute or relative POSIX path of the file to edit.
 - `target_content` (string, required): Exact string content to find and replace.
-- `replacement_content` (string, required): New string content to insert.
+- `replacement_content` (string, required): New string content to insert. An empty replacement deletes the target, keeping the file's line endings.
 
 **Returns:** Confirmation string with the path edited and a summary of the change.
 
-**Errors:** `NOT_FOUND` if the file does not exist; error if `target_content` matches zero or more than one location in the file (must be unique); `PathOutsideBoundary` if outside the allowlist.
+**Errors:** the not-found sentence above if the file does not exist; an empty `target_content` is not run: "[AEGIS] fs.edit was not run: `target_content` is empty, and an empty target matches everywhere; the target is the file's existing text that the replacement takes the place of." (`fs.multi_edit` names the edit: "edit &lt;n&gt; of &lt;m&gt;: …"); error if `target_content` matches zero or more than one location in the file (must be unique); `PathOutsideBoundary` if outside the allowlist.
 
 ### `fs.multi_edit`
 
@@ -376,6 +386,25 @@ Performs multiple sequential string replacements in a file. Provides a more atom
 **Returns:** Confirmation string with the number of replacements applied.
 
 **Errors:** Same as `fs.edit` — any edit that fails (zero or multiple matches) aborts the entire operation and leaves the file unchanged.
+
+### `fs.search`
+
+Searches the files under a folder for a piece of text, plain text and not a pattern, and finds code by its parsed structure. Use it to find where something is; use `fs.read` to read around a result.
+
+**Parameters:**
+
+- `needle` (string, required): The text to search for. A needle with no capital letters matches any case.
+- `path` (string, optional): The folder or file to search. Without it, the run's repository when the run holds exactly one, otherwise `/workspace`. A repository mounted beneath the folder is searched with it.
+- `exact_case` (boolean, optional): Match the needle's case exactly, even when it has no capital letter.
+- `whole_word` (boolean, optional): Match only where the needle is not part of a longer word.
+- `file_type` (string, optional): Search only files with this extension, such as `rs`.
+- `include_ignored` (boolean, optional): Also search what is skipped by default: files a `.gitignore` names, build output and dependency folders (`target`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv`, `venv`), lock files and minified or map files. `.git` is always skipped.
+
+**Returns:** A first line of counts, "Searched &lt;root&gt; for "&lt;needle&gt;" in exact case: &lt;n&gt; lines in &lt;m&gt; files; &lt;k&gt; files read." (or "in any case"), or "…: no line holds it; &lt;k&gt; files read." when nothing matches. Then the matching lines grouped by file and ranked (declarations, then source, then tests, then generated files): at most 40 lines of at most 200 characters, up to 8 per file first, then up to 10 more file names, and a closing line counting what was not shown and what was skipped. A needle of two or more words also answers up to 8 declarations whose names or comments share those words, each with its path, line, kind, name and an excerpt; camelCase, snake_case and spaced forms of the words find the same declaration. Every path is container-absolute, one `fs.read` takes as written. The answer is at most 30,720 bytes, and the same call on the same files answers the same bytes.
+
+**Limits:** at most 10,000 files are read, and the answer says where the walk stopped; a file over 10 MiB, a binary file and a file that is not UTF-8 are skipped and counted. Nothing is stored between calls.
+
+**Errors:** an empty needle is refused: "the string to search for is empty, which occurs everywhere in every file; fs.search needs something to look for"; a path under a volume not registered for the execution is refused; `PathOutsideBoundary` if outside the allowlist.
 
 ### `fs.grep`
 

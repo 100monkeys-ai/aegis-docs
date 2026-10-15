@@ -108,4 +108,6 @@ executions from `GET /v1/executions`. **Workflows** lists your workflow runs fro
 characters of its workflow id, and its duration ends at the run's last transition once the run
 has completed, failed or been cancelled. Click a row to open that run's page.
 
+A run's page opens its narrative with the repository line of each repository the run prepared, "Prepared repository &lt;label&gt; at /workspace/&lt;label&gt;: branch aegis/&lt;id&gt; created from &lt;sha&gt;", as the orchestrator wrote it, before the run's steps; an agent run's, before its first try.
+
 A workflow run's page shows the gate the run waits at, if any, as the gate card, between the run's status line and its tabs, so you can answer the gate there when you open the run by its link ([Human Gates of a Workflow Run](/docs/zaru/chat#human-gates-of-a-workflow-run)).

@@ -190,6 +190,8 @@ Stream execution events as [Server-Sent Events (SSE)](https://developer.mozilla.
 
 Each `data:` line is a JSON-encoded `ExecutionEvent` object. Events match the types defined in the [gRPC API reference](/docs/reference/grpc-api).
 
+With `?follow=false` the route answers the execution's history and ends. The history carries the execution's repository rows (`repository_prepared` and the rows of a commit, a push or a landing) with the orchestrator's line, for example "Prepared repository app at /workspace/app: branch aegis/1234abcd created from &lt;sha&gt;".
+
 **Example stream:**
 
 ```text
@@ -218,6 +220,33 @@ es.onmessage = (e) => {
   }
 };
 ```
+
+---
+
+## Volume Files
+
+The files of one of your volumes, as the dashboard's file browser reads and changes them. Each route takes the volume's id in the path and the file or folder's path in the volume as `?path=`; the reading routes need the scope `volume:read`, the others `volume:write`.
+
+| Route | What it does |
+|---|---|
+| `GET /v1/volumes/{id}/files?path=` | Lists a folder. |
+| `GET /v1/volumes/{id}/files/stat?path=` | Describes one file or folder. |
+| `GET /v1/volumes/{id}/files/download?path=` | Answers a file's bytes. |
+| `POST /v1/volumes/{id}/files/upload?path=` | Writes a file from the request body. |
+| `POST /v1/volumes/{id}/files/mkdir?path=` | Creates a folder. |
+| `POST /v1/volumes/{id}/files/move` | Moves a file or folder, body `{"from": "<path>", "to": "<path>"}`. |
+| `DELETE /v1/volumes/{id}/files?path=` | Deletes a file or folder. |
+
+**Errors.** Every error body is `{"error": "<sentence>"}`, and a sentence names only the path you sent, never where the volume is stored. A path is read for what it is before anything is fetched, so a file is never listed as a folder and a folder is never answered as a file's content.
+
+| HTTP | Body | Cause |
+|---|---|---|
+| `404` | `{"error": "not found: <path>"}` | Nothing is at that path in the volume. |
+| `422` | `{"error": "not a directory: <path>"}` | A file was given where a folder is needed, for example a listing of a file. |
+| `422` | `{"error": "is a directory: <path>"}` | A folder was given where a file is needed, for example a download of a folder. |
+| `422` | `{"error": "invalid path: …"}` or `{"error": "file size exceeds limit"}` | The path is not valid in a volume, or the file is over your size limit. |
+| `403` | `{"error": "unauthorized"}` | The volume belongs to another tenant, or storage refused the access. |
+| `500` | `{"error": "[AEGIS] the file operation failed; the server logged the cause."}` | Storage failed; the cause is written only to the orchestrator's log, with the route and the volume's id. |
 
 ---
 
@@ -702,6 +731,8 @@ A page of a workflow run's events, in sequence order. Scope `workflow:read`; the
 
 `count` is the page's length, `total` the run's number of events, and `has_more` whether events follow the page; `limit` and `offset` are the values applied.
 
+A run's repository rows are among its events: the `repository_prepared` row of each repository the run prepared, also when an agent state prepared it, with `event_type` `repository_prepared`, the orchestrator's line as `message`, for example "Prepared repository aegis-examples at /workspace/aegis-examples: branch aegis/6ba7b810 created from &lt;sha&gt;; removed 1 paths (test/)", and the stored row as `details`.
+
 An answered gate carries `execution_id`, `workflow_name`, `state_name`, `prompt` (its latest post's), `responses` and `sequence` as a pending one does, with `requested_at`, and in place of the deadline:
 
 ```json
@@ -746,6 +777,8 @@ A page of a workflow run's events, in sequence order. Scope `workflow:read`; the
 ```
 
 `count` is the page's length, `total` the run's number of events, and `has_more` whether events follow the page; `limit` and `offset` are the values applied.
+
+A run's repository rows are among its events: the `repository_prepared` row of each repository the run prepared, also when an agent state prepared it, with `event_type` `repository_prepared`, the orchestrator's line as `message`, for example "Prepared repository aegis-examples at /workspace/aegis-examples: branch aegis/6ba7b810 created from &lt;sha&gt;; removed 1 paths (test/)", and the stored row as `details`.
 
 ---
 
