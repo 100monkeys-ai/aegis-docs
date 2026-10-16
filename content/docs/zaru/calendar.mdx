@@ -88,7 +88,7 @@ Each of these is answered before anything changes:
 | A title that is not one line of at most 1,000 characters | "'title' must be one line of at most 1000 characters." |
 | A description over 32,000 characters | "'description' must be plain text of at most 32000 characters." |
 
-A call for an account that is not yours, or not among those chosen for the run, is refused, for example "This tool needs your own calendar account, and none was chosen for this run.". An agent's run with no calendar chosen needs the calendar connection granted to that agent, its workflow or all agents.
+A call for an account that is not yours, or not among those chosen for the run, is refused, for example "This tool needs your own calendar account, and none was chosen for this run.". A run that chose no calendar account, by its profile or one by one, reaches none, whatever is granted to its agent or workflow: "This run has no profile that names your calendar. Choose a profile that names it, then start the run again." Inside a run, a call without `account` uses the one account the run chose, else the newest of those it chose.
 
 <Callout type="info">
   The reference deployment admits the seven calendar tools in every Zaru

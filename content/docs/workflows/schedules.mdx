@@ -32,6 +32,8 @@ Each schedule is kept by the orchestrator and fired by a Temporal Schedule of it
 
 Give exactly one of `at` or `recurrence`. A schedule carries one profile or chosen connections, never both: "Choose one profile, or choose connections without a profile; not both."
 
+A schedule's runs reach only the connections its `profile` or `contexts` name; a schedule with neither reaches none of your connections. While any of your schedules has no profile, the Schedules page says "Since 2026-10-16, a schedule with no profile reaches none of your connections; choose one on its page."
+
 ### Timing
 
 - **Once.** `at` must be at least one minute from now and at most 366 days ahead: "'at' must be a time at least one minute from now and at most a year ahead."

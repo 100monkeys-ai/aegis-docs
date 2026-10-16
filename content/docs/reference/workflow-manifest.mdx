@@ -416,12 +416,14 @@ A run works in a person's git repositories when its starting call (`aegis.workfl
 | A binding by its id | `{"binding_id": "<id of one of your git repository bindings>", "branch": "<work branch>"}`, `branch` optional. [`aegis.git.list`](/docs/reference/mcp-tool-reference#aegisgitlist) lists your bindings. |
 | A repository by its URL | `{"url": "<https:// or git@host:path URL, with no credential in it>", "ref": "<branch>", "branch": "<work branch>"}`, `ref` (default `main`) and `branch` optional. |
 
-For an entry naming a URL, the platform finds your binding of that URL and ref and uses it; when you have none, it makes one before the run starts, with your one active GitHub credential, labelled with the repository's name, and waits for its clone. A URL entry is refused before the run starts:
+For an entry naming a URL, the platform reaches the repository only through the GitHub connection the run names, by its [profile](/docs/zaru/profiles) or chosen one by one. It finds your binding of that URL and ref made with that connection, or with none, and uses it; when you have none, it makes one before the run starts with that connection, labelled with the repository's name, and waits for its clone. A URL entry is refused before the run starts:
 
 | Refusal | When |
 |---|---|
-| "no active GitHub credential of yours" | You have no binding of that URL and ref, and no active GitHub credential to make one with. |
-| "you have &lt;n&gt; active GitHub credentials, so which one reaches this repository is not known; link the repository with the one to use, then name its binding_id" | You have no binding of that URL and ref, and several active GitHub credentials. |
+| "This run has no profile that names your GitHub. Choose a profile that names it, then start the run again." | The run names no GitHub connection. |
+| "no active GitHub credential of yours" | None of the GitHub connections the run names is an active GitHub connection of yours. |
+| "you have &lt;n&gt; active GitHub credentials, so which one reaches this repository is not known; link the repository with the one to use, then name its binding_id" | The run names several active GitHub connections. |
+| "your binding of this repository is linked with another GitHub credential than the one this run names; name its binding_id, or choose a profile that names that credential" | Your binding of that URL and ref was made with another GitHub connection. |
 | The clone's own sentence | The clone of the new binding failed, for example a repository the credential does not reach; the binding is removed. |
 | "this node cannot find a repository by its URL; name its binding_id" | The node cannot find or make a binding by URL. |
 
@@ -727,10 +729,10 @@ EXECUTE_TESTS:
     - "eval \"$FORGE_TEST_COMMAND\""
   env:
     FORGE_TEST_COMMAND: "{{{input.test_command}}}"
-  workdir: "/workspace/repository"
+  workdir: "/workspace"
   volumes:
     - name: repository
-      mount_path: "/workspace/repository"
+      mount_path: "/workspace"
   network_mode: egress
   resources:
     cpu: 2000
@@ -758,11 +760,22 @@ A model step is refused when the workflow is registered:
 
 Each is answered inside "Invalid container state configuration in state '&lt;state&gt;': &lt;refusal&gt;".
 
-The built-in workflow `transcribe-audio` (labels `builtin: "true"`, `type: builtin-model`) is one model step, deployed when [`spec.deploy_builtins`](/docs/reference/node-config#specdeploy_builtins) is on. Its one input, `audio_path`, is the name of a file attached to the run: letters, digits and `- . _`, never `..`, in any container ffmpeg decodes (wav, mp3, m4a, ogg, flac, webm). It may be left out when one file is attached: the run then reads that file. The step mounts the run's attachments read-only at `/input`, transcribes `/input/{{input.audio_path}}` with `speech-to-text/whisper-base` on the CPU, with no network and no language model, and prints the transcript: the step's stdout is the run's `transcript`. Start it with [`aegis.workflow.run`](/docs/reference/mcp-tool-reference#aegisworkflowrun), `name` `transcribe-audio`, the file in `attachments` and, when several files are attached, `input.audio_path` the file's name; a person's chat in Zaru Web carries the files attached to the turn into the run. A run with several files attached and no `audio_path`, or whose `audio_path` names no attached file, is refused at its start, before any execution exists, with one sentence naming the attached files, for example "This run reads one recording and several files are attached (DIALOGUE.ogg, notes.wav); name the one to transcribe in audio_path." or "No attached file is named 'recording.ogg'; the attached files are: DIALOGUE.ogg."; a run with no attachment keeps the step's own refusal below.
+The built-in workflow `transcribe-audio` (labels `builtin: "true"`, `type: builtin-model`) is a model step, deployed when [`spec.deploy_builtins`](/docs/reference/node-config#specdeploy_builtins) is on. Its input `audio_path` is the name of a file attached to the run: letters, digits and `- . _`, never `..`, in any container ffmpeg decodes (wav, mp3, m4a, ogg, flac, webm). It may be left out when one file is attached: the run then reads that file. The step mounts the run's attachments read-only at `/input`, transcribes `/input/{{input.audio_path}}` with `speech-to-text/whisper-base` on the CPU, with no network and no language model, and prints the transcript: the step's stdout is the run's `transcript`.
 
-The check holds for any workflow: an `input_schema` property that carries `x-aegis-attachment-name: true` names one of the run's attached files, is filled with the name of the run's only attachment when left out, and is checked against the attached names before the run starts. `transcribe-audio`'s `audio_path` carries it. Its step:
+Its optional boolean input `speakers` (default `false`) is for a recording with more than one voice: "Set it to true when the recording has more than one voice: the transcript then starts a new paragraph at each change of speaker, labelled Speaker 1 and Speaker 2 in turn. English recordings only. The labels mark turns, not who is speaking." With `speakers` true, the run takes the step `TRANSCRIBE_TURNS` in place of `TRANSCRIBE`: the same command on `speech-to-text/whisper-small-en-tdrz`, an English-only model that marks speaker turns. Its transcript is paragraphs separated by one blank line, the first starting "Speaker 1:", the next "Speaker 2:", and so on in turn; a recording in which no turn is found is one paragraph, "Speaker 1: " and its text. Start it with [`aegis.workflow.run`](/docs/reference/mcp-tool-reference#aegisworkflowrun), `name` `transcribe-audio`, the file in `attachments` and, when several files are attached, `input.audio_path` the file's name; a person's chat in Zaru Web carries the files attached to the turn into the run. A run with several files attached and no `audio_path`, or whose `audio_path` names no attached file, is refused at its start, before any execution exists, with one sentence naming the attached files, for example "This run reads one recording and several files are attached (DIALOGUE.ogg, notes.wav); name the one to transcribe in audio_path." or "No attached file is named 'recording.ogg'; the attached files are: DIALOGUE.ogg."; a run with no attachment keeps the step's own refusal below.
+
+The check holds for any workflow: an `input_schema` property that carries `x-aegis-attachment-name: true` names one of the run's attached files, is filled with the name of the run's only attachment when left out, and is checked against the attached names before the run starts. `transcribe-audio`'s `audio_path` carries it. Its states:
 
 ```yaml
+ROUTE:
+  kind: System
+  command: "echo routed"
+  transitions:
+    - condition: custom
+      expression: "(default input.speakers false)"
+      target: TRANSCRIBE_TURNS
+    - condition: on_success
+      target: TRANSCRIBE
 TRANSCRIBE:
   kind: ContainerRun
   name: "Transcribe"
@@ -779,7 +792,25 @@ TRANSCRIBE:
     - condition: exit_code_non_zero
       target: FAILED
       feedback: "The recording could not be transcribed: {{{TRANSCRIBE.stderr}}}"
+TRANSCRIBE_TURNS:
+  kind: ContainerRun
+  name: "Transcribe with speaker turns"
+  image: "model:speech-to-text/whisper-small-en-tdrz"
+  command: ["transcribe", "/input/{{input.audio_path}}", "--out", "/tmp/transcript.txt"]
+  volumes:
+    - name: attachments
+      mount_path: /input
+      read_only: true
+  shell: false
+  transitions:
+    - condition: exit_code_zero
+      target: DONE
+    - condition: exit_code_non_zero
+      target: FAILED
+      feedback: "The recording could not be transcribed: {{{TRANSCRIBE_TURNS.stderr}}}"
 ```
+
+The run's `transcript` is `{{TRANSCRIBE.stdout}}{{TRANSCRIBE_TURNS.stdout}}`: the output of whichever step ran.
 
 #### A step on the run's attachments
 

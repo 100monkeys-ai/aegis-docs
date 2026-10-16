@@ -67,11 +67,13 @@ After saving a credential, open it and click **Add Grant**. You can grant access
 
 Without an active grant, no agent can read or use the credential, even if they request it.
 
+A grant does not widen which of your connections a run reaches: a run, a schedule or an API key reaches only the connections its [profile](/docs/zaru/profiles) names, or those chosen for it one by one. The Connections page shows no **Grants** link on a mailbox or a calendar account.
+
 ---
 
 ## OAuth Connections
 
-**OAuth Connections**, in the Vault's navigation, opens the Connections page. Two providers connect by OAuth on the reference deployment: **Google**, a Google mailbox for the `mail.*` tools, and **Google Calendar**, a Google calendar for the `calendar.*` tools. Click **Connect Google** or **Connect Google Calendar** and sign in to Google in your browser; each is its own sign-in, and each grants only its own service. The page also connects a mailbox by its IMAP and SMTP settings and a calendar account by its CalDAV server, each with its account and password rather than a sign-in. Once connected, agents granted access to that connection can make authenticated requests on your behalf.
+**OAuth Connections**, in the Vault's navigation, opens the Connections page. Two providers connect by OAuth on the reference deployment: **Google**, a Google mailbox for the `mail.*` tools, and **Google Calendar**, a Google calendar for the `calendar.*` tools. Click **Connect Google** or **Connect Google Calendar** and sign in to Google in your browser; each is its own sign-in, and each grants only its own service. The page also connects a mailbox by its IMAP and SMTP settings and a calendar account by its CalDAV server, each with its account and password rather than a sign-in. Once connected, a run, a schedule or an API key whose profile names that connection can make authenticated requests on your behalf.
 
 The providers offered are the ones the server's `oauth_providers` registers; a server that registers none shows "No OAuth provider is set up on this server yet." GitHub is not one of them: a GitHub token is stored as a credential.
 

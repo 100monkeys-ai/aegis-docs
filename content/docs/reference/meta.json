@@ -19,6 +19,7 @@
     "edge-cli",
     "edge-config",
     "edge-rest-api",
-    "relay-grpc-api"
+    "relay-grpc-api",
+    "releases"
   ]
 }

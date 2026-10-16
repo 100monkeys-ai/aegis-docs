@@ -8,9 +8,9 @@ description: Create and manage API keys for programmatic access to the AEGIS pla
 API keys provide programmatic access to the AEGIS platform. Generate them from
 **Settings → API Keys** in the Zaru client.
 
-Above the list of keys the page says: "A key lets an MCP client such as Claude Code use what you
-have connected to Zaru on the Connections page; every change it asks for waits for your answer
-under Approvals." with links to the Connections page and to Approvals. What a key reaches is on
+Above the list of keys the page says: "A key reaches only the connections in the profile you
+choose for it; with no profile it reaches none. Every change it asks for waits for your answer
+under Approvals." with a link to Approvals. What a key reaches is on
 [MCP Tools](/docs/zaru/mcp-tools#connections-and-profiles).
 
 ---
@@ -21,10 +21,24 @@ under Approvals." with links to the Connections page and to Approvals. What a ke
 2. Click **New API Key**.
 3. Enter a name for the key (e.g., "CI pipeline", "local development").
 4. Select a scope preset or configure custom scopes.
-5. Choose an expiry period.
-6. Click **Create**.
+5. Choose the key's profile, or **None** (the default).
+6. Choose an expiry period.
+7. Click **Create**.
 
 The key value is shown once. Copy it immediately — it cannot be retrieved again.
+
+---
+
+## A Key's Profile
+
+A key reaches only the connections its [profile](/docs/zaru/profiles) names: a key with no
+profile reaches none of your connections, whatever you have connected. Each key's row shows its
+profile in a selector, **None** first and then your profiles by name, beside a link to the
+Profiles page; choosing one sets it at once. The **New API Key** dialog has the same selector,
+**None** by default.
+
+While an active key has no profile, the page says "Since 2026-10-16, a key with no profile
+reaches none of your connections; choose one below."
 
 ---
 
@@ -79,13 +93,13 @@ configuration instructions.
 The Python and TypeScript SDKs accept an API key for authentication:
 
 ```python
-from aegis_sdk import AegisClient
+from aegis import AegisClient
 
 client = AegisClient(api_key="your-api-key")
 ```
 
 ```typescript
-import { AegisClient } from "@aegis/sdk";
+import { AegisClient } from "@100monkeys-ai/aegis-sdk";
 
 const client = new AegisClient({ apiKey: "your-api-key" });
 ```

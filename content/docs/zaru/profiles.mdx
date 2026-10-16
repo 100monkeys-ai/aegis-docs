@@ -11,6 +11,8 @@ A profile is your own named set of connections (a mailbox, a calendar account, a
 
 A run carries one profile or chosen connections, never both. Choosing both is refused: "Choose one profile, or choose connections without a profile; not both."
 
+A run, a schedule or an API key reaches only the connections its profile names, or, for a run or a schedule, the connections chosen for it one by one. With neither, it reaches none of your connections, whatever you have connected. The Profiles page says so above the list: "A run, a schedule or an API key reaches only the connections a profile names. Without one it reaches none."
+
 ---
 
 ## What a Profile Holds
@@ -40,7 +42,7 @@ A tool the profile allows still meets the approval gate. `mail.send`, `mail.repl
 
 Tools of other families, such as `fs.*`, `cmd.run` or `web.*`, are not governed by a profile: the security context alone decides them.
 
-A run's profile is passed on to the agent states of a workflow and to child runs, as its connections are.
+A run's profile is passed on to the agent states of a workflow and to child runs, as its connections are. A run started by another run never reaches past it: a choice of its own naming a connection the other run did not choose is refused "A run started by another run can only use connections that run chose; the connection chosen for '&lt;server&gt;' is not one of them."
 
 ### Standing Choices
 
@@ -52,6 +54,7 @@ An "Always allow" or "Always deny" choice made on a profile's run applies to tha
 
 - **Vault, Profiles.** `/vault/profiles` lists your profiles with their connections and tool count. **New profile** and each profile's page share one form: a name; your connections grouped by type; the tools those connections allow, by family, with "Needs your approval" beside a tool that waits for your approval and "All tools these connections allow" for an empty list; a repository, a Nuclear Notes workspace and instructions. A profile with a removed connection says "A connection in this profile was removed."
 - **In a conversation.** The context selector above the chat input opens its list upward over the conversation, at most half the window's height, scrolling when the list is longer. It lists **None**, then **Profiles** (one at a time), then your connections by type; choosing a profile clears chosen connections and the other way round, and the selector reads "Profile: &lt;name&gt;". The profile is stored with the conversation, so its later turns, and the runs they start, use it. Zaru is told the profile's name, its Nuclear Notes workspace (used when a Nuclear Notes call names none) and your instructions for it.
+- **API keys.** Each key's row on **Settings → API Keys** chooses its profile, **None** first. See [API Keys](/docs/zaru/api-keys).
 - **Schedules.** The schedule form saves a profile or chosen connections, never both; a profile's repository and Nuclear Notes workspace fill the form, and a **Schedule this?** card or a run's **Schedule this** opens it on the conversation's profile. See [Schedules](/docs/workflows/schedules).
 
 ---

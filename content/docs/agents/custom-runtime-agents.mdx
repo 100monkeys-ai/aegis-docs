@@ -92,7 +92,7 @@ my-agent/
 ```dockerfile
 FROM python:3.11-slim
 
-RUN pip install --no-cache-dir aegis-sdk
+RUN pip install --no-cache-dir https://github.com/100monkeys-ai/aegis-sdk-python/archive/refs/tags/1.0.1-beta.tar.gz
 
 WORKDIR /agent
 COPY bootstrap.py .

@@ -85,6 +85,13 @@ spec:
 | `command` | | The command a model step runs when its state sets none. A step that sets none, of a model with none, is refused with "model '&lt;class&gt;/&lt;name&gt;' names no command; set command on the step". |
 | `resources` | | The CPU, memory and timeout a model step gets when its state sets none. |
 
+The reference node's registry holds two speech-to-text models, both whisper.cpp 1.9.4 on the CPU with ffmpeg to decode the audio, each with 2000 millicores and a 15-minute timeout:
+
+| Model | Memory | What it does |
+|---|---|---|
+| `speech-to-text/whisper-base` | `1Gi` | The whisper base model, multilingual. |
+| `speech-to-text/whisper-small-en-tdrz` | `2Gi` | The tinydiarize small.en model, English only, marking speaker turns. |
+
 A model entry whose image is not named by digest is refused when the registry loads, with "model '&lt;class&gt;/&lt;name&gt;' must name its image by digest"; with several, the first in sorted order is named.
 
 ---

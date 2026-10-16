@@ -1,0 +1,74 @@
+---
+title: Releases
+description: The 1.0.1-beta release of every published AEGIS and Zaru package and image, and where each is published.
+---
+
+# Releases
+
+The current release is **`1.0.1-beta`**, a pre-release. Every package and image below is published at that version.
+
+## GitHub Releases
+
+Each of these repositories of [100monkeys-ai](https://github.com/100monkeys-ai) has a `1.0.1-beta` release, marked a pre-release:
+
+- `aegis-orchestrator`: its release carries `aegis-linux-x86_64.tar.gz` and its `.sha256`, which the [installer](/docs/getting-started#install-aegis-cli) downloads.
+- `aegis-proto`
+- `aegis-cortex`
+- `aegis-seal-gateway`
+- `aegis-temporal-worker`
+- `aegis-mcp-tools`
+- `aegis-sdk-typescript`
+- `seal-protocol`
+- `zaru-client`
+
+`aegis-sdk-python` has a `1.0.1-beta` tag and no GitHub release.
+
+## Rust Crates
+
+On [crates.io](https://crates.io), at `1.0.1-beta`:
+
+- `aegis-orchestrator-proto`
+- `aegis-orchestrator-core`
+- `aegis-orchestrator-swarm`
+- `aegis-orchestrator-sdk`
+- `aegis-orchestrator`
+- `aegis-seal-gateway`
+
+## npm Packages
+
+On GitHub Packages (`https://npm.pkg.github.com`), at `1.0.1-beta`, under the `beta` tag:
+
+- `@100monkeys-ai/aegis-sdk`
+- `@100monkeys-ai/seal-protocol`
+- `@100monkeys-ai/aegis-temporal-worker`
+- `@100monkeys-ai/zaru-mcp-server`
+
+Install one by its tag after pointing the scope at the registry:
+
+```bash
+npm config set @100monkeys-ai:registry https://npm.pkg.github.com
+npm install @100monkeys-ai/aegis-sdk@beta
+```
+
+## Python Package
+
+The Python SDK, `aegis-sdk` `1.0.1b0`, is not published on PyPI; the `aegis-sdk` there is another project's package. Install it from its tag:
+
+```bash
+pip install https://github.com/100monkeys-ai/aegis-sdk-python/archive/refs/tags/1.0.1-beta.tar.gz
+```
+
+## Container Images
+
+On the GitHub Container Registry (`ghcr.io/100monkeys-ai/`), tagged `1.0.1-beta`:
+
+| Image | Also tagged |
+|---|---|
+| `aegis-runtime` | `1.0`, `1` |
+| `aegis-cortex` | |
+| `aegis-seal-gateway` | |
+| `aegis-temporal-worker` | |
+| `zaru-mcp-server` | |
+| `zaru-client` | |
+
+`aegis up --tag 1.0.1-beta` is what the [installer](/docs/getting-started#install-aegis-cli) runs at its end.

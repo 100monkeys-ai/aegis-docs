@@ -444,6 +444,21 @@ A person's [profiles](/docs/zaru/profiles): a named set of their connections and
 
 ---
 
+## API Keys
+
+Your `aegis_` API keys. Each key carries the [profile](/docs/zaru/profiles) whose connections it reaches, or none; a key with none reaches none of your connections.
+
+| Method | Path | Scope | Description |
+| ------ | ---- | ----- | ----------- |
+| `GET` | `/v1/api-keys` | `key:list` | Your keys, `{api_keys}`: each its `id`, `name`, `scopes`, `expires_at`, `last_used_at`, `created_at`, `status`, `profile` (an id or `null`) and `profile_name` (the profile's name while it is still yours). Never a key's value. |
+| `POST` | `/v1/api-keys` | `key:create` | Make a key from `name`, `scopes`, `expires_at` and an optional `profile`, one of your profiles' ids; absent or `null` chooses none. |
+| `PATCH` | `/v1/api-keys/{id}` | `key:create` | Set or clear an active key's profile with `{"profile": <profile id or null>}`, answered as `GET /v1/api-keys` lists the key. |
+| `DELETE` | `/v1/api-keys/{id}` | | Revoke the key. |
+
+A `profile` that is not one of your profiles' ids, or a `PATCH` body that names no `profile` or names anything but an id or `null`, is refused `400` "'profile' must be the id of one of your profiles, or null." with nothing stored. A key of another person's, a revoked key or none answers `404` "API key not found or already revoked".
+
+---
+
 ## SEAL Endpoints
 
 ### `POST /v1/seal/attest`
@@ -461,7 +476,7 @@ Attestation handshake — used by `bootstrap.py` at the start of each agent exec
 }
 ```
 
-A caller outside an agent container, such as an MCP server attesting for its user, authenticates the request with its own bearer, an `aegis_` API key or a Keycloak token. The session's user is always that credential's own subject: the key's owner, or the token's `sub`. The body cannot name the user: a `user_id` field is ignored.
+A caller outside an agent container, such as an MCP server attesting for its user, authenticates the request with its own bearer, an `aegis_` API key or a Keycloak token. The session's user is always that credential's own subject: the key's owner, or the token's `sub`. The body cannot name the user: a `user_id` field is ignored. The session records the credential that attested it: the person's own sign-in token, or an `aegis_` key with the profile stored for that key, and reaches the person's connections as that credential does ([What a key reaches](/docs/zaru/mcp-tools#connections-and-profiles)).
 
 **Response `200`:**
 
