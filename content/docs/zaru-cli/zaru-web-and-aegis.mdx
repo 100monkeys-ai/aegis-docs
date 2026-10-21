@@ -13,8 +13,8 @@ Zaru has two surfaces: [Zaru Web](/docs/zaru/overview), the client at myzaru.com
 | --- | --- | --- |
 | Where it runs | In your browser, against the hosted platform | On your machine, as you |
 | The model | Served through the platform | The one you configure: Gemini, Ollama, or an OpenAI-compatible server |
-| Tools | AEGIS agents, workflows and tools, by MCP | Seven built-in tools that run on your machine, and the Nuclear Notes tools you allow |
-| Sign-in | A Zaru account | None; provider keys and Nuclear Notes tokens are stored on your machine |
+| Tools | AEGIS agents, workflows and tools, by MCP | Seven built-in tools that run on your machine, and the Carbon Forge (formerly Nuclear Notes) tools you allow |
+| Sign-in | A Zaru account | None; provider keys and Carbon Forge tokens are stored on your machine |
 | Where conversations are kept | The platform | `~/.zaru/sessions/`, as plain files you can read |
 
 **Two things named `zaru init`.** On [Connect Zaru to Any MCP Client](/docs/zaru/mcp-client-setup), typing `zaru init` in an MCP client activates the Zaru MCP server's tools. That is a tool of the MCP server. The command-line program's `zaru init` is unrelated: it writes an example `./zaru.toml` into the current directory.
@@ -30,9 +30,9 @@ Zaru has two surfaces: [Zaru Web](/docs/zaru/overview), the client at myzaru.com
 
 To run agents in AEGIS today, use Zaru Web or the [`aegis` CLI](/docs/reference/cli) against an orchestrator.
 
-## Nuclear Notes
+## Carbon Forge
 
-The program does talk to Nuclear Notes, 100monkeys' notes service, when you give it a token:
+The program does talk to Carbon Forge, 100monkeys' notes service, when you give it a token:
 
 - `zaru notes tokens add <alias> <host>` stores an access token, read from standard input.
 - With a stored token, a session suggests matching page and atom names from your notes as you type.

@@ -44,7 +44,7 @@ The model has seven built-in tools. Each runs on your machine as you.
 | `cmd.run` | Starts a program directly, without a shell, in the working directory, with only `PATH`, `HOME`, `LANG`, `LC_ALL` and `TMPDIR` from your environment, and stops it after two minutes. Nothing limits what the program does while it runs. |
 | `web.fetch` | Fetches an `http` or `https` URL. It refuses this machine's own addresses and the link-local range, which includes the cloud metadata address `169.254.169.254`. A redirect to another host is asked about again. |
 
-The model can also call a Nuclear Notes instance's tools, but only the ones you list under `notes.<alias>.agent_tools` in `~/.zaru/config.toml`; see [Configuration](/docs/zaru-cli/configuration#nuclear-notes).
+The model can also call a Carbon Forge (formerly Nuclear Notes) instance's tools, but only the ones you list under `notes.<alias>.agent_tools` in `~/.zaru/config.toml`; see [Configuration](/docs/zaru-cli/configuration#nuclear-notes).
 
 ## What a tool call shows
 
@@ -91,6 +91,6 @@ The transcript has one JSON object per line: your task, each model reply with th
 
 ## What the model provider receives
 
-A short system prompt, your task, the conversation so far, the tool descriptions, and the result of every tool call, including the contents of files read, command output and fetched pages. The system prompt states the working directory, the operating system, the date, the tool names and the permission mode; if a system prompt is read from a Nuclear Notes page (`persona.path`), that page is sent instead.
+A short system prompt, your task, the conversation so far, the tool descriptions, and the result of every tool call, including the contents of files read, command output and fetched pages. The system prompt states the working directory, the operating system, the date, the tool names and the permission mode; if a system prompt is read from a Carbon Forge page (`persona.path`), that page is sent instead.
 
 Zaru removes the values of the keys and tokens it has stored from what it sends. When it cannot read them (no keyring and no `ZARU_CREDENTIAL_KEY`) and the task needs none of them, it says so and goes on without removing them. It does not look for any other secret: a password in a file the model reads is sent to the provider.

@@ -21,7 +21,7 @@ Zaru reads settings from five layers. A later layer overrides an earlier one:
 
 **An unknown key is refused, not ignored.** A misspelt key in either file, or a `ZARU_` variable that names no key, stops the program with a message naming the key, the layer, and the nearest key that does exist.
 
-**Keys and tokens do not belong in the files.** A value in `config.toml` or `zaru.toml` that is shaped like a bearer token is refused. Store keys with `zaru providers keys add` and Nuclear Notes tokens with `zaru notes tokens add`.
+**Keys and tokens do not belong in the files.** A value in `config.toml` or `zaru.toml` that is shaped like a bearer token is refused. Store keys with `zaru providers keys add` and Carbon Forge (formerly Nuclear Notes) tokens with `zaru notes tokens add`.
 
 ## Every key
 
@@ -75,19 +75,19 @@ When a provider's connection fails or breaks, a response stalls, or it answers H
 | `terminal.mouse` | `true` or `false`, not from a project | `true` | Whether a session takes the mouse, so that the scroll wheel scrolls the transcript. `false` gives mouse selection back to your terminal. With it on, hold Shift while you drag to select text in most terminals. |
 | `tips` | `true` or `false` | `true` | Whether a session shows a standing tip in the hint strip below the input while the input is empty. |
 
-### Nuclear Notes
+### Carbon Forge [#nuclear-notes]
 
 | Key | Holds | Default | Meaning |
 | --- | --- | --- | --- |
-| `notes.<alias>.agent_tools` | a list, not from a project | none | The tools of the Nuclear Notes instance whose token is stored under `<alias>` that the model may call. With none listed, the model is offered none of them. |
-| `persona.path` | text, not from a project | `zaru/persona` | The Nuclear Notes page whose text is sent as the system prompt instead of Zaru's own, read with the token that holds the composer role from the workspace `project.workspace` names. With no token, no workspace or no such page, Zaru's own system prompt is used. |
+| `notes.<alias>.agent_tools` | a list, not from a project | none | The tools of the Carbon Forge instance whose token is stored under `<alias>` that the model may call. With none listed, the model is offered none of them. |
+| `persona.path` | text, not from a project | `zaru/persona` | The Carbon Forge page whose text is sent as the system prompt instead of Zaru's own, read with the token that holds the composer role from the workspace `project.workspace` names. With no token, no workspace or no such page, Zaru's own system prompt is used. |
 
 ### The project
 
 | Key | Holds | Meaning |
 | --- | --- | --- |
 | `project.name` | text | The project's name. |
-| `project.workspace` | text | The Nuclear Notes workspace this project reads. `persona.path` is read from it. |
+| `project.workspace` | text | The Carbon Forge workspace this project reads. `persona.path` is read from it. |
 
 ## The project file, `./zaru.toml`
 
@@ -102,7 +102,7 @@ When a provider's connection fails or breaks, a response stalls, or it answers H
 ```toml
 [project]
 name = "acme-api"
-workspace = "acme-engineering"   # the Nuclear Notes workspace this project reads
+workspace = "acme-engineering"   # the Carbon Forge workspace this project reads
 
 [runtime]
 max_iterations = 3
@@ -142,10 +142,10 @@ The program creates `~/.zaru/` readable only by you. What it keeps there:
 | Path | Holds |
 | --- | --- |
 | `config.toml` | Your settings. You create it; Zaru never writes it. |
-| `credentials.json` | Stored provider keys and Nuclear Notes tokens, encrypted. |
+| `credentials.json` | Stored provider keys and Carbon Forge tokens, encrypted. |
 | `sessions/<id>/` | One directory per session: `transcript.jsonl`, `meta.toml`, and the full output of anything the screen shortened. |
 | `history.jsonl` | The lines you typed at a session's prompt, kept per working directory. |
 | `approved-validators.jsonl` | Which validator commands you approved, per directory. |
 | `admissions.jsonl` | Which projects' commands and skills you admitted. |
 | `commands/` | Your own commands and skills. See [Commands and skills](/docs/zaru-cli/commands#your-own-commands-and-skills). |
-| `corpus.jsonl`, `persona.jsonl`, `tips.jsonl` | Cached Nuclear Notes page and atom names, the cached persona page, and which tips were shown. |
+| `corpus.jsonl`, `persona.jsonl`, `tips.jsonl` | Cached Carbon Forge page and atom names, the cached persona page, and which tips were shown. |

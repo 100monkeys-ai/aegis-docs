@@ -19,7 +19,7 @@ The first line names the tool and what it is addressed to: the file, the command
 | --- | --- |
 | `[OUTSIDE the working directory]` | The file the call addresses is outside the directory you ran `zaru` in. |
 | `[matches a destructive pattern]` | The command is a recursive `rm` (`-r`, `-R`, `--recursive`) or a forced `git push` (`-f`, `--force`, `--force-with-lease`, `--force-if-includes`). The marker makes the prompt prominent; it does not by itself make Zaru ask. |
-| `[leaves this machine]` | The call goes to a Nuclear Notes instance. |
+| `[leaves this machine]` | The call goes to a Carbon Forge (formerly Nuclear Notes) instance. |
 
 ## What each answer does
 
@@ -45,7 +45,7 @@ The permission mode decides which calls need asking. Set it with `tools.mode` in
 
 | Mode | What it asks about |
 | --- | --- |
-| `ask` (default) | Every file write, file edit, command, web fetch and Nuclear Notes call, and any call addressed outside the working directory. Reading, listing and searching inside the working directory do not ask. |
+| `ask` (default) | Every file write, file edit, command, web fetch and Carbon Forge call, and any call addressed outside the working directory. Reading, listing and searching inside the working directory do not ask. |
 | `allow` | Every call that is not on your allowlist, reads included. |
 | `yolo` | Nothing. Every call the model makes runs. |
 
@@ -85,4 +85,4 @@ A project's own commands and skills under `./.zaru/commands/` do not load until 
 
 ## What a project cannot set
 
-Settings that decide where your prompts go or how much Zaru asks are yours alone. `./zaru.toml` is refused if it sets any of them: the permission mode, the allowlist, the runtime tier, which provider answers for a model alias and where it is reached, the persona page, which Nuclear Notes tools the model may call, and the mouse setting. It may lower `runtime.max_iterations` and `runtime.max_tool_exchanges` and may not raise them.
+Settings that decide where your prompts go or how much Zaru asks are yours alone. `./zaru.toml` is refused if it sets any of them: the permission mode, the allowlist, the runtime tier, which provider answers for a model alias and where it is reached, the persona page, which Carbon Forge tools the model may call, and the mouse setting. It may lower `runtime.max_iterations` and `runtime.max_tool_exchanges` and may not raise them.

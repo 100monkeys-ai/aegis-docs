@@ -7,7 +7,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 # Profiles
 
-A profile is your own named set of connections (a mailbox, a calendar account, a Nuclear Notes token, a GitHub token and so on, any number of any kind) with a list of the tools they may use, and optional defaults. You choose a profile for a conversation, and every run started from it, or for a schedule, instead of choosing connections one by one.
+A profile is your own named set of connections (a mailbox, a calendar account, a Carbon Forge (formerly Nuclear Notes) token, a GitHub token and so on, any number of any kind) with a list of the tools they may use, and optional defaults. You choose a profile for a conversation, and every run started from it, or for a schedule, instead of choosing connections one by one.
 
 A run carries one profile or chosen connections, never both. Choosing both is refused: "Choose one profile, or choose connections without a profile; not both."
 
@@ -23,7 +23,7 @@ A run, a schedule or an API key reaches only the connections its profile names, 
 | `bindings`        | Your own active connections, by id, in order. A connection revoked or deleted later stays listed as `removed`. |
 | `tools`           | The tools the profile allows, each an exact name (`mail.reply`) or a family written `<family>.*` (`nuclear-notes.*`). Empty: every tool these connections allow. |
 | `repository`      | A default repository, one of your git repository bindings. |
-| `notes_workspace` | A default Nuclear Notes workspace, by id or slug (1 to 128 characters). |
+| `notes_workspace` | A default Carbon Forge workspace, by id or slug (1 to 128 characters). |
 | `instructions`    | Your instructions for conversations on this profile, at most 4,000 characters. |
 
 A profile can only narrow what your plan allows. Each entry of `tools` must match a tool your security context admits for the profile's connections, or it is refused: "A profile can only narrow the tools your plan allows; &lt;pattern&gt; is not one of them."
@@ -52,10 +52,10 @@ An "Always allow" or "Always deny" choice made on a profile's run applies to tha
 
 ## In Zaru Web
 
-- **Vault, Profiles.** `/vault/profiles` lists your profiles with their connections and tool count. **New profile** and each profile's page share one form: a name; your connections grouped by type; the tools those connections allow, by family, with "Needs your approval" beside a tool that waits for your approval and "All tools these connections allow" for an empty list; a repository, a Nuclear Notes workspace and instructions. A profile with a removed connection says "A connection in this profile was removed."
-- **In a conversation.** The context selector above the chat input opens its list upward over the conversation, at most half the window's height, scrolling when the list is longer. It lists **None**, then **Profiles** (one at a time), then your connections by type; choosing a profile clears chosen connections and the other way round, and the selector reads "Profile: &lt;name&gt;". The profile is stored with the conversation, so its later turns, and the runs they start, use it. Zaru is told the profile's name, its Nuclear Notes workspace (used when a Nuclear Notes call names none) and your instructions for it.
+- **Vault, Profiles.** `/vault/profiles` lists your profiles with their connections and tool count. **New profile** and each profile's page share one form: a name; your connections grouped by type; the tools those connections allow, by family, with "Needs your approval" beside a tool that waits for your approval and "All tools these connections allow" for an empty list; a repository, a Carbon Forge workspace and instructions. A profile with a removed connection says "A connection in this profile was removed."
+- **In a conversation.** The context selector above the chat input opens its list upward over the conversation, at most half the window's height, scrolling when the list is longer. It lists **None**, then **Profiles** (one at a time), then your connections by type; choosing a profile clears chosen connections and the other way round, and the selector reads "Profile: &lt;name&gt;". The profile is stored with the conversation, so its later turns, and the runs they start, use it. Zaru is told the profile's name, its Carbon Forge workspace (used when a Carbon Forge call names none) and your instructions for it.
 - **API keys.** Each key's row on **Settings → API Keys** chooses its profile, **None** first. See [API Keys](/docs/zaru/api-keys).
-- **Schedules.** The schedule form saves a profile or chosen connections, never both; a profile's repository and Nuclear Notes workspace fill the form, and a **Schedule this?** card or a run's **Schedule this** opens it on the conversation's profile. See [Schedules](/docs/workflows/schedules).
+- **Schedules.** The schedule form saves a profile or chosen connections, never both; a profile's repository and Carbon Forge workspace fill the form, and a **Schedule this?** card or a run's **Schedule this** opens it on the conversation's profile. See [Schedules](/docs/workflows/schedules).
 
 ---
 
@@ -69,7 +69,7 @@ x-zaru-contexts: {"@profile":"0000daeb-ae45-4d06-9712-9d498a653b24"}
 
 Without `@profile`, the same header names connections instead: for each tool server, a binding id, a list of binding ids, or `null` for none. `@profile` beside any other key, a list under it, or any other key beginning with `@` is answered `400` with "Choose one profile, or choose connections without a profile; not both."; any other shape with "x-zaru-contexts must be a JSON object naming one profile as @profile, or, for each server, a binding id, a list of binding ids, or null".
 
-With a profile chosen, every call the server forwards carries it, the tools offered are the profile's, and a tool that starts a run starts it on the profile. `zaru.init` and `zaru.mode` teach the model the profile's name, its Nuclear Notes workspace and its instructions.
+With a profile chosen, every call the server forwards carries it, the tools offered are the profile's, and a tool that starts a run starts it on the profile. `zaru.init` and `zaru.mode` teach the model the profile's name, its Carbon Forge workspace and its instructions.
 
 A call of a tool that starts a run (`aegis.task.execute`, `aegis.agent.generate`, `aegis.execute.intent`, `aegis.workflow.generate`, `aegis.workflow.run`) may also carry `profile`, one profile id, which the client writes from the person's choice; a call that carries none takes the request's profile, and a call made inside a run takes the run's.
 
