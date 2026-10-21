@@ -13,8 +13,7 @@ tools and behavior.
 
 ## Conversation Modes
 
-Select a mode from the toolbar before sending your first message. The mode is locked once the
-first message is sent.
+Choose a mode in the [conversation panel](#the-conversation-panel) above the input before sending your first message. The mode is locked once the first message is sent.
 
 | Mode | Purpose |
 |---|---|
@@ -37,6 +36,8 @@ In Agentic mode, after the turn has answered, the platform's judge reads the goa
 
 While the goal is open the page re-reads the conversation every 30 seconds and when you return to the tab, so new cards appear without a reload. A message you send while a continuation round runs is refused, as it is while any turn runs; a later message that starts a new creation or execution replaces the open goal with a new one. If your sign-in can no longer be refreshed, the goal pauses with a card saying so, and the next turn in the conversation carries it on while it is still open.
 
+When Zaru cancels one execution of the goal, with `aegis.task.cancel` or `aegis.workflow.cancel`, the goal stays open and the cancelled execution stays bound to it, so Zaru can start the corrected execution under the same goal. To end the goal itself Zaru calls `aegis.goal.cancel`, and **Stop** cancels it with the turn.
+
 In Workflow and Execute modes the goal is set and shown, but not judged or continued. No goal is set in Chat mode, in operator mode, or in a conversation on your own provider key. The cards are not part of the conversation history the model reads.
 
 ---
@@ -49,7 +50,7 @@ A wait tool's card (`aegis.agent.wait`, `aegis.task.wait`, `aegis.execute.wait`,
 
 Such a card then reads the run's own status every five seconds until the run is over. Once it has ended, the card's title becomes **Done**, **Failed** or **Cancelled**, and a line under it says how it ended, with the state and the time where the run names them: "The run failed in CODE at 2026-10-13 03:14:56 UTC." A card that cannot read the run keeps the tool's answer and says "Zaru couldn't read this run's current state." A workflow wait reads the workflow run's own status, and the run's summary card under it shows the run's end too. Earlier checks folded inside a card are not read again.
 
-When a call is refused because something is not connected, not chosen for the conversation or not in its profile, or when Zaru asks with `zaru.connection.needed` what is missing ([MCP Tools](/docs/zaru/mcp-tools#zaruconnectionneeded)), a connection card appears under the call's tool card, also when the call failed. It has one line and one button: "A mailbox is not connected to Zaru." (or a calendar, GitHub, Carbon Forge (formerly Nuclear Notes) or the server's name) with **Open Connections**; "Your mailbox is connected but not chosen for this conversation." with **Choose it under Context**, which opens the context selector above the input; "The profile chosen for this conversation does not allow this." with **Open the profile**; or "The profile chosen for this conversation no longer exists." with **Open Profiles**. The link brings you back: once the connection is saved, on the Connections page, in its IMAP or CalDAV form or through a provider's consent screen, or the profile is saved, Zaru Web returns to this conversation where you left it, and you ask again; nothing is sent for you. Once the family is connected, or the profile admits the tool, the card collapses to "Connected.". Zaru tells you in one sentence what is missing and that the card takes you there, and ends its turn.
+When a call is refused because something is not connected, not chosen for the conversation or not in its profile, or when Zaru asks with `zaru.connection.needed` what is missing ([MCP Tools](/docs/zaru/mcp-tools#zaruconnectionneeded)), a connection card appears under the call's tool card, also when the call failed. It has one line and one button: "A mailbox is not connected to Zaru." (or a calendar, GitHub, Carbon Forge (formerly Nuclear Notes) or the server's name) with **Open Connections**; "Your mailbox is connected but not chosen for this conversation." with **Choose it under Context**, which opens the conversation panel above the input; "The profile chosen for this conversation does not allow this." with **Open the profile**; or "The profile chosen for this conversation no longer exists." with **Open Profiles**. The link brings you back: once the connection is saved, on the Connections page, in its IMAP or CalDAV form or through a provider's consent screen, or the profile is saved, Zaru Web returns to this conversation where you left it, and you ask again; nothing is sent for you. Once the family is connected, or the profile admits the tool, the card collapses to "Connected.". Zaru tells you in one sentence what is missing and that the card takes you there, and ends its turn.
 
 By default a turn makes at most 12 model calls. When the last one still calls tools, the turn ends with a card, "I used all my steps for this turn before finishing.", and a **Keep going** button: pressing it continues the same turn from its stored steps with a fresh allowance, without a new message from you, and the card then reads "Kept going.". A goal's continuation rounds show no such card.
 
@@ -73,17 +74,17 @@ In Workflow and Agentic modes, when Zaru starts a run it says the run has starte
 
 ---
 
-## Model Selector
+## The Conversation Panel
 
-The model selector in the toolbar lets you choose which language model powers the conversation.
+The line above the input names the conversation's context, model and mode, for example "Context: None · Model: Zaru · Mode: Chat". A chosen profile reads "Profile: &lt;name&gt;" in place of the context, a provider of yours reads by its name and the model's, and in Code mode the line names no model. A tap on the line opens the conversation panel over the conversation, on a phone and a desktop alike, with three sections in order:
 
-**Zaru Default** — the platform-managed model. This is the default for all tiers and requires
-no configuration.
+- **Context**: None, your profiles, and your connections by type, then **Manage tokens** ([Profiles](/docs/zaru/profiles)).
+- **Provider and model**: Zaru first, then each of your providers by name with its models, the current one checked. A provider with no models shows "Add models in The Vault, Providers", a link to The Vault's Providers page, and the section ends with **Manage providers**, a link to the same page. Code mode has no Provider and model section.
+- **Mode**: each mode you may choose with its description: Chat "Conversation only", Agentic "Run AI agents", Workflow "Design & run workflows", Execute "Run code from natural language", Code "Build apps with live preview" when Code is on, Live "Run TypeScript in-browser" when Live is on, and Operator "Full platform access" for an operator or admin. Code is not offered on a phone-width screen. After the first message the section shows the conversation's mode and its description and offers no choice.
 
-**BYOK (Bring Your Own Key)** — Pro and higher tiers can connect their own API keys for
-supported providers (OpenAI, Anthropic, Google) via [The Vault](/docs/zaru/vault). Once a
-provider key is saved and granted, it appears as an option in the model selector. BYOK users
-are exempt from LLM-specific rate limits.
+A choice in any section leaves the panel open; sending, Escape and a tap outside it close it. The panel cannot be opened while a turn runs, so the provider and model are chosen between turns. The chat's header carries neither the model choice nor the mode.
+
+**Zaru** is the platform-managed model: the default, with no configuration. **Your own providers** are added on The Vault's [Providers](/docs/zaru/vault) page (`/vault/providers`): Zaru sends your messages to them using your own key, which stays in your vault and is sent only to that provider, and your provider bills you for what you use. A turn on one of your providers is handed an output budget of 16,384 tokens, on every protocol. BYOK users are exempt from LLM-specific rate limits.
 
 ---
 

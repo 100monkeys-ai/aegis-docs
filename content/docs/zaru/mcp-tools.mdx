@@ -523,7 +523,7 @@ Follow with `aegis.agent.wait` to block until generation completes.
 | `limit`        | No       | 50      | Maximum events (cap: 200)  |
 | `offset`       | No       | 0       | Pagination offset          |
 
-**`aegis.task.cancel`** — Cancels an active execution.
+**`aegis.task.cancel`** — Cancels one running agent execution by its id. The person's goal stays open and the execution stays bound to it, so the corrected execution can start next; `aegis.goal.cancel` ends the whole request.
 
 ```json
 // aegis.task.cancel
@@ -651,7 +651,7 @@ Blocks until the pipeline execution completes. Pass the `pipeline_execution_id` 
 
 ### `aegis.goal.cancel`
 
-Stops the person's goal: no further round, every execution still running for it cancelled, and the goal closed `cancelled` with the reason given. The companion calls it when the person asks to stop. Also available in agentic and architect modes.
+Stops the person's goal: no further round, every execution still running for it cancelled, and the goal closed `cancelled` with the reason given. The companion calls it when the person asks to stop; to stop one execution and go on, it cancels that execution instead. Also available in agentic and architect modes.
 
 | Parameter | Required | Description                                                                   |
 | --------- | -------- | ----------------------------------------------------------------------------- |
@@ -867,7 +867,7 @@ These tools manage the registry directly. They take a manifest YAML and register
 
 ### Workflow Execution Control
 
-**`aegis.workflow.cancel`** — Gracefully cancels a running workflow execution.
+**`aegis.workflow.cancel`** — Cancels one running workflow execution by its id. The person's goal stays open, so the corrected run can start next; `aegis.goal.cancel` ends the whole request.
 
 ```json
 // aegis.workflow.cancel

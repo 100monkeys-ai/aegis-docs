@@ -287,3 +287,19 @@ Four independent timeout boundaries apply to every execution. They nest from out
 The outer timeout is a hard wall: if the total execution time exceeds `spec.security.resources.timeout`, the orchestrator cancels the execution regardless of which iteration is in progress. The per-iteration timeout is reset for each new iteration, so a long-running first iteration does not consume the per-iteration budget of subsequent attempts.
 
 `bootstrap.py` holds no timeout of its own: an agent container whose iteration never answers is ended by the iteration's bound, then by the execution's. The orchestrator records each execution's bound when it starts; see [Container Cleanup Guarantees](/docs/architecture/execution-engine#container-cleanup-guarantees) for what ends an execution that outlives it.
+
+### Room for Two Tries
+
+An agent that may try more than once (`spec.execution.max_retries`, or its alias `max_iterations`, of 2 or more; 5 when unset) must have an execution bound with room for two whole tries: 2 × (its `iteration_timeout`, 600 s when unset, plus the `timeout_seconds` of its `semantic` and `multi_judge` validators) + 15 s, the wait after a failed first try, + 30 s to start the container. Creating or updating an agent whose `resources.timeout` (1800 s when unset) is under that figure is refused, by every path that creates or updates an agent, with:
+
+> Agent '&lt;name&gt;' is refused (execution-bound/two-tries): resources.timeout &lt;bound&gt; s is under the &lt;need&gt; s that two whole tries need (iteration_timeout &lt;i&gt; s and its judges' &lt;j&gt; s each, the wait between them and the start). Set resources.timeout to &lt;need&gt;s or more, or max_retries to 1.
+
+For example, an agent with `max_retries: 3`, no `iteration_timeout` and one semantic judge of `timeout_seconds: 180` needs 2 × (600 + 180) + 15 + 30 = 1605 s: at `resources.timeout: 900s` it is refused, naming 900 s and 1605 s, and at `1605s`, or at `max_retries: 1`, it is accepted. Some of the platform's built-in agents keep bounds of their own; an agent of yours with the same name does not.
+
+Agents stored before this check whose bound was under their figure had `resources.timeout` raised to it once, when the check was deployed; nothing else in their manifests changed, and `aegis.agent.export` shows the new bound. An agent that declares no `spec.security` and needs more than 1800 s was left as it was.
+
+### When a Later Try Does Not Fit
+
+The first try always starts. A later try starts only when the time left under `resources.timeout` is at least one whole try, its `iteration_timeout` plus its judges' `timeout_seconds`. When it is not, the execution ends `failed` with the last try's cause first and the time second: "Execution ended after &lt;n&gt; tries: &lt;cause&gt;; a further try does not fit: &lt;left&gt; s left under the &lt;bound&gt; s bound, under the &lt;need&gt; s a try needs" ("after 1 try" for one). The cause is how the last try ended, for example "the last attempt's output was rejected: &lt;the judge's reason&gt;" or "the last attempt failed validation: &lt;the error&gt;".
+
+`aegis.task.status` and `aegis.task.wait` answer that sentence as `error`, the execution's own failure, beside `last_error`, the last try's error. `answer_rejected` is `true` when the last try answered and its semantic judge rejected the answer; the `status` is still `failed`, and `last_output` is the rejected answer.

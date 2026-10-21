@@ -134,6 +134,10 @@ Start an agent execution. Returns immediately with the `execution_id`; use the S
 
 ---
 
+### `GET /v1/executions`
+
+The caller's agent executions, newest first. Requires the scope `execution:list`. `limit` is the most executions answered (default 20, at most the node's `max_execution_list_limit`, 1000 when unset) and `offset` the number skipped from the newest (default 0), as `GET /v1/workflows/executions` pages workflow runs; `agent_id` keeps one agent's executions, and `workflow_name` those of the workflow of that name across its versions (a name the tenant does not have answers `{"error": "Workflow '<name>' not found"}`). The answer is an array of `{ id, agent_id, status, started_at, ended_at, tenant_id }` with no total, so a page shorter than `limit` is the last. An operator's request with neither filter lists every tenant's executions.
+
 ### `GET /v1/executions/{id}`
 
 The status of an agent execution, or of a workflow run. Requires the scope `execution:read`. A caller reads only executions of the tenant its request resolves to (a service account the tenant it names in `X-Tenant-Id`); an operator reads any tenant's.

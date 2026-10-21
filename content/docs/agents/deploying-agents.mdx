@@ -308,7 +308,7 @@ aegis task logs a1b2c3d4-1111-0000-0000-000000000001 --errors-only
 aegis task cancel a1b2c3d4-1111-0000-0000-000000000001
 ```
 
-Cancellation stops the current iteration's container, releases any held locks, and marks the execution as `cancelled`.
+Cancellation stops the current iteration's container, releases any held locks, and marks the execution as `cancelled`. When the execution is bound to a person's open goal in Zaru, this cancel, like `POST /v1/executions/{id}/cancel`, also closes the goal `cancelled`. The MCP tools `aegis.task.cancel` and `aegis.workflow.cancel` cancel the execution only: the goal stays open and the execution stays bound to it, so the corrected execution can start under the same goal, and `aegis.goal.cancel` ends the goal.
 
 ---
 

@@ -114,7 +114,7 @@ spec:
   # Execution strategy and validation
   execution:
     mode: iterative              # one-shot | iterative
-    max_iterations: 10           # range: 1–20; default: 10
+    max_iterations: 10           # range: 1–20; default: 5
     iteration_timeout: "60s"     # per-iteration timeout (default: 600s); "30s", "60s", "5m"
     memory: false                # enable Cortex memory system
     validation:
@@ -493,7 +493,7 @@ The agent's `spec.task.instruction` must reference `input.attachments` in prose.
 | `resources.cpu` | integer | | CPU limit in millicores (`1000` = 1 core). Default: `1000`. |
 | `resources.memory` | string | | Memory limit. Human-readable: `"512Mi"`, `"1Gi"`. Default: `"512Mi"`. |
 | `resources.disk` | string | | Disk quota. Human-readable: `"1Gi"`, `"10Gi"`. Default: `"1Gi"`. |
-| `resources.timeout` | string | | Total execution timeout. Human-readable: `"300s"`, `"5m"`, `"1h"`. Max `"1h"`. |
+| `resources.timeout` | string | | Total execution timeout. Human-readable: `"300s"`, `"5m"`, `"1h"`. Max `"1h"`. Default: `"1800s"`. When `execution.max_retries` is 2 or more it must fit two whole tries, 2 × (`iteration_timeout` + the judges' `timeout_seconds`) + 45 s, or the agent is refused on create and update ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)). |
 
 ### `spec.volumes[]`
 
@@ -515,8 +515,8 @@ The agent's `spec.task.instruction` must reference `input.attachments` in prose.
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `mode` | `iterative` \| `one-shot` | | `one-shot` | Execution strategy. |
-| `max_iterations` | integer | | `10` | Maximum refinement loops. Range: 1–20. |
-| `iteration_timeout` | string | | `"600s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations; an iteration still running then is ended by terminating its container. The first iteration always starts; a later one starts only when the time left under `security.resources.timeout` is at least `iteration_timeout`, otherwise the execution ends at once with "Execution ended: &lt;n&gt; s left under the &lt;bound&gt; s bound, under the &lt;iteration&gt; s a try needs". An iteration ended by the model provider's rate limit or unavailability is not counted against the tries. |
+| `max_iterations` | integer | | `5` | Maximum tries; `max_retries` is the same field. Range: 1–20. At 2 or more, `security.resources.timeout` must fit two whole tries ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)). |
+| `iteration_timeout` | string | | `"600s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations; an iteration still running then is ended by terminating its container. The first iteration always starts; a later one starts only when the time left under `security.resources.timeout` is at least a whole try, `iteration_timeout` plus its judges' `timeout_seconds`, otherwise the execution ends at once with "Execution ended after &lt;n&gt; tries: &lt;the last attempt's cause&gt;; a further try does not fit: &lt;left&gt; s left under the &lt;bound&gt; s bound, under the &lt;need&gt; s a try needs" ([When a Later Try Does Not Fit](/docs/agents/execution#when-a-later-try-does-not-fit)). An iteration ended by the model provider's rate limit or unavailability is not counted against the tries. |
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
 | `llm_timeout_seconds` | integer | | `300` | Bound in seconds on one model call the orchestrator makes for the agent. A call with no answer by then fails with an error naming `llm_timeout_seconds`, and the orchestrator answers the agent's request with an error. Inside a try, a provider's rate limit (`429`) or unavailability (a `5xx` other than its time limit) is retried for as long as the next attempt can start before the try's time left, each attempt after a wait in a fresh window of this bound, the backoff capped at 16 s and the provider's longer `Retry-After` honoured; a try it still ends is not counted ([LLM Providers](/docs/deployment/llm-providers)). `bootstrap.py` holds no timeout of its own. |
 | `validation` | `ValidatorSpec[]` | | | Ordered outer-loop validators executed after each iteration. |
@@ -774,7 +774,7 @@ Paths support glob patterns (e.g., `"/config/*.yaml"`). `filesystem.read_only: t
 
 #### Resource Limits — Timeout Hierarchy
 
-The `timeout` field is the outer bound for the entire execution. All validation sub-timeouts must fit within this budget:
+The `timeout` field is the outer bound for the entire execution. All validation sub-timeouts must fit within this budget, and an agent whose `max_retries` is 2 or more must fit two whole tries in it ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)):
 
 ```text
 security.resources.timeout                                    (e.g., 600s)
