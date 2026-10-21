@@ -873,10 +873,10 @@ The services whose connections a person chooses for this agent's runs: a mailbox
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `service` | string | ✓ | The service a chosen connection fills: `imap` (a mailbox), `caldav` (a calendar account), or a remote tool server's name, such as `nuclear-notes` or `github`. |
+| `service` | string | ✓ | The service a chosen connection fills: `imap` (a mailbox), `caldav` (a calendar account), or a remote tool server's name, such as `carbon-forge` or `github`. |
 | `required` | boolean | | `true`: a run with no connection chosen for the service is refused at start, before anything runs, with `agent '<name>' requires a <service> context and none was chosen`. Default: `false`. |
 
-A context the run fills with a connection adds `<service>.*` to the tools the run may call, so a remote tool server's tools (named `<service>.<tool>`, such as `nuclear-notes.pages.read`) are admitted without `spec.tools` naming them. The mail and calendar tools are not named by their service, so an agent that uses them lists them in `spec.tools`. A manifest is refused when a context names no service (`spec.contexts: a context names no service`) or names one twice (`spec.contexts: the service '<service>' is declared twice`).
+A context the run fills with a connection adds `<service>.*` to the tools the run may call, so a remote tool server's tools (named `<service>.<tool>`, such as `carbon-forge.pages.read`) are admitted without `spec.tools` naming them. The mail and calendar tools are not named by their service, so an agent that uses them lists them in `spec.tools`. A manifest is refused when a context names no service (`spec.contexts: a context names no service`) or names one twice (`spec.contexts: the service '<service>' is declared twice`). `carbon-forge` was formerly named `nuclear-notes`; the former name is still accepted for at least 90 days from 21 October 2026.
 
 An agent that works in a person's mailbox and keeps its pages in their Carbon Forge, needing both connections on every run (from the email examples' clerk agent):
 
@@ -885,7 +885,7 @@ spec:
   contexts:
     - service: imap
       required: true
-    - service: nuclear-notes
+    - service: carbon-forge
       required: true
 
   tools:
@@ -898,11 +898,11 @@ spec:
     - aegis.approval.status
     - fs.write
     - cmd.run
-    - nuclear-notes.pages.list
-    - nuclear-notes.pages.read
-    - nuclear-notes.pages.create
-    - nuclear-notes.pages.patch_metadata
-    - nuclear-notes.pages.apply_patch
+    - carbon-forge.pages.list
+    - carbon-forge.pages.read
+    - carbon-forge.pages.create
+    - carbon-forge.pages.patch_metadata
+    - carbon-forge.pages.apply_patch
 ```
 
 ### `spec.default_schedule`

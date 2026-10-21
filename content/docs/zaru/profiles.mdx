@@ -21,7 +21,7 @@ A run, a schedule or an API key reaches only the connections its profile names, 
 | ----------------- | ----------- |
 | `name`            | 1 to 64 characters, unique among your profiles. |
 | `bindings`        | Your own active connections, by id, in order. A connection revoked or deleted later stays listed as `removed`. |
-| `tools`           | The tools the profile allows, each an exact name (`mail.reply`) or a family written `<family>.*` (`nuclear-notes.*`). Empty: every tool these connections allow. |
+| `tools`           | The tools the profile allows, each an exact name (`mail.reply`) or a family written `<family>.*` (`carbon-forge.*`). Empty: every tool these connections allow. `carbon-forge` was formerly named `nuclear-notes`; the former name is still accepted for at least 90 days from 21 October 2026. |
 | `repository`      | A default repository, one of your git repository bindings. |
 | `notes_workspace` | A default Carbon Forge workspace, by id or slug (1 to 128 characters). |
 | `instructions`    | Your instructions for conversations on this profile, at most 4,000 characters. |
@@ -32,7 +32,7 @@ A profile can only narrow what your plan allows. Each entry of `tools` must matc
 
 ## What a Profile Governs
 
-A profile governs the tools of its connections' families: `mail.*` for a mailbox, `calendar.*` for a calendar account, and the provider's own family for any other connection (for example `nuclear-notes.*` or `github.*`). For those tools:
+A profile governs the tools of its connections' families: `mail.*` for a mailbox, `calendar.*` for a calendar account, and the provider's own family for any other connection (for example `carbon-forge.*` or `github.*`). For those tools:
 
 - **Listing.** A run or conversation on the profile is offered only the tools the profile allows.
 - **Calling.** Every call of a governed tool is checked against the profile as it stands at that moment, after the security context's own check and before the approval gate. A tool the profile does not allow is refused `TOOL_NOT_IN_PROFILE`: "This tool is not in the profile chosen for this conversation." in a conversation, "This tool is not in the profile chosen for this run." in a run; the refusal names the profile's page, and Zaru Web shows a card with a link to it.
@@ -98,7 +98,7 @@ A profile answers as:
     "bindings": [
       { "binding_id": "44217ea5-…", "state": "active", "label": "ann@example.com" }
     ],
-    "tools": ["nuclear-notes.*", "mail.draft", "mail.reply", "mail.list", "mail.read"],
+    "tools": ["carbon-forge.*", "mail.draft", "mail.reply", "mail.list", "mail.read"],
     "repository": null,
     "notes_workspace": "fundraising",
     "instructions": null,

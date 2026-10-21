@@ -111,7 +111,7 @@ Zaru's MCP server forwards the `aegis.*` tools to AEGIS. When AEGIS refuses such
 | --------------------- | ------- |
 | `error.code`          | AEGIS's code for the refusal, from [Refusals and Errors](/docs/reference/builtin-tools#refusals-and-errors), or `invoke_failed` (below). |
 | `error.message`       | For a refusal of your call, AEGIS's own message: what was refused and why. For `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE` and `SERVICE_UNAVAILABLE`, the fixed sentence of that table, never the failure's detail. |
-| `error.needs`         | Present when the refusal is for a connection or a profile the person lacks: `{"family", "page"}`, the family (`mailbox`, `calendar`, `github`, `nuclear-notes`, a server's own name, or `profile`) and the Zaru Web page that resolves it, `/vault/connections` for a connection, `/vault/profiles/<profile id>` for a profile that does not admit the tool, and `/vault/profiles` for a profile that no longer exists or for a run, a schedule or a key whose profile names no connection of the family (Zaru Web's card then says "This run has no profile that names your &lt;family&gt;." with **Open Profiles**). Any other `needs` is dropped. |
+| `error.needs`         | Present when the refusal is for a connection or a profile the person lacks: `{"family", "page"}`, the family (`mailbox`, `calendar`, `github`, `carbon-forge`, a server's own name, or `profile`) and the Zaru Web page that resolves it, `/vault/connections` for a connection, `/vault/profiles/<profile id>` for a profile that does not admit the tool, and `/vault/profiles` for a profile that no longer exists or for a run, a schedule or a key whose profile names no connection of the family (Zaru Web's card then says "This run has no profile that names your &lt;family&gt;." with **Open Profiles**). Any other `needs` is dropped. |
 | `request_id`          | AEGIS's id for the refused call. Quote it when you report the failure: it lets an operator find what happened. |
 | `retry_after_seconds` | Present when AEGIS said how long to wait, on `RATE_LIMIT_EXCEEDED` and on `UPSTREAM_UNAVAILABLE`: the seconds to wait before calling again. |
 
@@ -180,7 +180,7 @@ Says what the person must connect or choose before a family of tools can be used
 
 | Parameter | Required | Default | Description |
 | --------- | -------- | ------- | ----------- |
-| `family`  | Yes      | —       | `mailbox`, `calendar`, `github`, `nuclear-notes`, or another connection's own name |
+| `family`  | Yes      | —       | `mailbox`, `calendar`, `github`, `carbon-forge`, or another connection's own name |
 
 ```json
 // zaru.connection.needed
@@ -196,7 +196,7 @@ Returns `{ needs, sentence }`:
 | Not in the chosen profile | `{"family": "profile", "page": "/vault/profiles/<profile id>"}` | "The profile chosen for this conversation does not allow this. Change it on the profile's page in Zaru Web." |
 | Nothing missing | `null` | "Your mailbox is connected and chosen for this conversation.", or, outside a Zaru Web turn, "Your mailbox is connected to Zaru." |
 
-A `family` that names no connection is refused "family must name one connection: mailbox, calendar, github, nuclear-notes, or another connection's own name." Every mode's instructions tell the companion to call it when a message needs a connection none of whose tools is listed, to tell the person in one sentence what to connect or choose and that the card above takes them there, and to end its turn; after a call refused for something not connected, not chosen or not in the chosen profile, to say what is missing in one sentence and end its turn; and never to say a connection is or is not made unless a tool's answer says so.
+A `family` that names no connection is refused "family must name one connection: mailbox, calendar, github, nuclear-notes, carbon-forge, or another connection's own name." `carbon-forge` was formerly named `nuclear-notes`; the former name is still accepted for at least 90 days from 21 October 2026. Every mode's instructions tell the companion to call it when a message needs a connection none of whose tools is listed, to tell the person in one sentence what to connect or choose and that the card above takes them there, and to end its turn; after a call refused for something not connected, not chosen or not in the chosen profile, to say what is missing in one sentence and end its turn; and never to say a connection is or is not made unless a tool's answer says so.
 
 ### `zaru.memory.get`
 

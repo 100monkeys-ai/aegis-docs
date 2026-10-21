@@ -493,8 +493,10 @@ security_contexts:
       - tool_pattern: "aegis.document.render"
       # The remote tool servers, one pattern each: listed to a person's agent
       # only when they hold a connection granted to it, and only by the exact
-      # names the agent declares.
-      - tool_pattern: "nuclear-notes.*"
+      # names the agent declares. carbon-forge was formerly named nuclear-notes;
+      # the former name is still accepted for at least 90 days from 21 October
+      # 2026, and a call under it is matched by the carbon-forge pattern.
+      - tool_pattern: "carbon-forge.*"
       - tool_pattern: "github.*"
       - tool_pattern: "aegis.execute.intent"
       - tool_pattern: "aegis.execute.status"
@@ -594,7 +596,7 @@ security_contexts:
       # The remote tool servers, one pattern each: listed to a person's agent
       # only when they hold a connection granted to it, and only by the exact
       # names the agent declares.
-      - tool_pattern: "nuclear-notes.*"
+      - tool_pattern: "carbon-forge.*"
       - tool_pattern: "github.*"
       - tool_pattern: "aegis.execute.intent"
       - tool_pattern: "aegis.execute.status"
@@ -733,7 +735,7 @@ security_contexts:
       - tool_pattern: "aegis.attachment.read"
       # A remote tool server's tools, reached only through a connection the
       # person chose for the run.
-      - tool_pattern: "nuclear-notes.*"
+      - tool_pattern: "carbon-forge.*"
     deny_list: []
 
   - name: aegis-system-operator
