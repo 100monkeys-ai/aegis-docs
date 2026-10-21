@@ -82,7 +82,8 @@ spec:
     resources:
       cpu: 1000
       memory: "1Gi"
-      timeout: "300s"
+      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
+      timeout: "1260s"
 
   volumes:
     - name: workspace

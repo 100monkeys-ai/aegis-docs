@@ -127,7 +127,8 @@ spec:
     resources:
       cpu: 500
       memory: "512Mi"
-      timeout: "30s"
+      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
+      timeout: "1260s"
 
   execution:
     mode: one-shot
@@ -201,7 +202,8 @@ spec:
     resources:
       cpu: 500
       memory: "512Mi"
-      timeout: "120s"
+      # holds two tries: 2 × (600 s + the judge's 300 s) + 15 s + 30 s = 1845 s
+      timeout: "1860s"
 
   execution:
     mode: iterative
@@ -300,7 +302,8 @@ spec:
     resources:
       cpu: 500
       memory: "512Mi"
-      timeout: "60s"
+      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
+      timeout: "1260s"
 
   execution:
     mode: iterative
@@ -387,6 +390,7 @@ spec:
 
   execution:
     mode: one-shot
+    max_retries: 1  # a judge tries once
     validation:
       - type: json_schema
         schema:

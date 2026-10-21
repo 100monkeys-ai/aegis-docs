@@ -1573,12 +1573,16 @@ Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) the exe
   "last_output": "...",
   "produced_files": [{"path": "/workspace/report.pdf", "size_bytes": 48213, "content_type": "application/pdf"}],
   "last_error": null,
+  "error": null,
+  "answer_rejected": false,
   "started_at": "2026-04-05T12:00:00Z",
   "ended_at": "2026-04-05T12:01:00Z"
 }
 ```
 
 The `status` field is one of `pending`, `running`, `completed`, `failed`, or `cancelled`.
+
+`error` is the execution's own failure reason, beside `last_error`, the last try's error. `answer_rejected` is `true` when the last try answered and its semantic judge rejected that answer, otherwise `false`; an execution that ends this way is `failed`, and `last_output` is the rejected answer ([When a Later Try Does Not Fit](/docs/agents/execution#when-a-later-try-does-not-fit)).
 
 `produced_files` lists the files the execution's declared outputs ([`spec.execution.outputs`](/docs/reference/agent-manifest#outputs)) found once it completed, each with `path`, `size_bytes` and `content_type`; before completion, and for an execution with no declared outputs, it is empty.
 
@@ -1615,7 +1619,7 @@ Under an [operator escalation](/docs/zaru/mcp-tools#operator-escalation) and wit
 
 ### `aegis.task.cancel`
 
-Cancels an active agent execution by UUID.
+Cancels one running agent execution by UUID. The person's goal stays open and the execution stays bound to it, so the corrected execution can start next; [`aegis.goal.cancel`](#aegisgoalcancel) ends the whole request.
 
 **Access:** User
 
@@ -1722,12 +1726,14 @@ Polls an execution until it reaches a terminal state and returns the result.
   "last_output": "...",
   "produced_files": [{"path": "/workspace/report.pdf", "size_bytes": 48213, "content_type": "application/pdf"}],
   "last_error": null,
+  "error": null,
+  "answer_rejected": false,
   "started_at": "2026-04-05T12:00:00Z",
   "ended_at": "2026-04-05T12:01:30Z"
 }
 ```
 
-The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`.
+The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`. A terminal answer carries `error` and `answer_rejected` as `aegis.task.status` does.
 
 A terminal answer carries `produced_files` as `aegis.task.status` does.
 

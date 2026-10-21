@@ -81,7 +81,8 @@ spec:
       cpu: 1000                  # millicores (1000 = 1 CPU core)
       memory: "1Gi"             # human-readable: "512Mi", "1Gi", "2Gi"
       disk: "5Gi"               # human-readable disk quota
-      timeout: "300s"           # human-readable: "300s", "5m", "1h"
+      # holds two tries: 2 × (60 s + the judge's 300 s) + 15 s + 30 s = 765 s
+      timeout: "780s"           # human-readable: "300s", "5m", "1h"
 
   # Volume mounts (ephemeral and persistent storage)
   volumes:
@@ -985,7 +986,8 @@ spec:
     resources:
       cpu: 1000
       memory: "1Gi"
-      timeout: "300s"
+      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
+      timeout: "1260s"
 
   execution:
     mode: iterative
@@ -1027,7 +1029,8 @@ spec:
     resources:
       cpu: 1000
       memory: "1Gi"
-      timeout: "120s"
+      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
+      timeout: "1260s"
 
   volumes:
     - name: workspace
@@ -1071,7 +1074,8 @@ spec:
     resources:
       cpu: 500
       memory: "512Mi"
-      timeout: "120s"
+      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
+      timeout: "1260s"
 
   volumes:
     - name: workspace
@@ -1181,6 +1185,7 @@ spec:
 
   execution:
     mode: one-shot
+    max_retries: 1  # a judge tries once
     validation:
       system:
         must_succeed: true

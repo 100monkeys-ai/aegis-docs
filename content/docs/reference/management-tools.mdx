@@ -616,7 +616,7 @@ Checks the current status and progress of a running or completed execution.
 |-----------|------|----------|---------|-------------|
 | `execution_id` | `string` | ✅ | — | UUID of the execution to query. |
 
-**Returns:** A status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `produced_files`, `last_error`, `started_at`, and `ended_at`.
+**Returns:** A status object including `status` (`pending | running | completed | failed | cancelled`), `iteration_count`, `last_output`, `produced_files`, `last_error`, `error`, `answer_rejected`, `started_at`, and `ended_at`. `error` is the execution's own failure reason, beside `last_error`, the last try's error. `answer_rejected` is `true` when the last try answered and its semantic judge rejected that answer, otherwise `false`; an execution that ends this way is `failed`, and `last_output` is the rejected answer.
 
 ### `aegis.task.wait`
 
@@ -628,7 +628,7 @@ Blocks until an execution reaches a terminal state (completed, failed, or cancel
 | `poll_interval_seconds` | `integer` | ❌ | `10` | Seconds between internal status polls. Minimum: 1. |
 | `timeout_seconds` | `integer` | ❌ | `300` | Maximum seconds to wait before returning a timeout. Minimum: 1. |
 
-**Returns:** Same shape as `aegis.task.status` but guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `produced_files`, `last_error`, `started_at`, and `ended_at`.
+**Returns:** Same shape as `aegis.task.status` but guaranteed to be in a terminal state (`completed`, `failed`, `cancelled`) or `timed_out`. Includes `status`, `iteration_count`, `last_output`, `produced_files`, `last_error`, `error`, `answer_rejected`, `started_at`, and `ended_at`.
 
 ### `aegis.task.list`
 
@@ -687,7 +687,7 @@ aegis task logs <execution_id> --follow        # stream events live
 
 ### `aegis.task.cancel`
 
-Gracefully stops a running execution.
+Gracefully stops a running execution. The person's goal stays open and the execution stays bound to it, so the corrected execution can start next; `aegis.goal.cancel` ends the whole request.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
