@@ -162,7 +162,7 @@ aegis agent run sentiment-classifier \
 
 ## Example 2: Data Extraction Agent
 
-Extraction tasks benefit from iterative refinement — the first attempt may miss fields or produce invalid structure. Setting `mode: iterative` lets the orchestrator feed validation errors back to the LLM for correction.
+Extraction tasks benefit from iterative refinement — the first attempt may miss fields or produce invalid structure. Tries above one (`max_iterations` of 2 or more) let the orchestrator feed validation errors back to the LLM for correction.
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
@@ -498,7 +498,7 @@ The SDK call returns when the agent completes — whether that took one iteratio
 | Scenario | Use |
 |---|---|
 | Single task with typed input and output | Agent |
-| Task that benefits from iterative self-correction | Agent with `mode: iterative` |
+| Task that benefits from iterative self-correction | Agent with `max_iterations` of 2 or more |
 | Multi-step pipeline with sequential states | Workflow |
 | Branching logic based on output scores | Workflow with score-based transitions |
 | Parallel quality gates with consensus | Workflow with `ParallelAgents` state |

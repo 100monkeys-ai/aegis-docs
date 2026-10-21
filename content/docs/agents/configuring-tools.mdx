@@ -132,7 +132,7 @@ For example, with the allowlist above:
 
 ### Receiving the result
 
-The agent receives the subprocess result as a tool result message in its LLM context. The message includes `exit_code`, `stdout`, and `stderr`. If `exit_code` is non-zero and the agent's `execution.validation.system.must_succeed` is `true`, the iteration is marked as failed and the refinement loop begins.
+The agent receives the subprocess result as a tool result message in its LLM context. The message includes `exit_code`, `stdout`, and `stderr`. If `exit_code` is non-zero and the agent's `execution.validation` holds an `exit_code` validator, the iteration is marked as failed and the refinement loop begins.
 
 ---
 

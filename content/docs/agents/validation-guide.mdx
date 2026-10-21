@@ -38,17 +38,18 @@ Use this as the first validator to catch hard failures (e.g., uncaught exception
 
 ### `json_schema`
 
-Validates a file in the agent's workspace against a JSON Schema. Deterministic.
+Validates the agent's output against a JSON Schema document. Deterministic.
 
 ```yaml
 validation:
   - type: json_schema
-    schema_path: /agent/output_schema.json   # path inside container
-    target_path: /workspace/result.json      # file to validate
-    min_score: 1.0                           # must fully pass schema
+    schema:                  # the JSON Schema, written inline
+      type: object
+      required: [result]
+    min_score: 1.0           # must fully pass schema
 ```
 
-The schema file is baked into the container image at `schema_path`. The `target_path` is the file the agent is expected to produce in its workspace volume.
+The schema is written inline under `schema`; the validator reads the agent's output as JSON and checks it against that schema.
 
 ### `regex`
 
