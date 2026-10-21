@@ -515,7 +515,7 @@ The agent's `spec.task.instruction` must reference `input.attachments` in prose.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `mode` | `iterative` \| `one-shot` | | `one-shot` | Execution strategy. |
+| `mode` | `iterative` \| `one-shot` | | `one-shot` | Accepted and stored with the agent; it does not change how many tries run, which `max_iterations` alone bounds. |
 | `max_iterations` | integer | | `5` | Maximum tries; `max_retries` is the same field. Range: 1–20. At 2 or more, `security.resources.timeout` must fit two whole tries ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)). |
 | `iteration_timeout` | string | | `"600s"` | Per-iteration timeout. Human-readable: `"30s"`, `"60s"`, `"5m"`. Each iteration gets this much time for LLM calls + tool invocations; an iteration still running then is ended by terminating its container. The first iteration always starts; a later one starts only when the time left under `security.resources.timeout` is at least a whole try, `iteration_timeout` plus its judges' `timeout_seconds`, otherwise the execution ends at once with "Execution ended after &lt;n&gt; tries: &lt;the last attempt's cause&gt;; a further try does not fit: &lt;left&gt; s left under the &lt;bound&gt; s bound, under the &lt;need&gt; s a try needs" ([When a Later Try Does Not Fit](/docs/agents/execution#when-a-later-try-does-not-fit)). An iteration ended by the model provider's rate limit or unavailability is not counted against the tries. |
 | `memory` | boolean | | `false` | Enable Cortex learning memory. |
@@ -800,7 +800,7 @@ An agent whose declared volume cannot be mounted is not started, so it never run
 
 ### `spec.execution`
 
-Controls the **100monkeys iterative execution strategy**. When `mode: iterative`, if any validation check fails the orchestrator sends the failure output back to the agent as `{{previous_error}}` and starts a new iteration (up to `max_iterations`). When `mode: one-shot`, the first run is final.
+Controls the **100monkeys iterative execution strategy**. If any validation check fails, the orchestrator sends the failure output back to the agent as `{{previous_error}}` and starts a new iteration, up to `max_iterations` tries in all (`max_retries` is the same field). `mode` is accepted and stored, and it does not change this: the tries are bounded by `max_iterations` alone, so an agent that must run once sets `max_retries: 1`, as a judge does.
 
 Setting `memory: true` enables the Cortex learning system to index refinements from this execution, improving suggestions for future runs.
 
@@ -1074,8 +1074,8 @@ spec:
     resources:
       cpu: 500
       memory: "512Mi"
-      # holds two tries: 2 × 600 s + 15 s + 30 s = 1245 s
-      timeout: "1260s"
+      # holds two tries: 2 × (600 s + the judge's 120 s) + 15 s + 30 s = 1485 s
+      timeout: "1500s"
 
   volumes:
     - name: workspace
@@ -1089,12 +1089,8 @@ spec:
     mode: iterative
     max_iterations: 8
     validation:
-      system:
-        must_succeed: true
-        allow_stderr: false
-        timeout_seconds: 60
-      output:
-        format: json
+      - type: exit_code
+      - type: json_schema
         schema:
           type: object
           required: ["entities", "relationships", "confidence"]
@@ -1107,9 +1103,11 @@ spec:
               type: number
               minimum: 0
               maximum: 1
-      semantic:
-        threshold: 0.85
-        fallback_on_unavailable: skip
+      - type: semantic
+        judge_agent: extraction-judge
+        criteria: "Every entity and relationship appears in the source document; none is invented."
+        min_score: 0.85
+        timeout_seconds: 120
 
   tools:
     - name: filesystem
@@ -1187,10 +1185,8 @@ spec:
     mode: one-shot
     max_retries: 1  # a judge tries once
     validation:
-      system:
-        must_succeed: true
-      output:
-        format: json
+      - type: exit_code
+      - type: json_schema
         schema:
           type: object
           required: ["score", "confidence", "reasoning"]

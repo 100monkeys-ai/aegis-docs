@@ -905,7 +905,7 @@ Alias for aegis.task.wait. Blocks until an agent execution completes.
 | ----------------------- | --------- | -------- | ------- | ---------------------------------------------------------------- |
 | `execution_id`          | `string`  | Yes      | —       | UUID of the execution to wait for.                               |
 | `poll_interval_seconds` | `integer` | No       | `10`    | Seconds between status polls (minimum: 1).                       |
-| `timeout_seconds`       | `integer` | No       | `300`   | Maximum seconds to wait before returning a timeout (minimum: 1). |
+| `timeout_seconds`       | `integer` | No       | `600`   | Maximum seconds to wait before returning a timeout (minimum: 1). |
 
 **Output:**
 
@@ -915,13 +915,16 @@ Alias for aegis.task.wait. Blocks until an agent execution completes.
   "status": "completed",
   "iteration_count": 3,
   "last_output": "...",
+  "produced_files": [],
   "last_error": null,
+  "error": null,
+  "answer_rejected": false,
   "started_at": "2026-04-05T12:00:00Z",
   "ended_at": "2026-04-05T12:01:30Z"
 }
 ```
 
-The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`.
+The `status` field will be one of `completed`, `failed`, `cancelled`, or `timed_out`. `error` is the execution's own failure, beside `last_error`, the last try's error. `answer_rejected` is `true` when the last try answered and its semantic judge rejected the answer; the `status` is still `failed`, and `last_output` is the rejected answer.
 
 ---
 
@@ -1714,7 +1717,7 @@ Polls an execution until it reaches a terminal state and returns the result.
 | ----------------------- | --------- | -------- | ------- | ---------------------------------------------------------------- |
 | `execution_id`          | `string`  | Yes      | —       | UUID of the execution to wait for.                               |
 | `poll_interval_seconds` | `integer` | No       | `10`    | Seconds between status polls (minimum: 1).                       |
-| `timeout_seconds`       | `integer` | No       | `300`   | Maximum seconds to wait before returning a timeout (minimum: 1). |
+| `timeout_seconds`       | `integer` | No       | `600`   | Maximum seconds to wait before returning a timeout (minimum: 1). |
 
 **Output:**
 

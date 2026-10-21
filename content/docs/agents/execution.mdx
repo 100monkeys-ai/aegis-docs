@@ -21,20 +21,20 @@ The practical effect: agents that would succeed roughly 60% of the time on a sin
 
 ## Execution Modes
 
-An agent's `spec.execution.mode` controls whether the orchestrator runs one attempt or the full iterative refinement loop.
+An agent's `spec.execution.mode` is `one-shot` (the default) or `iterative`. The orchestrator accepts and stores it, and it does not change how many tries run: every agent runs the refinement loop, up to `max_iterations` tries (`max_retries` is the same field), each failure fed back into the next try. An agent that must run once sets `max_iterations: 1`, as a judge does.
 
 ```yaml
 spec:
   execution:
-    mode: iterative     # "iterative" (default) | "single"
-    max_iterations: 10  # 1–10; default: 10
+    mode: iterative     # "one-shot" (default) | "iterative"; stored, does not change the tries
+    max_iterations: 10  # the tries, in all; default: 5
     iteration_timeout: "300s"  # per-iteration wall-clock limit; default: 600s
 ```
 
-| Mode | Behaviour |
+| `max_iterations` | Behaviour |
 |---|---|
-| `iterative` | Run up to `max_iterations` attempts. Inject failure context between attempts. Accept output only when all validators pass. |
-| `single` | Run exactly one attempt. Skip validation-driven retry logic. Useful for judge agents and short-lived classification tasks. |
+| 2 or more | Run up to `max_iterations` attempts. Inject failure context between attempts. Accept output only when all validators pass. |
+| `1` | Run exactly one attempt; its validators still score it, and a failing score ends the execution. Useful for judge agents and short-lived classification tasks. |
 
 ---
 
@@ -302,4 +302,4 @@ Agents stored before this check whose bound was under their figure had `resource
 
 The first try always starts. A later try starts only when the time left under `resources.timeout` is at least one whole try, its `iteration_timeout` plus its judges' `timeout_seconds`. When it is not, the execution ends `failed` with the last try's cause first and the time second: "Execution ended after &lt;n&gt; tries: &lt;cause&gt;; a further try does not fit: &lt;left&gt; s left under the &lt;bound&gt; s bound, under the &lt;need&gt; s a try needs" ("after 1 try" for one). The cause is how the last try ended, for example "the last attempt's output was rejected: &lt;the judge's reason&gt;" or "the last attempt failed validation: &lt;the error&gt;".
 
-`aegis.task.status` and `aegis.task.wait` answer that sentence as `error`, the execution's own failure, beside `last_error`, the last try's error. `answer_rejected` is `true` when the last try answered and its semantic judge rejected the answer; the `status` is still `failed`, and `last_output` is the rejected answer.
+`aegis.task.status` and `aegis.task.wait` (and `aegis.agent.wait`, its alias) answer that sentence as `error`, the execution's own failure, beside `last_error`, the last try's error. `answer_rejected` is `true` when the last try answered and its semantic judge rejected the answer; the `status` is still `failed`, and `last_output` is the rejected answer.

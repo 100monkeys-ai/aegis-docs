@@ -211,7 +211,7 @@ The judge agent specified in `semantic` or `multi_judge` validators is a regular
 - Run as **child executions** in the execution tree — visible in execution APIs and event streams for the parent execution.
 - Receive the worker execution's inherited mount context through `worker_mounts`, so file-based checks can inspect the same artifacts the worker can reach when the judge manifest permits access.
 
-Judges use `execution.mode: one-shot` with `max_retries: 1`. Judgment is a single-shot decision by design: at `max_retries: 1` the judge does not retry its own verdict through the iteration loop, and its short `resources.timeout` stands, since only an agent that may try again needs room for two tries ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)).
+Judges set `max_retries: 1`, so a judge tries once: judgment is a single decision by design, and the judge does not retry its own verdict through the iteration loop. `mode: one-shot` is stored with the manifest and does not limit the tries by itself; `max_retries` does. A judge's short `resources.timeout` stands, since only an agent that may try again needs room for two tries ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)).
 
 Example judge agent manifest:
 
@@ -244,10 +244,8 @@ spec:
     mode: one-shot
     max_retries: 1  # a judge tries once
     validation:
-      system:
-        must_succeed: true
-      output:
-        format: json
+      - type: exit_code
+      - type: json_schema
         schema:
           type: object
           required: ["score", "confidence", "reasoning"]
@@ -344,8 +342,7 @@ spec:
     mode: one-shot
     max_retries: 1  # a judge tries once
     validation:
-      output:
-        format: json
+      - type: json_schema
         schema:
           type: object
           required: ["score", "confidence", "reasoning"]
@@ -368,7 +365,7 @@ Because judge outputs influence whether an iteration succeeds, a compromised jud
 
 - **Disable network access when possible.** A judge evaluating code output rarely needs to make outbound calls. Use `security.network.mode: none` to prevent a prompt-injected payload from exfiltrating data or calling arbitrary APIs from inside the judge container. If the judge must call an LLM provider, use `mode: allow` and restrict `allowlist` to that provider's domain only (e.g., `api.openai.com`).
 - **Set a short timeout and one try.** Judgment should be fast. Use `resources.timeout: "60s"` or tighter, with `max_retries: 1`, to prevent a misbehaving judge from blocking iteration indefinitely.
-- **Validate judge output strictly.** The `output.schema` in the judge manifest should require `score`, `confidence`, and `reasoning` as non-nullable fields. A verdict the orchestrator cannot read, with no usable `score`, is a judge fault, not a failing score: the judge is run once more, and a second fault ends the worker's execution as failed with the fault as its reason (see [When a Verdict Cannot Be Read](/docs/agents/validation#when-a-verdict-cannot-be-read)).
+- **Validate judge output strictly.** The `json_schema` validator's `schema` in the judge manifest should require `score`, `confidence`, and `reasoning` as non-nullable fields. A verdict the orchestrator cannot read, with no usable `score`, is a judge fault, not a failing score: the judge is run once more, and a second fault ends the worker's execution as failed with the fault as its reason (see [When a Verdict Cannot Be Read](/docs/agents/validation#when-a-verdict-cannot-be-read)).
 
 ---
 

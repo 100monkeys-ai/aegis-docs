@@ -97,10 +97,8 @@ spec:
     mode: iterative
     max_iterations: 5
     validation:
-      system:
-        must_succeed: true
-      output:
-        format: json
+      - type: exit_code
+      - type: json_schema
         schema:
           type: object
           required: ["summary", "risks", "recommendations"]
@@ -224,7 +222,7 @@ After your first successful run:
 
 - Restrict `spec.security.network.allowlist` to only required domains.
 - Restrict `spec.security.filesystem.read`/`write` to minimal paths.
-- Add or tighten `spec.execution.validation.output.schema` rules.
+- Add or tighten the `schema` of the `json_schema` validator in `spec.execution.validation`.
 - Lower `max_iterations` when your agent behavior is stable.
 
 ---

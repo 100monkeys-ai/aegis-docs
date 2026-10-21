@@ -65,7 +65,7 @@ The workflow produces a complete AEGIS agent manifest with:
 - **Task instruction** set to the skill's full instruction body
 - **Tools** mapped from the skill's `allowed-tools` field to AEGIS MCP tool format
 - **Security policy** based on the selected preset
-- **Execution strategy** defaulting to one-shot mode
+- **Execution strategy** of one try: `max_retries: 1`, with `mode: one-shot` stored beside it
 
 ## Safety Validation
 

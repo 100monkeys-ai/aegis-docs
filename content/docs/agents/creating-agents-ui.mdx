@@ -184,7 +184,7 @@ Security is deny-by-default. You must explicitly declare:
 
 ### Execution
 
-- `mode` — `one-shot` (single attempt) or `iterative` (refine until validation passes)
+- `mode` — `one-shot` or `iterative`, stored with the agent; it does not change how many tries run, which `max_iterations` alone bounds (set it to 1 for a single attempt)
 - `max_iterations` — maximum refinement loops (1-20, default 10)
 - `validation` — ordered list of validators (exit code, JSON schema, semantic judge)
 

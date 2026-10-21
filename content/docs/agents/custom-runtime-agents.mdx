@@ -317,10 +317,8 @@ spec:
     mode: iterative
     max_iterations: 10
     validation:
-      system:
-        must_succeed: true
-      output:
-        format: json
+      - type: exit_code
+      - type: json_schema
         schema:
           type: object
           required: ["solution_path", "output"]
