@@ -186,8 +186,8 @@ validation:
 
   # 2. Deterministic: JSON schema check
   - type: json_schema
-    schema_path: /agent/schema.json
-    target_path: /workspace/output.json
+    schema:
+      type: object
     min_score: 1.0
 
   # 3. Expensive: LLM judge (only runs if the above pass)
@@ -384,7 +384,6 @@ Because judge outputs influence whether an iteration succeeds, a compromised jud
 | `min_agreement_confidence` | float | — | (`multi_judge` only) Minimum inter-judge agreement factor required before the consensus score is accepted. |
 | `criteria` | string | — | (`semantic`, `multi_judge`) Instructions to the judge about what to evaluate. |
 | `expected` | integer | `0` | (`exit_code` only) Expected process exit code. |
-| `schema_path` | string | — | (`json_schema` only) Path to the JSON Schema file inside the container. |
-| `target_path` | string | — | (`json_schema` only) Path to the file to validate. |
+| `schema` | object | — | (`json_schema` only) The JSON Schema, written inline. |
 | `pattern` | string | — | (`regex` only) Regular expression pattern. |
 | `target` | string | `stdout` | (`regex` only) `stdout` or an absolute file path. |
