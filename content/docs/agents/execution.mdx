@@ -21,12 +21,12 @@ The practical effect: agents that would succeed roughly 60% of the time on a sin
 
 ## Execution Modes
 
-An agent's `spec.execution.mode` is `one-shot` (the default) or `iterative`. The orchestrator accepts and stores it, and it does not change how many tries run: every agent runs the refinement loop, up to `max_iterations` tries (`max_retries` is the same field), each failure fed back into the next try. An agent that must run once sets `max_iterations: 1`, as a judge does.
+An agent's `spec.execution.mode` is `iterative` (the default) or `one-shot`. An `iterative` agent runs the refinement loop, up to `max_iterations` tries (`max_retries` is the same field), each failure fed back into the next try; a `one-shot` agent runs one try.
 
 ```yaml
 spec:
   execution:
-    mode: iterative     # "one-shot" (default) | "iterative"; stored, does not change the tries
+    mode: iterative     # "iterative" (default) | "one-shot" (one try)
     max_iterations: 10  # the tries, in all; default: 5
     iteration_timeout: "300s"  # per-iteration wall-clock limit; default: 600s
 ```
@@ -85,7 +85,7 @@ The `Execution` aggregate root enforces these invariants at the domain level:
 
 - At most one iteration is `running` at a time.
 - Iteration numbers are sequential with no gaps.
-- `max_iterations` cannot be exceeded (default: 10).
+- `max_iterations` cannot be exceeded (default: 5).
 - A completed or failed execution is immutable.
 
 The `ExecutionHierarchy` value object tracks an execution's position within multi-agent structures. It includes an optional `swarm_id` field that links the execution to its parent swarm when spawned as a child agent. This `swarm_id` is propagated to all child executions for end-to-end tracing correlation across the swarm.

@@ -212,7 +212,7 @@ The judge agent specified in `semantic` or `multi_judge` validators is a regular
 - Run as **child executions** in the execution tree — visible in execution APIs and event streams for the parent execution.
 - Receive the worker execution's inherited mount context through `worker_mounts`, so file-based checks can inspect the same artifacts the worker can reach when the judge manifest permits access.
 
-Judges set `max_retries: 1`, so a judge tries once: judgment is a single decision by design, and the judge does not retry its own verdict through the iteration loop. `mode: one-shot` is stored with the manifest and does not limit the tries by itself; `max_retries` does. A judge's short `resources.timeout` stands, since only an agent that may try again needs room for two tries ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)).
+Judges set `max_retries: 1`, so a judge tries once: judgment is a single decision by design, and the judge does not retry its own verdict through the iteration loop. `mode: one-shot` gives one try on its own; `max_retries: 1` does the same. A judge's short `resources.timeout` stands, since only an agent that may try again needs room for two tries ([Room for Two Tries](/docs/agents/execution#room-for-two-tries)).
 
 Example judge agent manifest:
 

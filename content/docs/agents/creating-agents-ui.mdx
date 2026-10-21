@@ -184,8 +184,8 @@ Security is deny-by-default. You must explicitly declare:
 
 ### Execution
 
-- `mode` — `one-shot` or `iterative`, stored with the agent; it does not change how many tries run, which `max_iterations` alone bounds (set it to 1 for a single attempt)
-- `max_iterations` — maximum refinement loops (1-20, default 10)
+- `mode` — `iterative` (the default, up to `max_iterations` tries) or `one-shot` (one try)
+- `max_iterations` — maximum refinement loops (1-20, default 5)
 - `validation` — ordered list of validators (exit code, JSON schema, semantic judge)
 
 See the [Agent Manifest Reference](/docs/reference/agent-manifest) for the full specification.

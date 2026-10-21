@@ -23,7 +23,7 @@ pub struct Execution {
     pub agent_id: AgentId,
     pub status: ExecutionStatus,
     pub iterations: Vec<Iteration>,
-    pub max_iterations: u8,              // default: 10
+    pub max_iterations: u8,              // default: 5
     pub input: ExecutionInput,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
