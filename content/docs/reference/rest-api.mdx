@@ -459,6 +459,94 @@ A `profile` that is not one of your profiles' ids, or a `PATCH` body that names 
 
 ---
 
+## Vault API
+
+The vault is where AEGIS keeps credentials: the connections you store for your agents' tools, and the platform's own secret paths. These routes are how the web client, the CLI and an SDK manage it. Only the orchestrator reaches the secret store behind them, and only one route answers a stored value: your own key, read from your own signed-in session. In the tables below, the Scope column names who a route serves. Every route takes a Keycloak session; an `aegis_` API key is refused `401`.
+
+### Connections
+
+| Method | Path | Scope | Description |
+| ------ | ---- | ----- | ----------- |
+| `GET` | `/v1/credentials` | You | Your connections, `{"credentials": [...], "count": n}`: metadata only, never a value. |
+| `POST` | `/v1/credentials/api-keys` | You | Store a key for yourself. The value goes to the vault before the connection is saved. |
+| `POST` | `/v1/credentials/mailboxes` | You | Connect a mailbox. |
+| `POST` | `/v1/credentials/calendars` | You | Connect a calendar account. |
+| `GET` | `/v1/credentials/oauth/providers` | You | The OAuth providers you can connect. |
+| `POST` | `/v1/credentials/oauth/initiate` | You | Start an OAuth connection. |
+| `GET` | `/v1/credentials/oauth/callback` | You | Where the provider returns after you approve. |
+| `POST` | `/v1/credentials/oauth/device/poll` | You | Poll a device-code connection. |
+| `GET` | `/v1/credentials/{id}` | Owner, team, operator | One connection's metadata. |
+| `POST` | `/v1/credentials/{id}/rotate` | Owner, team manager, operator | Replace the stored value. |
+| `DELETE` | `/v1/credentials/{id}` | Owner, team manager, operator | Revoke the connection: its value and its record are deleted in one act. A revoked connection is not listed, and its id answers `404` afterwards. |
+| `POST` | `/v1/credentials/{id}/introspect` | Owner, team manager, operator | Check a remote tool server's token again and record what it reaches. |
+| `GET` | `/v1/credentials/{id}/grants` | Owner, team, operator | Who the connection is granted to. |
+| `POST` | `/v1/credentials/{id}/grants` | Owner, team manager, operator | Grant the connection. |
+| `DELETE` | `/v1/credentials/{id}/grants/{grant_id}` | Owner, team manager, operator | Remove a grant. |
+
+A connection that does not exist, or one you may not reach, answers `404` `{"error": "Credential binding not found"}`, the same for both, so an id cannot be probed. An operator is refused the list and the writes with `403` `{"error": "Consumer or tenant user identity required"}`.
+
+### Reading a value
+
+| Method | Path | Scope | Description |
+| ------ | ---- | ----- | ----------- |
+| `POST` | `/v1/credentials/{id}/value` | Owner | Your own key's value, for a named purpose. |
+
+Send `{"purpose": "<purpose>"}`, where the purpose is 1 to 64 characters of lowercase letters, digits and dashes saying why you read the value, such as `chat-turn` or `models-fetch`. The answer is `200` `{"id": "<connection id>", "provider": "<provider>", "value": "<the value>"}` with the header `Cache-Control: no-store`, and only when all of these hold: the session is yours, as a person, not an operator's or a service account's; the connection is yours; it is a personal key (type `secret`), not a team connection; it is active; and it is not a remote tool server's token, which only the platform presents.
+
+Every refusal carries `{"error": "<code>", "message": "<sentence>"}`, or the not-found answer, and never a value:
+
+- `404` `{"error": "Credential binding not found"}`: the connection does not exist, is another person's, or is a team connection you are a member of.
+- `403` `vault_value_owner_only`: "A key's value is answered only to the person who owns it." An operator's session, a service account, or any identity that is not a person.
+- `422` `vault_value_not_readable`: "This connection's value is not answered by the vault; it is used only inside the platform." Your own connection of another type (OAuth, mailbox, calendar), a team connection, a remote tool server's token, or a connection that is not active.
+- `400` `vault_purpose_required`: "Name the purpose of this read: lowercase letters, digits and dashes, at most 64 characters." The purpose is missing or outside that rule.
+- `503` `vault_unavailable`: "The vault could not be read right now. Try again in a moment." The vault could not be read, or the read's audit record could not be written.
+
+No route answers the value of a mailbox, a calendar account, an OAuth token, a team connection, a remote tool server's token or a platform secret path. A run, an agent or a container is never answered a value: a tool call inside a run uses the value within the platform.
+
+### Platform secret paths
+
+| Method | Path | Scope | Description |
+| ------ | ---- | ----- | ----------- |
+| `GET` | `/v1/secrets` | Operator | Not answered yet: `501` `{"error": "Secret listing is not supported via this endpoint"}`. |
+| `GET` | `/v1/secrets/{path}` | Operator | A secret path's field names, `{"path", "fields"}`. Never its values. |
+| `PUT` | `/v1/secrets/{path}` | Operator | Write a secret path. |
+| `DELETE` | `/v1/secrets/{path}` | Operator | Delete a secret path. |
+
+These routes serve `aegis:admin` and `aegis:operator`; every other identity is refused `403` `{"error": "Operator or Admin role required"}`.
+
+### Client secrets
+
+A confidential client declared in the node configuration's `spec.vault.client_secret_clients` keeps the tokens of its own users' sessions in the vault instead of its own database.
+
+| Method | Path | Scope | Description |
+| ------ | ---- | ----- | ----------- |
+| `PUT` | `/v1/vault/client-secrets/{kind}/{id}` | Declared client | Write `{"owner_sub": "<the person's sub>", "value": {<token fields>}}`. |
+| `POST` | `/v1/vault/client-secrets/{kind}/{id}/value` | Declared client | Read it, with `{"purpose": "<purpose>"}` under the same purpose rule: `{"owner_sub", "value"}` with `Cache-Control: no-store`. |
+| `DELETE` | `/v1/vault/client-secrets/{kind}/{id}` | Declared client | Delete it. |
+
+`{kind}` is `session` or `revocation`, and `{id}` is the client's own row id, a UUID. Only the declared client's service account, with a token from its client-credentials grant, may call these routes, and it reaches only the secrets it wrote: another client's secret answers `404` `{"error": "Client secret not found"}`, as one that does not exist. Every other caller is refused `403` `vault_client_not_declared`, "This client may not keep secrets in the vault.", and an `aegis_` API key `401`. A missing purpose is refused `400` `vault_purpose_required`, and a vault that cannot be read `503` `vault_unavailable`, as for a key's value.
+
+### Who may call each operation
+
+| Operation | Your own session | Team member | Operator's session | `aegis_` API key | A run, an agent, a container |
+| --------- | ---------------- | ----------- | ------------------ | ---------------- | ---------------------------- |
+| List connections | your own, metadata only | your own only | refused `403` | refused `401` | never |
+| Store a connection | for yourself | for yourself | refused `403` | refused `401` | never |
+| Read a connection's metadata | your own | a team connection | every operator role | refused `401` | never |
+| Rotate, revoke, grants | your own | a team manager | `aegis:admin`, `aegis:operator` | refused `401` | never |
+| Read a value | your own personal key only | refused `404` | refused `403` | refused `401` | never; a tool call inside a run uses it within the platform |
+| Secret paths: field names, write, delete | refused `403` | refused `403` | `aegis:admin`, `aegis:operator` | refused `401` | never |
+| A secret path's value | no route, for anyone | | | | |
+| Client secrets | refused `403` | refused `403` | refused `403` | refused `401` | never; only a declared client's service account, for its own secrets |
+
+A service account is refused every row but the last.
+
+### The audit record
+
+Each of these acts appends one row to the orchestrator's audit log: a value read or its refusal; storing a key, a mailbox or a calendar account; a rotation; a revoke; a grant added or removed; a secret path written or deleted; and a client secret written, read or deleted. No row carries a value or anything derived from one. A row names the caller's `sub`, the action (`vault.value_read`, `vault.value_refused`, `vault.binding_stored`, `vault.binding_rotated`, `vault.binding_revoked`, `vault.grant_added`, `vault.grant_revoked`, `vault.secret_written`, `vault.secret_deleted`, `vault.client_secret_written`, `vault.client_secret_read` or `vault.client_secret_deleted`) and the target (`credential:<id>`, `secret:<engine>/<path>` or `client-secret:<client_id>/<kind>/<id>`). For a connection or a secret path it also records the caller kind (`session`, `operator` or `other`), the tenant, the provider, the connection type, a read's purpose and the outcome; for a client secret, the client, the kind, the person it is kept for, a read's purpose and the outcome. The outcome is `answered`, or the refusal's code. A value is never answered without its row: a read writes its row first, and a row that cannot be written refuses the read with `503` `vault_unavailable`. For every other act the row is written after the act, and a row that cannot be written is logged without undoing the act.
+
+---
+
 ## SEAL Endpoints
 
 ### `POST /v1/seal/attest`

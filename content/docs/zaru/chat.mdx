@@ -25,6 +25,8 @@ first message is sent.
 
 A turn sends no call of a tool the conversation's mode did not offer, whatever tool name the model writes: the call is answered to the companion as "&lt;tool&gt; is not offered in this conversation." and nothing is sent. No mode offers `aegis.workflow.signal`, operator mode included: a workflow run's Human gate is yours to answer ([Human Gates of a Workflow Run](#human-gates-of-a-workflow-run)).
 
+Zaru takes one small step at a time: it says what it is doing as it does it, in the same reply that makes the call, and shows what each step returned. It never says a change was made, verified or is waiting for your approval unless a tool's answer showed it. In Agentic and Workflow mode it stops where your answer or approval is needed, with what the step showed and the one next step it would take.
+
 ---
 
 ## Goals in Agentic Mode

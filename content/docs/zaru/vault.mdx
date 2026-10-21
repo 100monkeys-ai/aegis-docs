@@ -7,6 +7,8 @@ description: Store and manage credentials that your agents use at runtime. Agent
 
 The Vault is where you store credentials that your agents use at runtime. Agents never see credential values directly — the platform retrieves the credential and injects it securely when the agent needs it during execution.
 
+A key you store can be read back only by you, from your own signed-in session, and only for a named purpose, and each read is recorded. No agent, operator, API key or other person is given the value. The routes and their refusals are in the [Vault API](/docs/reference/rest-api#vault-api) reference.
+
 ---
 
 ## Supported Providers and Credential Types
