@@ -595,6 +595,31 @@ Answer its two approval gates yourself, `yes` or `no`: in Zaru Web on the gate c
 
 ---
 
+## Carbon Forge
+
+**Carbon Forge** is a built-in workflow, `carbon-forge` 1.2.0, that develops one change in one of your Carbon Forge trees on a lane of the run's own, as [the Forge](#the-forge) does in a git repository: requirements and a design, each approved by you, then tests written first, the implementation, your test suite run in a container on the tree, a review by three judges, and the change written to the run's lane. With `draft_only` false, the lane then lands on the trunk as one changeset after your approval, and the landed run becomes a cut. Its states are the Forge's, with the tree actions in place of the repository actions and one more state, `DRIFT`. The run names its tree under the starting call's `trees` (`[{workspace, path, revision}]`) beside its `contexts`; before the first agent the tree's revision is materialized into the run's volume, every file verified against its SHA-256, and mounted at `/workspace` in every agent state and step container. Every path in the prompts and in the tests is written relative to the tree's root.
+
+```text
+ANALYZE → AWAIT_REQUIREMENTS_APPROVAL → ARCHITECT → AWAIT_ARCH_APPROVAL → TEST → CHECK_TESTS
+  → CODE → EXECUTE_TESTS → DIFF → AUDIT → COMMIT → DRIFT → COMPLETE (draft_only, the default)
+                                                   → LAND → CUT → COMPLETE, or LAND_REFUSED, or CUT_REFUSED
+```
+
+The states below are the ones whose definition differs from the Forge's. `ANALYZE`, `AWAIT_REQUIREMENTS_APPROVAL`, `ARCHITECT`, `AWAIT_ARCH_APPROVAL`, `TEST`, `CHECK_TESTS`, `CODE`, `EXECUTE_TESTS` and `AUDIT` are [the Forge's](#the-forge), with the tree at `/workspace` in place of the repository's clone.
+
+| State | Kind | What it does | Transitions |
+|---|---|---|---|
+| `DIFF` | Action `tree_diff` | The run's change against the tree's revision. | success: `AUDIT`; failure: `FAILED` |
+| `COMMIT` | Action `tree_write` | Writes the run's tree to the run's own lane, with the message `carbon-forge: <the task's first line>`. | success: `DRIFT`; failure: `FAILED` |
+| `DRIFT` | Action `drift_report` | Reads the lane's drift report with the Carbon Forge tool `symbols.drift` on the run's lane and tree: each definition the change adds, removes or re-signs in a seam the workspace's governed seams declare, and whether a page governing it changed on the lane too. The step answers the report's hash, its counts by class and the whole report, or the sentence of a report that was not read. The report advises and never ends the run: a report, a refusal and a failure all go on. | `draft_only` true or absent: `COMPLETE`; otherwise: `LAND`, whatever the report |
+| `LAND` | Action `tree_land` | Lands the run's lane on the trunk as one changeset, after your approval. The approval request shows you the drift report's counts by class and its first ten findings beside the tree, the lane and the intent; the verdict stays yours. A conflict ends in `LAND_REFUSED` with Carbon Forge's own sentence. | success: `CUT`; failure: `LAND_REFUSED` |
+| `CUT` | Action `tree_cut` | Names a snapshot of the tree's workspace with the input `cut`, else `forge-<execution id>`. | success: `COMPLETE`; failure: `CUT_REFUSED` |
+| `COMPLETE`, `FAILED`, `LAND_REFUSED`, `CUT_REFUSED` | Action `update_blackboard` | Write `outcome`, `commit_sha`, `branch` and the refusal's `sentence`, where there is one. `COMPLETE`, `LAND_REFUSED` and `CUT_REFUSED` also write `drift`, the lane's drift report or the sentence of one not read, and `COMPLETE` writes the landed run's `cut` and `snapshot_id`, empty for a draft. | none |
+
+A `draft_only` run never reaches `LAND`, and so never cuts. Its inputs are the Forge's `task`, `test_command`, `test_image`, `context` and `draft_only`, with `draft_only` true (the default) ending the run with the change on the run's lane and the trunk untouched, and one more, `cut`, the name of the cut the landed run becomes.
+
+---
+
 ## Deploying and Managing Workflows
 
 ```bash

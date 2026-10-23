@@ -1240,7 +1240,7 @@ spec:
 
 ### The Forge
 
-The Forge is a built-in workflow, `the-forge` 2.0.0 (labels `builtin: "true"`, `category: development`): it develops one change in one repository of its person's, with requirements and a design each approved by the person, tests written first, the person's test suite run in a container on the clone, a review by three judges, and a commit on the run's work branch. Its manifest uses the repository features above; the states, the agents and how to start it are on [The Forge](/docs/workflows/overview#the-forge). The parts that carry the shape:
+The Forge is a built-in workflow, `the-forge` 2.0.2 (labels `builtin: "true"`, `category: development`): it develops one change in one repository of its person's, with requirements and a design each approved by the person, tests written first, the person's test suite run in a container on the clone, a review by three judges, and a commit on the run's work branch. Its manifest uses the repository features above; the states, the agents and how to start it are on [The Forge](/docs/workflows/overview#the-forge). The parts that carry the shape:
 
 ```yaml
 apiVersion: 100monkeys.ai/v1
@@ -1248,7 +1248,7 @@ kind: Workflow
 
 metadata:
   name: "the-forge"
-  version: "2.0.0"
+  version: "2.0.2"
   labels:
     builtin: "true"
     category: "development"
@@ -1349,6 +1349,77 @@ spec:
 ```
 
 Each judge of AUDIT is also given the requirements, the design, `{{{DIFF.output.diff}}}` and the passing suite's output, and answers `{score, confidence, reasoning, suggestions}`. No state of the Forge runs a shell command in the core process.
+
+### Carbon Forge
+
+Carbon Forge is a built-in workflow, `carbon-forge` 1.2.0 (labels `builtin: "true"`, `category: development`): the Forge's states on one of its person's Carbon Forge trees, named by the dispatch key `trees`, with the tree actions in place of the repository actions and one more state, `DRIFT`. `DIFF` is `tree_diff`, `COMMIT` is `tree_write` onto the run's own lane, `DRIFT` is `drift_report` (the lane's drift report, read with the Carbon Forge tool `symbols.drift` on the run's lane and tree), `LAND` is `tree_land` after the person's approval, and `CUT` is `tree_cut`; `COMPLETE`, `FAILED`, `LAND_REFUSED` and `CUT_REFUSED` are `update_blackboard` actions. The states and the drift report's place at the gate are on [Carbon Forge](/docs/workflows/overview#carbon-forge). The parts that differ from the Forge's:
+
+```yaml
+metadata:
+  name: "carbon-forge"
+  version: "1.2.0"
+
+spec:
+  states:
+    DIFF:
+      kind: Action
+      action: tree_diff
+      transitions:
+        - condition: on_success
+          target: AUDIT
+        - condition: on_failure
+          target: FAILED
+
+    COMMIT:
+      kind: Action
+      action: tree_write
+      args:
+        message: "carbon-forge: {{{first_line input.task}}}"
+      transitions:
+        - condition: on_failure
+          target: FAILED
+        - condition: on_success
+          target: DRIFT
+
+    # The lane's drift report, advice for the gate: every outcome goes on.
+    DRIFT:
+      kind: Action
+      action: drift_report
+      transitions:
+        - condition: custom
+          expression: "(default input.draft_only true)"
+          target: COMPLETE
+        - condition: always
+          target: LAND
+
+    LAND:
+      kind: Action
+      action: tree_land
+      args:
+        message: "carbon-forge: {{{first_line input.task}}}"
+      transitions:
+        - condition: on_success
+          target: CUT
+        - condition: on_failure
+          target: LAND_REFUSED
+
+    CUT:
+      kind: Action
+      action: tree_cut
+      args:
+        cut: "{{input.cut}}"
+      transitions:
+        - condition: on_success
+          target: COMPLETE
+        - condition: on_failure
+          target: CUT_REFUSED
+
+    # COMPLETE, FAILED, LAND_REFUSED and CUT_REFUSED are update_blackboard
+    # actions that write outcome, commit_sha, branch and the refusal's
+    # sentence; COMPLETE, LAND_REFUSED and CUT_REFUSED also write drift.
+```
+
+The `DRIFT` step answers the report's hash in `commit_sha`, its counts by class in `branch`, the whole report in `diff` and a refusal in `sentence`; the blackboard's `drift` is `"{{{DRIFT.output.diff}}}{{{DRIFT.output.sentence}}}"`.
 
 ### Agent-Augmented CI/CD Pipeline
 
