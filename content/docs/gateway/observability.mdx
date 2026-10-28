@@ -109,6 +109,8 @@ is the variant tag below.
 | `CliToolSemanticRejected` | Semantic judge vetoed a CLI invocation before launch. | `execution_id`, `tool_name`, `requested_subcommand`, `rejection_reason`, `security_context`, `rejected_at` |
 | `CredentialExchangeCompleted` | Credential resolver returned a usable secret. | `execution_id`, `resolution_path`, `target_service`, `completed_at` |
 | `CredentialExchangeFailed` | Credential resolver could not produce a secret. | `execution_id`, `resolution_path`, `reason`, `failed_at` |
+| `RemoteToolInvoked` | A call to a remote MCP server's tool ended. `outcome` is `ok` or the refusal's code. | `execution_id`, `tool_name`, `acting`, `outcome`, `duration_ms`, `invoked_at` |
+| `InvocationRequested` | An operator-authenticated invocation RPC arrived. | `rpc`, `execution_id`, `tool_name`, `tenant_id`, `acting`, `requested_at` |
 | `ToolCallAuthorized` | SEAL envelope verified, security context evaluated, call cleared for dispatch. | `execution_id`, `agent_id`, `tool_name`, `security_context`, `tenant_id`, `authorized_at` |
 
 ### Querying the audit table

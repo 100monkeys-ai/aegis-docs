@@ -119,8 +119,8 @@ spec:
       prompt: |                    # required for Human kind; message shown to operator
         Review the generated output and approve or reject.
         Output: {{EXECUTE.output.stdout}}
-      timeout: 3600s               # optional; omit to wait indefinitely
-      default_response: reject     # optional; value taken if timeout elapses without signal
+      timeout: 3600s               # optional; 3600s when omitted
+      default_response: "no"       # optional; value taken if timeout elapses without signal
       transitions:
         - condition: input_equals_yes
           target: COMPLETE
@@ -598,7 +598,7 @@ DRAW:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `prompt` | string | ✓ | Message displayed to the operator. Handlebars templates supported. |
-| `timeout` | string | | Duration to wait before following timeout transitions. Omit to wait indefinitely. |
+| `timeout` | string | | Duration to wait for an answer. Default: `3600s`. Without `default_response`, the workflow fails when it elapses. |
 | `default_response` | string | | Signal value automatically applied when `timeout` elapses. |
 
 The workflow suspends until signalled via the workflow execution API:
@@ -607,7 +607,7 @@ The workflow suspends until signalled via the workflow execution API:
 POST /v1/workflows/executions/{execution_id}/signal
 Content-Type: application/json
 
-{ "response": "approved" }
+{ "response": "yes" }
 ```
 
 The signal payload is available as `{{human.feedback}}` in transition `feedback` strings and downstream `input` templates.
