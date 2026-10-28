@@ -236,7 +236,7 @@ The security model is strengthened by the underlying container runtime. AEGIS su
 - Compatible with the same OCI images and container network configuration as Docker. The orchestrator auto-detects the runtime from the configured `container_socket_path`.
 - Rootful Podman is also supported where rootless is impractical (e.g., NFS mounts requiring root).
 
-**Firecracker (hardened production):**
+**Firecracker (hardened production; planned, not yet implemented):**
 
 - Each agent execution runs in an independent KVM micro-VM.
 - The VM has no knowledge of the host network, no shared memory with the host, and a strict device model.
