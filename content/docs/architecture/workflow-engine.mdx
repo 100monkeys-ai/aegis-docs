@@ -335,11 +335,11 @@ WorkflowExecution
          │
          │  Signal arrives via:
          │    POST /v1/workflows/executions/{id}/signal
-         │    {"response": "approved"}
+         │    {"response": "yes"}
          │  or via HTTP API:
          │    POST /v1/human-approvals/{id}/approve
          ▼
-  Temporal signal received → Blackboard["approve_requirements"]["decision"] = "approved"
+  Temporal signal received → state output = {"response": "yes"}
   TransitionRule evaluates → target = "implement"
   Workflow continues
 ```

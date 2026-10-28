@@ -311,14 +311,13 @@ State History:
 The workflow is suspended at `APPROVE_REQUIREMENTS`. Resume it through the workflow CLI:
 
 ```bash
-aegis workflow signal wfx-a1b2c3d4-1111-... --response approved
+aegis workflow signal wfx-a1b2c3d4-1111-... --response yes
 ```
 
-To reject with feedback:
+To reject:
 
 ```bash
-aegis workflow signal wfx-a1b2c3d4-1111-... \
-  --response "rejected: Requirements need more detail on error handling"
+aegis workflow signal wfx-a1b2c3d4-1111-... --response no
 ```
 
 After approval, the workflow continues to the `IMPLEMENT` state automatically.
