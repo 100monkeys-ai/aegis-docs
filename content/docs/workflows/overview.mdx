@@ -208,7 +208,7 @@ POST /v1/workflows/executions/{execution_id}/signal
 Content-Type: application/json
 
 {
-  "response": "approved"
+  "response": "yes"
 }
 ```
 
@@ -649,7 +649,7 @@ For execution status and Human-state signaling, use the CLI:
 
 ```bash
 aegis workflow executions get <execution-id>
-aegis workflow signal <execution-id> --response approved
+aegis workflow signal <execution-id> --response yes
 ```
 
 The underlying REST API remains available for integrations, but the CLI is the preferred operator path.
