@@ -15,31 +15,35 @@ Add a `kind: Human` state to your workflow manifest:
 
 ```yaml
 states:
-  - name: GENERATE_DRAFT
+  GENERATE_DRAFT:
     kind: Agent
-    agent_id: draft-agent-uuid
+    agent: draft-agent
+    input: "{{input.topic}}"
     transitions:
-      - target: AWAIT_APPROVAL
-        condition: "always"
+      - condition: always
+        target: AWAIT_APPROVAL
 
-  - name: AWAIT_APPROVAL
+  AWAIT_APPROVAL:
     kind: Human
-    prompt: "Review the draft in {{GENERATE_DRAFT.output}}. Approve to publish, reject to discard."
-    timeout_seconds: 86400      # 24 hours — reject on timeout if omitted means 3600s default
-    reject_on_timeout: false    # if true, workflow transitions to on_reject on timeout
+    prompt: "Review the draft in {{GENERATE_DRAFT.output}}. Answer yes to publish, no to discard."
+    timeout: 86400s             # 24 hours; 3600s when omitted
+    default_response: "no"      # optional; the answer taken if the timeout elapses
     transitions:
-      - target: PUBLISH
-        condition: "approved"
-      - target: DISCARD
-        condition: "rejected"
+      - condition: input_equals_yes
+        target: PUBLISH
+      - condition: input_equals_no
+        target: DISCARD
 
-  - name: PUBLISH
+  PUBLISH:
     kind: Agent
-    agent_id: publish-agent-uuid
+    agent: publish-agent
+    input: "{{GENERATE_DRAFT.output}}"
+    transitions: []
 
-  - name: DISCARD
+  DISCARD:
     kind: System
     command: "echo 'Draft discarded'"
+    transitions: []
 ```
 
 ### `kind: Human` Fields
@@ -47,10 +51,10 @@ states:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `prompt` | string | — | Text displayed to the reviewer. Supports Blackboard template syntax. |
-| `timeout_seconds` | integer | `3600` | How long to wait before the request expires. |
-| `reject_on_timeout` | boolean | `false` | If `true`, a timeout transitions to the `rejected` condition. If `false`, the workflow fails. |
+| `timeout` | string | `3600s` | How long to wait for an answer, set on the state beside `transitions`. |
+| `default_response` | string | — | The answer taken when `timeout` elapses with none. Without it, the workflow fails. |
 
-The `approved` and `rejected` transition conditions are reserved keywords for `kind: Human` states.
+A gate's answers come from its transitions: `input_equals_yes` takes `yes` (also `y` or `1`), `input_equals_no` takes `no` (also `n` or `0`), and `input_equals` takes its `value`. An answer no transition takes, such as `approved` at a yes-or-no gate, is refused and the gate is asked again.
 
 ---
 
@@ -71,7 +75,7 @@ Response:
     {
       "id": "req-uuid",
       "execution_id": "exec-uuid",
-      "prompt": "Review the draft in <draft content>. Approve to publish, reject to discard.",
+      "prompt": "Review the draft in <draft content>. Answer yes to publish, no to discard.",
       "created_at": "2026-03-05T14:00:00Z",
       "timeout_seconds": 86400
     }
@@ -134,10 +138,10 @@ The workflow transitions to the `rejected` target state (`DISCARD` in the exampl
 
 ## Timeout Behaviour
 
-When `timeout_seconds` expires without a response:
+When `timeout` elapses without an answer:
 
-- **`reject_on_timeout: false` (default):** The workflow execution is marked `failed` with reason `human_input_timeout`. No transition occurs.
-- **`reject_on_timeout: true`:** The orchestrator treats the timeout as a rejection and transitions to the `rejected` target state. Useful when a missing response should be treated as a "no".
+- **No `default_response` (default):** The workflow execution fails with `Human input timeout`. No transition occurs.
+- **`default_response` set:** The gate takes it as the answer, so `default_response: "no"` follows the `input_equals_no` transition. Useful when a missing response should be treated as a "no".
 
 ---
 
@@ -215,7 +219,7 @@ async function reject(requestId: string, reason: string) {
 The `prompt` field in a `kind: Human` state supports Blackboard template syntax, giving reviewers access to outputs from earlier workflow states:
 
 ```yaml
-- name: AWAIT_APPROVAL
+AWAIT_APPROVAL:
   kind: Human
   prompt: |
     Agent produced the following output:
@@ -224,7 +228,7 @@ The `prompt` field in a `kind: Human` state supports Blackboard template syntax,
     
     Score from quality check: {{QUALITY_CHECK.output.score}}
     
-    Please approve or reject.
+    Answer yes or no.
 ```
 
 See the [Template Syntax Reference](/docs/reference/template-syntax) for the full variable namespace.

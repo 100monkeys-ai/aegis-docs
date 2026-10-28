@@ -183,7 +183,7 @@ NOTIFY:
 
 ### `Human`
 
-Suspends the workflow and waits for an operator to signal a decision. The workflow persists durably in Temporal — it will wait indefinitely (or until `timeout`).
+Suspends the workflow and waits for an operator to signal a decision. The workflow persists durably in Temporal — it waits until `timeout`, `3600s` when unset.
 
 ```yaml
 APPROVAL_GATE:
@@ -192,7 +192,7 @@ APPROVAL_GATE:
     Output: {{GENERATE.output}}
     Approve to proceed? (yes/no)
   timeout: 86400s   # 24 hours; default_response taken if not signalled
-  default_response: reject
+  default_response: "no"
   transitions:
     - condition: input_equals_yes
       target: PROCEED
