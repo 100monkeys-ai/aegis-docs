@@ -209,7 +209,7 @@ The `AgentRuntime` trait abstracts all isolation backends. Switching a node from
 | Isolation | Use Case | Requirement |
 |---|---|---|
 | `docker` | Development, staging, and production | Docker or Podman runtime accessible via `container_socket_path` |
-| `firecracker` | Hardened production | Bare-metal or KVM-passthrough host, Linux kernel 5.10+ |
+| `firecracker` | Hardened production (planned, not yet implemented) | Bare-metal or KVM-passthrough host, Linux kernel 5.10+ |
 
 The `docker` isolation type works with both Docker and Podman. The orchestrator auto-detects the container engine from the configured socket. Podman rootless mode provides additional security by eliminating the privileged daemon.
 
