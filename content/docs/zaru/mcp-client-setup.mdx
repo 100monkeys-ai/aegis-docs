@@ -134,6 +134,37 @@ Any client supporting the StreamableHTTP transport can connect with:
 
 ---
 
+## Choosing a Profile for a Client
+
+Every client above sends one header, `Authorization`, from its configuration. The same place takes a second header, `x-zaru-contexts`, which chooses for every request of that connection which of your connections its tools use. Its value is a JSON object on one line; the usual form names one [profile](/docs/zaru/profiles) by its id:
+
+```text
+x-zaru-contexts: {"@profile":"<profile id>"}
+```
+
+In Claude Code, a second `--header`:
+
+```bash
+claude mcp add zaru \
+  --transport http \
+  https://mcp.myzaru.com/mcp/v1 \
+  --header "Authorization: Bearer YOUR_API_KEY" \
+  --header 'x-zaru-contexts: {"@profile":"<profile id>"}'
+```
+
+In a client configured by JSON (Claude Desktop, Windsurf, VS Code), a second entry under `headers`:
+
+```json
+"headers": {
+  "Authorization": "Bearer YOUR_API_KEY",
+  "x-zaru-contexts": "{\"@profile\":\"<profile id>\"}"
+}
+```
+
+The profile's id is the last part of the address of its page in Zaru Web, `ask.myzaru.com/vault/profiles/<profile id>`. Without the header, a key uses the profile chosen for it on **Settings → API Keys**, and a key with neither reaches none of your connections. The header's other forms and its refusals are on [Profiles](/docs/zaru/profiles#over-mcp) and [MCP Tools](/docs/zaru/mcp-tools#connections-and-profiles). Whether a given client sends a header it was configured with on every request is the client's behaviour, not documented here.
+
+---
+
 ## First Use
 
 Once connected, tell your AI assistant:

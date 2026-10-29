@@ -38,7 +38,7 @@ A profile governs the tools of its connections' families: `mail.*` for a mailbox
 - **Calling.** Every call of a governed tool is checked against the profile as it stands at that moment, after the security context's own check and before the approval gate. A tool the profile does not allow is refused `TOOL_NOT_IN_PROFILE`: "This tool is not in the profile chosen for this conversation." in a conversation, "This tool is not in the profile chosen for this run." in a run; the refusal names the profile's page, and Zaru Web shows a card with a link to it.
 - **Starting.** When a run starts, the profile's active connections become the run's chosen connections. A profile that is not yours, or was deleted, refuses the start, and any later governed call: "The profile chosen for this run no longer exists."
 
-A tool the profile allows still meets the approval gate. `mail.send`, `mail.reply`, `mail.forward`, `mail.delete` and `mail.archive` are marked in the tool catalogue as waiting for your approval, and neither a profile, an agent nor the deployment's configuration clears that mark: each call waits for your answer unless a standing choice answers it. So a profile that allows `mail.reply` and not `mail.send` lets a run reply in a thread, each reply waiting for your approval, and refuses a new message at once, before any approval is asked.
+A tool the profile allows still meets the approval gate. `mail.send`, `mail.reply`, `mail.forward`, `mail.delete`, `mail.archive`, `calendar.create`, `calendar.update`, `calendar.delete` and `calendar.respond` are marked in the tool catalogue as waiting for your approval, and neither a profile, an agent nor the deployment's configuration clears that mark: each call waits for your answer unless a standing choice answers it. So a profile that allows `mail.reply` and not `mail.send` lets a run reply in a thread, each reply waiting for your approval, and refuses a new message at once, before any approval is asked.
 
 Tools of other families, such as `fs.*`, `cmd.run` or `web.*`, are not governed by a profile: the security context alone decides them.
 
@@ -66,6 +66,8 @@ An MCP client chooses a profile for every request of its connection with the `x-
 ```http
 x-zaru-contexts: {"@profile":"0000daeb-ae45-4d06-9712-9d498a653b24"}
 ```
+
+Zaru Web prints no profile's id as text. The id is the last part of the address of the profile's own page: open **Vault → Profiles**, choose the profile by its name, and copy the id from `ask.myzaru.com/vault/profiles/<profile id>`. Where Zaru Web shows a connection's binding id, for the form that names connections, is not documented.
 
 Without `@profile`, the same header names connections instead: for each tool server, a binding id, a list of binding ids, or `null` for none. `@profile` beside any other key, a list under it, or any other key beginning with `@` is answered `400` with "Choose one profile, or choose connections without a profile; not both."; any other shape with "x-zaru-contexts must be a JSON object naming one profile as @profile, or, for each server, a binding id, a list of binding ids, or null".
 
