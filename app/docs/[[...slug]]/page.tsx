@@ -6,6 +6,7 @@ import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { LLMCopyButton, ViewOptions } from '@/components/ai/page-actions';
 import { gitConfig } from '@/lib/layout.shared';
+import { siteDescription, siteName } from '@/lib/site';
 
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
@@ -46,10 +47,20 @@ export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): P
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  const description = page.data.description ?? siteDescription;
+
   return {
     title: page.data.title,
-    description: page.data.description,
+    description,
+    alternates: {
+      canonical: page.url,
+    },
     openGraph: {
+      title: page.data.title,
+      description,
+      url: page.url,
+      type: 'article',
+      siteName,
       images: getPageImage(page).url,
     },
   };

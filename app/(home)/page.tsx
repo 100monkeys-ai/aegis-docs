@@ -1,4 +1,23 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+import { siteDescription, siteName } from '@/lib/site';
+
+// The landing page's title is its own heading; its description is the docs
+// home's.
+export const metadata: Metadata = {
+  title: 'The orchestrator for autonomous AI agents',
+  description: siteDescription,
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'The orchestrator for autonomous AI agents',
+    description: siteDescription,
+    url: '/',
+    type: 'website',
+    siteName,
+  },
+};
 
 const features = [
   {
