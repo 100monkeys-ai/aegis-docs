@@ -336,15 +336,15 @@ WorkflowExecution
          │  Signal arrives via:
          │    POST /v1/workflows/executions/{id}/signal
          │    {"response": "yes"}
-         │  or via HTTP API:
-         │    POST /v1/human-approvals/{id}/approve
+         │  or the CLI:
+         │    aegis workflow signal <execution-id> --response yes
          ▼
   Temporal signal received → state output = {"response": "yes"}
   TransitionRule evaluates → target = "implement"
   Workflow continues
 ```
 
-Human states respect `timeout_secs`. If no signal arrives within the timeout, the workflow evaluates its `transitionS`. Typically the last (unconditional) transition leads to a `failed` state.
+A Human state waits for its `timeout` (3600 s when omitted). If no signal arrives in time, the gate takes its `default_response` as the answer; a state without one fails the run.
 
 ---
 

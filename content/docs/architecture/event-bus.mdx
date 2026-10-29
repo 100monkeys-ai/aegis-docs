@@ -103,9 +103,11 @@ Published by the `BuiltinDispatcher`:
 
 ### SEAL Events
 
-Published by `AttestationService` and `SealMiddleware`:
+Defined on the event bus as `seal`-category events; no code path publishes them yet:
 
-`SessionCreated`, `AttestationSucceeded`, `AttestationFailed`, `ToolCallAuthorized`, `PolicyViolationBlocked`, `SignatureVerificationFailed`, `SecurityTokenExpired`, `SecurityTokenRefreshed`, `SessionRevoked`, `SessionExpired`
+`AttestationCompleted`, `SessionCreated`, `SessionRevoked`, `PolicyViolationBlocked`
+
+The SEAL gateway publishes its own tool-call events, `ToolCallAuthorized`, `InvocationRequested` and `RemoteToolInvoked` ([SEAL audit trail](/docs/gateway/seal-protocol#audit-trail)).
 
 ### Goal Events
 

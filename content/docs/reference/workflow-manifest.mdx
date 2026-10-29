@@ -964,8 +964,8 @@ Use `{{STATE.result}}` in downstream states to reference the child's output (blo
 | `all_approved` | ParallelAgents | All agents scored ≥ consensus `threshold`. |
 | `any_rejected` | ParallelAgents | At least one agent scored < consensus `threshold`. |
 | `input_equals` | Human | Signal payload matches `value`. |
-| `input_equals_yes` | Human | Payload is `"yes"`, `"approve"`, `"approved"`, or `"true"`. |
-| `input_equals_no` | Human | Payload is `"no"`, `"reject"`, `"rejected"`, or `"false"`. |
+| `input_equals_yes` | Human | Answer is `yes`, `y` or `1`, in any case. |
+| `input_equals_no` | Human | Answer is `no`, `n` or `0`, in any case. |
 | `custom` | All | Handlebars `expression` evaluates to a truthy result. |
 
 **Scores:** `score_above` and `score_below` compare the state's score with `threshold`. The score is the state output's `score`, else `final_score`, else `consensus.score` (a ParallelAgents state). A state that carries no score takes neither; if no other transition then matches, the run fails with `State "<name>" carries no score for its score transitions`.

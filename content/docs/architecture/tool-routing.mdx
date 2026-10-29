@@ -395,8 +395,6 @@ Every routing decision publishes a domain event on the internal event bus. These
 | `StorageEvent::FileRead`                           | `AegisFSAL` completes a read from a volume         |
 | `StorageEvent::PathTraversalBlocked`               | `AegisFSAL` rejects a `..`-containing path         |
 | `StorageEvent::UnauthorizedVolumeAccess`           | File handle `execution_id` does not match caller   |
-| `SealEvent::PolicyViolationBlocked`                | `SecurityContext` policy blocks a tool call        |
-| `SealEvent::SignatureVerificationFailed`           | Ed25519 signature on envelope is invalid           |
 
 ---
 

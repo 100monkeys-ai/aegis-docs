@@ -326,26 +326,15 @@ The HTTP status follows the code's range: `401` for `1001` to `1006`, `403` for 
 
 ## Audit Trail
 
-Every SEAL operation publishes a domain event. These are emitted to the gateway's event sink (event bus, OTLP exporter, persistent audit log) and form the compliance record for every tool call.
+The SEAL gateway publishes a domain event for each of these tool-call steps:
 
-| Event | Trigger |
-|---|---|
-| `AttestationSucceeded` | Caller attested; `SealSession` created. |
-| `AttestationFailed` | Attestation rejected (workload unknown, bad scope, etc.). |
-| `ToolCallAuthorized` | Call passed `PolicyEngine`; forwarded upstream. |
-| `PolicyViolationBlocked` | Call rejected; violation type and tool name logged with the envelope signature. |
-| `SignatureVerificationFailed` | Envelope signature invalid. |
-| `SecurityTokenExpired` | JWT expired mid-session. |
-| `SecurityTokenRefreshed` | Token auto-renewed for a long-running execution. |
-| `SessionRevoked` | Gateway revoked the session (cancellation, security violation, etc.). |
+| Event | Trigger | Carries |
+|---|---|---|
+| `ToolCallAuthorized` | A call passed the gateway's policy check and is forwarded. | Execution, agent, tool name, security context, tenant, time. |
+| `InvocationRequested` | An operator-authenticated invocation call reached the gateway. | The call, execution, tool name, tenant, who it acts for, time. No argument, no credential. |
+| `RemoteToolInvoked` | A call to a remote MCP server's tool ended. | Execution, tool name, who it acts for, `outcome` (`ok` or the refusal's code), duration, time. No argument, result or credential. |
 
-Each audit event captures:
-
-- The originating envelope's `signature`, `timestamp`, and `jti`
-- The JWT `sub`, `scp`, `wid`, `exec_id` claims
-- The tool name, payload digest (not the full payload — payloads are not logged by default)
-- Server-side timestamp and request id
-- The policy decision (`ALLOW` or `DENY` plus the deciding rule, if any)
+The orchestrator's event bus defines four SEAL session events, `AttestationCompleted`, `SessionCreated`, `SessionRevoked` and `PolicyViolationBlocked`; no code path publishes them yet.
 
 The Ed25519 signature in every envelope provides **non-repudiation**: a caller cannot deny having issued the call because only the holder of the ephemeral private key could have produced a valid signature.
 

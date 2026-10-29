@@ -270,6 +270,8 @@ The files of one of your volumes, as the dashboard's file browser reads and chan
 
 ## Human Approvals
 
+A workflow's `kind: Human` gate is not posted to this queue: list gates with [`GET /v1/workflow-gates`](#get-v1workflow-gates) and answer one with [`POST /v1/workflows/executions/{id}/signal`](#post-v1workflowsexecutionsidsignal).
+
 ### `GET /v1/human-approvals`
 
 List all pending human approval requests.

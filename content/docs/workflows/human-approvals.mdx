@@ -5,7 +5,7 @@ description: Pause workflow execution for human review, approval, or rejection u
 
 # Human Approvals
 
-Workflows can pause at any point to wait for a human decision before proceeding. The orchestrator holds the workflow execution open, notifies via the approval API, and resumes or terminates based on the response — all with configurable timeouts.
+Workflows can pause at any point to wait for a human decision before proceeding. The run waits at a `kind: Human` state, posts the gate as a workflow event, and goes on along the transition the answer takes, with a configurable timeout. You answer a gate in Zaru Web, with `aegis workflow signal`, or over the REST API ([Answering a Gate](#answering-a-gate)).
 
 ---
 
@@ -58,84 +58,6 @@ A gate's answers come from its transitions: `input_equals_yes` takes `yes` (also
 
 ---
 
-## Listing Pending Approval Requests
-
-Poll the approval queue from any HTTP client:
-
-```bash
-curl https://your-aegis-node/v1/human-approvals \
-  -H "Authorization: Bearer $KEYCLOAK_JWT"
-```
-
-Response:
-
-```json
-{
-  "pending_requests": [
-    {
-      "id": "req-uuid",
-      "execution_id": "exec-uuid",
-      "prompt": "Review the draft in <draft content>. Answer yes to publish, no to discard.",
-      "created_at": "2026-03-05T14:00:00Z",
-      "timeout_seconds": 86400
-    }
-  ]
-}
-```
-
-Fetch a specific request:
-
-```bash
-curl https://your-aegis-node/v1/human-approvals/req-uuid \
-  -H "Authorization: Bearer $KEYCLOAK_JWT"
-```
-
----
-
-## Approving a Request
-
-```bash
-curl -X POST https://your-aegis-node/v1/human-approvals/req-uuid/approve \
-  -H "Authorization: Bearer $KEYCLOAK_JWT" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "feedback": "Looks good, approved for production.",
-    "approved_by": "alice@example.com"
-  }'
-```
-
-Both fields are optional. Response:
-
-```json
-{ "status": "approved" }
-```
-
-The workflow immediately resumes from the `AWAIT_APPROVAL` state and transitions to the `approved` target state (`PUBLISH` in the example above).
-
----
-
-## Rejecting a Request
-
-```bash
-curl -X POST https://your-aegis-node/v1/human-approvals/req-uuid/reject \
-  -H "Authorization: Bearer $KEYCLOAK_JWT" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "reason": "Draft needs more citations before publishing.",
-    "rejected_by": "bob@example.com"
-  }'
-```
-
-`reason` is required. Response:
-
-```json
-{ "status": "rejected" }
-```
-
-The workflow transitions to the `rejected` target state (`DISCARD` in the example).
-
----
-
 ## Timeout Behaviour
 
 When `timeout` elapses without an answer:
@@ -171,46 +93,37 @@ curl -X POST https://your-aegis-node/v1/workflows/executions/exec-uuid/signal \
 
 ## Building an Approval UI
 
-A minimal polling loop for a custom approval interface:
+A minimal polling loop for a custom approval interface, on the same two routes:
 
 ```typescript
 const ORCHESTRATOR = 'https://your-aegis-node';
 const TOKEN = process.env.KEYCLOAK_JWT;
 
-async function pollApprovals() {
-  const res = await fetch(`${ORCHESTRATOR}/v1/human-approvals`, {
+async function pollGates() {
+  const res = await fetch(`${ORCHESTRATOR}/v1/workflow-gates?status=pending`, {
     headers: { Authorization: `Bearer ${TOKEN}` },
   });
-  const { pending_requests } = await res.json();
+  const { gates } = await res.json();
 
-  for (const req of pending_requests) {
-    console.log(`[${req.id}] ${req.prompt}`);
-    console.log(`  Created: ${req.created_at}  Timeout: ${req.timeout_seconds}s`);
+  for (const gate of gates) {
+    console.log(`[${gate.execution_id}] ${gate.state_name}: ${gate.prompt}`);
+    console.log(`  Answers: ${gate.responses.join(', ')}  Expires: ${gate.expires_at}`);
   }
 }
 
-async function approve(requestId: string, feedback?: string) {
-  await fetch(`${ORCHESTRATOR}/v1/human-approvals/${requestId}/approve`, {
+async function answer(executionId: string, response: string, feedback?: string) {
+  await fetch(`${ORCHESTRATOR}/v1/workflows/executions/${executionId}/signal`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ feedback, approved_by: 'current-user@example.com' }),
-  });
-}
-
-async function reject(requestId: string, reason: string) {
-  await fetch(`${ORCHESTRATOR}/v1/human-approvals/${requestId}/reject`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ reason, rejected_by: 'current-user@example.com' }),
+    body: JSON.stringify({ response, feedback }),
   });
 }
 ```
+
+`response` is one of the gate's `responses` (`yes` or `no` at a yes-or-no gate); any other word is refused and the gate is asked again.
 
 ---
 
@@ -239,4 +152,4 @@ See the [Template Syntax Reference](/docs/reference/template-syntax) for the ful
 
 - [Building Workflows](/docs/workflows/building-workflows) — full workflow authoring guide
 - [Workflow Manifest Reference](/docs/reference/workflow-manifest) — complete `kind: Human` field spec
-- [REST API — Human Approvals](/docs/reference/rest-api#human-approvals)
+- [REST API — Workflow Gates](/docs/reference/rest-api#get-v1workflow-gates)
