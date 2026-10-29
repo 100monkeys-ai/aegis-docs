@@ -135,7 +135,8 @@ async function shoot(page: Page, name: string) {
 async function expectDocsPage(page: Page, slug: string) {
   const title = sourceTitle(slug);
   await expect(page).toHaveURL((url) => slugOf(url.pathname) === slug && url.pathname.startsWith('/docs'));
-  await expect(page).toHaveTitle(title);
+  // The root layout's title template appends the site name.
+  await expect(page).toHaveTitle(`${title} | AEGIS Docs`);
   await expect(page.locator('#nd-page h1').first()).toHaveText(title);
   await expect(page.locator('#nd-sidebar')).toBeVisible();
 }
