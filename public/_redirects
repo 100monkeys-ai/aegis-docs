@@ -1,0 +1,121 @@
+# Cloudflare Pages redirects
+# https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# Search Console (sc-domain:100monkeys.ai, report of 2026-10-22) listed these
+# URLs as 404. Every line is explicit: the Pages docs do not say a splat may
+# carry a suffix such as *.mdx. Each target answered 200 on 2026-10-29.
+#
+# Code-example paths (/workspace/..., /v1/..., /usr/..., {placeholders}) and
+# example file names (agent.yaml, backups/*.sql) are not pages: no rule, 404.
+
+# Docs pages linked with the .mdx suffix: the suffix-free page.
+/docs.mdx /docs 301
+/docs/agents/agents-as-functions.mdx /docs/agents/agents-as-functions 301
+/docs/agents/configuring-tools.mdx /docs/agents/configuring-tools 301
+/docs/agents/creating-agents-ui.mdx /docs/agents/creating-agents-ui 301
+/docs/agents/deploying-agents.mdx /docs/agents/deploying-agents 301
+/docs/agents/dispatch-protocol.mdx /docs/agents/dispatch-protocol 301
+/docs/agents/execution.mdx /docs/agents/execution 301
+/docs/agents/importing-skills.mdx /docs/agents/importing-skills 301
+/docs/agents/local-testing.mdx /docs/agents/local-testing 301
+/docs/agents/overview.mdx /docs/agents/overview 301
+/docs/agents/tool-call-judging.mdx /docs/agents/tool-call-judging 301
+/docs/agents/validation-guide.mdx /docs/agents/validation-guide 301
+/docs/agents/writing-agents.mdx /docs/agents/writing-agents 301
+/docs/architecture/event-bus.mdx /docs/architecture/event-bus 301
+/docs/architecture/overview.mdx /docs/architecture/overview 301
+/docs/architecture/storage-backends.mdx /docs/architecture/storage-backends 301
+/docs/architecture/tooling-gateway.mdx /docs/architecture/tooling-gateway 301
+/docs/concepts/agents.mdx /docs/concepts/agents 301
+/docs/concepts/cluster-and-nodes.mdx /docs/concepts/cluster-and-nodes 301
+/docs/concepts/cortex-integration.mdx /docs/concepts/cortex-integration 301
+/docs/concepts/edge-mode-overview.mdx /docs/concepts/edge-mode-overview 301
+/docs/concepts/edge-security.mdx /docs/concepts/edge-security 301
+/docs/concepts/observability.mdx /docs/concepts/observability 301
+/docs/concepts/seal-gateway.mdx /docs/concepts/seal-gateway 301
+/docs/concepts/secrets-and-identity.mdx /docs/concepts/secrets-and-identity 301
+/docs/concepts/security-model.mdx /docs/concepts/security-model 301
+/docs/concepts/storage-gateway.mdx /docs/concepts/storage-gateway 301
+/docs/concepts/swarms.mdx /docs/concepts/swarms 301
+/docs/concepts/workflows.mdx /docs/concepts/workflows 301
+/docs/deployment/backup-restore.mdx /docs/deployment/backup-restore 301
+/docs/deployment/caddy-edge-proxy.mdx /docs/deployment/caddy-edge-proxy 301
+/docs/deployment/configuring-storage.mdx /docs/deployment/configuring-storage 301
+/docs/deployment/configuring-webhooks.mdx /docs/deployment/configuring-webhooks 301
+/docs/deployment/container-registry.mdx /docs/deployment/container-registry 301
+/docs/deployment/disaster-recovery.mdx /docs/deployment/disaster-recovery 301
+/docs/deployment/docker.mdx /docs/deployment/docker 301
+/docs/deployment/edge-daemon-installation.mdx /docs/deployment/edge-daemon-installation 301
+/docs/deployment/edge-operational-patterns.mdx /docs/deployment/edge-operational-patterns 301
+/docs/deployment/firecracker.mdx /docs/deployment/firecracker 301
+/docs/deployment/llm-providers.mdx /docs/deployment/llm-providers 301
+/docs/deployment/multi-tenancy.mdx /docs/deployment/multi-tenancy 301
+/docs/deployment/observability.mdx /docs/deployment/observability 301
+/docs/deployment/pod-architecture.mdx /docs/deployment/pod-architecture 301
+/docs/deployment/production-hardening.mdx /docs/deployment/production-hardening 301
+/docs/deployment/profiles.mdx /docs/deployment/profiles 301
+/docs/deployment/secrets.mdx /docs/deployment/secrets 301
+/docs/gateway/api-explorer.mdx /docs/gateway/api-explorer 301
+/docs/gateway/authoring-workflows.mdx /docs/gateway/authoring-workflows 301
+/docs/gateway/concepts.mdx /docs/gateway/concepts 301
+/docs/gateway/deployment.mdx /docs/gateway/deployment 301
+/docs/gateway/ephemeral-cli-tools.mdx /docs/gateway/ephemeral-cli-tools 301
+/docs/gateway/grpc-api.mdx /docs/gateway/grpc-api 301
+/docs/gateway/integration-with-aegis.mdx /docs/gateway/integration-with-aegis 301
+/docs/gateway/observability.mdx /docs/gateway/observability 301
+/docs/gateway/overview.mdx /docs/gateway/overview 301
+/docs/gateway/seal-protocol.mdx /docs/gateway/seal-protocol 301
+/docs/gateway/troubleshooting.mdx /docs/gateway/troubleshooting 301
+/docs/getting-started.mdx /docs/getting-started 301
+/docs/guides/authentication.mdx /docs/guides/authentication 301
+/docs/guides/edge-fleet-operations.mdx /docs/guides/edge-fleet-operations 301
+/docs/guides/edge-key-rotation.mdx /docs/guides/edge-key-rotation 301
+/docs/guides/management-via-mcp.mdx /docs/guides/management-via-mcp 301
+/docs/reference/builtin-tools.mdx /docs/reference/builtin-tools 301
+/docs/reference/cli-capability-matrix.mdx /docs/reference/cli-capability-matrix 301
+/docs/reference/edge-config.mdx /docs/reference/edge-config 301
+/docs/reference/metrics.mdx /docs/reference/metrics 301
+/docs/reference/releases.mdx /docs/reference/releases 301
+/docs/reference/sdk-python.mdx /docs/reference/sdk-python 301
+/docs/reference/sdk-typescript.mdx /docs/reference/sdk-typescript 301
+/docs/reference/standard-runtime-registry.mdx /docs/reference/standard-runtime-registry 301
+/docs/reference/workflow-manifest.mdx /docs/reference/workflow-manifest 301
+/docs/workflows/building-workflows.mdx /docs/workflows/building-workflows 301
+/docs/workflows/cicd-pipelines.mdx /docs/workflows/cicd-pipelines 301
+/docs/workflows/creating-workflows-ui.mdx /docs/workflows/creating-workflows-ui 301
+/docs/workflows/overview.mdx /docs/workflows/overview 301
+/docs/workflows/schedules.mdx /docs/workflows/schedules 301
+/docs/workflows/swarms.mdx /docs/workflows/swarms 301
+/docs/workflows/workflow-visualization.mdx /docs/workflows/workflow-visualization 301
+/docs/zaru/code-mode.mdx /docs/zaru/code-mode 301
+/docs/zaru/context-panel.mdx /docs/zaru/context-panel 301
+/docs/zaru/execute-mode.mdx /docs/zaru/execute-mode 301
+/docs/zaru/live-mode.mdx /docs/zaru/live-mode 301
+/docs/zaru/mcp-client-setup.mdx /docs/zaru/mcp-client-setup 301
+/docs/zaru/memory.mdx /docs/zaru/memory 301
+/docs/zaru/overview.mdx /docs/zaru/overview 301
+/docs/zaru/pricing.mdx /docs/zaru/pricing 301
+/docs/zaru/the-architect.mdx /docs/zaru/the-architect 301
+/docs/zaru/the-colony.mdx /docs/zaru/the-colony 301
+/docs/zaru/the-workshop.mdx /docs/zaru/the-workshop 301
+
+# Docs pages that moved or were renamed: the page that replaced them
+# (from git history: guides/* moved into agents/, workflows/ and deployment/;
+# architecture/smcp became architecture/seal in 535a8a4, which 4806859
+# relocated to gateway/seal-protocol).
+/docs/architecture/seal.mdx /docs/gateway/seal-protocol 301
+/docs/architecture/seal /docs/gateway/seal-protocol 301
+/docs/architecture/smcp /docs/gateway/seal-protocol 301
+/docs/concepts/execution /docs/agents/execution 301
+/docs/concepts/validation /docs/agents/validation 301
+/docs/guides/building-swarms /docs/workflows/building-swarms 301
+/docs/guides/building-workflows /docs/workflows/building-workflows 301
+/docs/guides/cicd-pipelines /docs/workflows/cicd-pipelines 301
+/docs/guides/configuring-tools /docs/agents/configuring-tools 301
+/docs/guides/deploying-agents /docs/agents/deploying-agents 301
+/docs/guides/disaster-recovery /docs/deployment/disaster-recovery 301
+/docs/guides/llm-providers /docs/deployment/llm-providers 301
+/docs/guides/local-testing /docs/agents/local-testing 301
+/docs/guides/multi-tenancy /docs/deployment/multi-tenancy 301
+/docs/guides/validation /docs/agents/validation-guide 301
+/docs/guides/workflow-visualization /docs/workflows/workflow-visualization 301
