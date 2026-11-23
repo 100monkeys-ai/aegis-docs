@@ -16,15 +16,15 @@
     "node": "^24.11.0"
   },
   "dependencies": {
-    "fumadocs-core": "16.17.7",
-    "fumadocs-mdx": "15.4.9",
-    "fumadocs-ui": "16.17.7",
+    "fumadocs-core": "16.19.5",
+    "fumadocs-mdx": "15.6.4",
+    "fumadocs-ui": "16.19.5",
     "lucide-react": "^1.7.0",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "tailwind-merge": "^3.7.0",
-    "takumi-js": "^2.17.1"
+    "tailwind-merge": "^3.7.1",
+    "takumi-js": "^2.22.0"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
