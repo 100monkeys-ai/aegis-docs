@@ -346,6 +346,25 @@ spec:
       cert_path: "/etc/aegis/certs/node.crt"
       key_path: "/etc/aegis/certs/node.key"
       ca_cert: "/etc/aegis/certs/ca.crt"
+    # Active-active membership. See /docs/deployment/active-active-cluster.
+    membership:
+      # The address peers dial on cluster_grpc_port; the cluster certificate
+      # must name it. Absent: the bind address, which must not be 0.0.0.0.
+      vrack_address: "10.121.0.1"
+      # Lease renewal interval, and the lease's length by the database clock
+      # (at least twice the renewal). Defaults: 3 and 15.
+      lease_renew_secs: 3
+      lease_ttl_secs: 15
+      # Peer probe interval and consecutive failures that, with an expired
+      # lease, judge a peer dead. Defaults: 1000 and 5.
+      probe_interval_ms: 1000
+      probe_failures_to_suspect: 5
+      # How long a stopping node lets its executions finish before ending the
+      # rest as node_drained. Default: 25. Keep it under the stop grace period.
+      drain_timeout_secs: 25
+      # Executions this node runs before new ones go to the peer with the most
+      # headroom. Absent: it never forwards and is never chosen.
+      # max_executions: 8
 
   # ─── Observability ──────────────────────────────────────────────────────────
   observability:
