@@ -44,6 +44,8 @@ Work that must run once in the cluster runs as a **duty**: one member holds each
 
 **Adoption.** When an owner dies, the holder of the `execution-adoption` duty takes over its unfinished executions. It ends each one as failed with the reason `owner_lost`, or as cancelled if a cancel was recorded. The Temporal worker treats `owner_lost` as retryable, so the workflow's next attempt starts a fresh run.
 
+**Fleet commands.** A fleet command runs on the member that started it, which records itself as the command's owner. A cancel received on another member goes to that owner, which checks the tenant again before it stops the command.
+
 **Drain.** On `SIGTERM` a member stops taking new executions and waits up to `drain_timeout_secs` for the ones it owns to finish. It then ends the rest as failed with the reason `node_drained`, which is also retryable. Give the process a stop grace period longer than the drain.
 
 ## Live events
@@ -95,6 +97,14 @@ The load balancer can run in two modes:
 
 - **Failover:** one member takes all the traffic, and the others take it when that member is unhealthy.
 - **Round-robin:** each request goes to a healthy member at random, with no session affinity. This is safe because members share SEAL sessions, replay nonces, execution events and burst rate limits. Each member grants `ceil(limit / live members)` of a burst, so the cluster together grants what one member would.
+
+## Edge daemons
+
+Every member runs its own Relay Coordinator. An edge daemon connects to whichever member the relay hostname resolves to and holds its stream there. The relay hostname's load balancer answers DNS only, because the stream is long-lived gRPC and does not pass through the proxy. Each relay records the streams it holds as its member's.
+
+A tool call for an edge runs on the stream where it is. If this member's relay holds the stream, the call goes to that relay. Otherwise it goes to the member that holds the stream, over mutual TLS. A call that reaches the wrong member is never passed on again; it fails as unavailable, and so does a call for an edge whose member is gone, until the edge reconnects.
+
+Set `cluster.membership.member_node_id` in each relay's configuration to the id of the member it serves. Leave it unset on a relay that serves no cluster.
 
 ## Capacity
 

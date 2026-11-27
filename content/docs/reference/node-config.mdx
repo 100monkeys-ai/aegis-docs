@@ -365,6 +365,10 @@ spec:
       # Executions this node runs before new ones go to the peer with the most
       # headroom. Absent: it never forwards and is never chosen.
       # max_executions: 8
+      # On a Relay Coordinator only: the id of the cluster member this relay
+      # serves. The relay records each edge stream it holds as that member's.
+      # Absent: the relay serves no cluster.
+      # member_node_id: "env:AEGIS_RELAY_MEMBER_ID"
 
   # ─── Observability ──────────────────────────────────────────────────────────
   observability:
@@ -438,14 +442,14 @@ Agent manifests reference **model aliases**, not provider-specific model names. 
 
 ### Standard Aliases
 
-| Alias     | Purpose                                           |
-| --------- | ------------------------------------------------- |
-| `default` | General-purpose model (balanced cost/performance) |
-| `fast`    | Low-latency model (quick responses)               |
-| `smart`   | High-capability model (complex reasoning)         |
-| `cheap`   | Cost-optimized model                              |
-| `local`   | Local-only model (air-gapped)                     |
-| `judge`   | The built-in judge agents that score an iteration's output |
+| Alias        | Purpose                                                      |
+| ------------ | ------------------------------------------------------------ |
+| `default`    | General-purpose model (balanced cost/performance)            |
+| `fast`       | Low-latency model (quick responses)                          |
+| `smart`      | High-capability model (complex reasoning)                    |
+| `cheap`      | Cost-optimized model                                         |
+| `local`      | Local-only model (air-gapped)                                |
+| `judge`      | The built-in judge agents that score an iteration's output   |
 | `tool-judge` | The inner-loop judge of tool calls, `tool-call-policy-judge` |
 
 ### How It Works
@@ -521,22 +525,22 @@ Optional. The Docker image tag used for all AEGIS-owned service containers. Writ
 
 Required array. At least one entry with at least one model is required.
 
-| Key                           | Type     | Required | Default | Description                                                                                                                                           |
-| ----------------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                        | string   | ✅       | —       | Unique provider name                                                                                                                                  |
-| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `gemini` \| `ollama` \| `openai-compatible`                                                                                            |
-| `endpoint`                    | string   | ✅       | —       | API endpoint URL                                                                                                                                      |
-| `api_key`                     | string   | ❌       | null    | API key. Supports `env:` and `secret:` prefixes.                                                                                                      |
-| `headers`                     | map      | ❌       | null    | Header name to value, sent on every request beside `Authorization` by the `openai` and `openai-compatible` adapters. A header named `authorization` (any letter case) is refused at validation. See [Request Headers](/docs/deployment/llm-providers#request-headers). |
-| `enabled`                     | bool     | ❌       | `true`  | Whether this provider is active                                                                                                                       |
-| `models[].alias`              | string   | ✅       | —       | Alias referenced in agent manifests                                                                                                                   |
-| `models[].model`              | string   | ✅       | —       | Provider-side model identifier                                                                                                                        |
-| `models[].capabilities`       | string[] | ✅       | —       | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` \| `image_generation`. An alias with `image_generation` is an [image generation model](/docs/deployment/llm-providers#image-generation-models), never an agent's model. |
-| `models[].context_window`     | u32      | ✅       | —       | Max context window in tokens                                                                                                                          |
-| `models[].max_output_tokens`  | u32      | ❌       | `8192`  | Max output tokens per request. Increase for thinking-mode models.                                                                                     |
-| `models[].temperature`        | f32      | ❌       | `0.4`   | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Can be overridden per-agent via `spec.runtime.temperature`. |
+| Key                           | Type     | Required | Default | Description                                                                                                                                                                                                                                                                         |
+| ----------------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                        | string   | ✅       | —       | Unique provider name                                                                                                                                                                                                                                                                |
+| `type`                        | enum     | ✅       | —       | `openai` \| `anthropic` \| `gemini` \| `ollama` \| `openai-compatible`                                                                                                                                                                                                              |
+| `endpoint`                    | string   | ✅       | —       | API endpoint URL                                                                                                                                                                                                                                                                    |
+| `api_key`                     | string   | ❌       | null    | API key. Supports `env:` and `secret:` prefixes.                                                                                                                                                                                                                                    |
+| `headers`                     | map      | ❌       | null    | Header name to value, sent on every request beside `Authorization` by the `openai` and `openai-compatible` adapters. A header named `authorization` (any letter case) is refused at validation. See [Request Headers](/docs/deployment/llm-providers#request-headers).              |
+| `enabled`                     | bool     | ❌       | `true`  | Whether this provider is active                                                                                                                                                                                                                                                     |
+| `models[].alias`              | string   | ✅       | —       | Alias referenced in agent manifests                                                                                                                                                                                                                                                 |
+| `models[].model`              | string   | ✅       | —       | Provider-side model identifier                                                                                                                                                                                                                                                      |
+| `models[].capabilities`       | string[] | ✅       | —       | `chat` \| `embedding` \| `reasoning` \| `vision` \| `code` \| `image_generation`. An alias with `image_generation` is an [image generation model](/docs/deployment/llm-providers#image-generation-models), never an agent's model.                                                  |
+| `models[].context_window`     | u32      | ✅       | —       | Max context window in tokens                                                                                                                                                                                                                                                        |
+| `models[].max_output_tokens`  | u32      | ❌       | `8192`  | Max output tokens per request. Increase for thinking-mode models.                                                                                                                                                                                                                   |
+| `models[].temperature`        | f32      | ❌       | `0.4`   | Default LLM sampling temperature for this alias. `0.0` = deterministic, `1.0` = creative. Can be overridden per-agent via `spec.runtime.temperature`.                                                                                                                               |
 | `models[].fallback_alias`     | string   | ❌       | —       | Another alias, tried once after the provider's time limit on this alias's model, with that alias's options. Must be mapped by an enabled provider, must not be this alias, and must not itself name a fallback. See [Fallback Alias](/docs/deployment/llm-providers#fallback-alias) |
-| `models[].cost_per_1k_tokens` | f64      | ❌       | `0.0`   | Cost per 1K tokens (0.0 for free/local)                                                                                                               |
+| `models[].cost_per_1k_tokens` | f64      | ❌       | `0.0`   | Cost per 1K tokens (0.0 for free/local)                                                                                                                                                                                                                                             |
 
 #### Provider Types
 
@@ -554,15 +558,15 @@ Required array. At least one entry with at least one model is required.
 
 Optional. Controls runtime provider selection strategy.
 
-| Key                 | Type   | Default        | Description                                                                 |
-| ------------------- | ------ | -------------- | --------------------------------------------------------------------------- |
-| `strategy`          | enum   | `prefer-local` | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized` |
-| `default_provider`  | string | null           | Must name a provider in `spec.llm_providers`, or the configuration is refused. It does not choose a provider: each alias is resolved by `strategy` |
-| `fallback_provider` | string | null           | Provider tried once, on its first model and with the caller's options, after an alias's last failed retry or after a provider's time limit (HTTP 408 with code 3046), for an alias whose model entry names no `fallback_alias`. Must name a provider in `spec.llm_providers`, or the configuration is refused |
-| `max_retries`       | u32    | `3`            | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt. |
-| `retry_delay_ms`    | u64    | `1000`         | Delay between retries in milliseconds                                       |
-| `llm_overall_timeout_secs` | u64 | `30` | Wall-clock budget in seconds for one chat call on an alias, such as each model call of an agent's inner loop, covering every retry and the one fallback attempt, on the alias's `fallback_alias` or on `fallback_provider`; when it elapses the call fails with `upstream timeout after <n>s`. A single-prompt generation is not bounded by it, only each of its attempts by `llm_attempt_timeout_secs` |
-| `llm_attempt_timeout_secs` | u64 | absent (no bound) | Bound in seconds on one attempt of a model call. An attempt with no answer when it elapses is abandoned and retried like an HTTP 408, counted against `max_retries` and inside `llm_overall_timeout_secs`. Must be positive and not above `llm_overall_timeout_secs`. A provider's HTTP 400 is never retried: the call fails at once with the provider's message |
+| Key                        | Type   | Default           | Description                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `strategy`                 | enum   | `prefer-local`    | `prefer-local` \| `prefer-cloud` \| `cost-optimized` \| `latency-optimized`                                                                                                                                                                                                                                                                                                                             |
+| `default_provider`         | string | null              | Must name a provider in `spec.llm_providers`, or the configuration is refused. It does not choose a provider: each alias is resolved by `strategy`                                                                                                                                                                                                                                                      |
+| `fallback_provider`        | string | null              | Provider tried once, on its first model and with the caller's options, after an alias's last failed retry or after a provider's time limit (HTTP 408 with code 3046), for an alias whose model entry names no `fallback_alias`. Must name a provider in `spec.llm_providers`, or the configuration is refused                                                                                           |
+| `max_retries`              | u32    | `3`               | Maximum retry attempts on LLM failure. An answer with no text and no tool call counts as a failed attempt.                                                                                                                                                                                                                                                                                              |
+| `retry_delay_ms`           | u64    | `1000`            | Delay between retries in milliseconds                                                                                                                                                                                                                                                                                                                                                                   |
+| `llm_overall_timeout_secs` | u64    | `30`              | Wall-clock budget in seconds for one chat call on an alias, such as each model call of an agent's inner loop, covering every retry and the one fallback attempt, on the alias's `fallback_alias` or on `fallback_provider`; when it elapses the call fails with `upstream timeout after <n>s`. A single-prompt generation is not bounded by it, only each of its attempts by `llm_attempt_timeout_secs` |
+| `llm_attempt_timeout_secs` | u64    | absent (no bound) | Bound in seconds on one attempt of a model call. An attempt with no answer when it elapses is abandoned and retried like an HTTP 408, counted against `max_retries` and inside `llm_overall_timeout_secs`. Must be positive and not above `llm_overall_timeout_secs`. A provider's HTTP 400 is never retried: the call fails at once with the provider's message                                        |
 
 ---
 
@@ -629,22 +633,22 @@ Setting `allow_insecure_bind: true` on a publicly-exposed host is a serious secu
 
 Optional. Defaults to the `local_host` backend.
 
-| Key                               | Type   | Default                             | Description                                                         |
-| --------------------------------- | ------ | ----------------------------------- | ------------------------------------------------------------------- |
-| `backend`                         | enum   | `local_host`                        | `seaweedfs` \| `local_host` \| `opendal`                            |
-| `fallback_to_local`               | bool   | `true`                              | Gracefully fall back to local storage when SeaweedFS is unreachable |
-| `nfs_port`                        | u16    | `2049`                              | NFS Server Gateway listen port                                      |
-| `seaweedfs.filer_url`             | string | `http://localhost:8888`             | SeaweedFS Filer endpoint                                            |
-| `seaweedfs.mount_point`           | string | `/var/lib/aegis/storage`            | Host filesystem mount point                                         |
-| `seaweedfs.default_ttl_hours`     | u32    | `24`                                | Default TTL for ephemeral volumes (hours)                           |
-| `seaweedfs.default_size_limit_mb` | u64    | `1000`                              | Default per-volume size quota (MB)                                  |
-| `seaweedfs.max_size_limit_mb`     | u64    | `10000`                             | Hard ceiling on volume size (MB)                                    |
-| `seaweedfs.gc_interval_minutes`   | u32    | `60`                                | Expired volume GC interval (minutes)                                |
-| `seaweedfs.s3_endpoint`           | string | null                                | Optional SeaweedFS S3 gateway endpoint                              |
-| `seaweedfs.s3_region`             | string | `us-east-1`                         | S3 gateway region                                                   |
-| `local_host.mount_point`          | string | `/var/lib/aegis/local-host-volumes` | Host filesystem mount point for local volumes                       |
-| `opendal.provider`                | string | `memory`                            | OpenDAL scheme provider                                             |
-| `opendal.options`                 | map    | `{}`                                | OpenDAL provider options                                            |
+| Key                               | Type   | Default                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------- | ------ | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend`                         | enum   | `local_host`                        | `seaweedfs` \| `local_host` \| `opendal`                                                                                                                                                                                                                                                                                                                                                                                   |
+| `fallback_to_local`               | bool   | `true`                              | Gracefully fall back to local storage when SeaweedFS is unreachable                                                                                                                                                                                                                                                                                                                                                        |
+| `nfs_port`                        | u16    | `2049`                              | NFS Server Gateway listen port                                                                                                                                                                                                                                                                                                                                                                                             |
+| `seaweedfs.filer_url`             | string | `http://localhost:8888`             | SeaweedFS Filer endpoint                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `seaweedfs.mount_point`           | string | `/var/lib/aegis/storage`            | Host filesystem mount point                                                                                                                                                                                                                                                                                                                                                                                                |
+| `seaweedfs.default_ttl_hours`     | u32    | `24`                                | Default TTL for ephemeral volumes (hours)                                                                                                                                                                                                                                                                                                                                                                                  |
+| `seaweedfs.default_size_limit_mb` | u64    | `1000`                              | Default per-volume size quota (MB)                                                                                                                                                                                                                                                                                                                                                                                         |
+| `seaweedfs.max_size_limit_mb`     | u64    | `10000`                             | Hard ceiling on volume size (MB)                                                                                                                                                                                                                                                                                                                                                                                           |
+| `seaweedfs.gc_interval_minutes`   | u32    | `60`                                | Expired volume GC interval (minutes)                                                                                                                                                                                                                                                                                                                                                                                       |
+| `seaweedfs.s3_endpoint`           | string | null                                | Optional SeaweedFS S3 gateway endpoint                                                                                                                                                                                                                                                                                                                                                                                     |
+| `seaweedfs.s3_region`             | string | `us-east-1`                         | S3 gateway region                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `local_host.mount_point`          | string | `/var/lib/aegis/local-host-volumes` | Host filesystem mount point for local volumes                                                                                                                                                                                                                                                                                                                                                                              |
+| `opendal.provider`                | string | `memory`                            | OpenDAL scheme provider                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `opendal.options`                 | map    | `{}`                                | OpenDAL provider options                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `git.step_network`                | string | null                                | Container network every git step of a repository binding runs on (clone, fetch, commit, push, a diff or a landing on a volume), never the agents' network; also the network of a workflow `ContainerRun` step with `network_mode: egress`. Supports `env:VAR_NAME`. Absent or empty: git steps run on the step runner's default network, and an `egress` step is refused with "this node has no egress network for steps". |
 
 ---
@@ -653,8 +657,8 @@ Optional. Defaults to the `local_host` backend.
 
 Optional. Default: `false`.
 
-| Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key               | Type | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------- | ---- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `deploy_builtins` | bool | `false` | Deploy vendored built-in agent and workflow templates on startup. Includes agent-creator-agent, workflow-generator-planner-agent, judge agents, intent-executor-discovery-agent, intent-result-formatter-agent, skill-validator, and the builtin-workflow-generator, builtin-intent-to-execution, skill-import, the-forge and transcribe-audio workflows, with the Forge's seven agents (`requirements-analyst`, `architect-agent`, `tester-agent`, `coder-agent`, `code-reviewer-agent`, `critic-agent`, `security-auditor-agent`). Each is registered under `aegis-system` with global scope. Required for `aegis.agent.generate`, `aegis.workflow.generate`, and `aegis.execute.intent` to function, and for [the Forge](/docs/workflows/overview#the-forge). |
 
 ---
@@ -797,22 +801,22 @@ For external MCP servers, `skip_judge` follows the same rule: `true` for determi
 
 Optional. Configures IAM/OIDC as the trusted JWT issuer. Omit to disable JWT validation (dev only).
 
-| Key                      | Type   | Default      | Description                                    |
-| ------------------------ | ------ | ------------ | ---------------------------------------------- |
-| `realms[].slug`          | string | —            | Realm name matching the Keycloak configuration |
-| `realms[].issuer_url`    | string | —            | OIDC issuer URL                                |
-| `realms[].jwks_uri`      | string | —            | JWKS endpoint for JWT signature verification   |
-| `realms[].audience`      | string | —            | Expected `aud` claim in tokens from this realm |
-| `realms[].kind`          | enum   | —            | `system` \| `consumer` \| `tenant`             |
-| `jwks_cache_ttl_seconds` | u32    | `300`        | JWKS key cache TTL                             |
-| `claims.zaru_tier`       | string | `zaru_tier`  | Keycloak claim name carrying `ZaruTier`        |
-| `claims.aegis_role`      | string | `aegis_role` | Keycloak claim name carrying `AegisRole`       |
-| `operator_escalation.ttl_seconds` | u64 | `1800` | Seconds an operator escalation lasts from its redemption. See [Operator Escalation](/docs/zaru/mcp-tools#operator-escalation) |
-| `operator_escalation.code_validity_seconds` | u64 | `300` | Seconds a generated escalation code stays redeemable |
-| `operator_escalation.code_max_failed_attempts` | u32 | `5` | Failed redemptions by a user's keys that invalidate that user's live codes |
-| `keycloak_admin.host` | string | — | Keycloak base URL for its Admin REST API; supports `env:VAR` |
-| `keycloak_admin.admin_username` | string | — | Admin user of the `master` realm; supports `env:VAR` |
-| `keycloak_admin.admin_password` | string | — | That user's password; supports `env:VAR` |
+| Key                                            | Type   | Default      | Description                                                                                                                   |
+| ---------------------------------------------- | ------ | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `realms[].slug`                                | string | —            | Realm name matching the Keycloak configuration                                                                                |
+| `realms[].issuer_url`                          | string | —            | OIDC issuer URL                                                                                                               |
+| `realms[].jwks_uri`                            | string | —            | JWKS endpoint for JWT signature verification                                                                                  |
+| `realms[].audience`                            | string | —            | Expected `aud` claim in tokens from this realm                                                                                |
+| `realms[].kind`                                | enum   | —            | `system` \| `consumer` \| `tenant`                                                                                            |
+| `jwks_cache_ttl_seconds`                       | u32    | `300`        | JWKS key cache TTL                                                                                                            |
+| `claims.zaru_tier`                             | string | `zaru_tier`  | Keycloak claim name carrying `ZaruTier`                                                                                       |
+| `claims.aegis_role`                            | string | `aegis_role` | Keycloak claim name carrying `AegisRole`                                                                                      |
+| `operator_escalation.ttl_seconds`              | u64    | `1800`       | Seconds an operator escalation lasts from its redemption. See [Operator Escalation](/docs/zaru/mcp-tools#operator-escalation) |
+| `operator_escalation.code_validity_seconds`    | u64    | `300`        | Seconds a generated escalation code stays redeemable                                                                          |
+| `operator_escalation.code_max_failed_attempts` | u32    | `5`          | Failed redemptions by a user's keys that invalidate that user's live codes                                                    |
+| `keycloak_admin.host`                          | string | —            | Keycloak base URL for its Admin REST API; supports `env:VAR`                                                                  |
+| `keycloak_admin.admin_username`                | string | —            | Admin user of the `master` realm; supports `env:VAR`                                                                          |
+| `keycloak_admin.admin_password`                | string | —            | That user's password; supports `env:VAR`                                                                                      |
 
 Omit `operator_escalation` for these defaults. An unknown key inside it refuses the configuration. `keycloak_admin` provisions a tenant for a newly signed-up user and lets the orchestrator read an escalated operator's role again; without it, or without a realm of `kind: system`, every escalation redemption answers `503` and every escalated call is refused.
 
@@ -822,12 +826,12 @@ Omit `operator_escalation` for these defaults. An unknown key inside it refuses 
 
 Optional. The bounds of a goal and the thresholds its judge's verdict is read by (see [`aegis.goal.evaluate`](/docs/reference/mcp-tool-reference#aegisgoalevaluate)). Omit for these defaults.
 
-| Key                             | Type | Default | Description |
-| ------------------------------- | ---- | ------- | ----------- |
-| `max_continuations`             | u32  | `3`     | Continuation rounds granted at most per goal |
-| `lifetime_seconds`              | u64  | `1800`  | Seconds a goal stays open from its creation; must be above 0 |
-| `met_min_score`                 | f64  | `0.85`  | A verdict meets the goal at this score or above |
-| `met_min_confidence`            | f64  | `0.75`  | …and at this confidence or above |
+| Key                             | Type | Default | Description                                                                                                             |
+| ------------------------------- | ---- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `max_continuations`             | u32  | `3`     | Continuation rounds granted at most per goal                                                                            |
+| `lifetime_seconds`              | u64  | `1800`  | Seconds a goal stays open from its creation; must be above 0                                                            |
+| `met_min_score`                 | f64  | `0.85`  | A verdict meets the goal at this score or above                                                                         |
+| `met_min_confidence`            | f64  | `0.75`  | …and at this confidence or above                                                                                        |
 | `cannot_be_met_max_feasibility` | f64  | `0.2`   | A verdict that does not meet the goal and whose `feasibility` signal scores at or below this closes it as cannot be met |
 
 Each threshold must be between 0.0 and 1.0, and an unknown key inside the block refuses the configuration. A sweep every ten minutes closes goals open past `lifetime_seconds`. The judge is the built-in agent `goal-judge`, deployed with the built-in templates (`spec.deploy_builtins`) and run on the `judge` alias. Zaru Web sets goals only for callers whose security context admits the three goal tools; add them to each `zaru-*` context's `capabilities`:
