@@ -346,7 +346,7 @@ spec:
       cert_path: "/etc/aegis/certs/node.crt"
       key_path: "/etc/aegis/certs/node.key"
       ca_cert: "/etc/aegis/certs/ca.crt"
-    # Active-active membership (ADR-152). See /docs/deployment/active-active-cluster.
+    # Active-active membership. See /docs/deployment/active-active-cluster.
     membership:
       # The address peers dial on cluster_grpc_port; the cluster certificate
       # must name it. Absent: the bind address, which must not be 0.0.0.0.

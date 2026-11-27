@@ -5,7 +5,7 @@ description: Run several AEGIS orchestrators as one cluster, each a full executi
 
 # Active-Active Cluster
 
-An active-active cluster is several orchestrators that share one PostgreSQL database and serve the same tenants. Every member accepts API requests and runs executions. When a member stops, the others notice and take over its responsibilities. The design is recorded in AEGIS ADR-152.
+An active-active cluster is several orchestrators that share one PostgreSQL database and serve the same tenants. Every member accepts API requests and runs executions. When a member stops, the others notice and take over its responsibilities.
 
 This page explains how the cluster works and how to configure it. For the older controller and worker roles, see [Multi-Node Deployment](/docs/deployment/multi-node).
 
