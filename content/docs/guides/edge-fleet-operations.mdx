@@ -261,3 +261,35 @@ In Zaru, **Vault → Edge Hosts → Fleet Runs** lists every run with the same f
 - [Edge Key Rotation](/docs/guides/edge-key-rotation) — fleet-wide key rotation as a special case of fleet operations.
 - [Edge CLI Reference](/docs/reference/edge-cli) — every flag.
 - [Edge REST API](/docs/reference/edge-rest-api) — `/v1/edge/fleet/*` endpoints if you're driving fleet runs programmatically.
+
+## Recipe 7: apply host state, checking first
+
+`host.apply` takes a list of resources and converges the host to them. Each resource reads the host first and acts only where it differs, so a second apply changes nothing. With `check: true` it reports each change it would make and changes nothing. The edge's security context must allow `host.apply` (see [Edge Host Setup](/docs/zaru/edge-host-setup)).
+
+```json
+{
+  "check": true,
+  "state": {
+    "resources": [
+      { "id": "pkg", "kind": "package", "name": "chrony" },
+      {
+        "id": "conf",
+        "kind": "file",
+        "path": "/etc/chrony/conf.d/pool.conf",
+        "content": "pool time.cloudflare.com iburst\n",
+        "mode": "0644"
+      },
+      {
+        "id": "svc",
+        "kind": "service",
+        "name": "chrony",
+        "enabled": true,
+        "running": true,
+        "watch": ["conf"]
+      }
+    ]
+  }
+}
+```
+
+Every resource answers `ok`, `changed` or `failed`, with a short diff. The first failure stops the run unless the state sets `continue_on_failure`. A `command` resource is refused unless `creates`, `unless` or `onlyif` makes it idempotent. Run with `check: true` first, read the diffs, then run again without it.

@@ -25,10 +25,11 @@ aegis edge keys rotate
 
 ### Server-side scope or role change
 
-If you've changed the daemon's tenant binding scope or the security context spec it should evaluate against, force a fresh `NodeSecurityToken`:
+A running daemon renews its `NodeSecurityToken` on its own every 20 minutes. It retries each minute after a failure, and recovers even after the token has expired, once the controller is reachable. If you've changed the daemon's tenant binding scope or the security context spec it should evaluate against, force a fresh token now:
 
 ```bash
-aegis edge token refresh
+aegis edge token refresh                       # state in ~/.aegis/edge
+aegis edge token refresh --state-dir /var/lib/aegis-edge/state
 ```
 
 This refreshes the token without rotating the underlying key.
