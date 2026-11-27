@@ -139,11 +139,7 @@ This topology adds the **NodeClusterService** layer for authenticated, capabilit
           spec.cluster.role: worker
 ```
 
-When a client submits an execution to the controller, the **NodeRouter** selects the best available worker (Phase 1: round-robin among healthy workers with matching tags; Phase 2: load-aware scoring). The controller forwards the execution to the selected worker via the `ForwardExecution` server-streaming RPC on port 50051, then streams `ExecutionEvent`s back to the original client.
-
-The `ClusterAwareExecutionService` handles this routing and forwarding transparently — it wraps the local `ExecutionService` and routes to workers when cluster mode is enabled, falling back to local execution when no workers are available.
-
----
+A member of an active-active cluster runs executions itself and sends new ones to a peer only when it is full or draining. The forward carries the caller as the forwarding member authenticated it, and the receiving member answers once it has claimed the execution. Its events reach every member over the cluster event relay. See [Active-Active Cluster](/docs/deployment/active-active-cluster).
 
 ## Configuring Nodes
 

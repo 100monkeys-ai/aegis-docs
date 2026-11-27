@@ -15,6 +15,7 @@
     "firecracker",
     "container-registry",
     "multi-node",
+    "active-active-cluster",
     "observability",
     "production-hardening",
     "configuring-storage",

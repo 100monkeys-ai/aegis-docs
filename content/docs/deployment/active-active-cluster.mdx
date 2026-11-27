@@ -1,0 +1,101 @@
+---
+title: Active-Active Cluster
+description: Run several AEGIS orchestrators as one cluster, each a full execution node, with membership and ownership leased in PostgreSQL and live events relayed between them.
+---
+
+# Active-Active Cluster
+
+An active-active cluster is several orchestrators that share one PostgreSQL database and serve the same tenants. Every member accepts API requests and runs executions. When a member stops, the others notice and take over its responsibilities. The design is recorded in AEGIS ADR-152.
+
+This page explains how the cluster works and how to configure it. For the older controller and worker roles, see [Multi-Node Deployment](/docs/deployment/multi-node).
+
+## What every member shares
+
+| Shared through          | What                                                                                                                                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL              | Executions and their events, membership leases (`cluster_nodes`), singleton duties (`cluster_duties`), SEAL sessions (`seal_sessions`), SEAL replay nonces (`seal_replay_nonces`), every other aggregate |
+| Temporal                | One ring of history, matching and frontend services across members                                                                                                                                       |
+| OpenBao                 | One active server and standbys, with storage and HA locks in PostgreSQL                                                                                                                                  |
+| Keycloak                | One Infinispan cluster, discovered through the database (`jdbc-ping`)                                                                                                                                    |
+| SeaweedFS               | A Raft group of masters, a volume server per member with replication, a filer per member on a shared PostgreSQL store                                                                                    |
+| The cluster event relay | Live events of executions, workflows, canvas sessions and volumes, streamed between members                                                                                                              |
+
+## Membership
+
+Each member joins the cluster when it starts. It writes a row in `cluster_nodes` with a new incarnation number and a lease, then renews the lease every `lease_renew_secs`. A member also probes each peer over the private network every `probe_interval_ms`.
+
+A peer is judged dead only when both signals agree: its lease has expired by the database clock, and it has failed `probe_failures_to_suspect` probes in a row. A member that still answers probes but has stopped renewing is cut off from the database, not dead. A peer fences it, so it stops its work before anyone takes that work over.
+
+Work that must run once in the cluster runs as a **duty**: one member holds each duty under a lease, and the others wait. Examples are volume TTL cleanup, rate-limit counter cleanup, schedule reconciliation, execution adoption and SEAL nonce cleanup.
+
+## Executions
+
+**Ownership.** Each execution has an owner: the member that runs it. Every write the owner makes is conditional on still owning it, so a member that lost ownership cannot overwrite the new owner's state.
+
+**Placement.** A new execution starts on the member that received it. If that member advertises a capacity (`max_executions`) and is full, or is draining, the execution goes to the live peer with the most headroom.
+
+**Forwarding.** The forwarding member vouches for the caller in its signed node envelope; the caller's bearer token is never forwarded. The receiving member accepts a forward only if:
+
+- the forwarding member holds a live lease;
+- the forward was issued within 60 seconds;
+- the tenant named in the input is the one the forwarding member authorised.
+
+**Cancellation.** A cancel received on any member is recorded on the execution and forwarded to the owner. An owner the forward does not reach still stops at its run's next iteration, where it reads the recorded cancel.
+
+**Adoption.** When an owner dies, the holder of the `execution-adoption` duty takes over its unfinished executions. It ends each one as failed with the reason `owner_lost`, or as cancelled if a cancel was recorded. The Temporal worker treats `owner_lost` as retryable, so the workflow's next attempt starts a fresh run.
+
+**Drain.** On `SIGTERM` a member stops taking new executions and waits up to `drain_timeout_secs` for the ones it owns to finish. It then ends the rest as failed with the reason `node_drained`, which is also retryable. Give the process a stop grace period longer than the drain.
+
+## Live events
+
+Each member streams the events it originates to every peer with `StreamClusterEvents`. Every event carries its origin member, incarnation and a sequence number.
+
+Subscribers declare a scope:
+
+- **Origin-only subscribers** act once per event and ignore copies relayed from peers. The persister and the discovery indexer are examples.
+- **Cluster-wide subscribers** see every copy. The SSE streams for executions, workflows, agents and canvas sessions are cluster-wide, as is NFS deregistration.
+
+A gap in a sequence, a stream that ends, or a peer the relay cannot reach makes cluster-wide streams re-read the stored history. While a peer is unreachable, they re-read once a second. SSE events carry their timestamp as `id`, so a client that reconnects to any member with `Last-Event-ID` resumes where it left off.
+
+## Configuration
+
+Every member runs the same configuration. Only its identity differs: `spec.node.id`, a UUID kept across restarts, and the address its peers dial.
+
+```yaml
+spec:
+  node:
+    id: "b70bd4fe-61d4-45df-b91c-e4d411d659fb"
+  cluster:
+    enabled: true
+    role: hybrid
+    cluster_grpc_port: 50057
+    node_keypair_path: "/etc/aegis/node_keypair"
+    membership:
+      vrack_address: "10.121.0.1" # the address peers dial; a private network
+      # lease_renew_secs: 3
+      # lease_ttl_secs: 15          # at least twice lease_renew_secs
+      # probe_interval_ms: 1000
+      # probe_failures_to_suspect: 5
+      # drain_timeout_secs: 25      # under the process's stop grace period
+      # max_executions: 8           # absent: never forwards, never chosen
+    tls:
+      enabled: true
+      cert_path: "/etc/aegis/cluster-tls/node.crt"
+      key_path: "/etc/aegis/cluster-tls/node.key"
+      ca_cert: "/etc/aegis/cluster-tls/ca.crt"
+```
+
+Each member's certificate must name the address in `vrack_address`. Members talk to each other only over mutual TLS on the private network. Nothing between members passes through the public edge.
+
+## Ingress
+
+Each member runs its own edge: Caddy, which gets its certificates by DNS-01, and the SEAL gateway. A Cloudflare load balancer sends each public hostname to the members. A health monitor requests `/health/ready` on every member, and readiness fails only for faults of that member, so a fault shared by every member never empties the pool.
+
+The load balancer can run in two modes:
+
+- **Failover:** one member takes all the traffic, and the others take it when that member is unhealthy.
+- **Round-robin:** each request goes to a healthy member at random, with no session affinity. This is safe because members share SEAL sessions, replay nonces, execution events and burst rate limits. Each member grants `ceil(limit / live members)` of a burst, so the cluster together grants what one member would.
+
+## Capacity
+
+Three members tolerate the loss of one at full service. Each member runs Temporal, OpenBao, Keycloak and SeaweedFS processes, which hold database connections, so size the PostgreSQL connection limit for every member. Temporal holds a pool per service and store and cannot go through PgBouncer.
