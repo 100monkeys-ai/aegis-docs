@@ -365,6 +365,10 @@ spec:
       # Executions this node runs before new ones go to the peer with the most
       # headroom. Absent: it never forwards and is never chosen.
       # max_executions: 8
+      # On a Relay Coordinator only: the id of the cluster member this relay
+      # serves. The relay records each edge stream it holds as that member's.
+      # Absent: the relay serves no cluster.
+      # member_node_id: "env:AEGIS_RELAY_MEMBER_ID"
 
   # ─── Observability ──────────────────────────────────────────────────────────
   observability:
