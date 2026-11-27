@@ -169,6 +169,35 @@ Successful output looks like:
 
 ---
 
+## What a new edge may do
+
+A newly enrolled edge is **deny by default**. Its configuration (`~/.aegis/edge/aegis-config.yaml`, or the `--state-dir` you enrolled into) seeds one security context per Zaru tier: `zaru-free`, `zaru-pro`, `zaru-business` and `zaru-enterprise`. A dispatch names its caller's tier context, and each of them allows only `host.facts`, which reads the host and changes nothing.
+
+To let the edge do more, widen a context deliberately, then restart the daemon:
+
+```yaml
+security_contexts:
+  - name: zaru-business
+    capabilities:
+      - tool_pattern: "host.facts"
+      - tool_pattern: "cmd.run"
+        command_allowlist: ["systemctl", "journalctl"]
+      - tool_pattern: "host.apply"
+    deny_list: []
+```
+
+| Tool         | What it does                                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host.facts` | Reports the host: hostname, OS, kernel, architecture, CPUs, memory, addresses, and whether systemd, Podman and ufw are present                                                           |
+| `host.apply` | Applies a host state (files, directories, packages, services, users, groups, sysctls, firewall rules, guarded commands, Podman pods), or reports what it would change with `check: true` |
+| `cmd.run`    | Runs one command, limited by `command_allowlist`                                                                                                                                         |
+
+The daemon renews its own node security token every 20 minutes, so a host left running stays connected without any action from you.
+
+## Enrolling into a team
+
+Pick the team in **Tenant** when you issue the token. The host then belongs to the team: every member sees it, and fleet runs from the team reach it. A token issued for a team you are not an active member of is refused, never issued in your personal workspace instead. The Edge Hosts page always names the workspace it is showing.
+
 ## Confirm connectivity
 
 ### From the host
