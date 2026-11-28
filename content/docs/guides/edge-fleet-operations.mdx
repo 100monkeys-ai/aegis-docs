@@ -304,7 +304,7 @@ kind: HostState
 metadata:
   name: api-host
 spec:
-  target: { Selector: { tags: [api] } }
+  target: { Selector: { tags: [ { Has: api } ] } }
   vars:
     port: "8080"
   secrets:
