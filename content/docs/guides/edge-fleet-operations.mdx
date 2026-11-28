@@ -293,3 +293,81 @@ In Zaru, **Vault → Edge Hosts → Fleet Runs** lists every run with the same f
 ```
 
 Every resource answers `ok`, `changed` or `failed`, with a short diff. The first failure stops the run unless the state sets `continue_on_failure`. A `command` resource is refused unless `creates`, `unless` or `onlyif` makes it idempotent. Run with `check: true` first, read the diffs, then run again without it.
+
+## Recipe 8: keep host state as a resource
+
+A `HostState` is a registered, versioned resource, like an agent or a workflow, so people, workflows and Zaru all apply the same state with the same record. It names the edges it applies to and its resources:
+
+```yaml
+apiVersion: 100monkeys.ai/v1
+kind: HostState
+metadata:
+  name: api-host
+spec:
+  target: { Selector: { tags: [ { Has: api } ] } }
+  vars:
+    port: "8080"
+  secrets:
+    db: "api/db#password"
+  resources:
+    - { id: pkg, kind: package, name: chrony }
+    - id: env
+      kind: file
+      path: /etc/api.env
+      mode: "0600"
+      content: |
+        PORT=((vars.port))
+        DB_PASSWORD=((secret.db))
+```
+
+- **Registering and running it.** Register it with `POST /v1/host-states`, or the `aegis.host_state.create` tool. Then `plan` it (check mode) or `apply` it, through `POST /v1/host-states/{name}/plan` and `/apply`, or the `aegis.host_state.plan` and `apply` tools. An apply goes to one edge at a time and stops at the first edge that fails.
+- **Placeholders.** `((vars.NAME))` and `((secret.NAME))` are filled in when the state is planned or applied. They use `((…))` so that a file's own `{{…}}` templates pass through untouched. A placeholder the state does not declare is refused at registration.
+- **Secrets.**
+
+  - **Where they live:** `api/db#password` names the field `password` at `host-states/api/db` in your tenant's own secret store. Store it with `PUT /v1/host-state-secrets/api/db` and a body of `{"fields": {"password": "…"}}`. Values are write-only: a `GET` on the same path answers field names only.
+  - **What sees them:** the state itself holds only the secret's name. The value travels to the edge inside the sealed command. Wherever a report or an error echoes a value, it shows `[secret db]` instead.
+- **Approval.** An apply changes hosts, so from Zaru or the MCP tools it waits for your approval, unless you have set "always allow" for it. A plan changes nothing and runs at once.
+
+## Recipe 9: deliver with a workflow
+
+A workflow reaches hosts through `Action` states, which run with no model in the loop:
+
+| Action | Arguments | Does |
+| --- | --- | --- |
+| `host_state_plan` | `name` | Plans a registered `HostState` |
+| `host_state_apply` | `name` | Applies it, one edge at a time; waits for the run's person to approve |
+| `edge_fleet_invoke` | `target`, `tool`; optional `args`, `security_context`, `mode` | Runs one edge tool over a target; waits for approval |
+| `http_check` | `url` (https); optional `expect_status`, `attempts`, `interval_secs` | A health gate between stages |
+
+A refusal, a failed host or an unhealthy check fails the state, so its `on_failure` transition takes it.
+
+The built-in workflow `infra-apply` applies one state:
+
+1. **PLAN:** plans the state.
+2. **APPLY:** applies it after your approval.
+3. **VERIFY:** plans again. A converged fleet reports no change.
+
+It records each step's changed hosts on the blackboard.
+
+A rollout over several states is a workflow of your own, with one stage per state and an `http_check` between stages:
+
+```yaml
+states:
+  CORE:
+    kind: Action
+    action: host_state_apply
+    args: { name: "core-pod" }
+    transitions:
+      - { condition: on_success, target: CORE_HEALTHY }
+      - { condition: on_failure, target: FAILED }
+  CORE_HEALTHY:
+    kind: Action
+    action: http_check
+    args: { url: "https://api.example.com/health", attempts: "10", interval_secs: "6" }
+    transitions:
+      - { condition: on_success, target: EDGE }
+      - { condition: on_failure, target: FAILED }
+```
+
+Any trusted source can start it: a person in Zaru, an MCP call, another workflow, a schedule, or a signed webhook (see [Configuring Webhooks](/docs/deployment/configuring-webhooks)).
+

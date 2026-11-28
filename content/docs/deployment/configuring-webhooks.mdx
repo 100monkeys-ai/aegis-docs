@@ -252,6 +252,20 @@ See [Zaru Overview — Subscription Billing](/docs/zaru/overview#subscription-bi
 
 ---
 
+## GitHub Webhooks
+
+GitHub signs each delivery with the same HMAC-SHA256 `sha256=<hex>` scheme, in its own header, `X-Hub-Signature-256`. For the source `github`, AEGIS verifies that header instead of `X-Aegis-Signature`. A delivery signed only in `X-Aegis-Signature` is refused.
+
+To set it up:
+
+1. In the repository's **Settings → Webhooks**, set the payload URL to `https://<your-aegis-node>/v1/webhooks/github`.
+2. Choose the content type `application/json`.
+3. Set the secret to the one you configured in Step 1.
+
+Each delivery is accepted once. AEGIS records each delivery's `X-GitHub-Delivery` id for 30 days, and a replayed delivery is answered with `409 Conflict` and starts no run. A delivery that cannot be checked against that record is answered with `503`, and GitHub retries it later.
+
+The webhook only asks for a run. Your stimulus routing decides which workflow runs, and every credential the run needs comes from your secret store, so a leaked GitHub token can request a deploy but cannot perform one.
+
 ## Git Repository Webhooks
 
 Git-repo backed persistent volumes expose a separate webhook endpoint that triggers a re-pull of the configured repository. Unlike the generic stimulus webhook, the git webhook authenticates via a per-volume secret carried in a request header — never in the URL path.

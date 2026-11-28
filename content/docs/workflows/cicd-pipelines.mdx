@@ -258,7 +258,7 @@ DEPLOY:
       docker push \
         {{blackboard.registry}}/{{blackboard.app_name}}:{{blackboard.version}}
   shell: true
-  registry_credentials: "secret:cicd/docker-registry"
+  registry_credentials: "secret:kv/cicd/docker-registry"
   env:
     DOCKER_HOST: "tcp://dockerd:2375"
   volumes:
@@ -273,7 +273,11 @@ DEPLOY:
       target: NOTIFY_FAILURE
 ```
 
-`registry_credentials` is a path in the secrets vault. The orchestrator resolves the credentials at execution time and injects them into the container environment — your workflow manifest never contains raw secrets.
+`registry_credentials` is `secret:<engine>/<path>`, read in **your tenant's own** secret store when the step runs. The secret must have the fields `username` and `password`. Your workflow manifest never contains the credential itself. A run cannot read another tenant's secrets or the platform's own.
+
+A personal (consumer) tenant's path must sit under `users/<your tenant>/`, because personal tenants share one store.
+
+The `env:<NAME>` form reads the orchestrator's own environment, so only the platform's own runs may use it. A tenant's step that names it is refused.
 
 ---
 
@@ -470,7 +474,7 @@ spec:
       volumes:
         - name: workspace
           mount_path: /workspace
-      registry_credentials: "secret:cicd/docker-registry"
+      registry_credentials: "secret:kv/cicd/docker-registry"
       resources:
         timeout: "15m"
       transitions:
@@ -504,7 +508,7 @@ BUILD:
   name: "Custom Build Image"
   image: "ghcr.io/myorg/builder:v2"
   image_pull_policy: Always              # Always | IfNotPresent | Never
-  registry_credentials: "secret:cicd/ghcr-token"
+  registry_credentials: "secret:kv/cicd/ghcr-token"
   command: ["make", "release"]
   workdir: "/workspace"
   volumes:
